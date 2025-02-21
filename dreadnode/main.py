@@ -29,6 +29,7 @@ class Dreadnode:
     server: str | None
     token: str | None
     local_dir: str | Path | t.Literal[False]
+    project: str | None
     service_name: str | None
     service_version: str | None
     console: logfire.ConsoleOptions | t.Literal[False, True]
@@ -41,6 +42,7 @@ class Dreadnode:
         server: str | None = None,
         token: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
+        project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | t.Literal[False, True] = True,
@@ -50,6 +52,7 @@ class Dreadnode:
         self.server = server
         self.token = token
         self.local_dir = local_dir
+        self.project = project
         self.service_name = service_name
         self.service_version = service_version
         self.console = console
@@ -64,6 +67,7 @@ class Dreadnode:
         server: str | None = None,
         token: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
+        project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | t.Literal[False, True] = True,
@@ -75,6 +79,7 @@ class Dreadnode:
         self.server = server
         self.token = token
         self.local_dir = local_dir
+        self.project = project
         self.service_name = service_name
         self.service_version = service_version
         self.console = console
@@ -206,10 +211,12 @@ class Dreadnode:
         /,
         *,
         tags: t.Sequence[str] | None = None,
+        project: str | None = None,
         **attributes: t.Any,
     ) -> RunSpan:
         return RunSpan(
             name=name,
+            project=project or self.project or "default",
             attributes=attributes,
             tracer=self._get_tracer(),
             tags=tags,

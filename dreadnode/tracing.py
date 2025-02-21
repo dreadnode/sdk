@@ -16,6 +16,7 @@ from ulid import ULID
 
 from .constants import (
     SPAN_ATTRIBUTE_PARENT_TASK_ID_KEY,
+    SPAN_ATTRIBUTE_PROJECT_KEY,
     SPAN_ATTRIBUTE_RUN_ID_KEY,
     SPAN_ATTRIBUTE_RUN_METRICS_KEY,
     SPAN_ATTRIBUTE_RUN_PARAMS_KEY,
@@ -159,12 +160,14 @@ class RunUpdateSpan(Span):
         self,
         run_id: str,
         tracer: Tracer,
+        project: str,
         *,
         metrics: MetricDict | None = None,
         params: JsonDict | None = None,
     ) -> None:
         attributes: dict[str, t.Any] = {
             SPAN_ATTRIBUTE_RUN_ID_KEY: run_id,
+            SPAN_ATTRIBUTE_PROJECT_KEY: project,
         }
 
         if metrics:
@@ -179,6 +182,7 @@ class RunSpan(Span):
     def __init__(
         self,
         name: str,
+        project: str,
         attributes: dict[str, t.Any],
         tracer: Tracer,
         run_id: str | None = None,
@@ -186,11 +190,13 @@ class RunSpan(Span):
     ) -> None:
         self._params: JsonDict = {}
         self._metrics: dict[str, list[Metric]] = {}
+        self.project = project
 
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID_KEY: str(run_id or ULID()),
+            SPAN_ATTRIBUTE_PROJECT_KEY: project,
             **attributes,
         }
         super().__init__(name, attributes, tracer, "run", tags)
@@ -219,7 +225,7 @@ class RunSpan(Span):
         if self._span is None:
             return
 
-        with RunUpdateSpan(run_id=self.run_id, tracer=self._tracer, params=self._params):
+        with RunUpdateSpan(run_id=self.run_id, project=self.project, tracer=self._tracer, params=self._params):
             pass
 
     @property
@@ -232,7 +238,7 @@ class RunSpan(Span):
         if self._span is None:
             return
 
-        with RunUpdateSpan(run_id=self.run_id, tracer=self._tracer, metrics=self._metrics):
+        with RunUpdateSpan(run_id=self.run_id, project=self.project, tracer=self._tracer, metrics=self._metrics):
             pass
 
 
