@@ -6,7 +6,6 @@ from opentelemetry.trace import Tracer
 
 from .tracing import Score, TaskSpan, current_run_span
 
-T = t.TypeVar("T")
 P = t.ParamSpec("P")
 R = t.TypeVar("R")
 
@@ -21,30 +20,25 @@ class Task(t.Generic[P, R]):
     scorers: list["Scorer[R]"]
     tags: t.Sequence[str]
 
+    def __post_init__(self) -> None:
+        self.__signature__ = inspect.signature(self.func)
+        self.__name__ = getattr(self.func, "__name__", self.name)
+
     def _bind_args(self, *args: P.args, **kwargs: P.kwargs) -> dict[str, t.Any]:
         signature = inspect.signature(self.func)
         bound_args = signature.bind(*args, **kwargs)
         bound_args.apply_defaults()
         return dict(bound_args.arguments)
 
-    @t.overload
-    async def run(self, *args: P.args, raw: t.Literal[False] = False, **kwargs: P.kwargs) -> R:
-        ...
-
-    @t.overload
-    async def run(self, *args: P.args, raw: t.Literal[True], **kwargs: P.kwargs) -> TaskSpan[R]:
-        ...
-
-    async def run(self, *args: P.args, raw: bool = False, **kwargs: P.kwargs) -> R | TaskSpan[R]:
+    async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         run = current_run_span.get()
         if run is None or not run.is_recording:
             raise RuntimeError("Tasks must be executed within a run")
 
-        bound = self._bind_args(*args, **kwargs)
         task = TaskSpan[R](
             name=self.name,
             attributes=self.attributes,
-            args=bound,
+            args=self._bind_args(*args, **kwargs),
             run_id=run.run_id,
             tracer=self.tracer,
         )
@@ -57,15 +51,17 @@ class Task(t.Generic[P, R]):
             task.output = output
 
             for scorer in self.scorers:
-                score = await scorer.run(task.output)
+                score = await scorer(task.output)
                 if not isinstance(score, Score):
                     score = Score(name=scorer.name, value=float(score))
                 score.name = scorer.name
                 task.scores.append(score)
 
-        return task if raw else task.output
+        return task
 
-    __call__ = run
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        span = await self.run(*args, **kwargs)
+        return span.output  # type: ignore
 
 
 Scorer = Task[P, float | Score]

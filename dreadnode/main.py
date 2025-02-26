@@ -172,9 +172,30 @@ class Dreadnode:
             tags=tags,
         )
 
+    @t.overload
     def task(
         self,
-        /,
+        *,
+        name: str | None = None,
+        scorers: t.Literal[None] = None,
+        tags: t.Sequence[str] | None = None,
+        **attributes: t.Any,
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
+        ...
+
+    @t.overload
+    def task(
+        self,
+        *,
+        name: str | None = None,
+        scorers: list[Scorer[R]],
+        tags: t.Sequence[str] | None = None,
+        **attributes: t.Any,
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
+        ...
+
+    def task(
+        self,
         *,
         name: str | None = None,
         scorers: list[Scorer[R]] | None = None,
@@ -183,6 +204,7 @@ class Dreadnode:
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
         def make_task(func: t.Callable[P, t.Awaitable[R]]) -> Task[P, R]:
             func = inspect.unwrap(func)
+
             qualified_func_name = func_name = getattr(func, "__qualname__", getattr(func, "__name__", safe_repr(func)))
 
             with contextlib.suppress(Exception):
@@ -197,7 +219,7 @@ class Dreadnode:
             with contextlib.suppress(Exception):
                 _attributes.update(get_filepath_attribute(inspect.getsourcefile(func)))  # type: ignore
 
-            return Task[P, R](
+            return Task(
                 tracer=self._get_tracer(),
                 name=_name,
                 attributes=_attributes,
