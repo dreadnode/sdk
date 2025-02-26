@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 import logfire
+from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from logfire._internal.stack_info import get_filepath_attribute
 from logfire._internal.utils import safe_repr
 from opentelemetry.exporter.otlp.proto.http import Compression
@@ -106,10 +107,12 @@ class Dreadnode:
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
             span_processors.append(
                 BatchSpanProcessor(
-                    OTLPSpanExporter(
-                        endpoint=urljoin(self.server, "/api/otel/traces"),
-                        headers=headers,
-                        compression=Compression.Gzip,
+                    RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
+                        OTLPSpanExporter(
+                            endpoint=urljoin(self.server, "/api/otel/traces"),
+                            headers=headers,
+                            compression=Compression.Gzip,
+                        )
                     )
                 )
             )
