@@ -24,12 +24,13 @@ class FileExportConfig:
     """Configuration for signal exports to JSONL files."""
 
     base_path: str | Path = Path.cwd() / ".dreadnode"
+    prefix: str = ""
 
     def get_path(self, signal: str) -> Path:
         """Get the file path for a specific signal type."""
         base = Path(self.base_path)
         base.mkdir(parents=True, exist_ok=True)
-        return base / f"{signal}.jsonl"
+        return base / f"{self.prefix}{signal}.jsonl"
 
 
 class FileMetricReader(MetricReader):

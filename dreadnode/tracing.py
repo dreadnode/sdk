@@ -42,14 +42,22 @@ current_run_span: ContextVar["RunSpan | None"] = ContextVar("current_run_span", 
 class Score:
     name: str
     value: float
+    timestamp: datetime = field(default_factory=datetime.now)
     attributes: JsonDict = field(default_factory=dict)
+
+    @classmethod
+    def from_many(cls, name: str, values: t.Sequence[tuple[str, float, float]]) -> "Score":
+        "Create a composite score from individual values and weights."
+        total = sum(value * weight for _, value, weight in values)
+        weight = sum(weight for _, _, weight in values)
+        return cls(name, total / weight, attributes={name: value for name, value, _ in values})
 
 
 @dataclass
 class Metric:
-    timestamp: datetime
     value: float
     step: int = 0
+    timestamp: datetime = field(default_factory=datetime.now)
 
 
 MetricDict = dict[str, list[Metric]]
@@ -190,6 +198,7 @@ class RunSpan(Span):
     ) -> None:
         self._params: JsonDict = {}
         self._metrics: dict[str, list[Metric]] = {}
+        self.scores: list[Score] = []
         self.project = project
 
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
@@ -206,6 +215,11 @@ class RunSpan(Span):
         return super().__enter__()
 
     def __exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: t.Any) -> None:
+        from .score import scores_to_metrics
+
+        score_metrics = scores_to_metrics(self.scores)
+        self._metrics.update(score_metrics)
+
         self.set_attribute(SPAN_ATTRIBUTE_RUN_PARAMS_KEY, self._params)
         self.set_attribute(SPAN_ATTRIBUTE_RUN_METRICS_KEY, self._metrics)
         super().__exit__(exc_type, exc_value, traceback)
@@ -221,7 +235,12 @@ class RunSpan(Span):
         return self._params
 
     def log_param(self, key: str, value: JsonValue) -> None:
-        self._params[key] = value
+        self.log_params(**{key: value})
+
+    def log_params(self, **params: JsonValue) -> None:
+        for key, value in params.items():
+            self.params[key] = value
+
         if self._span is None:
             return
 
@@ -233,13 +252,21 @@ class RunSpan(Span):
         return self._metrics
 
     def log_metric(self, key: str, value: float, step: int = 0, *, timestamp: datetime | None = None) -> None:
-        metric = Metric(timestamp or datetime.now(), value, step)
+        metric = Metric(value, step, timestamp or datetime.now())
         self._metrics.setdefault(key, []).append(metric)
         if self._span is None:
             return
 
         with RunUpdateSpan(run_id=self.run_id, project=self.project, tracer=self._tracer, metrics=self._metrics):
             pass
+
+    @property
+    def scores(self) -> list[Score]:
+        return self._scores
+
+    @scores.setter
+    def scores(self, value: list[Score]) -> None:
+        self._scores = value
 
 
 class TaskSpan(Span, t.Generic[R]):
@@ -308,8 +335,15 @@ class TaskSpan(Span, t.Generic[R]):
     def scores(self) -> list[Score]:
         return self._scores
 
-    def add_score(self, name: str, value: float, attributes: JsonDict | None = None) -> None:
-        self._scores.append(Score(name, value, attributes or {}))
+    @scores.setter
+    def scores(self, value: list[Score]) -> None:
+        self._scores = value
+
+    @property
+    def average_score(self) -> float:
+        if not self._scores:
+            return 0.0
+        return sum(score.value for score in self._scores) / len(self._scores)
 
 
 def prepare_otlp_attributes(attributes: dict[str, t.Any]) -> dict[str, otel_types.AttributeValue]:

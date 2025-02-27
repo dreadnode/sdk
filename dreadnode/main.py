@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import contextlib
 import inspect
+import os
+import random
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
+import coolname  # type: ignore
 import logfire
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from logfire._internal.stack_info import get_filepath_attribute
@@ -19,8 +22,11 @@ from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Tracer
 
+from .api.client import ApiClient
+from .constants import ENV_API_TOKEN, ENV_LOCAL_DIR, ENV_PROJECT, ENV_SERVER_URL
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
-from .task import P, R, Scorer, Task
+from .score import Scorer, ScorerCallable, T
+from .task import P, R, Task
 from .tracing import JsonValue, RunSpan, Span, current_run_span
 from .version import VERSION
 
@@ -60,6 +66,7 @@ class Dreadnode:
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
 
+        self._api: ApiClient | None = None
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._initialized = False
 
@@ -77,10 +84,19 @@ class Dreadnode:
     ) -> None:
         self._initialized = False
 
-        self.server = server
-        self.token = token
-        self.local_dir = local_dir
-        self.project = project
+        self.server = server or os.environ.get(ENV_SERVER_URL)
+        self.token = token or os.environ.get(ENV_API_TOKEN)
+
+        if local_dir is False and ENV_LOCAL_DIR in os.environ:
+            env_local_dir = os.environ.get(ENV_LOCAL_DIR)
+            if env_local_dir:
+                self.local_dir = Path(env_local_dir)
+            else:
+                self.local_dir = False
+        else:
+            self.local_dir = local_dir
+
+        self.project = project or os.environ.get(ENV_PROJECT)
         self.service_name = service_name
         self.service_version = service_version
         self.console = console
@@ -96,14 +112,19 @@ class Dreadnode:
         span_processors: list[SpanProcessor] = []
         metric_readers: list[MetricReader] = []
 
+        # TODO: Print a warning if things don't seem configured properly
+
         if self.local_dir is not False:
-            config = FileExportConfig(base_path=self.local_dir)
+            config = FileExportConfig(base_path=self.local_dir, prefix=self.project + "-" if self.project else "")
             span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
             metric_readers.append(FileMetricReader(config))
 
         if self.server is not None:
             if self.token is None:
-                raise ValueError("Token must be provided when server is set")
+                raise ValueError(f"Token ({ENV_API_TOKEN}) must be provided when server is set")
+
+            self._api = ApiClient(self.server, self.token)
+
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
             span_processors.append(
                 BatchSpanProcessor(
@@ -138,11 +159,28 @@ class Dreadnode:
             console=logfire.ConsoleOptions() if self.console is True else self.console,
         )
 
+        # TODO: Seems like poor form
+        self._logfire.config.ignore_no_config = True
+
         self._initialized = True
 
     @property
     def is_default(self) -> bool:
         return self is DEFAULT_INSTANCE
+
+    # I'd like to feel like a property as well,
+    # but it won't work well for our lazy initialization
+    def api(self, *, base_url: str | None = None, token: str | None = None) -> ApiClient:
+        if base_url is not None and token is not None:
+            return ApiClient(base_url, token)
+
+        if not self._initialized:
+            raise RuntimeError("Call .configure() before accessing the API")
+
+        if self._api is None:
+            raise RuntimeError("API is not available without a server configuration")
+
+        return self._api
 
     def _get_tracer(self, *, is_span_tracer: bool = True) -> Tracer:
         return self._logfire._tracer_provider.get_tracer(
@@ -176,8 +214,8 @@ class Dreadnode:
     def task(
         self,
         *,
+        scorers: None = None,
         name: str | None = None,
-        scorers: t.Literal[None] = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
@@ -187,8 +225,8 @@ class Dreadnode:
     def task(
         self,
         *,
+        scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
         name: str | None = None,
-        scorers: list[Scorer[R]],
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
@@ -197,8 +235,8 @@ class Dreadnode:
     def task(
         self,
         *,
+        scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[R]] | None = None,
         name: str | None = None,
-        scorers: list[Scorer[R]] | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
@@ -224,21 +262,38 @@ class Dreadnode:
                 name=_name,
                 attributes=_attributes,
                 func=func,
-                scorers=scorers or [],
-                tags=tags or [],
+                scorers=[
+                    scorer if isinstance(scorer, Scorer) else Scorer.from_callable(self._get_tracer(), scorer)
+                    for scorer in scorers or []
+                ],
+                tags=list(tags or []),
             )
 
         return make_task
 
+    def scorer(
+        self,
+        *,
+        name: str | None = None,
+        **attributes: t.Any,
+    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
+        def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
+            return Scorer.from_callable(self._get_tracer(), func, name=name, attributes=attributes)
+
+        return make_scorer
+
     def run(
         self,
-        name: str,
+        name: str | None = None,
         /,
         *,
         tags: t.Sequence[str] | None = None,
         project: str | None = None,
         **attributes: t.Any,
     ) -> RunSpan:
+        if name is None:
+            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"
+
         return RunSpan(
             name=name,
             project=project or self.project or "default",
@@ -252,7 +307,19 @@ class Dreadnode:
             raise RuntimeError("Params must be set within a run")
         run.log_param(key, value)
 
-    def log_metric(self, key: str, value: float, step: int = 0, *, timestamp: datetime | None = None) -> None:
+    def log_params(self, **params: JsonValue) -> None:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("Params must be set within a run")
+        run.log_params(**params)
+
+    def log_metric(
+        self,
+        key: str,
+        value: float,
+        step: int = 0,
+        *,
+        timestamp: datetime | None = None,
+    ) -> None:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("Metrics must be set within a run")
         run.log_metric(key, value, step=step, timestamp=timestamp)
