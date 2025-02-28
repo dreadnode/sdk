@@ -132,7 +132,8 @@ class Task(t.Generic[P, R]):
     async def try_run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R] | None:
         try:
             return await self.run(*args, **kwargs)
-        except Exception:
+        except Exception as e:  # TODO: Pretty this up
+            print(f"Task {self.name} failed with exception: {e}")
             return None
 
     async def try_(self, *args: P.args, **kwargs: P.kwargs) -> R | None:

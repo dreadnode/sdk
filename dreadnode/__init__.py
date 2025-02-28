@@ -15,6 +15,8 @@ run = DEFAULT_INSTANCE.run
 
 log_metric = DEFAULT_INSTANCE.log_metric
 log_param = DEFAULT_INSTANCE.log_param
+log_params = DEFAULT_INSTANCE.log_params
+log_score = DEFAULT_INSTANCE.log_score
 
 __version__ = VERSION
 

@@ -27,7 +27,7 @@ from .constants import ENV_API_TOKEN, ENV_LOCAL_DIR, ENV_PROJECT, ENV_SERVER_URL
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
 from .score import Scorer, ScorerCallable, T
 from .task import P, R, Task
-from .tracing import JsonValue, RunSpan, Span, current_run_span
+from .tracing import JsonValue, RunSpan, Score, Span, current_run_span, current_task_span
 from .version import VERSION
 
 
@@ -157,6 +157,7 @@ class Dreadnode:
             service_name=self.service_name,
             service_version=self.service_version,
             console=logfire.ConsoleOptions() if self.console is True else self.console,
+            scrubbing=False,
         )
 
         # TODO: Seems like poor form
@@ -321,8 +322,19 @@ class Dreadnode:
         timestamp: datetime | None = None,
     ) -> None:
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("Metrics must be set within a run")
+            raise RuntimeError("Metrics must be logged within a run")
         run.log_metric(key, value, step=step, timestamp=timestamp)
+
+    def log_score(self, score: Score) -> None:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("Scores must be logged within a run")
+
+        run.scores.append(score)
+
+        if (task := current_task_span.get()) is None:
+            return
+
+        task.scores.append(score)
 
 
 DEFAULT_INSTANCE = Dreadnode()
