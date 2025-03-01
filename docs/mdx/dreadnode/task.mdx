@@ -1,0 +1,42 @@
+---
+title: "dreadnode.task"
+description: "API documentation for dreadnode.task"
+---
+
+Module dreadnode.task
+=====================
+
+Classes
+-------
+
+`Task(tracer: opentelemetry.trace.Tracer, name: str, attributes: dict[str, typing.Any], func: Callable[~P, Awaitable[~R]], scorers: list['Scorer[R]'], tags: Sequence[str])`
+:   Task(tracer: opentelemetry.trace.Tracer, name: str, attributes: dict[str, typing.Any], func: Callable[~P, Awaitable[~R]], scorers: list['Scorer[R]'], tags: Sequence[str])
+
+    ### Ancestors (in MRO)
+
+    * typing.Generic
+
+    ### Class variables
+
+    `attributes: dict[str, typing.Any]`
+    :   The type of the None singleton.
+
+    `func: Callable[~P, Awaitable[~R]]`
+    :   The type of the None singleton.
+
+    `name: str`
+    :   The type of the None singleton.
+
+    `scorers: list[dreadnode.task.Task[[~R], float | dreadnode.tracing.Score]]`
+    :   The type of the None singleton.
+
+    `tags: Sequence[str]`
+    :   The type of the None singleton.
+
+    `tracer: opentelemetry.trace.Tracer`
+    :   The type of the None singleton.
+
+    ### Methods
+
+    `run(self, *args: P.args, raw: bool = False, **kwargs: P.kwargs) ‑> ~R | dreadnode.tracing.TaskSpan[~R]`
+    :

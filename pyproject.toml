@@ -16,6 +16,7 @@ ruamel-yaml = "^0.18.6"
 logfire = "^3.5.3"
 python-ulid = "^3.0.0"
 fast-depends = "^2.4.12"
+pdoc3 = "^0.11.5"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

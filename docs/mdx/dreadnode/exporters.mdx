@@ -1,0 +1,114 @@
+---
+title: "dreadnode.exporters"
+description: "API documentation for dreadnode.exporters"
+---
+
+Module dreadnode.exporters
+==========================
+
+Classes
+-------
+
+`FileExportConfig(base_path: str | pathlib._local.Path = PosixPath('/Users/moo/projects/sdk/.dreadnode'))`
+:   Configuration for signal exports to JSONL files.
+
+    ### Class variables
+
+    `base_path: str | pathlib._local.Path`
+    :   The type of the None singleton.
+
+    ### Methods
+
+    `get_path(self, signal: str) ‑> pathlib._local.Path`
+    :   Get the file path for a specific signal type.
+
+`FileLogExporter(config: dreadnode.exporters.FileExportConfig)`
+:   LogExporter that writes logs to a file in OTLP format.
+
+    ### Ancestors (in MRO)
+
+    * opentelemetry.sdk._logs._internal.export.LogExporter
+    * abc.ABC
+
+    ### Instance variables
+
+    `file: IO[str]`
+    :
+
+    ### Methods
+
+    `export(self, batch: Sequence[opentelemetry.sdk._logs._internal.LogData]) ‑> opentelemetry.sdk._logs._internal.export.LogExportResult`
+    :   Exports a batch of logs.
+        
+        Args:
+            batch: The list of `LogData` objects to be exported
+        
+        Returns:
+            The result of the export
+
+    `force_flush(self, timeout_millis: float = 30000) ‑> bool`
+    :
+
+    `shutdown(self) ‑> None`
+    :   Shuts down the exporter.
+        
+        Called when the SDK is shut down.
+
+`FileMetricReader(config: dreadnode.exporters.FileExportConfig)`
+:   MetricReader that writes metrics to a file in OTLP format.
+
+    ### Ancestors (in MRO)
+
+    * opentelemetry.sdk.metrics._internal.export.MetricReader
+    * abc.ABC
+
+    ### Instance variables
+
+    `file: IO[str]`
+    :
+
+    ### Methods
+
+    `shutdown(self, timeout_millis: float = 30000, **kwargs: Any) ‑> None`
+    :   Shuts down the MetricReader. This method provides a way
+        for the MetricReader to do any cleanup required. A metric reader can
+        only be shutdown once, any subsequent calls are ignored and return
+        failure status.
+        
+        When a `MetricReader` is registered on a
+        :class:`~opentelemetry.sdk.metrics.MeterProvider`,
+        :meth:`~opentelemetry.sdk.metrics.MeterProvider.shutdown` will invoke this
+        automatically.
+
+`FileSpanExporter(config: dreadnode.exporters.FileExportConfig)`
+:   SpanExporter that writes spans to a file in OTLP format.
+
+    ### Ancestors (in MRO)
+
+    * opentelemetry.sdk.trace.export.SpanExporter
+
+    ### Instance variables
+
+    `file: IO[str]`
+    :
+
+    ### Methods
+
+    `export(self, spans: Sequence[opentelemetry.sdk.trace.ReadableSpan]) ‑> opentelemetry.sdk.trace.export.SpanExportResult`
+    :   Exports a batch of telemetry data.
+        
+        Args:
+            spans: The list of `opentelemetry.trace.Span` objects to be exported
+        
+        Returns:
+            The result of the export
+
+    `force_flush(self, timeout_millis: float = 30000) ‑> bool`
+    :   Hint to ensure that the export of any spans the exporter has received
+        prior to the call to ForceFlush SHOULD be completed as soon as possible, preferably
+        before returning from this method.
+
+    `shutdown(self) ‑> None`
+    :   Shuts down the exporter.
+        
+        Called when the SDK is shut down.

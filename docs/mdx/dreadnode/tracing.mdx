@@ -1,0 +1,166 @@
+---
+title: "dreadnode.tracing"
+description: "API documentation for dreadnode.tracing"
+---
+
+Module dreadnode.tracing
+========================
+
+Functions
+---------
+
+`prepare_otlp_attribute(value: Any) ‑> str | bool | int | float | Sequence[str] | Sequence[bool] | Sequence[int] | Sequence[float]`
+:   
+
+`prepare_otlp_attributes(attributes: dict[str, typing.Any]) ‑> dict[str, str | bool | int | float | Sequence[str] | Sequence[bool] | Sequence[int] | Sequence[float]]`
+:   
+
+Classes
+-------
+
+`Metric(timestamp: datetime.datetime, value: float, step: int = 0)`
+:   Metric(timestamp: datetime.datetime, value: float, step: int = 0)
+
+    ### Class variables
+
+    `step: int`
+    :   The type of the None singleton.
+
+    `timestamp: datetime.datetime`
+    :   The type of the None singleton.
+
+    `value: float`
+    :   The type of the None singleton.
+
+`RunSpan(name: str, attributes: dict[str, typing.Any], tracer: opentelemetry.trace.Tracer, run_id: str | None = None, tags: Sequence[str] | None = None)`
+:   Provides read-only access to span attributes.
+    
+    Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+    a direct result from using the tracing pipeline via the `Tracer`.
+
+    ### Ancestors (in MRO)
+
+    * dreadnode.tracing.Span
+    * opentelemetry.sdk.trace.ReadableSpan
+
+    ### Instance variables
+
+    `metrics: dict[str, list[dreadnode.tracing.Metric]]`
+    :
+
+    `params: dict[str, int | float | str | bool | list['JsonValue'] | tuple['JsonValue', ...] | JsonDict | None]`
+    :
+
+    `run_id: str`
+    :
+
+    ### Methods
+
+    `log_metric(self, key: str, value: float, step: int = 0, *, timestamp: datetime.datetime | None = None) ‑> None`
+    :
+
+    `log_param(self, key: str, value: int | float | str | bool | list['JsonValue'] | tuple['JsonValue', ...] | ForwardRef('JsonDict') | None) ‑> None`
+    :
+
+`RunUpdateSpan(run_id: str, tracer: opentelemetry.trace.Tracer, *, metrics: dict[str, list[dreadnode.tracing.Metric]] | None = None, params: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] | None = None)`
+:   Provides read-only access to span attributes.
+    
+    Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+    a direct result from using the tracing pipeline via the `Tracer`.
+
+    ### Ancestors (in MRO)
+
+    * dreadnode.tracing.Span
+    * opentelemetry.sdk.trace.ReadableSpan
+
+`Score(name: str, value: float, attributes: dict[str, int | float | str | bool | list['JsonValue'] | tuple['JsonValue', ...] | ForwardRef('JsonDict') | None] = <factory>)`
+:   Score(name: str, value: float, attributes: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] = <factory>)
+
+    ### Class variables
+
+    `attributes: dict[str, int | float | str | bool | list[int | float | str | bool | list[JsonValue] | tuple[JsonValue, ...] | dict[str, int | float | str | bool | list[JsonValue] | tuple[JsonValue, ...] | JsonDict | None] | None] | tuple[int | float | str | bool | list[JsonValue] | tuple[JsonValue, ...] | dict[str, int | float | str | bool | list[JsonValue] | tuple[JsonValue, ...] | JsonDict | None] | None, ...] | dict[str, int | float | str | bool | list[int | float | str | bool | list[JsonValue] | tuple[JsonValue, ...] | JsonDict | None] | tuple[int | float | str | bool | list[JsonValue] | tuple[JsonValue, ...] | JsonDict | None, ...] | JsonDict | None] | None]`
+    :   The type of the None singleton.
+
+    `name: str`
+    :   The type of the None singleton.
+
+    `value: float`
+    :   The type of the None singleton.
+
+`Span(name: str, attributes: dict[str, typing.Any], tracer: opentelemetry.trace.Tracer, type: Literal['run', 'task', 'span', 'run_update'] = 'span', tags: Sequence[str] | None = None)`
+:   Provides read-only access to span attributes.
+    
+    Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+    a direct result from using the tracing pipeline via the `Tracer`.
+
+    ### Ancestors (in MRO)
+
+    * opentelemetry.sdk.trace.ReadableSpan
+
+    ### Descendants
+
+    * dreadnode.tracing.RunSpan
+    * dreadnode.tracing.RunUpdateSpan
+    * dreadnode.tracing.TaskSpan
+
+    ### Instance variables
+
+    `is_recording: bool`
+    :
+
+    `span_id: str`
+    :
+
+    `tags: tuple[str, ...]`
+    :
+
+    `trace_id: str`
+    :
+
+    ### Methods
+
+    `get_attribute(self, key: str, default: Any) ‑> Any`
+    :
+
+    `get_attributes(self) ‑> dict[str, typing.Any]`
+    :
+
+    `set_attribute(self, key: str, value: Any) ‑> None`
+    :
+
+    `set_attributes(self, attributes: dict[str, typing.Any]) ‑> None`
+    :
+
+`TaskSpan(name: str, attributes: dict[str, typing.Any], args: dict[str, typing.Any], run_id: str, tracer: opentelemetry.trace.Tracer, tags: Sequence[str] | None = None)`
+:   Provides read-only access to span attributes.
+    
+    Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+    a direct result from using the tracing pipeline via the `Tracer`.
+
+    ### Ancestors (in MRO)
+
+    * dreadnode.tracing.Span
+    * opentelemetry.sdk.trace.ReadableSpan
+    * typing.Generic
+
+    ### Instance variables
+
+    `args: dict[str, typing.Any]`
+    :
+
+    `output: ~R | None`
+    :
+
+    `parent_task_id: str`
+    :
+
+    `run_id: str`
+    :
+
+    `scores: list[dreadnode.tracing.Score]`
+    :
+
+    ### Methods
+
+    `add_score(self, name: str, value: float, attributes: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] | None = None) ‑> None`
+    :

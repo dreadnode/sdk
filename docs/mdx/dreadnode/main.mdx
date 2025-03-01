@@ -1,0 +1,70 @@
+---
+title: "dreadnode.main"
+description: "API documentation for dreadnode.main"
+---
+
+Module dreadnode.main
+=====================
+
+Classes
+-------
+
+`Dreadnode(*, server: str | None = None, token: str | None = None, local_dir: str | Path | t.Literal[False] = False, service_name: str | None = None, service_version: str | None = None, console: logfire.ConsoleOptions | t.Literal[False, True] = True, send_to_logfire: "bool | t.Literal['if-token-present']" = 'if-token-present', otel_scope: str = 'dreadnode')`
+:   Dreadnode(*, server: 'str | None' = None, token: 'str | None' = None, local_dir: 'str | Path | t.Literal[False]' = False, service_name: 'str | None' = None, service_version: 'str | None' = None, console: 'logfire.ConsoleOptions | t.Literal[False, True]' = True, send_to_logfire: "bool | t.Literal['if-token-present']" = 'if-token-present', otel_scope: 'str' = 'dreadnode') -> 'None'
+
+    ### Class variables
+
+    `console: logfire._internal.config.ConsoleOptions | Literal[False, True]`
+    :   The type of the None singleton.
+
+    `local_dir: str | pathlib._local.Path | Literal[False]`
+    :   The type of the None singleton.
+
+    `otel_scope: str`
+    :   The type of the None singleton.
+
+    `send_to_logfire: bool | Literal['if-token-present']`
+    :   The type of the None singleton.
+
+    `server: str | None`
+    :   The type of the None singleton.
+
+    `service_name: str | None`
+    :   The type of the None singleton.
+
+    `service_version: str | None`
+    :   The type of the None singleton.
+
+    `token: str | None`
+    :   The type of the None singleton.
+
+    ### Instance variables
+
+    `is_default: bool`
+    :
+
+    ### Methods
+
+    `configure(self, server: str | None = None, token: str | None = None, local_dir: str | Path | t.Literal[False] = False, service_name: str | None = None, service_version: str | None = None, console: logfire.ConsoleOptions | t.Literal[False, True] = True, send_to_logfire: "bool | t.Literal['if-token-present']" = 'if-token-present', otel_scope: str = 'dreadnode') ‑> None`
+    :
+
+    `initialize(self) ‑> None`
+    :
+
+    `log_metric(self, key: str, value: float, step: int = 0, *, timestamp: datetime | None = None) ‑> None`
+    :
+
+    `log_param(self, key: str, value: JsonValue) ‑> None`
+    :
+
+    `run(self, name: str, /, *, tags: t.Sequence[str] | None = None, **attributes: t.Any) ‑> dreadnode.tracing.RunSpan`
+    :
+
+    `shutdown(self) ‑> None`
+    :
+
+    `span(self, name: str, /, *, tags: t.Sequence[str] | None = None, **attributes: t.Any) ‑> dreadnode.tracing.Span`
+    :
+
+    `task(self, /, *, name: str | None = None, scorers: list[Scorer[R]] | None = None, tags: t.Sequence[str] | None = None, **attributes: t.Any) ‑> Callable[[Callable[~P, Awaitable[~R]]], dreadnode.task.Task[~P, ~R]]`
+    :

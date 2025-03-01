@@ -1,0 +1,61 @@
+---
+title: "dreadnode.context"
+description: "API documentation for dreadnode.context"
+---
+
+Module dreadnode.context
+========================
+
+Functions
+---------
+
+`ctx(*, id_: str | None = None) ‑> Any`
+:   Create a context field that resolves using the parameter's type annotation.
+
+`get_context() ‑> dreadnode.context.RunContext`
+:   Get the currently active run context.
+
+`optional_ctx(*, id_: str | None = None, default: Any = None) ‑> Any`
+:   Create an optional context field.
+
+Classes
+-------
+
+`ContextField(id_: str | None = None, strict: bool = True, default: Any = None)`
+:   A custom field that resolves values from the current run context.
+
+    ### Ancestors (in MRO)
+
+    * fast_depends.library.model.CustomField
+    * abc.ABC
+    * typing.Generic
+
+    ### Methods
+
+    `use(self, **kwargs: Any) ‑> dict[str, typing.Any]`
+    :   Resolve the value from current context when parameter is needed.
+
+`RunContext(run_id: str)`
+:   Context manager for a specific run instance.
+
+    ### Class variables
+
+    `run_id: str`
+    :   The type of the None singleton.
+
+    ### Methods
+
+    `get(self, type_: type[T], id_: str | list[str] | None = None, strict: bool = True) ‑> ~T | None`
+    :
+
+    `scope(self, **values: t.Any)`
+    :   Create a scoped context manager.
+
+    `set_global(self, value: t.Any, id_: str | None = None) ‑> None`
+    :   Set a global context value for this run.
+
+    `set_scoped(self, value: t.Any, id_: str | None = None) ‑> None`
+    :   Set a scoped context value.
+
+`ScopedContext(context: RunContext, values: dict[str, Any])`
+:   Context manager for temporary scoped values.
