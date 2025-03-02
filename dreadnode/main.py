@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import coolname  # type: ignore
 import logfire
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
-from logfire._internal.stack_info import get_filepath_attribute
+from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -29,6 +29,10 @@ from .score import Scorer, ScorerCallable, T
 from .task import P, R, Task
 from .tracing import JsonValue, RunSpan, Score, Span, current_run_span, current_task_span
 from .version import VERSION
+
+
+class DreadnodeConfigWarning(UserWarning):
+    pass
 
 
 @dataclass
@@ -67,7 +71,10 @@ class Dreadnode:
         self.otel_scope = otel_scope
 
         self._api: ApiClient | None = None
+
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
+        self._logfire.config.ignore_no_config = True
+
         self._initialized = False
 
     def configure(
@@ -112,7 +119,12 @@ class Dreadnode:
         span_processors: list[SpanProcessor] = []
         metric_readers: list[MetricReader] = []
 
-        # TODO: Print a warning if things don't seem configured properly
+        if self.server is None and self.local_dir is False and self.send_to_logfire is not True:
+            warn_at_user_stacklevel(
+                "Your current configuration won't persist run data anywhere. "
+                f"Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
+                category=DreadnodeConfigWarning,
+            )
 
         if self.local_dir is not False:
             config = FileExportConfig(base_path=self.local_dir, prefix=self.project + "-" if self.project else "")
@@ -159,8 +171,6 @@ class Dreadnode:
             console=logfire.ConsoleOptions() if self.console is True else self.console,
             scrubbing=False,
         )
-
-        # TODO: Seems like poor form
         self._logfire.config.ignore_no_config = True
 
         self._initialized = True
@@ -292,6 +302,9 @@ class Dreadnode:
         project: str | None = None,
         **attributes: t.Any,
     ) -> RunSpan:
+        if not self._initialized:
+            self.initialize()
+
         if name is None:
             name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"
 
