@@ -1,5 +1,4 @@
 from .main import DEFAULT_INSTANCE
-from .run import Run
 from .score import Scorer
 from .task import Task
 from .tracing import RunSpan, Score, Span, TaskSpan
