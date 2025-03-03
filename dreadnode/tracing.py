@@ -1,7 +1,7 @@
 import typing as t
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 import typing_extensions as te
 from logfire._internal.json_encoder import logfire_json_dumps as json_dumps
@@ -42,7 +42,7 @@ current_run_span: ContextVar["RunSpan | None"] = ContextVar("current_run_span", 
 class Score:
     name: str
     value: float
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     attributes: JsonDict = field(default_factory=dict)
 
     @classmethod
@@ -57,7 +57,7 @@ class Score:
 class Metric:
     value: float
     step: int = 0
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 MetricDict = dict[str, list[Metric]]
@@ -252,7 +252,7 @@ class RunSpan(Span):
         return self._metrics
 
     def log_metric(self, key: str, value: float, step: int = 0, *, timestamp: datetime | None = None) -> None:
-        metric = Metric(value, step, timestamp or datetime.now())
+        metric = Metric(value, step, timestamp or datetime.now(timezone.utc))
         self._metrics.setdefault(key, []).append(metric)
         if self._span is None:
             return

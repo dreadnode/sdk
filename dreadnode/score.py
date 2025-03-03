@@ -3,7 +3,7 @@ import inspect
 import typing as t
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import groupby
 
 from logfire._internal.utils import safe_repr
@@ -70,7 +70,7 @@ class Scorer(t.Generic[T]):
                 score = await score
 
         if not isinstance(score, Score):
-            score = Score(timestamp=datetime.now(), name=self.name, value=float(score))
+            score = Score(timestamp=datetime.now(timezone.utc), name=self.name, value=float(score))
 
         return score
 
@@ -99,11 +99,11 @@ def scores_to_metrics(scores: t.Sequence[Score]) -> MetricDict:
 
         # Include an average
         avg_value = sum(score.value for score in score_group) / len(score_group)
-        avg_metric = Metric(timestamp=datetime.now(), value=avg_value, step=0)
+        avg_metric = Metric(timestamp=datetime.now(timezone.utc), value=avg_value, step=0)
         metrics[f"{name}.avg"].append(avg_metric)
 
         # Include a count
-        count_metric = Metric(timestamp=datetime.now(), value=float(len(score_group)), step=0)
+        count_metric = Metric(timestamp=datetime.now(timezone.utc), value=float(len(score_group)), step=0)
         metrics[f"{name}.count"].append(count_metric)
 
     return dict(metrics)
