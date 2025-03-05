@@ -27,8 +27,10 @@ from .constants import ENV_API_TOKEN, ENV_LOCAL_DIR, ENV_PROJECT, ENV_SERVER_URL
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
 from .score import Scorer, ScorerCallable, T
 from .task import P, R, Task
-from .tracing import JsonValue, RunSpan, Score, Span, current_run_span, current_task_span
+from .tracing import JsonValue, RunSpan, Span, current_run_span, current_task_span
 from .version import VERSION
+
+ToObject = t.Literal["task-or-run", "run"]
 
 
 class DreadnodeConfigWarning(UserWarning):
@@ -131,9 +133,9 @@ class Dreadnode:
             span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
             metric_readers.append(FileMetricReader(config))
 
-        if self.server is not None:
-            if self.token is None:
-                raise ValueError(f"Token ({ENV_API_TOKEN}) must be provided when server is set")
+        if self.token is not None:
+            if self.server is None:  # TODO: Move this to constants
+                self.server = "https://platform.dreadnode.io"
 
             self._api = ApiClient(self.server, self.token)
 
@@ -286,10 +288,11 @@ class Dreadnode:
         self,
         *,
         name: str | None = None,
+        tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
         def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-            return Scorer.from_callable(self._get_tracer(), func, name=name, attributes=attributes)
+            return Scorer.from_callable(self._get_tracer(), func, name=name, tags=tags, attributes=attributes)
 
         return make_scorer
 
@@ -316,15 +319,23 @@ class Dreadnode:
             tags=tags,
         )
 
-    def log_param(self, key: str, value: JsonValue) -> None:
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Params must be set within a run")
-        run.log_param(key, value)
+    def log_param(self, key: str, value: JsonValue, *, to: ToObject = "task-or-run") -> None:
+        self.log_params(to=to, **{key: value})
 
-    def log_params(self, **params: JsonValue) -> None:
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Params must be set within a run")
-        run.log_params(**params)
+    def log_params(self, to: ToObject = "task-or-run", **params: JsonValue) -> None:
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        if to == "task-or-run":
+            target = task or run
+            if target is None:
+                raise RuntimeError("log_params() with to='task-or-run' must be called within a run or a task")
+            target.log_params(**params)
+
+        elif to == "run":
+            if run is None:
+                raise RuntimeError("log_params() with to='run' must be called within a run")
+            run.log_params(**params)
 
     def log_metric(
         self,
@@ -333,21 +344,21 @@ class Dreadnode:
         step: int = 0,
         *,
         timestamp: datetime | None = None,
+        to: ToObject = "task-or-run",
     ) -> None:
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Metrics must be logged within a run")
-        run.log_metric(key, value, step=step, timestamp=timestamp)
+        task = current_task_span.get()
+        run = current_run_span.get()
 
-    def log_score(self, score: Score) -> None:
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Scores must be logged within a run")
+        if to == "task-or-run":
+            target = task or run
+            if target is None:
+                raise RuntimeError("log_metric() with to='task-or-run' must be called within a run or a task")
+            target.log_metric(key, value, step=step, timestamp=timestamp)
 
-        run.scores.append(score)
-
-        if (task := current_task_span.get()) is None:
-            return
-
-        task.scores.append(score)
+        elif to == "run":
+            if run is None:
+                raise RuntimeError("log_metric() with to='run' must be called within a run")
+            run.log_metric(key, value, step=step, timestamp=timestamp)
 
 
 DEFAULT_INSTANCE = Dreadnode()

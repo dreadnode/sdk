@@ -1,19 +1,18 @@
 import contextlib
 import inspect
 import typing as t
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from itertools import groupby
 
 from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
 
-from .tracing import Metric, MetricDict, Score, Span
+from .tracing import Metric, Span
 
 T = t.TypeVar("T")
 
-ScorerCallable = t.Callable[[T], float | Score | t.Awaitable[float | Score]]
+ScorerResult = float | int | bool | Metric
+ScorerCallable = t.Callable[[T], ScorerResult | t.Awaitable[ScorerResult]]
 
 
 @dataclass
@@ -21,6 +20,7 @@ class Scorer(t.Generic[T]):
     tracer: Tracer
 
     name: str
+    tags: t.Sequence[str]
     attributes: dict[str, t.Any]
     func: ScorerCallable[T]
 
@@ -31,6 +31,7 @@ class Scorer(t.Generic[T]):
         func: ScorerCallable[T] | "Scorer[T]",
         *,
         name: str | None = None,
+        tags: t.Sequence[str] | None = None,
         attributes: dict[str, t.Any] | None = None,
     ) -> "Scorer[T]":
         if isinstance(func, Scorer):
@@ -45,7 +46,7 @@ class Scorer(t.Generic[T]):
         with contextlib.suppress(Exception):
             qualified_func_name = f"{inspect.getmodule(func).__name__}.{func_name}"  # type: ignore
         name = name or str(getattr(func, "__name__", qualified_func_name))
-        return cls(tracer=tracer, name=name, attributes=attributes or {}, func=func)
+        return cls(tracer=tracer, name=name, tags=tags or [], attributes=attributes or {}, func=func)
 
     def __post_init__(self) -> None:
         self.__signature__ = inspect.signature(self.func)
@@ -55,55 +56,28 @@ class Scorer(t.Generic[T]):
         return Scorer(
             tracer=self.tracer,
             name=self.name,
+            tags=self.tags,
             attributes=self.attributes,
             func=self.func,
         )
 
-    async def __call__(self, object: T) -> Score:
+    async def __call__(self, object: T) -> Metric:
         with Span(
             name=self.name,
+            tags=self.tags,
             attributes=self.attributes,
             tracer=self.tracer,
         ):
-            score = self.func(object)
-            if inspect.isawaitable(score):
-                score = await score
+            metric = self.func(object)
+            if inspect.isawaitable(metric):
+                metric = await metric
 
-        if not isinstance(score, Score):
-            score = Score(timestamp=datetime.now(timezone.utc), name=self.name, value=float(score))
+        if not isinstance(metric, Metric):
+            metric = Metric(
+                float(metric),
+                step=0,  # TODO: Do we integrate an increment/state system here?
+                timestamp=datetime.now(timezone.utc),
+                attributes=self.attributes,
+            )
 
-        return score
-
-
-def scores_to_metrics(scores: t.Sequence[Score]) -> MetricDict:
-    if not scores:
-        return {}
-
-    sorted_by_name = sorted(scores, key=lambda score: score.name)
-    grouped_by_name = {name: list(group) for name, group in groupby(sorted_by_name, key=lambda score: score.name)}
-
-    metrics: MetricDict = defaultdict(list)
-    for name, group in grouped_by_name.items():
-        score_group = sorted(group, key=lambda score: score.timestamp)
-
-        # Write the flat scores inside a single metric + cumulative
-        cumulative: float = 0
-        for score in score_group:
-            metric = Metric(timestamp=score.timestamp, value=score.value, step=0)
-            metrics[name].append(metric)
-            cumulative += score.value
-            metrics[f"{name}.cum"].append(Metric(timestamp=score.timestamp, value=cumulative, step=0))
-
-        if not score_group:
-            continue
-
-        # Include an average
-        avg_value = sum(score.value for score in score_group) / len(score_group)
-        avg_metric = Metric(timestamp=datetime.now(timezone.utc), value=avg_value, step=0)
-        metrics[f"{name}.avg"].append(avg_metric)
-
-        # Include a count
-        count_metric = Metric(timestamp=datetime.now(timezone.utc), value=float(len(score_group)), step=0)
-        metrics[f"{name}.count"].append(count_metric)
-
-    return dict(metrics)
+        return metric

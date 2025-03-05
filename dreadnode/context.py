@@ -18,10 +18,10 @@ class ContextField(CustomField, Generic[T]):
         id_: str | None = None,
         strict: bool = True,
         default: Any = None,
-    ):
+    ) -> None:
         self.id_ = id_
         self.default = default
-        super().__init__(cast=True, required=strict and default is None)
+        super().__init__(cast=False, required=strict and default is None)
 
     def use(self, **kwargs: Any) -> dict[str, Any]:
         """Resolve the value from current context when parameter is needed."""
@@ -99,7 +99,6 @@ class RunContext:
         return self._get(type_, id_, strict)
 
     def _get(self, type_: type[T], id_: str | None = None, strict: bool = True) -> T | None:
-        # First check scoped context
         key = (type_, id_)
         if id_ is None:
             # If no ID specified, look for single instance of type
@@ -160,7 +159,6 @@ class ScopedContext:
                 self.context._scoped_context[key] = value
 
 
-# Global context access
 current_run_context: ContextVar[RunContext | None] = ContextVar("current_run_context", default=None)
 
 
