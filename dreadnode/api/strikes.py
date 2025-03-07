@@ -1,7 +1,9 @@
+import io
 import typing as t
 from datetime import datetime
 from uuid import UUID
 
+import pandas as pd  # type: ignore
 from pydantic import BaseModel, Field
 from ulid import ULID
 
@@ -15,6 +17,12 @@ StrikeSpanStatus = t.Literal[
     "completed",  # The span has been finished
     "failed",  # The raised an exception
 ]
+
+ExportFormat = t.Literal["csv", "json", "jsonl", "parquet"]
+StatusFilter = t.Literal["all", "completed", "failed"]
+TimeAxisType = t.Literal["wall", "relative", "step"]
+TimeAggregationType = t.Literal["max", "min", "sum", "count"]
+MetricAggregationType = t.Literal["avg", "median", "min", "max", "sum", "first", "last", "count", "std", "var"]
 
 
 class StrikeSpanException(BaseModel):
@@ -171,3 +179,97 @@ class StrikesClient:
             else:
                 spans.append(StrikeTraceSpan(**item))
         return spans
+
+    def export_runs(
+        self,
+        project: str,
+        *,
+        filter: str | None = None,
+        # format: ExportFormat = "parquet",
+        status: StatusFilter = "completed",
+        aggregations: list[MetricAggregationType] | None = None,
+    ) -> pd.DataFrame:
+        response = self._client.request(
+            "GET",
+            f"/strikes/projects/{str(project)}/export",
+            query_params={
+                "format": "parquet",
+                "status": status,
+                **({"filter": filter} if filter else {}),
+                **({"aggregations": aggregations} if aggregations else {}),
+            },
+        )
+        return pd.read_parquet(io.BytesIO(response.content))
+
+    def export_metrics(
+        self,
+        project: str,
+        *,
+        filter: str | None = None,
+        # format: ExportFormat = "parquet",
+        status: StatusFilter = "completed",
+        metrics: list[str] | None = None,
+        aggregations: list[MetricAggregationType] | None = None,
+    ) -> pd.DataFrame:
+        response = self._client.request(
+            "GET",
+            f"/strikes/projects/{str(project)}/export/metrics",
+            query_params={
+                "format": "parquet",
+                "status": status,
+                "filter": filter,
+                **({"metrics": metrics} if metrics else {}),
+                **({"aggregations": aggregations} if aggregations else {}),
+            },
+        )
+        return pd.read_parquet(io.BytesIO(response.content))
+
+    def export_parameters(
+        self,
+        project: str,
+        *,
+        filter: str | None = None,
+        # format: ExportFormat = "parquet",
+        status: StatusFilter = "completed",
+        parameters: list[str] | None = None,
+        metrics: list[str] | None = None,
+        aggregations: list[MetricAggregationType] | None = None,
+    ) -> pd.DataFrame:
+        response = self._client.request(
+            "GET",
+            f"/strikes/projects/{str(project)}/export/parameters",
+            query_params={
+                "format": "parquet",
+                "status": status,
+                "filter": filter,
+                **({"parameters": parameters} if parameters else {}),
+                **({"metrics": metrics} if metrics else {}),
+                **({"aggregations": aggregations} if aggregations else {}),
+            },
+        )
+        return pd.read_parquet(io.BytesIO(response.content))
+
+    def export_timeseries(
+        self,
+        project: str,
+        *,
+        filter: str | None = None,
+        # format: ExportFormat = "parquet",
+        status: StatusFilter = "completed",
+        metrics: list[str] | None = None,
+        time_axis: TimeAxisType = "relative",
+        aggregations: list[TimeAggregationType] | None = None,
+    ) -> pd.DataFrame:
+        response = self._client.request(
+            "GET",
+            f"/strikes/projects/{str(project)}/export/timeseries",
+            query_params={
+                "format": "parquet",
+                "status": status,
+                "filter": filter,
+                "time_axis": time_axis,
+                **({"metrics": metrics} if metrics else {}),
+                **({"aggregation": aggregations} if aggregations else {}),
+            },
+        )
+        return pd.read_parquet(io.BytesIO(response.content))
