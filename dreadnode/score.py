@@ -1,4 +1,3 @@
-import contextlib
 import inspect
 import typing as t
 from dataclasses import dataclass
@@ -12,7 +11,7 @@ from .tracing import Metric, Span
 T = t.TypeVar("T")
 
 ScorerResult = float | int | bool | Metric
-ScorerCallable = t.Callable[[T], ScorerResult | t.Awaitable[ScorerResult]]
+ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], ScorerResult]
 
 
 @dataclass
@@ -42,11 +41,19 @@ class Scorer(t.Generic[T]):
             return func
 
         func = inspect.unwrap(func)
-        qualified_func_name = func_name = getattr(func, "__qualname__", getattr(func, "__name__", safe_repr(func)))
-        with contextlib.suppress(Exception):
-            qualified_func_name = f"{inspect.getmodule(func).__name__}.{func_name}"  # type: ignore
-        name = name or str(getattr(func, "__name__", qualified_func_name))
-        return cls(tracer=tracer, name=name, tags=tags or [], attributes=attributes or {}, func=func)
+        func_name = getattr(
+            func,
+            "__qualname__",
+            getattr(func, "__name__", safe_repr(func)),
+        )
+        name = name or func_name
+        return cls(
+            tracer=tracer,
+            name=name,
+            tags=tags or [],
+            attributes=attributes or {},
+            func=func,
+        )
 
     def __post_init__(self) -> None:
         self.__signature__ = inspect.signature(self.func)
@@ -75,7 +82,7 @@ class Scorer(t.Generic[T]):
         if not isinstance(metric, Metric):
             metric = Metric(
                 float(metric),
-                step=0,  # TODO: Do we integrate an increment/state system here?
+                step=0,  # Do we integrate an increment/state system here?
                 timestamp=datetime.now(timezone.utc),
                 attributes=self.attributes,
             )

@@ -5,7 +5,8 @@ import httpx
 from pydantic import BaseModel
 from rich import print
 
-from ..version import VERSION
+from dreadnode.version import VERSION
+
 from .strikes import StrikesClient
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
@@ -67,7 +68,7 @@ class ApiClient:
         try:
             obj = response.json()
             return f'{response.status_code}: {obj.get("detail", json.dumps(obj))}'
-        except Exception:
+        except Exception:  # noqa: BLE001
             return str(response.content)
 
     def _request(
@@ -91,11 +92,12 @@ class ApiClient:
         """Make a request to the API. Raise an exception for non-200 status codes."""
 
         response = self._request(method, path, query_params, json_data)
-        if response.status_code == 401:
-            raise Exception("Authentication failed, please check your API token.")
+        if response.status_code == 401:  # noqa: PLR2004
+            raise RuntimeError("Authentication failed, please check your API token.")
 
         try:
             response.raise_for_status()
-            return response
         except httpx.HTTPStatusError as e:
-            raise Exception(self._get_error_message(response)) from e
+            raise RuntimeError(self._get_error_message(response)) from e
+
+        return response

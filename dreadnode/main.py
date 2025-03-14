@@ -6,29 +6,39 @@ import os
 import random
 import typing as t
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
 
-import coolname  # type: ignore
+import coolname  # type: ignore [import-untyped]
 import logfire
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.metrics.export import MetricReader
-from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace import Tracer
 
 from .api.client import ApiClient
-from .constants import ENV_API_TOKEN, ENV_LOCAL_DIR, ENV_PROJECT, ENV_SERVER_URL
+from .constants import (
+    DEFAULT_SERVER_URL,
+    ENV_API_KEY,
+    ENV_API_TOKEN,
+    ENV_LOCAL_DIR,
+    ENV_PROJECT,
+    ENV_SERVER,
+    ENV_SERVER_URL,
+)
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
 from .score import Scorer, ScorerCallable, T
 from .task import P, R, Task
-from .tracing import JsonValue, RunSpan, Span, current_run_span, current_task_span
+from .tracing import AnyDict, JsonValue, Metric, RunSpan, Span, current_run_span, current_task_span
 from .version import VERSION
+
+if t.TYPE_CHECKING:
+    from opentelemetry.sdk.metrics.export import MetricReader
+    from opentelemetry.sdk.trace import SpanProcessor
+    from opentelemetry.trace import Tracer
 
 ToObject = t.Literal["task-or-run", "run"]
 
@@ -83,18 +93,18 @@ class Dreadnode:
         self,
         server: str | None = None,
         token: str | None = None,
-        local_dir: str | Path | t.Literal[False] = False,
+        local_dir: str | Path | t.Literal[False] = False,  # noqa: FBT002
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
-        console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+        console: logfire.ConsoleOptions | t.Literal[False, True] = True,  # noqa: FBT002
         send_to_logfire: bool | t.Literal["if-token-present"] = "if-token-present",
         otel_scope: str = "dreadnode",
     ) -> None:
         self._initialized = False
 
-        self.server = server or os.environ.get(ENV_SERVER_URL)
-        self.token = token or os.environ.get(ENV_API_TOKEN)
+        self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+        self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
 
         if local_dir is False and ENV_LOCAL_DIR in os.environ:
             env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -129,14 +139,15 @@ class Dreadnode:
             )
 
         if self.local_dir is not False:
-            config = FileExportConfig(base_path=self.local_dir, prefix=self.project + "-" if self.project else "")
+            config = FileExportConfig(
+                base_path=self.local_dir,
+                prefix=self.project + "-" if self.project else "",
+            )
             span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
             metric_readers.append(FileMetricReader(config))
 
         if self.token is not None:
-            if self.server is None:  # TODO: Move this to constants
-                self.server = "https://platform.dreadnode.io"
-
+            self.server = self.server or DEFAULT_SERVER_URL
             self._api = ApiClient(self.server, self.token)
 
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
@@ -147,18 +158,19 @@ class Dreadnode:
                             endpoint=urljoin(self.server, "/api/otel/traces"),
                             headers=headers,
                             compression=Compression.Gzip,
-                        )
-                    )
-                )
+                        ),
+                    ),
+                ),
             )
-            # TODO: Metrics
+            # TODO(nick): Metrics
+            # https://linear.app/dreadnode/issue/ENG-1310/sdk-add-metrics-exports
             # metric_readers.append(
             #     PeriodicExportingMetricReader(
             #         OTLPMetricExporter(
             #             endpoint=urljoin(self.server, "/v1/metrics"),
             #             headers=headers,
             #             compression=Compression.Gzip,
-            #             # TODO: preferred_temporality
+            #             # preferred_temporality
             #         )
             #     )
             # )
@@ -183,9 +195,9 @@ class Dreadnode:
 
     # I'd like to feel like a property as well,
     # but it won't work well for our lazy initialization
-    def api(self, *, base_url: str | None = None, token: str | None = None) -> ApiClient:
-        if base_url is not None and token is not None:
-            return ApiClient(base_url, token)
+    def api(self, *, server: str | None = None, token: str | None = None) -> ApiClient:
+        if server is not None and token is not None:
+            return ApiClient(server, token)
 
         if not self._initialized:
             raise RuntimeError("Call .configure() before accessing the API")
@@ -196,7 +208,7 @@ class Dreadnode:
         return self._api
 
     def _get_tracer(self, *, is_span_tracer: bool = True) -> Tracer:
-        return self._logfire._tracer_provider.get_tracer(
+        return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
             self.otel_scope,
             VERSION,
             is_span_tracer=is_span_tracer,
@@ -211,7 +223,6 @@ class Dreadnode:
     def span(
         self,
         name: str,
-        /,
         *,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
@@ -227,11 +238,15 @@ class Dreadnode:
     def task(
         self,
         *,
-        scorers: None = None,
-        name: str | None = None,
-        tags: t.Sequence[str] | None = None,
+        scorers: None = ...,
+        name: str | None = ...,
+        kind: str | None = ...,
+        log_params: t.Sequence[str] | t.Literal[True] | None = ...,
+        log_inputs: t.Sequence[str] | t.Literal[True] | None = ...,
+        log_output: bool = ...,
+        tags: t.Sequence[str] | None = ...,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
         ...
 
     @t.overload
@@ -239,10 +254,14 @@ class Dreadnode:
         self,
         *,
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
-        name: str | None = None,
-        tags: t.Sequence[str] | None = None,
+        name: str | None = ...,
+        kind: str | None = ...,
+        log_params: t.Sequence[str] | t.Literal[True] | None = ...,
+        log_inputs: t.Sequence[str] | t.Literal[True] | None = ...,
+        log_output: bool = ...,
+        tags: t.Sequence[str] | None = ...,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
         ...
 
     def task(
@@ -250,36 +269,53 @@ class Dreadnode:
         *,
         scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[R]] | None = None,
         name: str | None = None,
+        kind: str | None = None,
+        log_params: t.Sequence[str] | t.Literal[True] | None = None,
+        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
-        def make_task(func: t.Callable[P, t.Awaitable[R]]) -> Task[P, R]:
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
+        def make_task(func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]) -> Task[P, R]:
             func = inspect.unwrap(func)
 
-            qualified_func_name = func_name = getattr(func, "__qualname__", getattr(func, "__name__", safe_repr(func)))
+            if inspect.isgeneratorfunction(func) or inspect.isasyncgenfunction(func):
+                raise TypeError("@task cannot be applied to generators")
 
-            with contextlib.suppress(Exception):
-                qualified_func_name = f"{inspect.getmodule(func).__name__}.{func_name}"  # type: ignore
+            func_name = getattr(
+                func,
+                "__qualname__",
+                getattr(func, "__name__", safe_repr(func)),
+            )
 
-            _name = name or qualified_func_name
+            _name = name or func_name
+            _kind = kind or func_name
 
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
             with contextlib.suppress(Exception):
                 _attributes["code.lineno"] = func.__code__.co_firstlineno
             with contextlib.suppress(Exception):
-                _attributes.update(get_filepath_attribute(inspect.getsourcefile(func)))  # type: ignore
+                _attributes.update(
+                    get_filepath_attribute(inspect.getsourcefile(func)),  # type: ignore [arg-type]
+                )
 
             return Task(
                 tracer=self._get_tracer(),
                 name=_name,
                 attributes=_attributes,
-                func=func,
+                func=t.cast(t.Callable[P, R], func),
                 scorers=[
-                    scorer if isinstance(scorer, Scorer) else Scorer.from_callable(self._get_tracer(), scorer)
+                    scorer
+                    if isinstance(scorer, Scorer)
+                    else Scorer.from_callable(self._get_tracer(), scorer)
                     for scorer in scorers or []
                 ],
                 tags=list(tags or []),
+                log_params=log_params,
+                log_inputs=log_inputs,
+                log_output=log_output,
+                kind=_kind,
             )
 
         return make_task
@@ -292,16 +328,23 @@ class Dreadnode:
         **attributes: t.Any,
     ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
         def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-            return Scorer.from_callable(self._get_tracer(), func, name=name, tags=tags, attributes=attributes)
+            return Scorer.from_callable(
+                self._get_tracer(),
+                func,
+                name=name,
+                tags=tags,
+                attributes=attributes,
+            )
 
         return make_scorer
 
     def run(
         self,
         name: str | None = None,
-        /,
         *,
         tags: t.Sequence[str] | None = None,
+        params: AnyDict | None = None,
+        inputs: AnyDict | None = None,
         project: str | None = None,
         **attributes: t.Any,
     ) -> RunSpan:
@@ -309,13 +352,15 @@ class Dreadnode:
             self.initialize()
 
         if name is None:
-            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"
+            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311
 
         return RunSpan(
             name=name,
             project=project or self.project or "default",
             attributes=attributes,
             tracer=self._get_tracer(),
+            params=params,
+            inputs=inputs,
             tags=tags,
         )
 
@@ -329,7 +374,9 @@ class Dreadnode:
         if to == "task-or-run":
             target = task or run
             if target is None:
-                raise RuntimeError("log_params() with to='task-or-run' must be called within a run or a task")
+                raise RuntimeError(
+                    "log_params() with to='task-or-run' must be called within a run or a task",
+                )
             target.log_params(**params)
 
         elif to == "run":
@@ -337,10 +384,32 @@ class Dreadnode:
                 raise RuntimeError("log_params() with to='run' must be called within a run")
             run.log_params(**params)
 
+    @t.overload
     def log_metric(
         self,
         key: str,
-        value: float,
+        value: float | bool,
+        step: int = ...,
+        *,
+        timestamp: datetime | None = ...,
+        to: ToObject = ...,
+    ) -> None:
+        ...
+
+    @t.overload
+    def log_metric(
+        self,
+        key: str,
+        value: Metric,
+        *,
+        to: ToObject = ...,
+    ) -> None:
+        ...
+
+    def log_metric(
+        self,
+        key: str,
+        value: float | bool | Metric,
         step: int = 0,
         *,
         timestamp: datetime | None = None,
@@ -349,16 +418,62 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
+        metric = (
+            value
+            if isinstance(value, Metric)
+            else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
+        )
+
         if to == "task-or-run":
             target = task or run
             if target is None:
-                raise RuntimeError("log_metric() with to='task-or-run' must be called within a run or a task")
-            target.log_metric(key, value, step=step, timestamp=timestamp)
+                raise RuntimeError(
+                    "log_metric() with to='task-or-run' must be called within a run or a task",
+                )
+            target.log_metric(key, metric)
 
         elif to == "run":
             if run is None:
                 raise RuntimeError("log_metric() with to='run' must be called within a run")
-            run.log_metric(key, value, step=step, timestamp=timestamp)
+            run.log_metric(key, metric)
+
+    def log_input(
+        self,
+        key: str,
+        value: JsonValue,
+        *,
+        to: ToObject = "task-or-run",
+    ) -> None:
+        self.log_inputs(to=to, **{key: value})
+
+    def log_inputs(
+        self,
+        to: ToObject = "task-or-run",
+        **inputs: JsonValue,
+    ) -> None:
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        if to == "task-or-run":
+            target = task or run
+            if target is None:
+                raise RuntimeError(
+                    "log_inputs() with to='task-or-run' must be called within a run or a task",
+                )
+            target.log_inputs(**inputs)
+
+        elif to == "run":
+            if run is None:
+                raise RuntimeError("log_inputs() with to='run' must be called within a run")
+            run.log_inputs(**inputs)
+
+    def log_output(
+        self,
+        value: t.Any,
+    ) -> None:
+        if (task := current_task_span.get()) is None:
+            raise RuntimeError("log_output() must be called within a task")
+        task.output = value
 
 
 DEFAULT_INSTANCE = Dreadnode()

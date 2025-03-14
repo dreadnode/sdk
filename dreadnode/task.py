@@ -1,8 +1,10 @@
 import asyncio
 import inspect
+import traceback
 import typing as t
 from dataclasses import dataclass
 
+from logfire._internal.stack_info import warn_at_user_stacklevel
 from opentelemetry.trace import Tracer
 
 from .score import Scorer, ScorerCallable
@@ -12,21 +14,47 @@ P = t.ParamSpec("P")
 R = t.TypeVar("R")
 
 
+class TaskFailedWarning(UserWarning):
+    pass
+
+
+class TaskGeneratorWarning(UserWarning):
+    pass
+
+
 class TaskSpanList(list[TaskSpan[R]]):
     def sorted(self, *, reverse: bool = True) -> "TaskSpanList[R]":
-        return TaskSpanList(sorted(self, key=lambda span: span.average_score, reverse=reverse))
+        return TaskSpanList(
+            sorted(self, key=lambda span: span.get_average_metric_value(), reverse=reverse),
+        )
 
     @t.overload
-    def top_n(self, n: int, *, as_outputs: t.Literal[False] = False, reverse: bool = True) -> "TaskSpanList[R]":
+    def top_n(
+        self,
+        n: int,
+        *,
+        as_outputs: t.Literal[False] = False,
+        reverse: bool = True,
+    ) -> "TaskSpanList[R]":
         ...
 
     @t.overload
     def top_n(self, n: int, *, as_outputs: t.Literal[True], reverse: bool = True) -> list[R]:
         ...
 
-    def top_n(self, n: int, *, as_outputs: bool = False, reverse: bool = True) -> "TaskSpanList[R] | list[R]":
-        sorted = self.sorted(reverse=reverse)[:n]
-        return t.cast(list[R], [span.output for span in sorted]) if as_outputs else TaskSpanList(sorted)
+    def top_n(
+        self,
+        n: int,
+        *,
+        as_outputs: bool = False,
+        reverse: bool = True,
+    ) -> "TaskSpanList[R] | list[R]":
+        sorted_ = self.sorted(reverse=reverse)[:n]
+        return (
+            t.cast(list[R], [span.output for span in sorted_])
+            if as_outputs
+            else TaskSpanList(sorted_)
+        )
 
 
 @dataclass
@@ -34,10 +62,15 @@ class Task(t.Generic[P, R]):
     tracer: Tracer
 
     name: str
+    kind: str
     attributes: dict[str, t.Any]
-    func: t.Callable[P, t.Awaitable[R]]
+    func: t.Callable[P, R]
     scorers: list[Scorer[R]]
     tags: list[str]
+
+    log_params: t.Sequence[str] | t.Literal[True] | None = None
+    log_inputs: t.Sequence[str] | t.Literal[True] | None = None
+    log_output: bool = True
 
     def __post_init__(self) -> None:
         self.__signature__ = inspect.signature(self.func)
@@ -53,6 +86,7 @@ class Task(t.Generic[P, R]):
         return Task(
             tracer=self.tracer,
             name=self.name,
+            kind=self.kind,
             attributes=self.attributes.copy(),
             func=self.func,
             scorers=self.scorers.copy(),
@@ -65,11 +99,13 @@ class Task(t.Generic[P, R]):
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
+        kind: str | None = None,
         append: bool = False,
         **attributes: t.Any,
     ) -> "Task[P, R]":
         task = self.clone()
         task.name = name or task.name
+        task.kind = kind or task.kind
 
         new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
@@ -90,31 +126,50 @@ class Task(t.Generic[P, R]):
         if run is None or not run.is_recording:
             raise RuntimeError("Tasks must be executed within a run")
 
+        bound_args = self._bind_args(*args, **kwargs)
+
+        params = (
+            bound_args
+            if self.log_params is True
+            else {k: v for k, v in bound_args.items() if k in (self.log_params or [])}
+        )
+        inputs = (
+            bound_args
+            if self.log_inputs is True
+            else {k: v for k, v in bound_args.items() if k in (self.log_inputs or [])}
+        )
+
         with TaskSpan[R](
             name=self.name,
+            kind=self.kind,
             attributes=self.attributes,
-            args=self._bind_args(*args, **kwargs),
+            params=params,
+            inputs=inputs,
+            tags=self.tags,
             run_id=run.run_id,
             tracer=self.tracer,
+            log_output=self.log_output,
         ) as span:
             output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))
             if inspect.isawaitable(output):
                 output = await output
 
-            span.output = output
+            # Only apply the output if the user hasn't
+            # already logged it themselves.
+            if span._output is None:  # noqa: SLF001
+                span.output = output
 
             for scorer in self.scorers:
-                score = await scorer(span.output)
-                span.scores.append(score)
-                run.scores.append(score)
+                metric = await scorer(span.output)
+                span.log_metric(scorer.name, metric)
 
         return span
 
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         span = await self.run(*args, **kwargs)
-        return span.output  # type: ignore
+        return span.output
 
-    # TODO: Not sure I'm in love with these being instance methods here.
+    # NOTE(nick): Not sure I'm in love with these being instance methods here.
     # We could move them to the top level class maybe.
 
     async def map_run(self, count: int, *args: P.args, **kwargs: P.kwargs) -> TaskSpanList[R]:
@@ -123,7 +178,7 @@ class Task(t.Generic[P, R]):
 
     async def map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
         spans = await self.map_run(count, *args, **kwargs)
-        return [span.output for span in spans]  # type: ignore
+        return [span.output for span in spans]
 
     async def top_n(self, count: int, n: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
         spans = await self.map_run(count, *args, **kwargs)
@@ -132,8 +187,11 @@ class Task(t.Generic[P, R]):
     async def try_run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R] | None:
         try:
             return await self.run(*args, **kwargs)
-        except Exception as e:  # TODO: Pretty this up
-            print(f"Task {self.name} failed with exception: {e}")
+        except Exception:  # noqa: BLE001
+            warn_at_user_stacklevel(
+                f"Task '{self.name}' ({self.kind}) failed:\n{traceback.format_exc()}",
+                TaskFailedWarning,
+            )
             return None
 
     async def try_(self, *args: P.args, **kwargs: P.kwargs) -> R | None:
@@ -150,4 +208,4 @@ class Task(t.Generic[P, R]):
 
     async def try_map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
         spans = await self.try_map_run(count, *args, **kwargs)
-        return [span.output for span in spans if span]  # type: ignore
+        return [span.output for span in spans if span]
