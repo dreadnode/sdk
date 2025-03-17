@@ -4,18 +4,17 @@ import typing as t
 import httpx
 from pydantic import BaseModel
 from rich import print
+from ulid import ULID
 
 from dreadnode.version import VERSION
 
-from .strikes import StrikesClient
+from .models import Project, Run, Task, TraceSpan
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
 
 class ApiClient:
     """Client for the Dreadnode API."""
-
-    strikes: StrikesClient
 
     def __init__(
         self,
@@ -41,8 +40,6 @@ class ApiClient:
         if debug:
             self._client.event_hooks["request"].append(self._log_request)
             self._client.event_hooks["response"].append(self._log_response)
-
-        self.strikes = StrikesClient(self)
 
     def _log_request(self, request: httpx.Request) -> None:
         """Log every request to the console if debug is enabled."""
@@ -101,3 +98,33 @@ class ApiClient:
             raise RuntimeError(self._get_error_message(response)) from e
 
         return response
+
+    def list_projects(self) -> list[Project]:
+        response = self._client.request("GET", "/strikes/projects")
+        return [Project(**project) for project in response.json()]
+
+    def get_project(self, project: str) -> Project:
+        response = self._client.request("GET", f"/strikes/projects/{project!s}")
+        return Project(**response.json())
+
+    def list_runs(self, project: str) -> list[Run]:
+        response = self._client.request("GET", f"/strikes/projects/{project!s}/runs")
+        return [Run(**run) for run in response.json()]
+
+    def get_run(self, run: str | ULID) -> Run:
+        response = self._client.request("GET", f"/strikes/projects/runs/{run!s}")
+        return Run(**response.json())
+
+    def get_run_tasks(self, run: str | ULID) -> list[Task]:
+        response = self._client.request("GET", f"/strikes/projects/runs/{run!s}/tasks")
+        return [Task(**task) for task in response.json()]
+
+    def get_run_trace(self, run: str | ULID) -> list[Task | TraceSpan]:
+        response = self._client.request("GET", f"/strikes/projects/runs/{run!s}/spans")
+        spans: list[Task | TraceSpan] = []
+        for item in response.json():
+            if "parent_task_span_id" in item:
+                spans.append(Task(**item))
+            else:
+                spans.append(TraceSpan(**item))
+        return spans

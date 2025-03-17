@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from logfire._internal.stack_info import warn_at_user_stacklevel
 from opentelemetry.trace import Tracer
 
-from .score import Scorer, ScorerCallable
+from .metric import Scorer, ScorerCallable
 from .tracing import TaskSpan, current_run_span
 
 P = t.ParamSpec("P")
@@ -144,24 +144,25 @@ class Task(t.Generic[P, R]):
             kind=self.kind,
             attributes=self.attributes,
             params=params,
-            inputs=inputs,
             tags=self.tags,
             run_id=run.run_id,
             tracer=self.tracer,
-            log_output=self.log_output,
         ) as span:
+            for name, value in inputs.items():
+                span.log_input(name, value, kind=f"{self.kind}.input.{name}")
+
             output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))
             if inspect.isawaitable(output):
                 output = await output
 
-            # Only apply the output if the user hasn't
-            # already logged it themselves.
-            if span._output is None:  # noqa: SLF001
-                span.output = output
+            span.output = output
+
+            if self.log_output:
+                span.log_output("output", output, kind=f"{self.kind}.output")
 
             for scorer in self.scorers:
                 metric = await scorer(span.output)
-                span.log_metric(scorer.name, metric)
+                span.log_metric(scorer.name, metric, origin=span.output)
 
         return span
 

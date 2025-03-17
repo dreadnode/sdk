@@ -4,6 +4,7 @@ import contextlib
 import inspect
 import os
 import random
+import re
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -28,11 +29,19 @@ from .constants import (
     ENV_PROJECT,
     ENV_SERVER,
     ENV_SERVER_URL,
+    AnyDict,
+    JsonValue,
 )
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
-from .score import Scorer, ScorerCallable, T
+from .metric import Metric, Scorer, ScorerCallable, T
 from .task import P, R, Task
-from .tracing import AnyDict, JsonValue, Metric, RunSpan, Span, current_run_span, current_task_span
+from .tracing import (
+    RunSpan,
+    Span,
+    TaskSpan,
+    current_run_span,
+    current_task_span,
+)
 from .version import VERSION
 
 if t.TYPE_CHECKING:
@@ -238,13 +247,13 @@ class Dreadnode:
     def task(
         self,
         *,
-        scorers: None = ...,
-        name: str | None = ...,
-        kind: str | None = ...,
-        log_params: t.Sequence[str] | t.Literal[True] | None = ...,
-        log_inputs: t.Sequence[str] | t.Literal[True] | None = ...,
-        log_output: bool = ...,
-        tags: t.Sequence[str] | None = ...,
+        scorers: None = None,
+        name: str | None = None,
+        kind: str | None = None,
+        log_params: t.Sequence[str] | t.Literal[True] | None = None,
+        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_output: bool = True,
+        tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
         ...
@@ -254,12 +263,12 @@ class Dreadnode:
         self,
         *,
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
-        name: str | None = ...,
-        kind: str | None = ...,
-        log_params: t.Sequence[str] | t.Literal[True] | None = ...,
-        log_inputs: t.Sequence[str] | t.Literal[True] | None = ...,
-        log_output: bool = ...,
-        tags: t.Sequence[str] | None = ...,
+        name: str | None = None,
+        kind: str | None = None,
+        log_params: t.Sequence[str] | t.Literal[True] | None = None,
+        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_output: bool = True,
+        tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
         ...
@@ -291,6 +300,9 @@ class Dreadnode:
             _name = name or func_name
             _kind = kind or func_name
 
+            # conform our kind for sanity
+            _kind = re.sub(r"[\W_]+", "_", _kind.lower())
+
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
             with contextlib.suppress(Exception):
@@ -320,6 +332,29 @@ class Dreadnode:
 
         return make_task
 
+    def task_span(
+        self,
+        name: str,
+        *,
+        kind: str | None = None,
+        params: AnyDict | None = None,
+        tags: t.Sequence[str] | None = None,
+        **attributes: t.Any,
+    ) -> TaskSpan[t.Any]:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("task_span() must be called within a run")
+
+        kind = kind or re.sub(r"[\W_]+", "_", name.lower())
+        return TaskSpan(
+            name=name,
+            kind=kind,
+            attributes=attributes,
+            params=params,
+            tags=tags,
+            run_id=run.run_id,
+            tracer=self._get_tracer(),
+        )
+
     def scorer(
         self,
         *,
@@ -344,7 +379,6 @@ class Dreadnode:
         *,
         tags: t.Sequence[str] | None = None,
         params: AnyDict | None = None,
-        inputs: AnyDict | None = None,
         project: str | None = None,
         **attributes: t.Any,
     ) -> RunSpan:
@@ -360,7 +394,6 @@ class Dreadnode:
             attributes=attributes,
             tracer=self._get_tracer(),
             params=params,
-            inputs=inputs,
             tags=tags,
         )
 
@@ -389,10 +422,11 @@ class Dreadnode:
         self,
         key: str,
         value: float | bool,
-        step: int = ...,
         *,
-        timestamp: datetime | None = ...,
-        to: ToObject = ...,
+        step: int = 0,
+        origin: t.Any | None = None,
+        timestamp: datetime | None = None,
+        to: ToObject = "task-or-run",
     ) -> None:
         ...
 
@@ -402,7 +436,8 @@ class Dreadnode:
         key: str,
         value: Metric,
         *,
-        to: ToObject = ...,
+        origin: t.Any | None = None,
+        to: ToObject = "task-or-run",
     ) -> None:
         ...
 
@@ -410,8 +445,9 @@ class Dreadnode:
         self,
         key: str,
         value: float | bool | Metric,
-        step: int = 0,
         *,
+        step: int = 0,
+        origin: t.Any | None = None,
         timestamp: datetime | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
@@ -430,26 +466,21 @@ class Dreadnode:
                 raise RuntimeError(
                     "log_metric() with to='task-or-run' must be called within a run or a task",
                 )
-            target.log_metric(key, metric)
+            target.log_metric(key, metric, origin=origin)
 
         elif to == "run":
             if run is None:
                 raise RuntimeError("log_metric() with to='run' must be called within a run")
-            run.log_metric(key, metric)
+            run.log_metric(key, metric, origin=origin)
 
     def log_input(
         self,
-        key: str,
+        name: str,
         value: JsonValue,
         *,
+        kind: str | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
-        self.log_inputs(to=to, **{key: value})
-
-    def log_inputs(
-        self,
-        to: ToObject = "task-or-run",
-        **inputs: JsonValue,
+        **attributes: t.Any,
     ) -> None:
         task = current_task_span.get()
         run = current_run_span.get()
@@ -460,20 +491,61 @@ class Dreadnode:
                 raise RuntimeError(
                     "log_inputs() with to='task-or-run' must be called within a run or a task",
                 )
-            target.log_inputs(**inputs)
+            target.log_input(name, value, kind=kind, **attributes)
 
         elif to == "run":
             if run is None:
                 raise RuntimeError("log_inputs() with to='run' must be called within a run")
-            run.log_inputs(**inputs)
+            run.log_input(name, value, kind=kind, **attributes)
+
+    def log_inputs(
+        self,
+        to: ToObject = "task-or-run",
+        **inputs: JsonValue,
+    ) -> None:
+        for name, value in inputs.items():
+            self.log_input(name, value, to=to)
 
     def log_output(
         self,
+        name: str,
         value: t.Any,
+        *,
+        kind: str | None = None,
+        to: ToObject = "task-or-run",
+        **attributes: JsonValue,
     ) -> None:
-        if (task := current_task_span.get()) is None:
-            raise RuntimeError("log_output() must be called within a task")
-        task.output = value
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        if to == "task-or-run":
+            target = task or run
+            if target is None:
+                raise RuntimeError(
+                    "log_output() with to='task-or-run' must be called within a run or a task",
+                )
+            target.log_output(name, value, kind=kind, **attributes)
+
+        elif to == "run":
+            if run is None:
+                raise RuntimeError("log_output() with to='run' must be called within a run")
+            run.log_output(name, value, kind=kind, **attributes)
+
+    def log_outputs(
+        self,
+        to: ToObject = "task-or-run",
+        **outputs: JsonValue,
+    ) -> None:
+        for name, value in outputs.items():
+            self.log_output(name, value, to=to)
+
+    def link_objects(self, origin: t.Any, link: t.Any, **attributes: JsonValue) -> None:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("link() must be called within a run")
+
+        origin_hash = run.log_object(origin)
+        link_hash = run.log_object(link)
+        run.link_objects(origin_hash, link_hash, **attributes)
 
 
 DEFAULT_INSTANCE = Dreadnode()

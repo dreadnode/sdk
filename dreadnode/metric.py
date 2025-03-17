@@ -1,14 +1,38 @@
 import inspect
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
 
-from .tracing import Metric, Span
+from .constants import JsonDict, JsonValue
 
 T = t.TypeVar("T")
+
+
+@dataclass
+class Metric:
+    value: float
+    step: int = 0
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    attributes: JsonDict = field(default_factory=dict)
+
+    @classmethod
+    def from_many(
+        cls,
+        values: t.Sequence[tuple[str, float, float]],
+        step: int = 0,
+        **attributes: JsonValue,
+    ) -> "Metric":
+        "Create a composite metric from individual values and weights."
+        total = sum(value * weight for _, value, weight in values)
+        weight = sum(weight for _, _, weight in values)
+        score_attributes = {name: value for name, value, _ in values}
+        return cls(value=total / weight, step=step, attributes={**attributes, **score_attributes})
+
+
+MetricDict = dict[str, list[Metric]]
 
 ScorerResult = float | int | bool | Metric
 ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], ScorerResult]
@@ -69,6 +93,8 @@ class Scorer(t.Generic[T]):
         )
 
     async def __call__(self, object: T) -> Metric:
+        from .tracing import Span
+
         with Span(
             name=self.name,
             tags=self.tags,

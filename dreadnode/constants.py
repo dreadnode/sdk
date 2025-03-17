@@ -2,36 +2,57 @@ from __future__ import annotations
 
 import typing as t
 
+# Common types
+
+JsonValue = t.Union[
+    int,
+    float,
+    str,
+    bool,
+    None,
+    list["JsonValue"],
+    tuple["JsonValue", ...],
+    "JsonDict",
+]
+JsonDict = dict[str, JsonValue]
+
+AnyDict = dict[str, t.Any]
+
 # Span attributes
 
 SPAN_NAMESPACE = "dreadnode"
 
 SpanType = t.Literal["run", "task", "span", "run_update"]
 
+SPAN_ATTRIBUTE_VERSION = f"{SPAN_NAMESPACE}.version"
 SPAN_ATTRIBUTE_TYPE = f"{SPAN_NAMESPACE}.type"
 SPAN_ATTRIBUTE_SCHEMA = f"{SPAN_NAMESPACE}.schema"
 SPAN_ATTRIBUTE_KIND = f"{SPAN_NAMESPACE}.kind"
 SPAN_ATTRIBUTE_TAGS_ = f"{SPAN_NAMESPACE}.tags"
 SPAN_ATTRIBUTE_KIND = f"{SPAN_NAMESPACE}.kind"
 SPAN_ATTRIBUTE_PROJECT = f"{SPAN_NAMESPACE}.project"
-
+SPAN_ATTRIBUTE_PARAMS = f"{SPAN_NAMESPACE}.params"
+SPAN_ATTRIBUTE_INPUTS = f"{SPAN_NAMESPACE}.inputs"
+SPAN_ATTRIBUTE_METRICS = f"{SPAN_NAMESPACE}.metrics"
+SPAN_ATTRIBUTE_OUTPUTS = f"{SPAN_NAMESPACE}.outputs"
+SPAN_ATTRIBUTE_OBJECTS = f"{SPAN_NAMESPACE}.objects"
+SPAN_ATTRIBUTE_ARTIFACTS = f"{SPAN_NAMESPACE}.artifacts"
 SPAN_ATTRIBUTE_RUN_ID = f"{SPAN_NAMESPACE}.run.id"
-
-SPAN_ATTRIBUTE_RUN_PARAMS = f"{SPAN_NAMESPACE}.run.params"
-SPAN_ATTRIBUTES_RUN_INPUTS = f"{SPAN_NAMESPACE}.run.inputs"
-SPAN_ATTRIBUTE_RUN_METRICS = f"{SPAN_NAMESPACE}.run.metrics"
-SPAN_ATTRIBUTE_RUN_ARTIFACTS = f"{SPAN_NAMESPACE}.run.artifacts"
-
 SPAN_ATTRIBUTE_PARENT_TASK_ID = f"{SPAN_NAMESPACE}.task.parent_id"
+SPAN_ATTRIBUTE_LARGE_ATTRIBUTES = f"{SPAN_NAMESPACE}.large_attributes"
 
-SPAN_ATTRIBUTE_TASK_KEY = f"{SPAN_NAMESPACE}.task.key"
-SPAN_ATTRIBUTE_TASK_PARAMS = f"{SPAN_NAMESPACE}.task.params"
-SPAN_ATTRIBUTE_TASK_INPUTS = f"{SPAN_NAMESPACE}.task.inputs"
-SPAN_ATTRIBUTE_TASK_METRICS = f"{SPAN_NAMESPACE}.task.metrics"
-SPAN_ATTRIBUTE_TASK_OUTPUT = f"{SPAN_NAMESPACE}.task.output"
+EVENT_NAME_OBJECT = f"{SPAN_NAMESPACE}.object"
+EVENT_NAME_OBJECT_INPUT = f"{SPAN_NAMESPACE}.object.input"
+EVENT_NAME_OBJECT_OUTPUT = f"{SPAN_NAMESPACE}.object.output"
+EVENT_NAME_OBJECT_METRIC = f"{SPAN_NAMESPACE}.object.metric"
+EVENT_NAME_OBJECT_LINK = f"{SPAN_NAMESPACE}.object.link"
 
-SPAN_ATTRIBUTE_TASK_ARGS = f"{SPAN_NAMESPACE}.task.args"  # deprecated
-SPAN_ATTRIBUTE_TASK_SCORES = f"{SPAN_NAMESPACE}.task.scores"  # deprecated
+EVENT_ATTRIBUTE_OBJECT_KIND = f"{SPAN_NAMESPACE}.object.kind"
+EVENT_ATTRIBUTE_OBJECT_HASH = f"{SPAN_NAMESPACE}.object.hash"
+EVENT_ATTRIBUTE_LINK_HASH = f"{SPAN_NAMESPACE}.link.hash"
+EVENT_ATTRIBUTE_ORIGIN_SPAN_ID = f"{SPAN_NAMESPACE}.origin.span_id"
+
+METRIC_ATTRIBUTE_SOURCE_HASH = f"{SPAN_NAMESPACE}.origin.hash"
 
 # Environment variable names
 

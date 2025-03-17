@@ -1,7 +1,7 @@
+import re
 import types
 import typing as t
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import typing_extensions as te
@@ -20,68 +20,47 @@ from opentelemetry.util import types as otel_types
 from ulid import ULID
 
 from .constants import (
+    EVENT_ATTRIBUTE_LINK_HASH,
+    EVENT_ATTRIBUTE_OBJECT_HASH,
+    EVENT_ATTRIBUTE_OBJECT_KIND,
+    EVENT_ATTRIBUTE_ORIGIN_SPAN_ID,
+    EVENT_NAME_OBJECT,
+    EVENT_NAME_OBJECT_INPUT,
+    EVENT_NAME_OBJECT_LINK,
+    EVENT_NAME_OBJECT_METRIC,
+    EVENT_NAME_OBJECT_OUTPUT,
+    METRIC_ATTRIBUTE_SOURCE_HASH,
+    SPAN_ATTRIBUTE_INPUTS,
     SPAN_ATTRIBUTE_KIND,
+    SPAN_ATTRIBUTE_LARGE_ATTRIBUTES,
+    SPAN_ATTRIBUTE_METRICS,
+    SPAN_ATTRIBUTE_OBJECTS,
+    SPAN_ATTRIBUTE_OUTPUTS,
+    SPAN_ATTRIBUTE_PARAMS,
     SPAN_ATTRIBUTE_PARENT_TASK_ID,
     SPAN_ATTRIBUTE_PROJECT,
     SPAN_ATTRIBUTE_RUN_ID,
-    SPAN_ATTRIBUTE_RUN_METRICS,
-    SPAN_ATTRIBUTE_RUN_PARAMS,
     SPAN_ATTRIBUTE_SCHEMA,
     SPAN_ATTRIBUTE_TAGS_,
-    SPAN_ATTRIBUTE_TASK_INPUTS,
-    SPAN_ATTRIBUTE_TASK_METRICS,
-    SPAN_ATTRIBUTE_TASK_OUTPUT,
-    SPAN_ATTRIBUTE_TASK_PARAMS,
     SPAN_ATTRIBUTE_TYPE,
-    SPAN_ATTRIBUTES_RUN_INPUTS,
+    SPAN_ATTRIBUTE_VERSION,
+    AnyDict,
+    JsonDict,
+    JsonValue,
     SpanType,
 )
+from .metric import Metric, MetricDict
+from .object import ObjectRef, universal_hash
+from .version import VERSION
 
 R = t.TypeVar("R")
 
-JsonValue = t.Union[
-    int,
-    float,
-    str,
-    bool,
-    None,
-    list["JsonValue"],
-    tuple["JsonValue", ...],
-    "JsonDict",
-]
-JsonDict = dict[str, JsonValue]
-
-AnyDict = dict[str, t.Any]
 
 current_task_span: ContextVar["TaskSpan[t.Any] | None"] = ContextVar(
     "current_task_span",
     default=None,
 )
 current_run_span: ContextVar["RunSpan | None"] = ContextVar("current_run_span", default=None)
-
-
-@dataclass
-class Metric:
-    value: float
-    step: int = 0
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    attributes: JsonDict = field(default_factory=dict)
-
-    @classmethod
-    def from_many(
-        cls,
-        values: t.Sequence[tuple[str, float, float]],
-        step: int = 0,
-        **attributes: JsonValue,
-    ) -> "Metric":
-        "Create a composite metric from individual values and weights."
-        total = sum(value * weight for _, value, weight in values)
-        weight = sum(weight for _, _, weight in values)
-        score_attributes = {name: value for name, value, _ in values}
-        return cls(value=total / weight, step=step, attributes={**attributes, **score_attributes})
-
-
-MetricDict = dict[str, list[Metric]]
 
 
 class Span(ReadableSpan):
@@ -97,6 +76,7 @@ class Span(ReadableSpan):
     ) -> None:
         self._span_name = name
         self._pre_attributes = {
+            SPAN_ATTRIBUTE_VERSION: VERSION,
             SPAN_ATTRIBUTE_TYPE: type,
             SPAN_ATTRIBUTE_KIND: kind or "",
             SPAN_ATTRIBUTE_TAGS_: uniquify_sequence(tags or ()),
@@ -191,6 +171,17 @@ class Span(ReadableSpan):
     def get_attribute(self, key: str, default: t.Any) -> t.Any:
         return self.get_attributes().get(key, default)
 
+    def log_event(
+        self,
+        name: str,
+        attributes: AnyDict | None = None,
+    ) -> None:
+        if self._span is not None:
+            self._span.add_event(
+                name,
+                attributes=prepare_otlp_attributes(attributes or {}),
+            )
+
 
 class RunUpdateSpan(Span):
     def __init__(
@@ -209,11 +200,11 @@ class RunUpdateSpan(Span):
         }
 
         if metrics:
-            attributes[SPAN_ATTRIBUTE_RUN_METRICS] = metrics
+            attributes[SPAN_ATTRIBUTE_METRICS] = metrics
         if params:
-            attributes[SPAN_ATTRIBUTE_RUN_PARAMS] = params
+            attributes[SPAN_ATTRIBUTE_PARAMS] = params
         if inputs:
-            attributes[SPAN_ATTRIBUTES_RUN_INPUTS] = inputs
+            attributes[SPAN_ATTRIBUTE_INPUTS] = inputs
 
         super().__init__(f"run.{run_id}.update", attributes, tracer, type="run_update")
 
@@ -226,14 +217,15 @@ class RunSpan(Span):
         attributes: AnyDict,
         tracer: Tracer,
         params: AnyDict | None = None,
-        inputs: AnyDict | None = None,
         metrics: MetricDict | None = None,
         run_id: str | None = None,
         tags: t.Sequence[str] | None = None,
     ) -> None:
         self._params = params or {}
-        self._inputs = inputs or {}
         self._metrics = metrics or {}
+        self._objects: AnyDict = {}
+        self._inputs: list[ObjectRef] = []
+        self._outputs: list[ObjectRef] = []
         self.project = project
 
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
@@ -241,9 +233,8 @@ class RunSpan(Span):
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id or ULID()),
             SPAN_ATTRIBUTE_PROJECT: project,
-            SPAN_ATTRIBUTE_RUN_PARAMS: self._params,
-            SPAN_ATTRIBUTES_RUN_INPUTS: self._inputs,
-            SPAN_ATTRIBUTE_RUN_METRICS: self._metrics,
+            SPAN_ATTRIBUTE_PARAMS: self._params,
+            SPAN_ATTRIBUTE_METRICS: self._metrics,
             **attributes,
         }
         super().__init__(name, attributes, tracer, type="run", tags=tags)
@@ -261,9 +252,15 @@ class RunSpan(Span):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
-        self.set_attribute(SPAN_ATTRIBUTE_RUN_PARAMS, self._params)
-        self.set_attribute(SPAN_ATTRIBUTES_RUN_INPUTS, self._inputs)
-        self.set_attribute(SPAN_ATTRIBUTE_RUN_METRICS, self._metrics)
+        self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._params)
+        self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs)
+        self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics)
+        self.set_attribute(SPAN_ATTRIBUTE_OBJECTS, self._objects)
+        self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._outputs)
+
+        # Mark our objects attribute as large so it's stored separately
+        self.set_attribute(SPAN_ATTRIBUTE_LARGE_ATTRIBUTES, [SPAN_ATTRIBUTE_OBJECTS])
+
         super().__exit__(exc_type, exc_value, traceback)
         if self._context_token is not None:
             current_run_span.reset(self._context_token)
@@ -271,6 +268,46 @@ class RunSpan(Span):
     @property
     def run_id(self) -> str:
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, ""))
+
+    def log_object(
+        self,
+        value: t.Any,
+        *,
+        kind: str | None = None,
+        event_name: str = EVENT_NAME_OBJECT,
+        **attributes: JsonValue,
+    ) -> str:
+        hash_ = universal_hash(value)
+        self._objects[hash_] = value
+        attributes = {
+            **attributes,
+            EVENT_ATTRIBUTE_OBJECT_HASH: hash_,
+            EVENT_ATTRIBUTE_ORIGIN_SPAN_ID: trace_api.format_span_id(
+                trace_api.get_current_span().get_span_context().span_id,
+            ),
+        }
+        if kind is not None:
+            attributes[EVENT_ATTRIBUTE_OBJECT_KIND] = kind
+        self.log_event(name=event_name, attributes=attributes)
+        return hash_
+
+    def get_object(self, hash_: str) -> t.Any:
+        return self._objects[hash_]
+
+    def link_objects(self, object_hash: str, link_hash: str, **attributes: JsonValue) -> None:
+        self.log_event(
+            name=EVENT_NAME_OBJECT_LINK,
+            attributes={
+                **attributes,
+                EVENT_ATTRIBUTE_OBJECT_HASH: object_hash,
+                EVENT_ATTRIBUTE_LINK_HASH: link_hash,
+                EVENT_ATTRIBUTE_ORIGIN_SPAN_ID: (
+                    trace_api.format_span_id(
+                        trace_api.get_current_span().get_span_context().span_id,
+                    )
+                ),
+            },
+        )
 
     @property
     def params(self) -> AnyDict:
@@ -296,13 +333,19 @@ class RunSpan(Span):
 
     @property
     def inputs(self) -> AnyDict:
-        return self._inputs
+        return {ref.name: self.get_object(ref.hash) for ref in self._inputs}
 
-    def log_input(self, key: str, value: t.Any) -> None:
-        self.log_inputs(**{key: value})
-
-    def log_inputs(self, **inputs: t.Any) -> None:
-        self._inputs.update(inputs)
+    def log_input(
+        self,
+        name: str,
+        value: t.Any,
+        *,
+        kind: str | None = None,
+        **attributes: JsonValue,
+    ) -> None:
+        kind = kind or re.sub(r"\W+", "_", name.lower())
+        hash_ = self.log_object(value, kind=kind, event_name=EVENT_NAME_OBJECT_INPUT, **attributes)
+        self._inputs.append(ObjectRef(name, kind=kind, hash=hash_))
 
     @property
     def metrics(self) -> MetricDict:
@@ -313,9 +356,10 @@ class RunSpan(Span):
         self,
         key: str,
         value: float | bool,
-        step: int = ...,
         *,
-        timestamp: datetime | None = ...,
+        step: int = 0,
+        origin: t.Any | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         ...
 
@@ -324,6 +368,8 @@ class RunSpan(Span):
         self,
         key: str,
         value: Metric,
+        *,
+        origin: t.Any | None = None,
     ) -> None:
         ...
 
@@ -331,8 +377,9 @@ class RunSpan(Span):
         self,
         key: str,
         value: float | bool | Metric,
-        step: int = 0,
         *,
+        step: int = 0,
+        origin: t.Any | None = None,
         timestamp: datetime | None = None,
     ) -> None:
         metric = (
@@ -340,6 +387,15 @@ class RunSpan(Span):
             if isinstance(value, Metric)
             else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
         )
+
+        if origin is not None:
+            origin_hash = self.log_object(
+                origin,
+                kind=key,
+                event_name=EVENT_NAME_OBJECT_METRIC,
+            )
+            metric.attributes[METRIC_ATTRIBUTE_SOURCE_HASH] = origin_hash
+
         self._metrics.setdefault(key, []).append(metric)
         if self._span is None:
             return
@@ -352,6 +408,22 @@ class RunSpan(Span):
         ):
             pass
 
+    @property
+    def outputs(self) -> AnyDict:
+        return {ref.name: self.get_object(ref.hash) for ref in self._outputs}
+
+    def log_output(
+        self,
+        name: str,
+        value: t.Any,
+        *,
+        kind: str | None = None,
+        **attributes: JsonValue,
+    ) -> None:
+        kind = kind or re.sub(r"\W+", "_", name.lower())
+        hash_ = self.log_object(value, kind=kind, event_name=EVENT_NAME_OBJECT_OUTPUT, **attributes)
+        self._outputs.append(ObjectRef(name, kind=kind, hash=hash_))
+
 
 class TaskSpan(Span, t.Generic[R]):
     def __init__(
@@ -363,24 +435,24 @@ class TaskSpan(Span, t.Generic[R]):
         *,
         kind: str | None = None,
         params: AnyDict | None = None,
-        inputs: AnyDict | None = None,
         metrics: MetricDict | None = None,
         tags: t.Sequence[str] | None = None,
-        log_output: bool = True,
     ) -> None:
         self._params = params or {}
-        self._inputs = inputs or {}
         self._metrics = metrics or {}
-        self._output: R | None = None
-        self._log_output = log_output
+        self._inputs: list[ObjectRef] = []
+        self._outputs: list[ObjectRef] = []
+
+        self._output: R | None = None  # For the python output
 
         self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
-            SPAN_ATTRIBUTE_TASK_PARAMS: self._params,
-            SPAN_ATTRIBUTE_TASK_INPUTS: self._inputs,
-            SPAN_ATTRIBUTE_TASK_METRICS: self._metrics,
+            SPAN_ATTRIBUTE_PARAMS: self._params,
+            SPAN_ATTRIBUTE_INPUTS: self._inputs,
+            SPAN_ATTRIBUTE_METRICS: self._metrics,
+            SPAN_ATTRIBUTE_OUTPUTS: self._outputs,
             **attributes,
         }
         super().__init__(name, attributes, tracer, type="task", kind=kind, tags=tags)
@@ -389,6 +461,11 @@ class TaskSpan(Span, t.Generic[R]):
         self._parent_task = current_task_span.get()
         if self._parent_task is not None:
             self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
+
+        self._run = current_run_span.get()
+        if self._run is None:
+            raise RuntimeError("You cannot start a task span without a run")
+
         self._context_token = current_task_span.set(self)
         return super().__enter__()
 
@@ -398,11 +475,10 @@ class TaskSpan(Span, t.Generic[R]):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
-        if self._log_output:
-            self.set_attribute(SPAN_ATTRIBUTE_TASK_OUTPUT, self._output)
-        self.set_attribute(SPAN_ATTRIBUTE_TASK_PARAMS, self._params)
-        self.set_attribute(SPAN_ATTRIBUTE_TASK_INPUTS, self._inputs)
-        self.set_attribute(SPAN_ATTRIBUTE_TASK_METRICS, self._metrics)
+        self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._params)
+        self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs)
+        self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics)
+        self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._outputs)
         super().__exit__(exc_type, exc_value, traceback)
         if self._context_token is not None:
             current_task_span.reset(self._context_token)
@@ -416,14 +492,41 @@ class TaskSpan(Span, t.Generic[R]):
         return str(self.get_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, ""))
 
     @property
+    def run(self) -> RunSpan:
+        if self._run is None:
+            raise ValueError("Task span is not in an active run")
+        return self._run
+
+    @property
+    def outputs(self) -> AnyDict:
+        return {ref.name: self.run.get_object(ref.hash) for ref in self._outputs}
+
+    @property
     def output(self) -> R:
         if self._output is None:
             raise ValueError("Task output is not set")
         return self._output
 
     @output.setter
-    def output(self, value: R | None) -> None:
+    def output(self, value: R) -> None:
         self._output = value
+
+    def log_output(
+        self,
+        name: str,
+        value: t.Any,
+        *,
+        kind: str | None = None,
+        **attributes: JsonValue,
+    ) -> None:
+        kind = kind or re.sub(r"\W+", "_", name.lower())
+        hash_ = self.run.log_object(
+            value,
+            kind=kind,
+            event_name=EVENT_NAME_OBJECT_OUTPUT,
+            **attributes,
+        )
+        self._outputs.append(ObjectRef(name, kind=kind, hash=hash_))
 
     @property
     def params(self) -> AnyDict:
@@ -437,13 +540,24 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def inputs(self) -> AnyDict:
-        return self._inputs
+        return {ref.name: self.run.get_object(ref.hash) for ref in self._inputs}
 
-    def log_input(self, key: str, value: t.Any) -> None:
-        self.log_inputs(**{key: value})
-
-    def log_inputs(self, **inputs: t.Any) -> None:
-        self._inputs.update(inputs)
+    def log_input(
+        self,
+        name: str,
+        value: t.Any,
+        *,
+        kind: str | None = None,
+        **attributes: JsonValue,
+    ) -> None:
+        kind = kind or re.sub(r"\W+", "_", name.lower())
+        hash_ = self.run.log_object(
+            value,
+            kind=kind,
+            event_name=EVENT_NAME_OBJECT_INPUT,
+            **attributes,
+        )
+        self._inputs.append(ObjectRef(name, kind=kind, hash=hash_))
 
     @property
     def metrics(self) -> dict[str, list[Metric]]:
@@ -454,9 +568,10 @@ class TaskSpan(Span, t.Generic[R]):
         self,
         key: str,
         value: float | bool,
-        step: int = ...,
         *,
-        timestamp: datetime | None = ...,
+        step: int = 0,
+        origin: t.Any | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         ...
 
@@ -465,6 +580,8 @@ class TaskSpan(Span, t.Generic[R]):
         self,
         key: str,
         value: Metric,
+        *,
+        origin: t.Any | None = None,
     ) -> None:
         ...
 
@@ -472,8 +589,9 @@ class TaskSpan(Span, t.Generic[R]):
         self,
         key: str,
         value: float | bool | Metric,
-        step: int = 0,
         *,
+        step: int = 0,
+        origin: t.Any | None = None,
         timestamp: datetime | None = None,
     ) -> None:
         metric = (
@@ -481,10 +599,21 @@ class TaskSpan(Span, t.Generic[R]):
             if isinstance(value, Metric)
             else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
         )
+
+        if origin is not None:
+            origin_hash = self.run.log_object(
+                origin,
+                kind=key,
+                event_name=EVENT_NAME_OBJECT_METRIC,
+            )
+            metric.attributes[METRIC_ATTRIBUTE_SOURCE_HASH] = origin_hash
+
         self._metrics.setdefault(key, []).append(metric)
 
         # For every metric we log, also log it to the run
-        # with our `kind` as a prefix
+        # with our `kind` as a prefix.
+        #
+        # Don't include `source` as we handled it here.
         if (run := current_run_span.get()) is not None:
             run.log_metric(f"{self.kind}.{key}", metric)
 
