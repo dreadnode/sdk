@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import typing_extensions as te
 from logfire._internal.json_encoder import logfire_json_dumps as json_dumps
 from logfire._internal.json_schema import JsonSchemaProperties, attributes_json_schema, create_json_schema
+from logfire._internal.tracer import OPEN_SPANS
 from logfire._internal.utils import uniquify_sequence
 from opentelemetry import context as context_api
 from opentelemetry import trace as trace_api
@@ -98,6 +99,8 @@ class Span(ReadableSpan):
 
         self._span.__enter__()
 
+        OPEN_SPANS.add(self._span)  # type: ignore [arg-type]
+
         if self._token is None:
             self._token = context_api.attach(trace_api.set_span_in_context(self._span))
 
@@ -115,6 +118,8 @@ class Span(ReadableSpan):
 
         self._span.set_attribute(SPAN_ATTRIBUTE_SCHEMA_KEY, attributes_json_schema(self._schema))
         self._span.__exit__(exc_type, exc_value, traceback)
+
+        OPEN_SPANS.discard(self._span)  # type: ignore [arg-type]
 
     @property
     def span_id(self) -> str:
