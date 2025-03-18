@@ -1,5 +1,6 @@
 import typing as t
 from contextvars import ContextVar, Token
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -206,6 +207,9 @@ class RunSpan(Span):
         self.scores: list[Score] = []
         self.project = project
 
+        self._last_pushed_params = deepcopy(self._params)
+        self._last_pushed_metrics = deepcopy(self._metrics)
+
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
 
         attributes = {
@@ -231,6 +235,28 @@ class RunSpan(Span):
         if self._context_token is not None:
             current_run_span.reset(self._context_token)
 
+    def push_update(self) -> None:
+        if self._span is None:
+            return
+
+        metrics: MetricDict | None = None
+        if self._last_pushed_metrics != self._metrics:
+            metrics = self._metrics
+            self._last_pushed_metrics = deepcopy(self._metrics)
+
+        params: JsonDict | None = None
+        if self._last_pushed_params != self._params:
+            params = self._params
+            self._last_pushed_params = deepcopy(self._params)
+
+        if metrics is None and params is None:
+            return
+
+        with RunUpdateSpan(
+            run_id=self.run_id, project=self.project, tracer=self._tracer, params=params, metrics=metrics
+        ):
+            pass
+
     @property
     def run_id(self) -> str:
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID_KEY, ""))
@@ -249,9 +275,6 @@ class RunSpan(Span):
         if self._span is None:
             return
 
-        with RunUpdateSpan(run_id=self.run_id, project=self.project, tracer=self._tracer, params=self._params):
-            pass
-
     @property
     def metrics(self) -> dict[str, list[Metric]]:
         return self._metrics
@@ -261,9 +284,6 @@ class RunSpan(Span):
         self._metrics.setdefault(key, []).append(metric)
         if self._span is None:
             return
-
-        with RunUpdateSpan(run_id=self.run_id, project=self.project, tracer=self._tracer, metrics=self._metrics):
-            pass
 
     @property
     def scores(self) -> list[Score]:

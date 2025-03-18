@@ -27,7 +27,7 @@ from .constants import ENV_API_TOKEN, ENV_LOCAL_DIR, ENV_PROJECT, ENV_SERVER_URL
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
 from .score import Scorer, ScorerCallable, T
 from .task import P, R, Task
-from .tracing import JsonValue, RunSpan, Score, Span, current_run_span, current_task_span
+from .tracing import JsonValue, RunSpan, Score, Span, TaskSpan, current_run_span, current_task_span
 from .version import VERSION
 
 
@@ -209,7 +209,6 @@ class Dreadnode:
     def span(
         self,
         name: str,
-        /,
         *,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
@@ -282,6 +281,26 @@ class Dreadnode:
 
         return make_task
 
+    def task_span(
+        self,
+        name: str,
+        *,
+        tags: t.Sequence[str] | None = None,
+        args: dict[str, t.Any] | None = None,
+        **attributes: t.Any,
+    ) -> TaskSpan[t.Any]:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("Task spans must be created within a run")
+
+        return TaskSpan(
+            name=name,
+            args=args or {},
+            attributes=attributes,
+            tracer=self._get_tracer(),
+            run_id=run.run_id,
+            tags=tags,
+        )
+
     def scorer(
         self,
         *,
@@ -296,7 +315,6 @@ class Dreadnode:
     def run(
         self,
         name: str | None = None,
-        /,
         *,
         tags: t.Sequence[str] | None = None,
         project: str | None = None,
@@ -315,6 +333,12 @@ class Dreadnode:
             tracer=self._get_tracer(),
             tags=tags,
         )
+
+    def push_update(self) -> None:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("Run updates must be pushed within a run")
+
+        run.push_update()
 
     def log_param(self, key: str, value: JsonValue) -> None:
         if (run := current_run_span.get()) is None:
