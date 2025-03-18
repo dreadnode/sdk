@@ -1,3 +1,8 @@
+import importlib.util
+
+if importlib.util.find_spec("transformers") is None:
+    raise ModuleNotFoundError("Please install the `transformers` package to use this integration")
+
 import typing as t
 
 from transformers.trainer_callback import (  # type: ignore [import-untyped]
@@ -11,6 +16,14 @@ import dreadnode as dn
 
 if t.TYPE_CHECKING:
     from dreadnode.tracing import RunSpan, Span
+
+
+def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
+    cleaned: dict[str, t.Any] = {}
+    for key, val in data.items():
+        key = key.replace("eval_", "eval/").replace("test_", "test/").replace("train_", "train/")
+        cleaned[key] = val
+    return cleaned
 
 
 class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
@@ -30,7 +43,6 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         self._step_span: Span | None = None
 
     def _shutdown(self) -> None:
-        print("\nshutdown\n")
         if self._step_span is not None:
             self._step_span.__exit__(None, None, None)
             self._step_span = None
@@ -56,10 +68,11 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
 
         if hasattr(model, "config") and model.config is not None:
             model_config = model.config if isinstance(model.config, dict) else model.config.to_dict()
-            combined_dict = {**model_config, **combined_dict}
+            for key, value in model_config.items():
+                combined_dict[f"model/{key}"] = value
         if hasattr(model, "peft_config") and model.peft_config is not None:
             for key, value in model.peft_config.items():
-                combined_dict[f"peft_{key}"] = value
+                combined_dict[f"peft/{key}"] = value
 
         run_name = self.run_name or args.run_name or state.trial_name
 
@@ -71,6 +84,7 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         self._run.__enter__()
 
         dn.log_params(**combined_dict)
+        dn.push_update()
 
     def on_train_begin(
         self,
@@ -80,14 +94,12 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         model: t.Any | None = None,
         **kwargs: t.Any,
     ) -> None:
-        print("\non_train_begin\n")
         if not self._initialized:
             self._setup(args, state, model)
 
     def on_train_end(
         self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: t.Any
     ) -> None:
-        print("\non_train_end\n")
         self._shutdown()
 
     def on_epoch_begin(
@@ -97,13 +109,12 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
-        print("\non_epoch_begin\n")
         if self._run is None:
             return
 
         dn.log_metric("epoch", state.epoch)
 
-        self._epoch_span = dn.span(f"Epoch {state.epoch}", kind="epoch")
+        self._epoch_span = dn.task_span(f"Epoch {state.epoch}")
         self._epoch_span.__enter__()
 
     def on_epoch_end(
@@ -113,7 +124,6 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
-        print("\non_epoch_end\n")
         if self._epoch_span is not None:
             self._epoch_span.__exit__(None, None, None)
             self._epoch_span = None
@@ -125,13 +135,12 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
-        print("\non_step_begin\n")
         if self._run is None:
             return
 
         dn.log_metric("step", state.global_step)
 
-        self._step_span = dn.span(f"Step {state.global_step}", kind="step")
+        self._step_span = dn.span(f"Step {state.global_step}")
         self._step_span.__enter__()
 
     def on_step_end(
@@ -141,44 +150,9 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
-        print("\non_step_end\n")
         if self._step_span is not None:
             self._step_span.__exit__(None, None, None)
             self._step_span = None
-
-    def on_evaluate(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        metrics: dict[str, t.Any] | None = None,
-        **kwargs: t.Any,
-    ) -> None:
-        print("\non_evaluate\n")
-        if self._run is None or metrics is None:
-            return
-
-        for key, value in metrics.items():
-            if isinstance(value, float | int):
-                metric_name = key if key.startswith("eval_") else f"eval_{key}"
-                dn.log_metric(metric_name, value, step=state.global_step)
-
-    def on_predict(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        metrics: dict[str, t.Any] | None = None,
-        **kwargs: t.Any,
-    ) -> None:
-        print("\non_predict\n")
-        if self._run is None or metrics is None:
-            return
-
-        for key, value in metrics.items():
-            if isinstance(value, float | int):
-                metric_name = key if key.startswith("test_") else f"test_{key}"
-                dn.log_metric(metric_name, value)
 
     def on_log(
         self,
@@ -188,13 +162,11 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         logs: dict[str, t.Any] | None = None,
         **kwargs: t.Any,
     ) -> None:
-        print("\non_log\n")
         if self._run is None or logs is None:
             return
 
-        for key, value in logs.items():
-            if not isinstance(value, float | int):
-                continue
+        for key, value in _clean_keys(logs).items():
+            if isinstance(value, float | int):
+                dn.log_metric(key, value, step=state.global_step)
 
-            metric_name = key if not key.startswith(("train_", "eval_", "test_")) else f"train_{key}"
-            dn.log_metric(metric_name, value, step=state.global_step)
+        dn.push_update()
