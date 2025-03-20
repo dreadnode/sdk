@@ -48,10 +48,10 @@ def universal_hash(obj: t.Any) -> str:
 
     # Pandas
     with contextlib.suppress(Exception):
-        import pandas as pd  # type: ignore [import-untyped]
+        import pandas as pd
 
         if isinstance(obj, pd.DataFrame | pd.Series):
-            return _hash(pd.util.hash_pandas_object(obj))
+            return _hash(pd.util.hash_pandas_object(obj).to_numpy().tobytes())
 
     # Hashable objects
     with contextlib.suppress(Exception):

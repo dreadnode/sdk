@@ -14,6 +14,23 @@ SpanStatus = t.Literal[
     "failed",  # The raised an exception
 ]
 
+ExportFormat = t.Literal["csv", "json", "jsonl", "parquet"]
+StatusFilter = t.Literal["all", "completed", "failed"]
+TimeAxisType = t.Literal["wall", "relative", "step"]
+TimeAggregationType = t.Literal["max", "min", "sum", "count"]
+MetricAggregationType = t.Literal[
+    "avg",
+    "median",
+    "min",
+    "max",
+    "sum",
+    "first",
+    "last",
+    "count",
+    "std",
+    "var",
+]
+
 
 class SpanException(BaseModel):
     type: str
