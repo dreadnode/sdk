@@ -2,6 +2,7 @@ import re
 import types
 import typing as t
 from contextvars import ContextVar, Token
+from copy import deepcopy
 from datetime import datetime, timezone
 
 import typing_extensions as te
@@ -233,6 +234,9 @@ class RunSpan(Span):
         self._outputs: list[ObjectRef] = []
         self.project = project
 
+        self._last_pushed_params = deepcopy(self._params)
+        self._last_pushed_metrics = deepcopy(self._metrics)
+
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
 
         attributes = {
@@ -269,6 +273,32 @@ class RunSpan(Span):
         super().__exit__(exc_type, exc_value, traceback)
         if self._context_token is not None:
             current_run_span.reset(self._context_token)
+
+    def push_update(self) -> None:
+        if self._span is None:
+            return
+
+        metrics: MetricDict | None = None
+        if self._last_pushed_metrics != self._metrics:
+            metrics = self._metrics
+            self._last_pushed_metrics = deepcopy(self._metrics)
+
+        params: JsonDict | None = None
+        if self._last_pushed_params != self._params:
+            params = self._params
+            self._last_pushed_params = deepcopy(self._params)
+
+        if metrics is None and params is None:
+            return
+
+        with RunUpdateSpan(
+            run_id=self.run_id,
+            project=self.project,
+            tracer=self._tracer,
+            params=params,
+            metrics=metrics,
+        ):
+            pass
 
     @property
     def run_id(self) -> str:
@@ -328,14 +358,6 @@ class RunSpan(Span):
         if self._span is None:
             return
 
-        with RunUpdateSpan(
-            run_id=self.run_id,
-            project=self.project,
-            tracer=self._tracer,
-            params=params,  # Only the new params
-        ):
-            pass
-
     @property
     def inputs(self) -> AnyDict:
         return {ref.name: self.get_object(ref.hash) for ref in self._inputs}
@@ -365,8 +387,7 @@ class RunSpan(Span):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @t.overload
     def log_metric(
@@ -375,8 +396,7 @@ class RunSpan(Span):
         value: Metric,
         *,
         origin: t.Any | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def log_metric(
         self,
@@ -404,14 +424,6 @@ class RunSpan(Span):
         self._metrics.setdefault(key, []).append(metric)
         if self._span is None:
             return
-
-        with RunUpdateSpan(
-            run_id=self.run_id,
-            project=self.project,
-            tracer=self._tracer,
-            metrics={key: self._metrics.get(key, [])},  # Only the new metric
-        ):
-            pass
 
     @property
     def outputs(self) -> AnyDict:
@@ -577,8 +589,7 @@ class TaskSpan(Span, t.Generic[R]):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @t.overload
     def log_metric(
@@ -587,8 +598,7 @@ class TaskSpan(Span, t.Generic[R]):
         value: Metric,
         *,
         origin: t.Any | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def log_metric(
         self,

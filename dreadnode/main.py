@@ -20,8 +20,8 @@ from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from .api.client import ApiClient
-from .constants import (
+from dreadnode.api.client import ApiClient
+from dreadnode.constants import (
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
     ENV_API_TOKEN,
@@ -32,16 +32,17 @@ from .constants import (
     AnyDict,
     JsonValue,
 )
-from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
-from .metric import Metric, Scorer, ScorerCallable, T
-from .task import P, R, Task
-from .tracing import (
+from dreadnode.metric import Metric, Scorer, ScorerCallable, T
+from dreadnode.task import P, R, Task
+from dreadnode.tracing import (
     RunSpan,
     Span,
     TaskSpan,
     current_run_span,
     current_task_span,
 )
+from dreadnode.tracing.exporters import FileExportConfig, FileMetricReader, FileSpanExporter
+
 from .version import VERSION
 
 if t.TYPE_CHECKING:
@@ -255,8 +256,7 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
-        ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]: ...
 
     @t.overload
     def task(
@@ -270,8 +270,7 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
-        ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]: ...
 
     def task(
         self,
@@ -397,6 +396,12 @@ class Dreadnode:
             tags=tags,
         )
 
+    def push_update(self) -> None:
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("Run updates must be pushed within a run")
+
+        run.push_update()
+
     def log_param(self, key: str, value: JsonValue, *, to: ToObject = "task-or-run") -> None:
         self.log_params(to=to, **{key: value})
 
@@ -427,8 +432,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @t.overload
     def log_metric(
@@ -438,8 +442,7 @@ class Dreadnode:
         *,
         origin: t.Any | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def log_metric(
         self,
