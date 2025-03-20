@@ -17,6 +17,8 @@ logfire = "^3.5.3"
 python-ulid = "^3.0.0"
 fast-depends = "^2.4.12"
 coolname = "^2.2.0"
+pandas = "^2.2.3"
+pyarrow = "^19.0.1"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

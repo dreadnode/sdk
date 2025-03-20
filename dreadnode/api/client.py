@@ -72,7 +72,7 @@ class ApiClient:
         self,
         method: str,
         path: str,
-        query_params: dict[str, str] | None = None,
+        query_params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
         """Make a raw request to the API."""
@@ -83,7 +83,7 @@ class ApiClient:
         self,
         method: str,
         path: str,
-        query_params: dict[str, str] | None = None,
+        query_params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
         """Make a request to the API. Raise an exception for non-200 status codes."""
