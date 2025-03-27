@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import typing as t
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -48,7 +46,7 @@ class ContextField(CustomField, Generic[T]):
             if not self.required:
                 kwargs[self.param_name] = self.default
             else:
-                raise RuntimeError(f"Context resolution failed for {self.param_name}: {str(e)}")
+                raise RuntimeError(f"Context resolution failed for {self.param_name}: {e!s}")
 
         return kwargs
 
@@ -88,14 +86,16 @@ class RunContext:
         self._scoped_context[type(value), id_] = value
 
     @t.overload
-    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[True] = True) -> T:
-        ...
+    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[True] = True) -> T: ...
 
     @t.overload
-    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[False] = ...) -> T | None:
-        ...
+    def get(
+        self, type_: type[T], id_: str | None = None, strict: t.Literal[False] = ...
+    ) -> T | None: ...
 
-    def get(self, type_: type[T], id_: str | list[str] | None = None, strict: bool = True) -> T | None:
+    def get(
+        self, type_: type[T], id_: str | list[str] | None = None, strict: bool = True
+    ) -> T | None:
         return self._get(type_, id_, strict)
 
     def _get(self, type_: type[T], id_: str | None = None, strict: bool = True) -> T | None:
@@ -105,26 +105,24 @@ class RunContext:
             matching = [(k, v) for k, v in self._scoped_context.items() if issubclass(k[0], type_)]
             if len(matching) == 1:
                 return matching[0][1]
-            elif len(matching) > 1 and strict:
+            if len(matching) > 1 and strict:
                 raise ValueError(
-                    f"Multiple {type_.__name__} objects exist. Use a specific id to get one of the values."
+                    f"Multiple {type_.__name__} objects exist. Use a specific id to get one of the values.",
                 )
-        else:
-            if key in self._scoped_context:
-                return self._scoped_context[key]
+        elif key in self._scoped_context:
+            return self._scoped_context[key]
 
         # Then check global context
         if id_ is None:
             matching = [(k, v) for k, v in self._global_context.items() if issubclass(k[0], type_)]
             if len(matching) == 1:
                 return matching[0][1]
-            elif len(matching) > 1 and strict:
+            if len(matching) > 1 and strict:
                 raise ValueError(
-                    f"Multiple {type_.__name__} objects exist. Use a specific id to get one of the values."
+                    f"Multiple {type_.__name__} objects exist. Use a specific id to get one of the values.",
                 )
-        else:
-            if key in self._global_context:
-                return self._global_context[key]
+        elif key in self._global_context:
+            return self._global_context[key]
 
         if strict:
             raise KeyError(f"{type_.__name__}{' with id ' + repr(id_) if id_ else ''}")
@@ -150,7 +148,7 @@ class ScopedContext:
             self.previous[key] = self.context._scoped_context.get(key)
             self.context.set_scoped(value, id_)
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         # Restore previous values
         for key, value in self.previous.items():
             if value is None:

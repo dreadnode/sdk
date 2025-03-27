@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from pydantic import TypeAdapter
 
+from dreadnode.types import JsonDict
+
 
 @dataclass
 class ObjectRef:
@@ -14,16 +16,24 @@ class ObjectRef:
 
 
 @dataclass
-class ObjectUri:
-    type: t.Literal["uri"]
-    uri: str
-    size: int
+class _Object:
+    hash: str
 
 
 @dataclass
-class ObjectVal:
-    type: t.Literal["val"]
+class ObjectUri(_Object):
+    uri: str
+    size: int
+    type: t.Literal["uri"] = "uri"
+    attributes: JsonDict | None = None
+
+
+@dataclass
+class ObjectVal(_Object):
     value: t.Any
+    type: t.Literal["val"] = "val"
+    hint: str
+    attributes: JsonDict | None = None
 
 
 Object = ObjectUri | ObjectVal

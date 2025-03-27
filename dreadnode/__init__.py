@@ -2,7 +2,7 @@ from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
 from dreadnode.object import Object
 from dreadnode.task import Task
-from dreadnode.tracing import RunSpan, Span, TaskSpan
+from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
 configure = DEFAULT_INSTANCE.configure

@@ -21,6 +21,11 @@ from opentelemetry.trace import Tracer
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
+from dreadnode.metric import Metric, MetricDict
+from dreadnode.object import ObjectRef, universal_hash
+from dreadnode.types import AnyDict, JsonDict, JsonValue
+from dreadnode.version import VERSION
+
 from .constants import (
     EVENT_ATTRIBUTE_LINK_HASH,
     EVENT_ATTRIBUTE_OBJECT_HASH,
@@ -46,14 +51,8 @@ from .constants import (
     SPAN_ATTRIBUTE_TAGS_,
     SPAN_ATTRIBUTE_TYPE,
     SPAN_ATTRIBUTE_VERSION,
-    AnyDict,
-    JsonDict,
-    JsonValue,
     SpanType,
 )
-from .metric import Metric, MetricDict
-from .object import ObjectRef, universal_hash
-from .version import VERSION
 
 R = t.TypeVar("R")
 

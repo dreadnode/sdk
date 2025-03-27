@@ -1,6 +1,7 @@
 import io
 import json
 import typing as t
+from logging import getLogger
 
 import httpx
 import pandas as pd
@@ -18,7 +19,10 @@ from .models import (
     TimeAggregationType,
     TimeAxisType,
     TraceSpan,
+    UserDataCredentials,
 )
+
+logger = getLogger(__name__)
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
@@ -54,20 +58,20 @@ class ApiClient:
     def _log_request(self, request: httpx.Request) -> None:
         """Log every request to the console if debug is enabled."""
 
-        print("-------------------------------------------")
-        print(f"[bold]{request.method}[/] {request.url}")
-        print("Headers:", request.headers)
-        print("Content:", request.content)
-        print("-------------------------------------------")
+        logger.info("-------------------------------------------")
+        logger.info("%s %s", request.method, request.url)
+        logger.info("Headers: %s", request.headers)
+        logger.info("Content: %s", request.content)
+        logger.info("-------------------------------------------")
 
     def _log_response(self, response: httpx.Response) -> None:
         """Log every response to the console if debug is enabled."""
 
-        print("-------------------------------------------")
-        print(f"Response: {response.status_code}")
-        print("Headers:", response.headers)
-        print("Content:", response.read())
-        print("--------------------------------------------")
+        logger.info("-------------------------------------------")
+        logger.info("Status: %s", response.status_code)
+        logger.info("Headers: %s", response.headers)
+        logger.info("Content: %s", response.content)
+        logger.info("--------------------------------------------")
 
     def _get_error_message(self, response: httpx.Response) -> str:
         """Get the error message from the response."""
@@ -82,23 +86,23 @@ class ApiClient:
         self,
         method: str,
         path: str,
-        query_params: dict[str, t.Any] | None = None,
+        params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
         """Make a raw request to the API."""
 
-        return self._client.request(method, path, json=json_data, params=query_params)
+        return self._client.request(method, path, json=json_data, params=params)
 
     def request(
         self,
         method: str,
         path: str,
-        query_params: dict[str, t.Any] | None = None,
+        params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
         """Make a request to the API. Raise an exception for non-200 status codes."""
 
-        response = self._request(method, path, query_params, json_data)
+        response = self._request(method, path, params, json_data)
         if response.status_code == 401:  # noqa: PLR2004
             raise RuntimeError("Authentication failed, please check your API token.")
 
@@ -110,27 +114,27 @@ class ApiClient:
         return response
 
     def list_projects(self) -> list[Project]:
-        response = self._client.request("GET", "/strikes/projects")
+        response = self.request("GET", "/strikes/projects")
         return [Project(**project) for project in response.json()]
 
     def get_project(self, project: str) -> Project:
-        response = self._client.request("GET", f"/strikes/projects/{project!s}")
+        response = self.request("GET", f"/strikes/projects/{project!s}")
         return Project(**response.json())
 
     def list_runs(self, project: str) -> list[Run]:
-        response = self._client.request("GET", f"/strikes/projects/{project!s}/runs")
+        response = self.request("GET", f"/strikes/projects/{project!s}/runs")
         return [Run(**run) for run in response.json()]
 
     def get_run(self, run: str | ULID) -> Run:
-        response = self._client.request("GET", f"/strikes/projects/runs/{run!s}")
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}")
         return Run(**response.json())
 
     def get_run_tasks(self, run: str | ULID) -> list[Task]:
-        response = self._client.request("GET", f"/strikes/projects/runs/{run!s}/tasks")
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks")
         return [Task(**task) for task in response.json()]
 
     def get_run_trace(self, run: str | ULID) -> list[Task | TraceSpan]:
-        response = self._client.request("GET", f"/strikes/projects/runs/{run!s}/spans")
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans")
         spans: list[Task | TraceSpan] = []
         for item in response.json():
             if "parent_task_span_id" in item:
@@ -150,7 +154,7 @@ class ApiClient:
         status: StatusFilter = "completed",
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
-        response = self._client.request(
+        response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export",
             params={
@@ -172,7 +176,7 @@ class ApiClient:
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
-        response = self._client.request(
+        response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/metrics",
             params={
@@ -196,7 +200,7 @@ class ApiClient:
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
-        response = self._client.request(
+        response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/parameters",
             params={
@@ -221,7 +225,7 @@ class ApiClient:
         time_axis: TimeAxisType = "relative",
         aggregations: list[TimeAggregationType] | None = None,
     ) -> pd.DataFrame:
-        response = self._client.request(
+        response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/timeseries",
             params={
@@ -234,3 +238,9 @@ class ApiClient:
             },
         )
         return pd.read_parquet(io.BytesIO(response.content))
+
+    # User data access
+
+    def get_user_data_credentials(self) -> UserDataCredentials:
+        response = self.request("GET", "/user-data/credentials")
+        return UserDataCredentials(**response.json())

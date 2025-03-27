@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from logfire._internal.stack_info import warn_at_user_stacklevel
 from opentelemetry.trace import Tracer
 
-from .metric import Scorer, ScorerCallable
-from .tracing import TaskSpan, current_run_span
+from dreadnode.metric import Scorer, ScorerCallable
+from dreadnode.tracing.span import TaskSpan, current_run_span
 
 P = t.ParamSpec("P")
 R = t.TypeVar("R")

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
 
-from .constants import JsonDict, JsonValue
+from dreadnode.types import JsonDict, JsonValue
 
 T = t.TypeVar("T")
 
@@ -93,7 +93,7 @@ class Scorer(t.Generic[T]):
         )
 
     async def __call__(self, object: T) -> Metric:
-        from .tracing import Span
+        from dreadnode.tracing.span import Span
 
         with Span(
             name=self.name,

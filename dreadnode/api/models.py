@@ -148,3 +148,17 @@ class SpanTree(BaseModel):
 
     span: Task | TraceSpan
     children: list["SpanTree"] = []
+
+
+# User data credentials
+
+
+class UserDataCredentials(BaseModel):
+    access_key_id: str
+    secret_access_key: str
+    session_token: str
+    expiration: datetime
+    region: str
+    bucket: str
+    prefix: str
+    endpoint: str | None

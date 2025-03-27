@@ -3,13 +3,25 @@ import typing as t
 from dataclasses import dataclass
 
 from dreadnode.object import ObjectRef
+from dreadnode.types import AnyDict
 
-ArtifactType = t.Literal["markdown", "table", "image", "file"]
+ArtifactHint = t.Literal[
+    "markdown",
+    "table",
+    "code",
+    "image",
+    "csv",
+    "dataframe",
+    "notebook",
+    "file",
+]
 
 
 @dataclass
 class Artifact(ObjectRef):
-    description: str = ""
+    hint: ArtifactHint
+    description: str
+    attributes: AnyDict
     mime_type: str
     extension: str
 

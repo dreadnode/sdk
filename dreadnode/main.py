@@ -29,19 +29,17 @@ from dreadnode.constants import (
     ENV_PROJECT,
     ENV_SERVER,
     ENV_SERVER_URL,
-    AnyDict,
-    JsonValue,
 )
 from dreadnode.metric import Metric, Scorer, ScorerCallable, T
 from dreadnode.task import P, R, Task
-from dreadnode.tracing import (
+from dreadnode.tracing.exporters import FileExportConfig, FileMetricReader, FileSpanExporter
+from dreadnode.tracing.span import (
     RunSpan,
     Span,
     TaskSpan,
     current_run_span,
     current_task_span,
 )
-from dreadnode.tracing.exporters import FileExportConfig, FileMetricReader, FileSpanExporter
 
 from .version import VERSION
 
@@ -49,6 +47,11 @@ if t.TYPE_CHECKING:
     from opentelemetry.sdk.metrics.export import MetricReader
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
+
+    from dreadnode.types import (
+        AnyDict,
+        JsonValue,
+    )
 
 ToObject = t.Literal["task-or-run", "run"]
 
@@ -256,7 +259,8 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]: ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
+        ...
 
     @t.overload
     def task(
@@ -270,7 +274,8 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]: ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
+        ...
 
     def task(
         self,
@@ -432,7 +437,8 @@ class Dreadnode:
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         to: ToObject = "task-or-run",
-    ) -> None: ...
+    ) -> None:
+        ...
 
     @t.overload
     def log_metric(
@@ -442,7 +448,8 @@ class Dreadnode:
         *,
         origin: t.Any | None = None,
         to: ToObject = "task-or-run",
-    ) -> None: ...
+    ) -> None:
+        ...
 
     def log_metric(
         self,
