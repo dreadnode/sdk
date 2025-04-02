@@ -1,0 +1,130 @@
+---
+title: 'transformers'
+sidebarTitle: 'transformers'
+---
+
+# Module `transformers`
+
+*(Full name: `dreadnode.integrations.transformers`)*
+
+**Source file:** `transformers.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `DreadnodeCallback`
+
+**Inherits from:** `transformers.trainer_callback.TrainerCallback`
+
+A class for objects that will inspect the state of the training loop at some events and take some decisions. At
+
+each of those events the following arguments are available:
+
+**Parameters:**
+
+- **`args`** (`[\`TrainingArguments\`]`): The training arguments used to instantiate the [`Trainer`].
+- **`state`** (`[\`TrainerState\`]`): The current state of the [`Trainer`].
+- **`control`** (`[\`TrainerControl\`]`): The object that is returned to the [`Trainer`] and can be used to make some decisions.
+- **`model`** (`[\`PreTrainedModel\`] or \`torch.nn.Module\``): The model being trained.
+- **`tokenizer`** (`[\`PreTrainedTokenizer\`]`): The tokenizer used for encoding the data. This is deprecated in favour of `processing_class`.
+- **`processing_class`** (`[\`PreTrainedTokenizer\` or \`BaseImageProcessor\` or \`ProcessorMixin\` or \`FeatureExtractionMixin\`]`): The processing class used for encoding the data. Can be a tokenizer, a processor, an image processor or a feature extractor.
+- **`optimizer`** (`\`torch.optim.Optimizer\``): The optimizer used for the training steps.
+- **`lr_scheduler`** (`\`torch.optim.lr_scheduler.LambdaLR\``): The scheduler used for setting the learning rate.
+- **`train_dataloader`** (`\`torch.utils.data.DataLoader\`, *optional*`): The current dataloader used for training.
+- **`eval_dataloader`** (`\`torch.utils.data.DataLoader\`, *optional*`): The current dataloader used for evaluation.
+- **`metrics`** (`\`Dict[str, float]\``): The metrics computed by the last evaluation phase.
+
+Those are only accessible in the event `on_evaluate`.
+- **`logs`** (`\`Dict[str, float]\``): The values to log.
+
+Those are only accessible in the event `on_log`.
+
+#### Methods
+
+##### `__init__`
+
+```python
+__init__(self, project: str | None = None, run_name: str | None = None, tags: list[str] | None = None)
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `on_epoch_begin`
+
+```python
+on_epoch_begin(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, **kwargs: Any) -> None
+```
+
+Event called at the beginning of an epoch.
+
+---
+
+##### `on_epoch_end`
+
+```python
+on_epoch_end(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, **kwargs: Any) -> None
+```
+
+Event called at the end of an epoch.
+
+---
+
+##### `on_log`
+
+```python
+on_log(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, logs: dict[str, typing.Any] | None = None, **kwargs: Any) -> None
+```
+
+Event called after logging the last logs.
+
+---
+
+##### `on_step_begin`
+
+```python
+on_step_begin(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, **kwargs: Any) -> None
+```
+
+Event called at the beginning of a training step. If using gradient accumulation, one training step might take
+
+several inputs.
+
+---
+
+##### `on_step_end`
+
+```python
+on_step_end(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, **kwargs: Any) -> None
+```
+
+Event called at the end of a training step. If using gradient accumulation, one training step might take
+
+several inputs.
+
+---
+
+##### `on_train_begin`
+
+```python
+on_train_begin(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, model: typing.Any | None = None, **kwargs: Any) -> None
+```
+
+Event called at the beginning of training.
+
+---
+
+##### `on_train_end`
+
+```python
+on_train_end(self, args: transformers.training_args.TrainingArguments, state: transformers.trainer_callback.TrainerState, control: transformers.trainer_callback.TrainerControl, **kwargs: Any) -> None
+```
+
+Event called at the end of training.
+
+---
+
+

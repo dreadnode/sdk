@@ -1,0 +1,809 @@
+---
+title: 'tracing'
+sidebarTitle: 'tracing'
+---
+
+# Module `tracing`
+
+*(Full name: `dreadnode.tracing`)*
+
+**Source file:** `tracing.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `Metric`
+
+**Inherits from:** `object`
+
+Metric(value: float, step: int = 0, timestamp: datetime.datetime = \<factory>)
+
+#### Methods
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, value: float, step: int = 0, timestamp: datetime.datetime = <factory>) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__replace__`
+
+```python
+__replace__(self, /, **changes)
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+
+### Class `RunSpan`
+
+**Inherits from:** `dreadnode.tracing.Span`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `metrics`
+
+**Type:** `dict[str, list[dreadnode.tracing.Metric]]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `params`
+
+**Type:** `dict[str, Union[int, float, str, bool, NoneType, list[Union[int, float, str, bool, NoneType, list[ForwardRef('JsonValue')], tuple[ForwardRef('JsonValue'), ...], dict[str, Union[int, float, str, bool, NoneType, list[ForwardRef('JsonValue')], tuple[ForwardRef('JsonValue'), ...], ForwardRef('JsonDict')]]]], tuple[Union[int, float, str, bool, NoneType, list[ForwardRef('JsonValue')], tuple[ForwardRef('JsonValue'), ...], dict[str, Union[int, float, str, bool, NoneType, list[ForwardRef('JsonValue')], tuple[ForwardRef('JsonValue'), ...], ForwardRef('JsonDict')]]], ...], dict[str, Union[int, float, str, bool, NoneType, list[ForwardRef('JsonValue')], tuple[ForwardRef('JsonValue'), ...], ForwardRef('JsonDict')]]]]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `run_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `scores`
+
+**Type:** `list[dreadnode.tracing.Score]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, project: str, attributes: dict[str, typing.Any], tracer: opentelemetry.trace.Tracer, run_id: str | None = None, tags: Optional[Sequence[str]] = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+*(No documentation provided)*
+
+---
+
+##### `log_metric`
+
+```python
+log_metric(self, key: str, value: float, step: int = 0, *, timestamp: datetime.datetime | None = None) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `log_param`
+
+```python
+log_param(self, key: str, value: Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `log_params`
+
+```python
+log_params(self, **params: Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `push_update`
+
+```python
+push_update(self) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+
+### Class `RunUpdateSpan`
+
+**Inherits from:** `dreadnode.tracing.Span`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, run_id: str, tracer: opentelemetry.trace.Tracer, project: str, *, metrics: dict[str, list[dreadnode.tracing.Metric]] | None = None, params: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] | None = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+
+### Class `Score`
+
+**Inherits from:** `object`
+
+Score(name: str, value: float, timestamp: datetime.datetime = \<factory>, attributes: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] = \<factory>)
+
+#### Methods
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, value: float, timestamp: datetime.datetime = <factory>, attributes: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] = <factory>) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__replace__`
+
+```python
+__replace__(self, /, **changes)
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+
+### Class `Span`
+
+**Inherits from:** `opentelemetry.sdk.trace.ReadableSpan`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, attributes: dict[str, typing.Any], tracer: opentelemetry.trace.Tracer, type: Literal['run', 'task', 'span', 'run_update'] = 'span', tags: Optional[Sequence[str]] = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+
+### Class `TaskSpan`
+
+**Inherits from:** `dreadnode.tracing.Span`, `typing.Generic`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `args`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `average_score`
+
+**Type:** `\<class 'float'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `output`
+
+**Type:** `Optional[~R]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `parent_task_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `run_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `scores`
+
+**Type:** `list[dreadnode.tracing.Score]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, attributes: dict[str, typing.Any], args: dict[str, typing.Any], run_id: str, tracer: opentelemetry.trace.Tracer, tags: Optional[Sequence[str]] = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+*(No documentation provided)*
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+
+## Functions
+
+### `prepare_otlp_attribute`
+
+```python
+prepare_otlp_attribute(value: Any) -> Union[str, bool, int, float, Sequence[str], Sequence[bool], Sequence[int], Sequence[float]]
+```
+
+*(No documentation provided)*
+
+### `prepare_otlp_attributes`
+
+```python
+prepare_otlp_attributes(attributes: dict[str, typing.Any]) -> dict[str, typing.Union[str, bool, int, float, typing.Sequence[str], typing.Sequence[bool], typing.Sequence[int], typing.Sequence[float]]]
+```
+
+*(No documentation provided)*
+
+

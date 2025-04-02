@@ -1,0 +1,106 @@
+---
+title: 'score'
+sidebarTitle: 'score'
+---
+
+# Module `score`
+
+*(Full name: `dreadnode.score`)*
+
+**Source file:** `score.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `Scorer`
+
+**Inherits from:** `typing.Generic`
+
+Scorer(tracer: opentelemetry.trace.Tracer, name: str, attributes: dict[str, typing.Any], func: Callable[[~T], Union[float, dreadnode.tracing.Score, Awaitable[float | dreadnode.tracing.Score]]])
+
+#### Methods
+
+##### `__call__`
+
+```python
+__call__(self, object: ~T) -> dreadnode.tracing.Score
+```
+
+Call self as a function.
+
+---
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, tracer: opentelemetry.trace.Tracer, name: str, attributes: dict[str, typing.Any], func: Callable[[~T], Union[float, dreadnode.tracing.Score, Awaitable[float | dreadnode.tracing.Score]]]) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__post_init__`
+
+```python
+__post_init__(self) -> None
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__replace__`
+
+```python
+__replace__(self, /, **changes)
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+##### `clone`
+
+```python
+clone(self) -> 'Scorer[T]'
+```
+
+*(No documentation provided)*
+
+---
+
+
+## Functions
+
+### `scores_to_metrics`
+
+```python
+scores_to_metrics(scores: Sequence[dreadnode.tracing.Score]) -> dict[str, list[dreadnode.tracing.Metric]]
+```
+
+*(No documentation provided)*
+
+

@@ -1,0 +1,84 @@
+---
+title: 'client'
+sidebarTitle: 'client'
+---
+
+# Module `client`
+
+*(Full name: `dreadnode.api.client`)*
+
+**Source file:** `client.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `ApiClient`
+
+**Inherits from:** `object`
+
+Client for interacting with the Dreadnode API.
+
+Provides methods for making HTTP requests to the Dreadnode backend,
+handling authentication, base URL configuration, and optional debugging logs.
+It also exposes specialized clients for different API resource groups,
+like 'strikes'.
+
+**Parameters:**
+
+- **`strikes`**: An instance of StrikesClient for interacting with the strikes API.
+
+#### Methods
+
+##### `__init__`
+
+```python
+__init__(self, base_url: str, api_key: str, *, debug: bool = False)
+```
+
+Initializes the ApiClient.
+
+Sets up the base URL, API key for authentication, and configures
+an httpx client for making requests. Optionally enables debug logging.
+
+**Parameters:**
+
+- **`base_url`**: The base URL for the Dreadnode API server.
+It will be adjusted to ensure it ends with '/api'.
+- **`api_key`**: The secret API key used for authenticating requests via
+the 'X-API-Key' header.
+- **`debug`**: If True, request and response details will be printed to
+the console using 'rich'. Defaults to False.
+
+---
+
+##### `request`
+
+```python
+request(self, method: str, path: str, query_params: dict[str, typing.Any] | None = None, json_data: dict[str, typing.Any] | None = None) -> httpx.Response
+```
+
+Makes an HTTP request and raises an exception for error status codes.
+
+Wraps the internal `_request` method, adding error handling for
+non-2xx status codes. Provides specific handling for 401 Unauthorized errors.
+
+**Parameters:**
+
+- **`method`**: The HTTP method (e.g., 'GET', 'POST').
+- **`path`**: The API endpoint path.
+- **`query_params`**: Optional dictionary of query string parameters.
+- **`json_data`**: Optional dictionary to be sent as JSON in the request body.
+
+**Returns:** The httpx.Response object if the request was successful (2xx status).
+
+**Raises:**
+
+- `Exception` — If the response status code is 401 (Unauthorized),
+or if it's any other 4xx or 5xx error code. The error
+message attempts to include details from the response body.
+
+---
+
+

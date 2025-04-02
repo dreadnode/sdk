@@ -1,0 +1,200 @@
+---
+title: 'context'
+sidebarTitle: 'context'
+---
+
+# Module `context`
+
+*(Full name: `dreadnode.context`)*
+
+**Source file:** `context.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `ContextField`
+
+**Inherits from:** `fast_depends.library.model.CustomField`, `typing.Generic`
+
+A custom field that resolves values from the current run context.
+
+#### Methods
+
+##### `__init__`
+
+```python
+__init__(self, id_: 'str | None' = None, strict: 'bool' = True, default: 'Any' = None)
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `use`
+
+```python
+use(self, **kwargs: 'Any') -> 'dict[str, Any]'
+```
+
+Resolve the value from current context when parameter is needed.
+
+---
+
+
+### Class `RunContext`
+
+**Inherits from:** `object`
+
+Context manager for a specific run instance.
+
+#### Methods
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, run_id: 'str', _global_context: 'dict[tuple[type, str | None], t.Any]' = <factory>, _scoped_context: 'dict[tuple[type, str | None], t.Any]' = <factory>) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__replace__`
+
+```python
+__replace__(self, /, **changes)
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+##### `get`
+
+```python
+get(self, type_: 'type[T]', id_: 'str | list[str] | None' = None, strict: 'bool' = True) -> 'T | None'
+```
+
+*(No documentation provided)*
+
+---
+
+##### `scope`
+
+```python
+scope(self, **values: 't.Any')
+```
+
+Create a scoped context manager.
+
+---
+
+##### `set_global`
+
+```python
+set_global(self, value: 't.Any', id_: 'str | None' = None) -> 'None'
+```
+
+Set a global context value for this run.
+
+---
+
+##### `set_scoped`
+
+```python
+set_scoped(self, value: 't.Any', id_: 'str | None' = None) -> 'None'
+```
+
+Set a scoped context value.
+
+---
+
+
+### Class `ScopedContext`
+
+**Inherits from:** `object`
+
+Context manager for temporary scoped values.
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> 'None'
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, *exc: 'Any') -> 'None'
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, context: 'RunContext', values: 'dict[str, Any]')
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+
+## Functions
+
+### `ctx`
+
+```python
+ctx(*, id_: 'str | None' = None) -> 'Any'
+```
+
+Create a context field that resolves using the parameter's type annotation.
+
+### `get_context`
+
+```python
+get_context() -> 'RunContext'
+```
+
+Get the currently active run context.
+
+### `optional_ctx`
+
+```python
+optional_ctx(*, id_: 'str | None' = None, default: 'Any' = None) -> 'Any'
+```
+
+Create an optional context field.
+
+

@@ -1,0 +1,266 @@
+---
+title: 'exporters'
+sidebarTitle: 'exporters'
+---
+
+# Module `exporters`
+
+*(Full name: `dreadnode.exporters`)*
+
+**Source file:** `exporters.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `FileExportConfig`
+
+**Inherits from:** `object`
+
+Configuration for signal exports to JSONL files.
+
+#### Methods
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, base_path: str | pathlib._local.Path = PosixPath('/Users/moo/projects/sdk/.dreadnode'), prefix: str = '') -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__replace__`
+
+```python
+__replace__(self, /, **changes)
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+##### `get_path`
+
+```python
+get_path(self, signal: str) -> pathlib._local.Path
+```
+
+Get the file path for a specific signal type.
+
+---
+
+
+### Class `FileLogExporter`
+
+**Inherits from:** `opentelemetry.sdk._logs._internal.export.LogExporter`
+
+LogExporter that writes logs to a file in OTLP format.
+
+#### Properties
+
+##### `file`
+
+**Type:** `IO[str]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__init__`
+
+```python
+__init__(self, config: dreadnode.exporters.FileExportConfig)
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `export`
+
+```python
+export(self, batch: collections.abc.Sequence[opentelemetry.sdk._logs._internal.LogData]) -> opentelemetry.sdk._logs._internal.export.LogExportResult
+```
+
+Exports a batch of logs.
+
+**Parameters:**
+
+- **`batch`**: The list of `LogData` objects to be exported
+
+**Returns:** The result of the export
+
+---
+
+##### `force_flush`
+
+```python
+force_flush(self, timeout_millis: float = 30000) -> bool
+```
+
+*(No documentation provided)*
+
+---
+
+##### `shutdown`
+
+```python
+shutdown(self) -> None
+```
+
+Shuts down the exporter.
+
+Called when the SDK is shut down.
+
+---
+
+
+### Class `FileMetricReader`
+
+**Inherits from:** `opentelemetry.sdk.metrics._internal.export.MetricReader`
+
+MetricReader that writes metrics to a file in OTLP format.
+
+#### Properties
+
+##### `file`
+
+**Type:** `IO[str]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__init__`
+
+```python
+__init__(self, config: dreadnode.exporters.FileExportConfig)
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `shutdown`
+
+```python
+shutdown(self, timeout_millis: float = 30000, **kwargs: Any) -> None
+```
+
+Shuts down the MetricReader. This method provides a way
+
+for the MetricReader to do any cleanup required. A metric reader can
+only be shutdown once, any subsequent calls are ignored and return
+failure status.
+
+When a `MetricReader` is registered on a
+:class:`~opentelemetry.sdk.metrics.MeterProvider`,
+:meth:`~opentelemetry.sdk.metrics.MeterProvider.shutdown` will invoke this
+automatically.
+
+---
+
+
+### Class `FileSpanExporter`
+
+**Inherits from:** `opentelemetry.sdk.trace.export.SpanExporter`
+
+SpanExporter that writes spans to a file in OTLP format.
+
+#### Properties
+
+##### `file`
+
+**Type:** `IO[str]` *(property)*
+
+*(No documentation provided)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__init__`
+
+```python
+__init__(self, config: dreadnode.exporters.FileExportConfig)
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `export`
+
+```python
+export(self, spans: collections.abc.Sequence[opentelemetry.sdk.trace.ReadableSpan]) -> opentelemetry.sdk.trace.export.SpanExportResult
+```
+
+Exports a batch of telemetry data.
+
+**Parameters:**
+
+- **`spans`**: The list of `opentelemetry.trace.Span` objects to be exported
+
+**Returns:** The result of the export
+
+---
+
+##### `force_flush`
+
+```python
+force_flush(self, timeout_millis: float = 30000) -> bool
+```
+
+Hint to ensure that the export of any spans the exporter has received
+
+prior to the call to ForceFlush SHOULD be completed as soon as possible, preferably
+before returning from this method.
+
+---
+
+##### `shutdown`
+
+```python
+shutdown(self) -> None
+```
+
+Shuts down the exporter.
+
+Called when the SDK is shut down.
+
+---
+
+

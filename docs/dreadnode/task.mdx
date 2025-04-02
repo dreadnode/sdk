@@ -1,0 +1,401 @@
+---
+title: 'task'
+sidebarTitle: 'task'
+---
+
+# Module `task`
+
+*(Full name: `dreadnode.task`)*
+
+**Source file:** `task.py`
+
+*(No documentation provided)*
+
+## Classes
+
+
+### Class `Task`
+
+**Inherits from:** `typing.Generic`
+
+Represents a traceable and scorable asynchronous operation (task).
+
+Wraps an asynchronous function, adding capabilities for tracing its execution
+as an OpenTelemetry span, automatically binding arguments, applying scorers
+to its output, and managing associated metadata like attributes and tags.
+
+Provides methods for running the task individually or multiple times (`map`),
+retrieving top-scoring results, and handling potential exceptions during execution.
+
+**Parameters:**
+
+- **`tracer`**: An OpenTelemetry Tracer instance used for creating spans.
+- **`name`**: The name assigned to this task, used for span identification.
+- **`attributes`**: A dictionary of key-value attributes to attach to the task's span.
+- **`func`**: The underlying asynchronous function (Callable[P, Awaitable[R]]) that
+this task wraps.
+- **`scorers`**: A list of Scorer objects that will be applied to the output (R)
+of the task function.
+- **`tags`**: A list of string tags associated with the task for categorization or filtering.
+
+#### Methods
+
+##### `__call__`
+
+```python
+__call__(self, *args: P.args, **kwargs: P.kwargs) -> ~R
+```
+
+Executes the task and returns only its output.
+
+Syntactic sugar for calling `run()` and extracting the output from the resulting span.
+
+**Parameters:**
+
+- **`*args`**: Positional arguments for the wrapped function.
+- **`**kwargs`**: Keyword arguments for the wrapped function.
+
+**Returns:** The output (type R) of the wrapped function.
+
+**Raises:**
+
+- `RuntimeError` — If not called within an active run context (via `run`).
+- `Exception` — Any exception raised by the wrapped `self.func` (via `run`).
+
+---
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, tracer: opentelemetry.trace.Tracer, name: str, attributes: dict[str, typing.Any], func: Callable[~P, Awaitable[~R]], scorers: list[dreadnode.score.Scorer[~R]], tags: list[str]) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__post_init__`
+
+```python
+__post_init__(self) -> None
+```
+
+Performs post-initialization setup.
+
+Sets the `__signature__` attribute for introspection based on the wrapped
+function and updates `__name__` to reflect the wrapped function's name
+if available.
+
+---
+
+##### `__replace__`
+
+```python
+__replace__(self, /, **changes)
+```
+
+*(No documentation provided)*
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+##### `clone`
+
+```python
+clone(self) -> 'Task[P, R]'
+```
+
+Creates a shallow copy of the Task instance.
+
+Copies mutable attributes (attributes, scorers, tags) to avoid unintended
+modification of the original task when modifying the clone via methods like `with_`.
+
+**Returns:** A new Task instance with copied mutable attributes.
+
+---
+
+##### `map`
+
+```python
+map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[~R]
+```
+
+Runs the task multiple times concurrently and returns only the outputs.
+
+**Parameters:**
+
+- **`count`**: The number of times to run the task.
+- **`*args`**: Positional arguments passed to each task execution.
+- **`**kwargs`**: Keyword arguments passed to each task execution.
+
+**Returns:** A list containing the output (type R) from each task execution.
+
+---
+
+##### `map_run`
+
+```python
+map_run(self, count: int, *args: P.args, **kwargs: P.kwargs) -> dreadnode.task.TaskSpanList[~R]
+```
+
+Runs the task multiple times concurrently and returns all resulting TaskSpans.
+
+Executes the `run` method `count` times with the same arguments.
+
+**Parameters:**
+
+- **`count`**: The number of times to run the task.
+- **`*args`**: Positional arguments passed to each task execution.
+- **`**kwargs`**: Keyword arguments passed to each task execution.
+
+**Returns:** A TaskSpanList containing the TaskSpan object from each execution.
+
+---
+
+##### `run`
+
+```python
+run(self, *args: P.args, **kwargs: P.kwargs) -> dreadnode.tracing.TaskSpan[~R]
+```
+
+Executes the task function once within a traceable span.
+
+Creates a TaskSpan, executes the wrapped asynchronous function, captures
+its output, applies all configured scorers to the output, and records the
+scores on both the TaskSpan and the current RunSpan.
+
+**Parameters:**
+
+- **`*args`**: Positional arguments to pass to the wrapped function.
+- **`**kwargs`**: Keyword arguments to pass to the wrapped function.
+
+**Returns:** The TaskSpan object representing this execution, containing the output,
+scores, and trace information.
+
+**Raises:**
+
+- `RuntimeError` — If not called within the context of an active, recording RunSpan.
+- `Exception` — Any exception raised by the wrapped `self.func`.
+
+---
+
+##### `top_n`
+
+```python
+top_n(self, count: int, n: int, *args: P.args, **kwargs: P.kwargs) -> list[~R]
+```
+
+Runs the task multiple times and returns the outputs of the top N scoring runs.
+
+**Parameters:**
+
+- **`count`**: The total number of times to run the task.
+- **`n`**: The number of top-scoring outputs to return.
+- **`*args`**: Positional arguments passed to each task execution.
+- **`**kwargs`**: Keyword arguments passed to each task execution.
+
+**Returns:** A list containing the outputs (type R) from the `n` highest-scoring executions.
+
+---
+
+##### `try_`
+
+```python
+try_(self, *args: P.args, **kwargs: P.kwargs) -> Optional[~R]
+```
+
+Executes the task, catches exceptions, and returns the output or None.
+
+Syntactic sugar for calling `try_run` and extracting the output.
+
+**Parameters:**
+
+- **`*args`**: Positional arguments for the wrapped function.
+- **`**kwargs`**: Keyword arguments for the wrapped function.
+
+**Returns:** The output (type R) if execution was successful, otherwise None.
+
+---
+
+##### `try_map`
+
+```python
+try_map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[~R]
+```
+
+Runs the task multiple times concurrently, catching exceptions, and returning outputs.
+
+Executes `try_map_run` and returns a list of outputs only from the successful runs.
+
+**Parameters:**
+
+- **`count`**: The number of times to attempt running the task.
+- **`*args`**: Positional arguments passed to each task attempt.
+- **`**kwargs`**: Keyword arguments passed to each task attempt.
+
+**Returns:** A list containing the outputs (type R) from only the successful executions.
+
+---
+
+##### `try_map_run`
+
+```python
+try_map_run(self, count: int, *args: P.args, **kwargs: P.kwargs) -> dreadnode.task.TaskSpanList[~R]
+```
+
+Runs the task multiple times concurrently, catching exceptions for each run.
+
+Executes `try_run` `count` times. Failed runs are excluded from the result list.
+
+**Parameters:**
+
+- **`count`**: The number of times to attempt running the task.
+- **`*args`**: Positional arguments passed to each task attempt.
+- **`**kwargs`**: Keyword arguments passed to each task attempt.
+
+**Returns:** A TaskSpanList containing only the TaskSpan objects from successful executions.
+
+---
+
+##### `try_run`
+
+```python
+try_run(self, *args: P.args, **kwargs: P.kwargs) -> Optional[dreadnode.tracing.TaskSpan[~R]]
+```
+
+Executes the task once, catching and logging any exceptions.
+
+Similar to `run`, but returns None instead of raising an exception if the
+underlying task function fails. Prints a basic error message if an exception occurs.
+
+**Parameters:**
+
+- **`*args`**: Positional arguments for the wrapped function.
+- **`**kwargs`**: Keyword arguments for the wrapped function.
+
+**Returns:** The TaskSpan object if execution was successful, otherwise None.
+
+---
+
+##### `try_top_n`
+
+```python
+try_top_n(self, count: int, n: int, *args: P.args, **kwargs: P.kwargs) -> list[~R]
+```
+
+Runs the task multiple times, catching exceptions, and returns top N outputs.
+
+Runs the task `count` times using `try_map_run` (ignoring failures) and then
+returns the outputs from the `n` highest-scoring successful runs.
+
+**Parameters:**
+
+- **`count`**: The total number of times to attempt running the task.
+- **`n`**: The number of top-scoring outputs to return from the successful runs.
+- **`*args`**: Positional arguments passed to each task attempt.
+- **`**kwargs`**: Keyword arguments passed to each task attempt.
+
+**Returns:** A list containing the outputs (type R) from the `n` highest-scoring
+successful executions. Returns fewer than `n` items if fewer than `n` runs succeeded.
+
+---
+
+##### `with_`
+
+```python
+with_(self, *, scorers: Optional[Sequence[Union[dreadnode.score.Scorer[~R], Callable[[~R], Union[float, dreadnode.tracing.Score, Awaitable[float | dreadnode.tracing.Score]]]]]] = None, name: str | None = None, tags: Optional[Sequence[str]] = None, append: bool = False, **attributes: Any) -> 'Task[P, R]'
+```
+
+Creates a modified copy of the Task with updated configuration.
+
+Allows overriding or appending scorers, tags, attributes, and the task name.
+
+**Parameters:**
+
+- **`scorers`**: A sequence of Scorer objects or scorer callables to associate
+with the new task. Replaces existing scorers unless `append` is True.
+- **`name`**: An optional new name for the task. If None, keeps the original name.
+- **`tags`**: An optional sequence of string tags. Replaces existing tags unless
+`append` is True.
+- **`append`**: If True, new scorers, tags, and attributes are added to the
+existing ones. If False (default), they replace the existing ones.
+- **`**attributes`**: Additional key-value attributes to associate with the task.
+Replaces or updates existing attributes based on `append`.
+
+**Returns:** A new Task instance with the specified modifications.
+
+---
+
+
+### Class `TaskSpanList`
+
+**Inherits from:** `list`
+
+A specialized list for holding TaskSpan objects.
+
+Provides convenience methods for sorting and retrieving top-scoring spans
+or their outputs. Inherits from the standard Python list.
+
+#### Methods
+
+##### `sorted`
+
+```python
+sorted(self, *, reverse: bool = True) -> 'TaskSpanList[R]'
+```
+
+Sorts the list of TaskSpans based on their average score.
+
+**Parameters:**
+
+- **`reverse`**: If True (default), sorts in descending order (highest score first).
+If False, sorts in ascending order.
+
+**Returns:** A new TaskSpanList instance containing the sorted TaskSpans.
+
+---
+
+##### `top_n`
+
+```python
+top_n(self, n: int, *, as_outputs: bool = False, reverse: bool = True) -> 'TaskSpanList[R] | list[R]'
+```
+
+Retrieves the top N TaskSpans based on score, optionally returning only their outputs.
+
+Sorts the spans using the `sorted` method and takes the top N elements.
+
+**Parameters:**
+
+- **`n`**: The number of top spans or outputs to retrieve.
+- **`as_outputs`**: If True, returns a list of the output values (type R) from the
+top N spans. If False (default), returns a TaskSpanList containing
+the top N TaskSpan objects.
+- **`reverse`**: If True (default), retrieves the highest scoring spans. If False,
+retrieves the lowest scoring spans.
+
+**Returns:** Either a TaskSpanList of the top N spans or a list of their outputs (type R),
+depending on the `as_outputs` argument.
+
+---
+
+
