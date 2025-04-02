@@ -58,7 +58,11 @@ def format_type_annotation(annotation_str: str) -> str:
 
 class MDXDoc(pydoc.HTMLDoc):
     """Formatter class for creating clean, readable MDX documentation."""
-
+    
+    def __init__(self, auth_group=None):
+        super().__init__()
+        self.auth_group = auth_group
+        
     # --- Docstring Formatting Logic ---
     def _format_docstring(self, obj: t.Any) -> str:
         """Parses and formats the docstring using a clean, traditional style with concise sections."""
@@ -164,7 +168,12 @@ class MDXDoc(pydoc.HTMLDoc):
         safe_short_name = short_name.replace("'", "''")
         output = io.StringIO()
 
-        output.write(f"---\ntitle: '{safe_short_name}'\nsidebarTitle: '{safe_short_name}'\n---\n\n")
+        # Begin frontmatter with auth group if specified
+        output.write(f"---\ntitle: '{safe_short_name}'\nsidebarTitle: '{safe_short_name}'\n")
+        if self.auth_group:
+            output.write(f"groups: [\"{self.auth_group}\"]\n")
+        output.write("---\n\n")
+
         output.write(f"# Module `{short_name}`\n\n")
         output.write(f"*(Full name: `{full_name}`)*\n\n")
 
@@ -385,12 +394,15 @@ class MDXDoc(pydoc.HTMLDoc):
         pass
 
 # --- Main execution logic ---
-def generate_mdx_docs(module_paths: t.List[str], output_dir: str, project_root: str | None = None):
+def generate_mdx_docs(module_paths: t.List[str], output_dir: str, auth_group: str = None, project_root: str | None = None):
     """Generates clean, traditional MDX documentation for Python modules."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     print(f"Output directory: {output_path.resolve()}")
-    mdx_formatter = MDXDoc()
+    
+    # Initialize formatter with auth group if specified
+    mdx_formatter = MDXDoc(auth_group=auth_group)
+    
     _project_root_path = Path(project_root).resolve() if project_root else Path.cwd()
     if str(_project_root_path) not in sys.path: 
         sys.path.insert(0, str(_project_root_path))
@@ -484,7 +496,9 @@ if __name__ == "__main__":
     parser.add_argument("modules", nargs='+', help="Paths to Python files or package directories.")
     parser.add_argument("-o", "--output-dir", default="mintlify_docs", help="Directory to write MDX files (default: mintlify_docs).")
     parser.add_argument("-p", "--project-root", default=None, help="Optional path to the project root directory (assists with import resolution). Defaults to CWD.")
+    parser.add_argument("-g", "--auth-group", choices=["crucible", "strikes", "spyglass"], 
+                        help="Optional authentication group to add to frontmatter.")
 
     args = parser.parse_args()
-    generate_mdx_docs(args.modules, args.output_dir, args.project_root)
+    generate_mdx_docs(args.modules, args.output_dir, args.auth_group, args.project_root)
     print("MDX generation complete.")
