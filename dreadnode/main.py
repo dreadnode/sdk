@@ -228,8 +228,7 @@ class Dreadnode:
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
-        ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]: ...
 
     @t.overload
     def task(
@@ -239,8 +238,7 @@ class Dreadnode:
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
-        ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]: ...
 
     def task(
         self,

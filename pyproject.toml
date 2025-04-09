@@ -78,26 +78,6 @@ emoji = "🐍"
 line-length = 120
 indent-width = 4
 target-version = "py310"
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "C",   # flake8-comprehensions
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
-    "NPY", # numpydoc
-    "A",   # flake8-annotations
-]
-ignore = [
-    "E501", # line too long, handled by ruff
-    "B008", # do not perform function calls in argument defaults
-    "C901", # too complex
-    "W191", # indentation contains tabs
-    "F722", # syntax error in forward annotation
-    "A001", # shadowing built-in
-    "A002", # shadowing built-in
-]
 exclude = [
     ".git",
     ".git-rewrite",
@@ -111,9 +91,30 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-fixable = ["ALL"]
-unfixable = ["B"]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+fixable = ["ALL"]
+ignore = [
+    "E501", # line too long, handled by ruff
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
+    "W191", # indentation contains tabs
+    "F722", # syntax error in forward annotation
+    "A001", # shadowing built-in
+    "A002", # shadowing built-in
+]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "C",   # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "NPY", # numpydoc
+    "A",   # flake8-annotations
+]
+unfixable = ["B"]
+
 
 [tool.ruff.format]
 quote-style = "double"

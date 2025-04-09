@@ -3,7 +3,7 @@ import typing as t
 
 import httpx
 from pydantic import BaseModel
-from rich import print
+from rich import print as rich_print
 
 from ..version import VERSION
 from .strikes import StrikesClient
@@ -46,27 +46,27 @@ class ApiClient:
     def _log_request(self, request: httpx.Request) -> None:
         """Log every request to the console if debug is enabled."""
 
-        print("-------------------------------------------")
-        print(f"[bold]{request.method}[/] {request.url}")
-        print("Headers:", request.headers)
-        print("Content:", request.content)
-        print("-------------------------------------------")
+        rich_print("-------------------------------------------")
+        rich_print(f"[bold]{request.method}[/] {request.url}")
+        rich_print("Headers:", request.headers)
+        rich_print("Content:", request.content)
+        rich_print("-------------------------------------------")
 
     def _log_response(self, response: httpx.Response) -> None:
         """Log every response to the console if debug is enabled."""
 
-        print("-------------------------------------------")
-        print(f"Response: {response.status_code}")
-        print("Headers:", response.headers)
-        print("Content:", response.read())
-        print("--------------------------------------------")
+        rich_print("-------------------------------------------")
+        rich_print(f"Response: {response.status_code}")
+        rich_print("Headers:", response.headers)
+        rich_print("Content:", response.read())
+        rich_print("--------------------------------------------")
 
     def _get_error_message(self, response: httpx.Response) -> str:
         """Get the error message from the response."""
 
         try:
             obj = response.json()
-            return f'{response.status_code}: {obj.get("detail", json.dumps(obj))}'
+            return f"{response.status_code}: {obj.get('detail', json.dumps(obj))}"
         except Exception:
             return str(response.content)
 
