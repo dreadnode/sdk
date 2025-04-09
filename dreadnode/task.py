@@ -62,7 +62,7 @@ class Task(t.Generic[P, R]):
     tracer: Tracer
 
     name: str
-    kind: str
+    label: str
     attributes: dict[str, t.Any]
     func: t.Callable[P, R]
     scorers: list[Scorer[R]]
@@ -86,7 +86,7 @@ class Task(t.Generic[P, R]):
         return Task(
             tracer=self.tracer,
             name=self.name,
-            kind=self.kind,
+            label=self.label,
             attributes=self.attributes.copy(),
             func=self.func,
             scorers=self.scorers.copy(),
@@ -99,13 +99,13 @@ class Task(t.Generic[P, R]):
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
-        kind: str | None = None,
+        label: str | None = None,
         append: bool = False,
         **attributes: t.Any,
     ) -> "Task[P, R]":
         task = self.clone()
         task.name = name or task.name
-        task.kind = kind or task.kind
+        task.label = label or task.label
 
         new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
@@ -141,7 +141,7 @@ class Task(t.Generic[P, R]):
 
         with TaskSpan[R](
             name=self.name,
-            kind=self.kind,
+            label=self.label,
             attributes=self.attributes,
             params=params,
             tags=self.tags,
@@ -149,7 +149,7 @@ class Task(t.Generic[P, R]):
             tracer=self.tracer,
         ) as span:
             for name, value in inputs.items():
-                span.log_input(name, value, kind=f"{self.kind}.input.{name}")
+                span.log_input(name, value, label=f"{self.label}.input.{name}")
 
             output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))
             if inspect.isawaitable(output):
@@ -158,7 +158,7 @@ class Task(t.Generic[P, R]):
             span.output = output
 
             if self.log_output:
-                span.log_output("output", output, kind=f"{self.kind}.output")
+                span.log_output("output", output, label=f"{self.label}.output")
 
             for scorer in self.scorers:
                 metric = await scorer(span.output)
@@ -190,7 +190,7 @@ class Task(t.Generic[P, R]):
             return await self.run(*args, **kwargs)
         except Exception:  # noqa: BLE001
             warn_at_user_stacklevel(
-                f"Task '{self.name}' ({self.kind}) failed:\n{traceback.format_exc()}",
+                f"Task '{self.name}' ({self.label}) failed:\n{traceback.format_exc()}",
                 TaskFailedWarning,
             )
             return None

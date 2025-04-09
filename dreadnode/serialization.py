@@ -2,7 +2,9 @@ import base64
 import contextlib
 import dataclasses
 import datetime
+import hashlib
 import io
+import json
 import typing as t
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -479,6 +481,19 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         import numpy as np
 
         handlers[np.ndarray] = _handle_numpy_array
+        handlers[np.floating] = lambda o, s: _serialize(float(o), s)
+        handlers[np.integer] = lambda o, s: _serialize(int(o), s)
+        handlers[np.bool_] = lambda o, s: _serialize(bool(o), s)
+        handlers[np.str_] = lambda o, s: _handle_str_based(
+            o,
+            s,
+            {"x-python-datatype": "numpy.str_"},
+        )
+        handlers[np.bytes_] = lambda o, s: _handle_bytes(
+            o,
+            s,
+            {"x-python-datatype": "numpy.bytes_"},
+        )
 
     with contextlib.suppress(Exception):
         import pandas as pd
@@ -497,6 +512,9 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[datasets.Dataset] = _handle_dataset
 
     return handlers
+
+
+# Core functions
 
 
 def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, JsonDict]:  # noqa: PLR0911
@@ -556,7 +574,8 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
         if hasattr(obj, "asdict"):  # e.g., namedtuple
             return _serialize(obj.asdict(), seen)
 
-    # 10. Final Fallback: Use safe_repr
+    # Fallback to repr
+
     return safe_repr(obj), {
         "type": "string",
         "title": obj_type.__name__,
@@ -564,10 +583,15 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
     }
 
 
-# --- Public API Function ---
+@dataclasses.dataclass
+class Serialized:
+    data: str
+    data_hash: str
+    schema: JsonDict
+    schema_hash: str
 
 
-def serialize(obj: t.Any) -> tuple[JsonValue, JsonDict]:
+def serialize(obj: t.Any) -> Serialized:
     """
     Serializes a Python object into a JSON-compatible structure and
     generates a corresponding JSON Schema, ensuring consistency between
@@ -577,9 +601,16 @@ def serialize(obj: t.Any) -> tuple[JsonValue, JsonDict]:
         obj: The Python object to process.
 
     Returns:
-        A tuple containing:
-          - The serialized JSON-compatible representation of the object.
-          - A JSON Schema describing the structure and format of the
-            serialized representation.
+        An object containing the serialized data, schema, and their hashes.
     """
-    return _serialize(obj)
+    serialized, schema = _serialize(obj)
+    serialized_str = json.dumps(serialized, separators=(",", ":"))
+    schema_str = json.dumps(schema, separators=(",", ":"))
+    data_hash = hashlib.sha1(serialized_str.encode()).hexdigest()[:16]  # noqa: S324 (using sha1 for speed)
+    schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324
+    return Serialized(
+        data=serialized_str,
+        schema=schema,
+        data_hash=data_hash,
+        schema_hash=schema_hash,
+    )

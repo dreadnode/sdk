@@ -144,7 +144,8 @@ class Dreadnode:
         span_processors: list[SpanProcessor] = []
         metric_readers: list[MetricReader] = []
 
-        if self.server is None and self.local_dir is False and self.send_to_logfire is not True:
+        self.server = self.server or DEFAULT_SERVER_URL
+        if self.server is None and self.local_dir is False:
             warn_at_user_stacklevel(
                 "Your current configuration won't persist run data anywhere. "
                 f"Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
@@ -160,7 +161,6 @@ class Dreadnode:
             metric_readers.append(FileMetricReader(config))
 
         if self.token is not None:
-            self.server = self.server or DEFAULT_SERVER_URL
             self._api = ApiClient(self.server, self.token)
 
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
@@ -253,7 +253,7 @@ class Dreadnode:
         *,
         scorers: None = None,
         name: str | None = None,
-        kind: str | None = None,
+        label: str | None = None,
         log_params: t.Sequence[str] | t.Literal[True] | None = None,
         log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
         log_output: bool = True,
@@ -268,7 +268,7 @@ class Dreadnode:
         *,
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
         name: str | None = None,
-        kind: str | None = None,
+        label: str | None = None,
         log_params: t.Sequence[str] | t.Literal[True] | None = None,
         log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
         log_output: bool = True,
@@ -282,7 +282,7 @@ class Dreadnode:
         *,
         scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[R]] | None = None,
         name: str | None = None,
-        kind: str | None = None,
+        label: str | None = None,
         log_params: t.Sequence[str] | t.Literal[True] | None = None,
         log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
         log_output: bool = True,
@@ -302,10 +302,10 @@ class Dreadnode:
             )
 
             _name = name or func_name
-            _kind = kind or func_name
+            _label = label or func_name
 
-            # conform our kind for sanity
-            _kind = re.sub(r"[\W_]+", "_", _kind.lower())
+            # conform our label for sanity
+            _label = re.sub(r"[\W_]+", "_", _label.lower())
 
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
@@ -313,7 +313,9 @@ class Dreadnode:
                 _attributes["code.lineno"] = func.__code__.co_firstlineno
             with contextlib.suppress(Exception):
                 _attributes.update(
-                    get_filepath_attribute(inspect.getsourcefile(func)),  # type: ignore [arg-type]
+                    get_filepath_attribute(
+                        inspect.getsourcefile(func),  # type: ignore [arg-type]
+                    ),
                 )
 
             return Task(
@@ -331,7 +333,7 @@ class Dreadnode:
                 log_params=log_params,
                 log_inputs=log_inputs,
                 log_output=log_output,
-                kind=_kind,
+                label=_label,
             )
 
         return make_task
@@ -340,7 +342,7 @@ class Dreadnode:
         self,
         name: str,
         *,
-        kind: str | None = None,
+        label: str | None = None,
         params: AnyDict | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
@@ -348,10 +350,10 @@ class Dreadnode:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("task_span() must be called within a run")
 
-        kind = kind or re.sub(r"[\W_]+", "_", name.lower())
+        label = label or re.sub(r"[\W_]+", "_", name.lower())
         return TaskSpan(
             name=name,
-            kind=kind,
+            label=label,
             attributes=attributes,
             params=params,
             tags=tags,
@@ -488,7 +490,7 @@ class Dreadnode:
         name: str,
         value: JsonValue,
         *,
-        kind: str | None = None,
+        label: str | None = None,
         to: ToObject = "task-or-run",
         **attributes: t.Any,
     ) -> None:
@@ -501,12 +503,12 @@ class Dreadnode:
                 raise RuntimeError(
                     "log_inputs() with to='task-or-run' must be called within a run or a task",
                 )
-            target.log_input(name, value, kind=kind, **attributes)
+            target.log_input(name, value, label=label, **attributes)
 
         elif to == "run":
             if run is None:
                 raise RuntimeError("log_inputs() with to='run' must be called within a run")
-            run.log_input(name, value, kind=kind, **attributes)
+            run.log_input(name, value, label=label, **attributes)
 
     def log_inputs(
         self,
@@ -521,7 +523,7 @@ class Dreadnode:
         name: str,
         value: t.Any,
         *,
-        kind: str | None = None,
+        label: str | None = None,
         to: ToObject = "task-or-run",
         **attributes: JsonValue,
     ) -> None:
@@ -534,12 +536,12 @@ class Dreadnode:
                 raise RuntimeError(
                     "log_output() with to='task-or-run' must be called within a run or a task",
                 )
-            target.log_output(name, value, kind=kind, **attributes)
+            target.log_output(name, value, label=label, **attributes)
 
         elif to == "run":
             if run is None:
                 raise RuntimeError("log_output() with to='run' must be called within a run")
-            run.log_output(name, value, kind=kind, **attributes)
+            run.log_output(name, value, label=label, **attributes)
 
     def log_outputs(
         self,

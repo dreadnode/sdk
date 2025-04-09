@@ -15,3 +15,11 @@ JsonValue = t.Union[
 JsonDict = dict[str, JsonValue]
 
 AnyDict = dict[str, t.Any]
+
+
+class Unset:
+    def __bool__(self) -> t.Literal[False]:
+        return False
+
+
+UNSET: Unset = Unset()
