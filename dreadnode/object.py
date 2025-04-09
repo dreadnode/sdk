@@ -16,12 +16,8 @@ class ObjectRef:
 
 
 @dataclass
-class _Object:
+class ObjectUri:
     hash: str
-
-
-@dataclass
-class ObjectUri(_Object):
     uri: str
     size: int
     type: t.Literal["uri"] = "uri"
@@ -29,10 +25,10 @@ class ObjectUri(_Object):
 
 
 @dataclass
-class ObjectVal(_Object):
+class ObjectVal:
+    hash: str
     value: t.Any
     type: t.Literal["val"] = "val"
-    hint: str
     attributes: JsonDict | None = None
 
 
