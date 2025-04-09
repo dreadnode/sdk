@@ -1,10 +1,44 @@
+[project]
+name = "dreadnode"
+version = "0.1.2"
+description = "Dreadnode SDK"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]
+
+[tool.coverage.run]
+branch = true
+source = ["scripts"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.sdist]
+packages = ["src"]
+
+[tool.mypy]
+strict = true
+
 [tool.poetry]
 name = "dreadnode"
 version = "0.1.2"
 description = "Dreadnode SDK"
-authors = [
-    "Nick Landers <monoxgas@gmail.com>"
-]
+authors = ["Nick Landers <monoxgas@gmail.com>"]
 repository = "https://github.com/dreadnode/sdk"
 readme = "README.md"
 
@@ -20,24 +54,25 @@ coolname = "^2.2.0"
 pandas = "^2.2.3"
 pyarrow = "^19.0.1"
 
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.8.0"
+ruff = "^0.11.4"
+pre-commit = "^4.1.0"
+pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
+types-protobuf = "^5.29.1.20250208"
+detect-secrets = "^1.5.0"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.8.0"
-ruff = "^0.1.14"
-pre-commit = "^3.8.0"
-pytest = "^8.3.3"
-pytest-asyncio = "^0.24.0"
-types-protobuf = "^5.29.1.20250208"
+[tool.readme]
+github_org = "dreadnode"
+logo_url = "https://d1lppblt9t2x15.cloudfront.net/logos/5714928f3cdc09503751580cffbe8d02.png"
+tagline = "with batteries included 🔋"
+emoji = "🐍"
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.mypy]
-strict = true
 
 [tool.ruff]
 line-length = 120
