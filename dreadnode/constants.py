@@ -11,3 +11,6 @@ ENV_PROJECT = "DREADNODE_PROJECT"
 
 DEFAULT_SERVER_URL = "https://platform.dreadnode.io"
 DEFAULT_LOCAL_OBJECT_DIR = ".dreadnode/objects"
+
+# Default values for the S3 storage
+MAX_INLINE_OBJECT_BYTES = 1 * 1024 * 1024  # 1MB

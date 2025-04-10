@@ -19,6 +19,7 @@ from logfire._internal.utils import safe_repr
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from s3fs import S3FileSystem  # type: ignore [import-untyped]
 
 from dreadnode.api.client import ApiClient
 from dreadnode.constants import (
@@ -393,7 +394,16 @@ class Dreadnode:
 
         if name is None:
             name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311
-
+        api_client = self.api()
+        credentials = api_client.get_user_data_credentials()
+        s3_file_system = S3FileSystem(
+                key=credentials.access_key_id,
+                secret=credentials.secret_access_key,
+                token=credentials.session_token,
+                endpoint_url=credentials.endpoint,
+                client_kwargs={"region_name": credentials.region}
+            )
+        prefix_path = f"{credentials.bucket}/{credentials.prefix}/"
         return RunSpan(
             name=name,
             project=project or self.project or "default",
@@ -401,6 +411,8 @@ class Dreadnode:
             tracer=self._get_tracer(),
             params=params,
             tags=tags,
+            file_system=s3_file_system,
+            prefix_path=prefix_path,
         )
 
     def push_update(self) -> None:

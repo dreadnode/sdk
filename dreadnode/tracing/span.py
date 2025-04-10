@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 
 import typing_extensions as te
+from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
 from logfire._internal.json_encoder import logfire_json_dumps as json_dumps
 from logfire._internal.json_schema import (
     JsonSchemaProperties,
@@ -21,9 +22,10 @@ from opentelemetry.trace import Tracer
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
+from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
 from dreadnode.metric import Metric, MetricDict
-from dreadnode.object import Object, ObjectRef, ObjectVal
-from dreadnode.serialization import serialize
+from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
+from dreadnode.serialization import Serialized, serialize
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
 from dreadnode.version import VERSION
 
@@ -235,6 +237,8 @@ class RunSpan(Span):
         project: str,
         attributes: AnyDict,
         tracer: Tracer,
+        file_system: AbstractFileSystem,
+        prefix_path: str,
         params: AnyDict | None = None,
         metrics: MetricDict | None = None,
         run_id: str | None = None,
@@ -252,6 +256,8 @@ class RunSpan(Span):
         self._last_pushed_metrics = deepcopy(self._metrics)
 
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
+        self._file_system = file_system
+        self._prefix_path = prefix_path
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id or ULID()),
@@ -332,23 +338,21 @@ class RunSpan(Span):
         **attributes: JsonValue,
     ) -> str:
         serialized = serialize(value)
-        object_ = ObjectVal(
-            hash=serialized.data_hash,
-            value=serialized.data,
-            schema_hash=serialized.schema_hash,
-        )
+        data_hash = serialized.data_hash
+        schema_hash = serialized.schema_hash
 
-        # check size and offload to s3 if needed
-        # if len(serialized.data) > 1 * 1024 * 1024:
-        #     pass
+        # Store object if we haven't already
+        if data_hash not in self._objects:
+            self._objects[data_hash] = self._create_object(serialized)
 
-        if serialized.data_hash not in self._objects:
-            self._objects[serialized.data_hash] = object_
+        object_ = self._objects[data_hash]
 
-        if serialized.schema_hash not in self._object_schemas:
-            self._object_schemas[serialized.schema_hash] = serialized.schema
+        # Store schema if new
+        if schema_hash not in self._object_schemas:
+            self._object_schemas[schema_hash] = serialized.schema
 
-        attributes = {
+        # Build event attributes
+        event_attributes = {
             **attributes,
             EVENT_ATTRIBUTE_OBJECT_HASH: object_.hash,
             EVENT_ATTRIBUTE_ORIGIN_SPAN_ID: trace_api.format_span_id(
@@ -356,9 +360,35 @@ class RunSpan(Span):
             ),
         }
         if label is not None:
-            attributes[EVENT_ATTRIBUTE_OBJECT_LABEL] = label
-        self.log_event(name=event_name, attributes=attributes)
+            event_attributes[EVENT_ATTRIBUTE_OBJECT_LABEL] = label
+
+        self.log_event(name=event_name, attributes=event_attributes)
         return object_.hash
+
+    def _create_object(self, serialized: Serialized) -> Object:
+        """Create an ObjectVal or ObjectUri depending on size."""
+        data = serialized.data
+        data_hash = serialized.data_hash
+        schema_hash = serialized.schema_hash
+
+        if len(data) <= MAX_INLINE_OBJECT_BYTES:
+            return ObjectVal(
+                hash=data_hash,
+                value=data,
+                schema_hash=schema_hash,
+            )
+
+        # Offload to file system (e.g., S3)
+        full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}"
+        with self._file_system.open(full_path, "w") as f:
+            f.write(data)
+
+        return ObjectUri(
+            hash=data_hash,
+            uri=self._file_system.unstrip_protocol(full_path),
+            schema_hash=schema_hash,
+            size=len(data),
+        )
 
     def get_object(self, hash_: str) -> t.Any:
         return self._objects[hash_]
