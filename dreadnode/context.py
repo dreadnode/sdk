@@ -1,3 +1,4 @@
+# type: ignore
 from __future__ import annotations
 
 import typing as t
@@ -48,7 +49,7 @@ class ContextField(CustomField, Generic[T]):
             if not self.required:
                 kwargs[self.param_name] = self.default
             else:
-                raise RuntimeError(f"Context resolution failed for {self.param_name}: {str(e)}")
+                raise RuntimeError(f"Context resolution failed for {self.param_name}: {str(e)}") from e
 
         return kwargs
 
@@ -88,12 +89,10 @@ class RunContext:
         self._scoped_context[type(value), id_] = value
 
     @t.overload
-    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[True] = True) -> T:
-        ...
+    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[True] = True) -> T: ...
 
     @t.overload
-    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[False] = ...) -> T | None:
-        ...
+    def get(self, type_: type[T], id_: str | None = None, strict: t.Literal[False] = ...) -> T | None: ...
 
     def get(self, type_: type[T], id_: str | list[str] | None = None, strict: bool = True) -> T | None:
         return self._get(type_, id_, strict)

@@ -17,12 +17,10 @@ class TaskSpanList(list[TaskSpan[R]]):
         return TaskSpanList(sorted(self, key=lambda span: span.average_score, reverse=reverse))
 
     @t.overload
-    def top_n(self, n: int, *, as_outputs: t.Literal[False] = False, reverse: bool = True) -> "TaskSpanList[R]":
-        ...
+    def top_n(self, n: int, *, as_outputs: t.Literal[False] = False, reverse: bool = True) -> "TaskSpanList[R]": ...
 
     @t.overload
-    def top_n(self, n: int, *, as_outputs: t.Literal[True], reverse: bool = True) -> list[R]:
-        ...
+    def top_n(self, n: int, *, as_outputs: t.Literal[True], reverse: bool = True) -> list[R]: ...
 
     def top_n(self, n: int, *, as_outputs: bool = False, reverse: bool = True) -> "TaskSpanList[R] | list[R]":
         sorted = self.sorted(reverse=reverse)[:n]

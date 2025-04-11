@@ -1,15 +1,49 @@
+[project]
+name = "dreadnode"
+version = "0.1.2"
+description = "Dreadnode SDK"
+requires-python = ">=3.10,<3.13"
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]
+
+[tool.coverage.run]
+branch = true
+source = ["scripts"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.sdist]
+packages = ["src"]
+
+[tool.mypy]
+strict = true
+
 [tool.poetry]
 name = "dreadnode"
 version = "0.1.2"
 description = "Dreadnode SDK"
-authors = [
-    "Nick Landers <monoxgas@gmail.com>"
-]
+authors = ["Nick Landers <monoxgas@gmail.com>"]
 repository = "https://github.com/dreadnode/sdk"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.13"
 pydantic = "^2.9.2"
 httpx = "^0.27.2"
 ruamel-yaml = "^0.18.6"
@@ -20,49 +54,30 @@ coolname = "^2.2.0"
 pandas = "^2.2.3"
 pyarrow = "^19.0.1"
 
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.8.0"
+ruff = "^0.11.4"
+pre-commit = "^4.1.0"
+pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
+types-protobuf = "^5.29.1.20250208"
+detect-secrets = "^1.5.0"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.8.0"
-ruff = "^0.1.14"
-pre-commit = "^3.8.0"
-pytest = "^8.3.3"
-pytest-asyncio = "^0.24.0"
-types-protobuf = "^5.29.1.20250208"
+[tool.readme]
+github_org = "dreadnode"
+logo_url = "https://d1lppblt9t2x15.cloudfront.net/logos/5714928f3cdc09503751580cffbe8d02.png"
+tagline = "with batteries included 🔋"
+emoji = "🐍"
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.mypy]
-strict = true
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
 target-version = "py310"
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "C",   # flake8-comprehensions
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
-    "NPY", # numpydoc
-    "A",   # flake8-annotations
-]
-ignore = [
-    "E501", # line too long, handled by ruff
-    "B008", # do not perform function calls in argument defaults
-    "C901", # too complex
-    "W191", # indentation contains tabs
-    "F722", # syntax error in forward annotation
-    "A001", # shadowing built-in
-    "A002", # shadowing built-in
-]
 exclude = [
     ".git",
     ".git-rewrite",
@@ -76,9 +91,30 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-fixable = ["ALL"]
-unfixable = ["B"]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+fixable = ["ALL"]
+ignore = [
+    "E501", # line too long, handled by ruff
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
+    "W191", # indentation contains tabs
+    "F722", # syntax error in forward annotation
+    "A001", # shadowing built-in
+    "A002", # shadowing built-in
+]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "C",   # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "NPY", # numpydoc
+    "A",   # flake8-annotations
+]
+unfixable = ["B"]
+
 
 [tool.ruff.format]
 quote-style = "double"
