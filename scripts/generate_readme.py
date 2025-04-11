@@ -1,11 +1,12 @@
 #!/usr/bin/python3
 import argparse
+import sys
 
 import tomli
 from jinja2 import Environment, FileSystemLoader
 
 
-def load_project_metadata() -> dict[str, str]:
+def load_project_metadata():
     with open("pyproject.toml", "rb") as f:
         pyproject = tomli.load(f)
     return {
@@ -15,7 +16,7 @@ def load_project_metadata() -> dict[str, str]:
 
 
 def read_file(path: str) -> str:
-    with open(path) as f:
+    with open(path, "r") as f:
         return f.read()
 
 
@@ -34,14 +35,18 @@ def get_section_content(content: str, start_marker: str, end_marker: str) -> tup
     return (content[start_idx : end_idx + len(end_marker)], start_idx, end_idx + len(end_marker))
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true", help="Print to stdout instead of writing file")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print to stdout instead of writing file"
+    )
     # Ignore unknown arguments (like filenames passed by pre-commit)
     args, _ = parser.parse_known_args()
 
     # Setup Jinja environment
-    env = Environment(loader=FileSystemLoader("templates"), trim_blocks=True, lstrip_blocks=True, autoescape=True)
+    env = Environment(
+        loader=FileSystemLoader("templates"), trim_blocks=True, lstrip_blocks=True, autoescape=True
+    )
     template = env.get_template("README.md.j2")
 
     # Load project metadata
@@ -77,10 +82,14 @@ def main() -> None:
         if not new_section:
             continue
 
-        existing_section, existing_start, existing_end = get_section_content(existing_content, start_marker, end_marker)
+        existing_section, existing_start, existing_end = get_section_content(
+            existing_content, start_marker, end_marker
+        )
         if existing_start >= 0:
             # Replace existing section
-            existing_content = existing_content[:existing_start] + new_section + existing_content[existing_end:]
+            existing_content = (
+                existing_content[:existing_start] + new_section + existing_content[existing_end:]
+            )
         else:
             # Add new section at the top after the first heading
             first_heading_end = existing_content.find("\n", existing_content.find("#"))
@@ -100,4 +109,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
