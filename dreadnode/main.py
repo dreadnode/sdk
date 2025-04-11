@@ -389,11 +389,35 @@ class Dreadnode:
         project: str | None = None,
         **attributes: t.Any,
     ) -> RunSpan:
+        """
+        Create a new run span.
+
+        Args:
+            name: The name of the run.
+            tags: Tags to add to the run.
+            params: Parameters to add to the run.
+            project: The project name.
+            attributes: Additional attributes to add to the run.
+
+        Returns:
+            A RunSpan object.
+
+        Raises:
+            RuntimeError: If the run is not initialized.
+
+        Example:
+            .. code-block:: python
+                from dreadnode import run
+                with run("my_run", tags=["tag1", "tag2"], params={"param1": "value1"}):
+                    # Your code here
+                    pass
+        """
         if not self._initialized:
             self.initialize()
 
         if name is None:
             name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311
+
         api_client = self.api()
         credentials = api_client.get_user_data_credentials()
         s3_file_system = S3FileSystem(
@@ -403,6 +427,7 @@ class Dreadnode:
                 endpoint_url=credentials.endpoint,
                 client_kwargs={"region_name": credentials.region}
             )
+
         prefix_path = f"{credentials.bucket}/{credentials.prefix}/"
         return RunSpan(
             name=name,
