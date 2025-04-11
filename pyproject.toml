@@ -59,7 +59,7 @@ mypy = "^1.8.0"
 ruff = "^0.11.4"
 pre-commit = "^4.1.0"
 pytest = "^8.3.3"
-pytest-asyncio = "^0.24.0"
+pytest-asyncio = "^0.26.0"
 types-protobuf = "^5.29.1.20250208"
 detect-secrets = "^1.5.0"
 
