@@ -7,6 +7,7 @@ import httpx
 import pandas as pd
 from pydantic import BaseModel
 from ulid import ULID
+from rich import print as rich_print
 
 from dreadnode.version import VERSION
 
@@ -58,20 +59,20 @@ class ApiClient:
     def _log_request(self, request: httpx.Request) -> None:
         """Log every request to the console if debug is enabled."""
 
-        logger.info("-------------------------------------------")
-        logger.info("%s %s", request.method, request.url)
-        logger.info("Headers: %s", request.headers)
-        logger.info("Content: %s", request.content)
-        logger.info("-------------------------------------------")
+        rich_print("-------------------------------------------")
+        rich_print(f"[bold]{request.method}[/] {request.url}")
+        rich_print("Headers:", request.headers)
+        rich_print("Content:", request.content)
+        rich_print("-------------------------------------------")
 
     def _log_response(self, response: httpx.Response) -> None:
         """Log every response to the console if debug is enabled."""
 
-        logger.info("-------------------------------------------")
-        logger.info("Status: %s", response.status_code)
-        logger.info("Headers: %s", response.headers)
-        logger.info("Content: %s", response.content)
-        logger.info("--------------------------------------------")
+        rich_print("-------------------------------------------")
+        rich_print(f"Response: {response.status_code}")
+        rich_print("Headers:", response.headers)
+        rich_print("Content:", response.read())
+        rich_print("--------------------------------------------")
 
     def _get_error_message(self, response: httpx.Response) -> str:
         """Get the error message from the response."""
