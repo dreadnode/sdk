@@ -6,8 +6,8 @@ from logging import getLogger
 import httpx
 import pandas as pd
 from pydantic import BaseModel
-from ulid import ULID
 from rich import print as rich_print
+from ulid import ULID
 
 from dreadnode.version import VERSION
 
@@ -113,6 +113,11 @@ class ApiClient:
             raise RuntimeError(self._get_error_message(response)) from e
 
         return response
+
+    # This currently won't work with API keys
+    # def get_user(self) -> UserResponse:
+    #     response = self.request("GET", "/user")
+    #     return UserResponse(**response.json())
 
     def list_projects(self) -> list[Project]:
         response = self.request("GET", "/strikes/projects")

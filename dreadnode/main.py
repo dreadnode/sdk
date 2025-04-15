@@ -13,6 +13,7 @@ from urllib.parse import urljoin
 
 import coolname  # type: ignore [import-untyped]
 import logfire
+from fsspec.implementations.local import LocalFileSystem  # type: ignore [import-untyped]
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
@@ -45,6 +46,7 @@ from dreadnode.tracing.span import (
 from .version import VERSION
 
 if t.TYPE_CHECKING:
+    from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
     from opentelemetry.sdk.metrics.export import MetricReader
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
@@ -100,6 +102,9 @@ class Dreadnode:
 
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
+
+        self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
+        self._fs_prefix: str = ".dreadnode/storage/"
 
         self._initialized = False
 
@@ -164,6 +169,13 @@ class Dreadnode:
         if self.token is not None:
             self._api = ApiClient(self.server, self.token)
 
+            try:
+                self._api.list_projects()
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(
+                    "Failed to authenticate with the provided server and token",
+                ) from e
+
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
             span_processors.append(
                 BatchSpanProcessor(
@@ -188,6 +200,16 @@ class Dreadnode:
             #         )
             #     )
             # )
+
+            credentials = self._api.get_user_data_credentials()
+            self._fs = S3FileSystem(
+                key=credentials.access_key_id,
+                secret=credentials.secret_access_key,
+                token=credentials.session_token,
+                endpoint_url=credentials.endpoint,
+                client_kwargs={"region_name": credentials.region},
+            )
+            self._fs_prefix = f"{credentials.bucket}/{credentials.prefix}/"
 
         self._logfire = logfire.configure(
             local=not self.is_default,
@@ -394,16 +416,7 @@ class Dreadnode:
 
         if name is None:
             name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311
-        api_client = self.api()
-        credentials = api_client.get_user_data_credentials()
-        s3_file_system = S3FileSystem(
-                key=credentials.access_key_id,
-                secret=credentials.secret_access_key,
-                token=credentials.session_token,
-                endpoint_url=credentials.endpoint,
-                client_kwargs={"region_name": credentials.region}
-            )
-        prefix_path = f"{credentials.bucket}/{credentials.prefix}/"
+
         return RunSpan(
             name=name,
             project=project or self.project or "default",
@@ -411,8 +424,8 @@ class Dreadnode:
             tracer=self._get_tracer(),
             params=params,
             tags=tags,
-            file_system=s3_file_system,
-            prefix_path=prefix_path,
+            file_system=self._fs,
+            prefix_path=self._fs_prefix,
         )
 
     def push_update(self) -> None:
