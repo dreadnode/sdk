@@ -5,7 +5,7 @@ if importlib.util.find_spec("transformers") is None:
 
 import typing as t
 
-from transformers.trainer_callback import (  # type: ignore [import-untyped]
+from transformers.trainer_callback import (  # type: ignore
     TrainerCallback,
     TrainerControl,
     TrainerState,
