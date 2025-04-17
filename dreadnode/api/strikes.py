@@ -57,17 +57,17 @@ class StrikeTraceLog(BaseModel):
 class StrikeTraceSpan(BaseModel):
     timestamp: datetime
     duration: int
-    trace_id: str
+    trace_id: str = Field(repr=False)
     span_id: str
-    parent_span_id: str | None
-    service_name: str | None
+    parent_span_id: str | None = Field(repr=False)
+    service_name: str | None = Field(repr=False)
     status: StrikeSpanStatus
     exception: StrikeSpanException | None
     name: str
-    attributes: dict[str, str]
-    resource_attributes: dict[str, str]
-    events: list[StrikeSpanEvent]
-    links: list[StrikeSpanLink]
+    attributes: dict[str, str] = Field(repr=False)
+    resource_attributes: dict[str, str] = Field(repr=False)
+    events: list[StrikeSpanEvent] = Field(repr=False)
+    links: list[StrikeSpanLink] = Field(repr=False)
 
 
 class ProjectMetric(BaseModel):
@@ -90,23 +90,23 @@ class StrikeProjectRunResponse(BaseModel):
     id: ULID
     name: str
     span_id: str
-    trace_id: str
+    trace_id: str = Field(repr=False)
     timestamp: datetime
     duration: int
     status: StrikeSpanStatus
     exception: StrikeSpanException | None
     tags: set[str]
-    params: dict[str, t.Any]
-    metrics: dict[str, list[ProjectMetric]]
-    schema_: dict[str, t.Any] = Field(alias="schema")
+    params: dict[str, t.Any] = Field(repr=False)
+    metrics: dict[str, list[ProjectMetric]] = Field(repr=False)
+    schema_: dict[str, t.Any] = Field(alias="schema", repr=False)
 
 
 class StrikeProjectTaskResponse(BaseModel):
     name: str
     span_id: str
-    trace_id: str
-    parent_span_id: str | None
-    parent_task_span_id: str | None
+    trace_id: str = Field(repr=False)
+    parent_span_id: str | None = Field(repr=False)
+    parent_task_span_id: str | None = Field(repr=False)
     timestamp: datetime
     duration: int
     status: StrikeSpanStatus
@@ -115,11 +115,11 @@ class StrikeProjectTaskResponse(BaseModel):
     args: dict[str, t.Any]
     output: t.Any
     scores: list[ProjectTaskScore]
-    schema_: dict[str, t.Any] = Field(alias="schema")
-    attributes: dict[str, str]
-    resource_attributes: dict[str, str]
-    events: list[StrikeSpanEvent]
-    links: list[StrikeSpanLink]
+    schema_: dict[str, t.Any] = Field(alias="schema", repr=False)
+    attributes: dict[str, str] = Field(repr=False)
+    resource_attributes: dict[str, str] = Field(repr=False)
+    events: list[StrikeSpanEvent] = Field(repr=False)
+    links: list[StrikeSpanLink] = Field(repr=False)
 
 
 class CreateStrikeProjectRequest(BaseModel):
@@ -140,7 +140,7 @@ class StrikeProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     run_count: int
-    last_run: StrikeProjectRunResponse | None
+    last_run: StrikeProjectRunResponse | None = Field(repr=False)
 
 
 # Client
@@ -186,7 +186,7 @@ class StrikesClient:
         *,
         filter: str | None = None,
         # format: ExportFormat = "parquet",
-        status: StatusFilter = "completed",
+        status: StatusFilter = "all",
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
         response = self._client.request(
@@ -207,7 +207,7 @@ class StrikesClient:
         *,
         filter: str | None = None,
         # format: ExportFormat = "parquet",
-        status: StatusFilter = "completed",
+        status: StatusFilter = "all",
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
@@ -230,7 +230,7 @@ class StrikesClient:
         *,
         filter: str | None = None,
         # format: ExportFormat = "parquet",
-        status: StatusFilter = "completed",
+        status: StatusFilter = "all",
         parameters: list[str] | None = None,
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
@@ -255,7 +255,7 @@ class StrikesClient:
         *,
         filter: str | None = None,
         # format: ExportFormat = "parquet",
-        status: StatusFilter = "completed",
+        status: StatusFilter = "all",
         metrics: list[str] | None = None,
         time_axis: TimeAxisType = "relative",
         aggregations: list[TimeAggregationType] | None = None,
