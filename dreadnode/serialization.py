@@ -328,7 +328,16 @@ def _handle_pydantic_model(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, Json
     if not isinstance(obj, pydantic.BaseModel):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
-    return obj.model_dump(mode="json"), obj.model_json_schema()
+    schema: JsonDict = {
+        "type": "object",
+        "title": type(obj).__name__,
+        "x-python-datatype": "pydantic.BaseModel",
+    }
+
+    with contextlib.suppress(Exception):
+        schema = obj.model_json_schema()
+
+    return obj.model_dump(mode="json"), schema
 
 
 def _handle_numpy_array(
