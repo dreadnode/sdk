@@ -594,10 +594,15 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
 
 @dataclasses.dataclass
 class Serialized:
-    data: str
+    data: JsonValue | None
+    data_bytes: bytes | None
+    data_len: int
     data_hash: str
     schema: JsonDict
     schema_hash: str
+
+
+EMPTY_HASH = "0" * 16
 
 
 def serialize(obj: t.Any) -> Serialized:
@@ -613,13 +618,27 @@ def serialize(obj: t.Any) -> Serialized:
         An object containing the serialized data, schema, and their hashes.
     """
     serialized, schema = _serialize(obj)
-    serialized_str = json.dumps(serialized, separators=(",", ":"))
+
+    if isinstance(serialized, str | int | bool | float):
+        serialized_bytes = str(serialized).encode()
+    else:
+        serialized_bytes = json.dumps(serialized, separators=(",", ":")).encode()
+
     schema_str = json.dumps(schema, separators=(",", ":"))
-    data_hash = hashlib.sha1(serialized_str.encode()).hexdigest()[:16]  # noqa: S324 (using sha1 for speed)
-    schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324
+
+    data_hash = EMPTY_HASH
+    if serialized is not None:
+        data_hash = hashlib.sha1(serialized_bytes).hexdigest()[:16]  # noqa: S324 (using sha1 for speed)
+
+    schema_hash = EMPTY_HASH
+    if schema and schema != EMPTY_SCHEMA:
+        schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324
+
     return Serialized(
-        data=serialized_str,
-        schema=schema,
+        data=serialized,
+        data_bytes=serialized_bytes if serialized is not None else None,
+        data_len=len(serialized_bytes) if serialized is not None else 0,
         data_hash=data_hash,
+        schema=schema,
         schema_hash=schema_hash,
     )

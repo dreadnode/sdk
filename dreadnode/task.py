@@ -39,7 +39,8 @@ class TaskSpanList(list[TaskSpan[R]]):
         ...
 
     @t.overload
-    def top_n(self, n: int, *, as_outputs: t.Literal[True], reverse: bool = True) -> list[R]: ...
+    def top_n(self, n: int, *, as_outputs: t.Literal[True], reverse: bool = True) -> list[R]:
+        ...
 
     def top_n(
         self,

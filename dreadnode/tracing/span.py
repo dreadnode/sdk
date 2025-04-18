@@ -368,10 +368,11 @@ class RunSpan(Span):
     def _create_object(self, serialized: Serialized) -> Object:
         """Create an ObjectVal or ObjectUri depending on size."""
         data = serialized.data
+        data_len = serialized.data_len
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        if len(data) <= MAX_INLINE_OBJECT_BYTES:
+        if data is None or data_len <= MAX_INLINE_OBJECT_BYTES:
             return ObjectVal(
                 hash=data_hash,
                 value=data,
@@ -380,14 +381,14 @@ class RunSpan(Span):
 
         # Offload to file system (e.g., S3)
         full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}"
-        with self._file_system.open(full_path, "w") as f:
-            f.write(data)
+        with self._file_system.open(full_path, "wb") as f:
+            f.write(serialized.data_bytes)
 
         return ObjectUri(
             hash=data_hash,
             uri=self._file_system.unstrip_protocol(full_path),
             schema_hash=schema_hash,
-            size=len(data),
+            size=data_len,
         )
 
     def get_object(self, hash_: str) -> t.Any:
