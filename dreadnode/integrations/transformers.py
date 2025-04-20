@@ -27,6 +27,13 @@ def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
 
 
 class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
+    """
+    An implementation of the `TrainerCallback` interface for Dreadnode.
+
+    This callback is used to log metrics and parameters to Dreadnode during training inside
+    the `transformers` library or derivations (`trl`, etc.).
+    """
+
     def __init__(
         self,
         project: str | None = None,
@@ -67,7 +74,9 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         combined_dict = {**args.to_sanitized_dict()}
 
         if hasattr(model, "config") and model.config is not None:
-            model_config = model.config if isinstance(model.config, dict) else model.config.to_dict()
+            model_config = (
+                model.config if isinstance(model.config, dict) else model.config.to_dict()
+            )
             for key, value in model_config.items():
                 combined_dict[f"model/{key}"] = value
         if hasattr(model, "peft_config") and model.peft_config is not None:
@@ -98,7 +107,11 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
             self._setup(args, state, model)
 
     def on_train_end(
-        self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: t.Any
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: t.Any,
     ) -> None:
         self._shutdown()
 
