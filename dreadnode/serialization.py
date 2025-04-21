@@ -398,16 +398,92 @@ def _handle_pil_image(
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
     buffer = io.BytesIO()
-    obj.save(buffer, format="PNG")
+    export_format = "PNG"
+
+    if hasattr(obj, "format") and isinstance(obj.format, str):
+        export_format = obj.format.lower()
+
+    obj.save(buffer, format=export_format)
 
     return _handle_bytes(
         buffer.getvalue(),
         _seen,
         {
             "x-python-datatype": "PIL.Image",
-            "format": "png",
+            "format": export_format.lower(),
         },
     )
+
+
+def _handle_pydub_audio_segment(
+    obj: t.Any,
+    _seen: set[int],
+) -> tuple[JsonValue, JsonDict]:
+    from pydub import AudioSegment  # type: ignore[import-untyped]
+
+    if not isinstance(obj, AudioSegment):
+        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
+
+    # AudioSegment can be in different formats, but we will use WAV as a default
+    # Since there is no way to get the format from the AudioSegment object, we will use WAV
+    # as a default format for export. TODO: Add a way to get the format from the user via tags may be.
+    export_format = "wav"
+    # Raw audio data from AudioSegment class is in bytes format.
+    raw_bytes_data = obj.raw_data
+    schema = {
+            "x-python-datatype": "pydub.AudioSegment",
+            "format": export_format,
+            "x-audio-sample-rate": obj.frame_rate,
+            "x-audio-channels": obj.channels,
+            "x-audio-sample-width": obj.sample_width,
+        }
+
+    return _handle_bytes(raw_bytes_data, _seen, schema)
+
+
+def _handle_moviepy_video_clip(
+    obj: t.Any,
+    _seen: set[int],
+) -> tuple[JsonValue, JsonDict]:
+    import tempfile
+    from pathlib import Path
+
+    from moviepy import VideoFileClip  # type: ignore[import-untyped]
+
+    if not isinstance(obj, VideoFileClip):
+        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
+
+    # Infer format from filename if available
+    export_format = "mp4"
+    if getattr(obj, "filename", None):
+        ext = Path(obj.filename).suffix.lstrip(".").lower()
+        if ext:
+            export_format = ext
+
+    # Export video to temp file
+    with tempfile.NamedTemporaryFile(suffix=f".{export_format}") as temp_file:
+        obj.write_videofile(
+            temp_file.name,
+        )
+        with open(temp_file.name, "rb") as f:
+            raw_bytes_data = f.read()
+
+    schema = {
+        "x-python-datatype": "moviepy.VideoFileClip",
+        "format": export_format,
+        "start": obj.start,
+        "end": obj.end,
+        "duration": obj.duration,
+        "fps": obj.fps,
+        "size": obj.size,
+        "rotation": obj.rotation,
+        "aspect_ratio": obj.aspect_ratio,
+        "w": obj.w,
+        "h": obj.h,
+        "n_frames": obj.n_frames,
+    }
+
+    return _handle_bytes(raw_bytes_data, _seen, schema)
 
 
 def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
@@ -519,6 +595,18 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         import datasets
 
         handlers[datasets.Dataset] = _handle_dataset
+
+    with contextlib.suppress(Exception):
+
+        from pydub import AudioSegment
+
+        handlers[AudioSegment] = _handle_pydub_audio_segment
+
+    with contextlib.suppress(Exception):
+
+        from moviepy import VideoFileClip
+
+        handlers[VideoFileClip] = _handle_moviepy_video_clip
 
     return handlers
 

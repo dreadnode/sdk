@@ -55,6 +55,8 @@ pandas = "^2.2.3"
 pyarrow = "^19.0.1"
 loguru = "^0.7.3"
 fsspec = {extras = ["s3"], version = "^2025.3.0"}
+pydub = "^0.25.1"
+moviepy = "^2.1.2"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
