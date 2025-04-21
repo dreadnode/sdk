@@ -36,7 +36,7 @@ class ArtifactStorage:
         Args:
             file_system: FSSpec-compatible file system
         """
-        self.file_system = file_system
+        self._file_system = file_system
 
     def store_file(self, file_path: Path, target_key: str) -> str:
         """
@@ -79,11 +79,11 @@ class ArtifactStorage:
             Exception: For any other unexpected errors during the file storage process.
         """
         try:
-            if not self.file_system.exists(target_key):
+            if not self._file_system.exists(target_key):
                 logger.info("Storing small file: %s to %s", file_path, target_key)
                 with file_path.open("rb") as f_in:
                     data = f_in.read()
-                    with self.file_system.open(target_key, "wb") as f_out:
+                    with self._file_system.open(target_key, "wb") as f_out:
                         f_out.write(data)
                 logger.info("File successfully stored at %s", target_key)
             else:
@@ -98,7 +98,7 @@ class ArtifactStorage:
             )
             raise
 
-        return str(self.file_system.unstrip_protocol(target_key))
+        return str(self._file_system.unstrip_protocol(target_key))
 
     def _store_large_file(self, file_path: Path, target_key: str, file_size: int) -> str:
         """
@@ -124,7 +124,7 @@ class ArtifactStorage:
             Exception: For any unexpected errors during the file storage process.
         """
         try:
-            if not self.file_system.exists(target_key):
+            if not self._file_system.exists(target_key):
                 logger.info("Storing large file: %s to %s", file_path, target_key)
 
                 # Check if multipart upload is supported
@@ -145,7 +145,7 @@ class ArtifactStorage:
             )
             raise
 
-        return str(self.file_system.unstrip_protocol(target_key))
+        return str(self._file_system.unstrip_protocol(target_key))
 
     def _supports_multipart_upload(self) -> bool:
         """
@@ -162,8 +162,8 @@ class ArtifactStorage:
         Returns:
             bool: True if the file system supports multipart uploads, False otherwise.
         """
-        return hasattr(self.file_system, "_s3") and hasattr(
-            self.file_system,
+        return hasattr(self._file_system, "_s3") and hasattr(
+            self._file_system,
             "initiate_multipart_upload",
         )
 
@@ -198,7 +198,7 @@ class ArtifactStorage:
 
             # Initiate multipart upload
             logger.info("Initiating multipart upload for %s to %s", file_path, target_key)
-            mpu = self.file_system.initiate_multipart_upload(target_key)
+            mpu = self._file_system.initiate_multipart_upload(target_key)
 
             # Upload parts
             parts = []
@@ -213,12 +213,12 @@ class ArtifactStorage:
                         num_parts,
                         target_key,
                     )
-                    etag = self.file_system.upload_part(mpu, part_number, data)
+                    etag = self._file_system.upload_part(mpu, part_number, data)
                     parts.append({"PartNumber": part_number, "ETag": etag})
 
             # Complete the multipart upload
             logger.info("Completing multipart upload for %s to %s", file_path, target_key)
-            self.file_system.complete_multipart_upload(mpu, parts)
+            self._file_system.complete_multipart_upload(mpu, parts)
 
         except (OSError, fsspec.exceptions.FSTimeoutError) as e:
             logger.warning(
@@ -249,7 +249,7 @@ class ArtifactStorage:
             file_path (Path): Path to the local file to be uploaded.
             target_key (str): Key/path where the file should be stored in the file system.
         """
-        with self.file_system.open(target_key, "wb") as f_out, file_path.open("rb") as f_in:
+        with self._file_system.open(target_key, "wb") as f_out, file_path.open("rb") as f_in:
             for chunk in iter(lambda: f_in.read(PART_SIZE), b""):
                 f_out.write(chunk)
 
@@ -267,13 +267,13 @@ class ArtifactStorage:
 
         if file_size < MULTIPART_THRESHOLD:
             # Small file - read entirely
-            with Path.open(file_path, "rb") as f:
+            with file_path.open("rb") as f:
                 data = f.read()
                 return hashlib.sha1(data).hexdigest()[:16]  # noqa: S324
         else:
             # Large file - stream in chunks
             sha1 = hashlib.sha1()  # noqa: S324
-            with Path.open(file_path, "rb") as f:
+            with file_path.open("rb") as f:
                 for chunk in iter(lambda: f.read(PART_SIZE), b""):
                     sha1.update(chunk)
             return sha1.hexdigest()[:16]

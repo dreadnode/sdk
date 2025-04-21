@@ -29,7 +29,7 @@ from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
 from dreadnode.storage.artifact_storage import ArtifactStorage
-from dreadnode.tracing.artifact_tree import ArtifactTreeBuilder, DirectoryNode
+from dreadnode.tracing.artifact_tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
 from dreadnode.version import VERSION
 
@@ -471,54 +471,6 @@ class RunSpan(Span):
         )
         self._inputs.append(ObjectRef(name, label=label, hash=hash_))
 
-    # def log_artifact(
-    #     self,
-    #     local_uri: str | Path,
-    # ) -> ArtifactUri:
-    #     """
-    #     Logs a local file as an artifact to the object store using a SHA1 content hash
-    #     as the key. Adds metadata including size, MIME type, and extension.
-
-    #     Args:
-    #         local_uri: The path to the local file to be logged.
-
-    #     Returns:
-    #         An ArtifactUri containing the object store URI and associated metadata.
-
-    #     Raises:
-    #         FileNotFoundError: If the given local_uri does not point to an existing file.
-    #     """
-    #     local_path = Path(local_uri).expanduser()
-    #     if not local_path.exists():
-    #         raise FileNotFoundError(f"{local_path} does not exist")
-    #     local_path = local_path.resolve()
-
-    #     # Read file content
-    #     with local_path.open("rb") as f:
-    #         data = f.read()
-
-    #     # Compute SHA1 hash on the binary data
-    #     data_hash = hashlib.sha1(data).hexdigest()[:16]  # (using sha1 for speed)
-    #     file_extension = local_path.suffix  # includes the dot, like ".csv"
-    #     full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}{file_extension}"
-
-    #     # Store and get object URI
-    #     object_uri = self._store_file_by_hash(data, full_path)
-    #     size_bytes = len(data)
-    #     mime_type, _ = mimetypes.guess_type(str(local_path))
-
-    #     # Build and return artifact
-    #     artifact = ArtifactUri(
-    #         uri=object_uri,
-    #         sha1=data_hash,
-    #         size_bytes=size_bytes,
-    #         mime_type=mime_type,
-    #         file_extension=file_extension.lstrip("."),
-    #     )
-    #     self._artifacts.append(artifact)
-
-    #     return artifact
-
     def log_artifact(
         self,
         local_uri: str | Path,
@@ -536,18 +488,13 @@ class RunSpan(Span):
         Raises:
             FileNotFoundError: If the path doesn't exist
         """
-        # Create storage using the existing file_system
         storage = ArtifactStorage(file_system=self._file_system)
 
         tree_builder = ArtifactTreeBuilder(
             storage=storage,
             prefix_path=self._prefix_path,
         )
-
-        # Process the artifact
         artifact_tree = tree_builder.process_artifact(local_uri)
-
-        # Store in span artifacts attribute
         self._artifacts.append(artifact_tree)
 
         return artifact_tree
