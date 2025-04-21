@@ -38,8 +38,9 @@ class Task(t.Generic[P, R]):
     tags: list[str]
 
     def __post_init__(self) -> None:
-        self.__signature__ = inspect.signature(self.func)
+        self.__signature__ = getattr(self.func, "__signature__", inspect.signature(self.func))
         self.__name__ = getattr(self.func, "__name__", self.name)
+        self.__doc__ = getattr(self.func, "__doc__", None)
 
     def _bind_args(self, *args: P.args, **kwargs: P.kwargs) -> dict[str, t.Any]:
         signature = inspect.signature(self.func)
