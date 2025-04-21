@@ -7,6 +7,21 @@ from ulid import ULID
 
 AnyDict = dict[str, t.Any]
 
+# User
+
+
+class UserAPIKey(BaseModel):
+    key: str
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email_address: str
+    username: str
+    api_key: UserAPIKey
+
+
+# Strikes
 
 SpanStatus = t.Literal[
     "pending",  # A pending span has been created
@@ -84,6 +99,36 @@ class Metric(BaseModel):
     attributes: AnyDict
 
 
+class ObjectRef(BaseModel):
+    name: str
+    label: str
+    hash: str
+
+
+class ObjectUri(BaseModel):
+    hash: str
+    schema_hash: str
+    uri: str
+    size: int
+    type: t.Literal["uri"]
+
+
+class ObjectVal(BaseModel):
+    hash: str
+    schema_hash: str
+    value: t.Any
+    type: t.Literal["val"]
+
+
+Object = ObjectUri | ObjectVal
+
+
+class V0Object(BaseModel):
+    name: str
+    label: str
+    value: t.Any
+
+
 class Run(BaseModel):
     id: ULID
     name: str
@@ -94,12 +139,13 @@ class Run(BaseModel):
     status: SpanStatus
     exception: SpanException | None
     tags: set[str]
-    params: dict[str, t.Any]
+    params: AnyDict
     metrics: dict[str, list[Metric]]
-    inputs: AnyDict
-    outputs: AnyDict
-    objects: AnyDict
-    schema_: dict[str, t.Any] = Field(alias="schema")
+    inputs: list[ObjectRef]
+    outputs: list[ObjectRef]
+    objects: dict[str, Object]
+    object_schemas: AnyDict
+    schema_: AnyDict = Field(alias="schema")
 
 
 class Task(BaseModel):
@@ -113,11 +159,11 @@ class Task(BaseModel):
     status: SpanStatus
     exception: SpanException | None
     tags: set[str]
-    params: dict[str, t.Any]
+    params: AnyDict
     metrics: dict[str, list[Metric]]
-    inputs: AnyDict
-    outputs: AnyDict
-    schema_: dict[str, t.Any] = Field(alias="schema")
+    inputs: list[ObjectRef] | list[V0Object]  # v0 compat
+    outputs: list[ObjectRef] | list[V0Object]  # v0 compat
+    schema_: AnyDict = Field(alias="schema")
     attributes: AnyDict
     resource_attributes: AnyDict
     events: list[SpanEvent]

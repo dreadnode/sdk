@@ -395,10 +395,11 @@ class RunSpan(Span):
     def _create_object(self, serialized: Serialized) -> Object:
         """Create an ObjectVal or ObjectUri depending on size."""
         data = serialized.data
+        data_len = serialized.data_len
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        if len(data) <= MAX_INLINE_OBJECT_BYTES:
+        if data is None or data_len <= MAX_INLINE_OBJECT_BYTES:
             return ObjectVal(
                 hash=data_hash,
                 value=data,
@@ -414,7 +415,7 @@ class RunSpan(Span):
             hash=data_hash,
             uri=object_uri,
             schema_hash=schema_hash,
-            size=len(data),
+            size=data_len,
         )
 
     def get_object(self, hash_: str) -> t.Any:
