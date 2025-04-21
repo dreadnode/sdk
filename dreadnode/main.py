@@ -397,12 +397,12 @@ class Dreadnode:
         api_client = self.api()
         credentials = api_client.get_user_data_credentials()
         s3_file_system = S3FileSystem(
-                key=credentials.access_key_id,
-                secret=credentials.secret_access_key,
-                token=credentials.session_token,
-                endpoint_url=credentials.endpoint,
-                client_kwargs={"region_name": credentials.region}
-            )
+            key=credentials.access_key_id,
+            secret=credentials.secret_access_key,
+            token=credentials.session_token,
+            endpoint_url=credentials.endpoint,
+            client_kwargs={"region_name": credentials.region},
+        )
         prefix_path = f"{credentials.bucket}/{credentials.prefix}/"
         return RunSpan(
             name=name,
@@ -496,6 +496,28 @@ class Dreadnode:
             if run is None:
                 raise RuntimeError("log_metric() with to='run' must be called within a run")
             run.log_metric(key, metric, origin=origin)
+
+    def log_artifact(
+        self,
+        local_uri: str | Path,
+        *,
+        to: ToObject = "task-or-run",
+    ) -> None:
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        if to == "task-or-run":
+            target = task or run
+            if target is None:
+                raise RuntimeError(
+                    "log_artifact() with to='task-or-run' must be called within a run or a task",
+                )
+            target.log_artifact(local_uri=local_uri)
+
+        elif to == "run":
+            if run is None:
+                raise RuntimeError("log_artifact() with to='run' must be called within a run")
+            run.log_artifact(local_uri=local_uri)
 
     def log_input(
         self,

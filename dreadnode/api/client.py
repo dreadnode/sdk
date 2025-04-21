@@ -6,8 +6,8 @@ from logging import getLogger
 import httpx
 import pandas as pd
 from pydantic import BaseModel
-from ulid import ULID
 from rich import print as rich_print
+from ulid import ULID
 
 from dreadnode.version import VERSION
 
