@@ -27,7 +27,15 @@ from .constants import ENV_API_TOKEN, ENV_LOCAL_DIR, ENV_PROJECT, ENV_SERVER_URL
 from .exporters import FileExportConfig, FileMetricReader, FileSpanExporter
 from .score import Scorer, ScorerCallable, T
 from .task import P, R, Task
-from .tracing import JsonValue, RunSpan, Score, Span, TaskSpan, current_run_span, current_task_span
+from .tracing import (
+    JsonValue,
+    RunSpan,
+    Score,
+    Span,
+    TaskSpan,
+    current_run_span,
+    current_task_span,
+)
 from .version import VERSION
 
 
@@ -127,7 +135,10 @@ class Dreadnode:
             )
 
         if self.local_dir is not False:
-            config = FileExportConfig(base_path=self.local_dir, prefix=self.project + "-" if self.project else "")
+            config = FileExportConfig(
+                base_path=self.local_dir,
+                prefix=self.project + "-" if self.project else "",
+            )
             span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
             metric_readers.append(FileMetricReader(config))
 
@@ -228,7 +239,8 @@ class Dreadnode:
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]: ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
+        ...
 
     @t.overload
     def task(
@@ -238,7 +250,8 @@ class Dreadnode:
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]: ...
+    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
+        ...
 
     def task(
         self,
@@ -249,21 +262,26 @@ class Dreadnode:
         **attributes: t.Any,
     ) -> t.Callable[[t.Callable[P, t.Awaitable[R]]], Task[P, R]]:
         def make_task(func: t.Callable[P, t.Awaitable[R]]) -> Task[P, R]:
-            func = inspect.unwrap(func)
-
-            qualified_func_name = func_name = getattr(func, "__qualname__", getattr(func, "__name__", safe_repr(func)))
+            unwrapped = inspect.unwrap(func)
+            qualified_func_name = func_name = getattr(
+                unwrapped,
+                "__qualname__",
+                getattr(unwrapped, "__name__", safe_repr(unwrapped)),
+            )
 
             with contextlib.suppress(Exception):
-                qualified_func_name = f"{inspect.getmodule(func).__name__}.{func_name}"  # type: ignore
+                qualified_func_name = f"{inspect.getmodule(unwrapped).__name__}.{func_name}"  # type: ignore
 
             _name = name or qualified_func_name
 
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
             with contextlib.suppress(Exception):
-                _attributes["code.lineno"] = func.__code__.co_firstlineno
+                _attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
             with contextlib.suppress(Exception):
-                _attributes.update(get_filepath_attribute(inspect.getsourcefile(func)))  # type: ignore
+                _attributes.update(
+                    get_filepath_attribute(inspect.getsourcefile(unwrapped))  # type: ignore
+                )
 
             return Task(
                 tracer=self._get_tracer(),
