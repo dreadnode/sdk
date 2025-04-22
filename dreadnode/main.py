@@ -244,8 +244,10 @@ class Dreadnode:
                 key=credentials.access_key_id,
                 secret=credentials.secret_access_key,
                 token=credentials.session_token,
-                endpoint_url=credentials.endpoint,
-                client_kwargs={"region_name": credentials.region},
+                client_kwargs={
+                    "endpoint_url": credentials.endpoint,
+                    "region_name": credentials.region,
+                },
             )
             self._fs_prefix = f"{credentials.bucket}/{credentials.prefix}/"
 
