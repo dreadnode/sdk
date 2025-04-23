@@ -73,7 +73,10 @@ current_task_span: ContextVar["TaskSpan[t.Any] | None"] = ContextVar(
     "current_task_span",
     default=None,
 )
-current_run_span: ContextVar["RunSpan | None"] = ContextVar("current_run_span", default=None)
+current_run_span: ContextVar["RunSpan | None"] = ContextVar(
+    "current_run_span",
+    default=None,
+)
 
 
 class Span(ReadableSpan):
@@ -300,7 +303,11 @@ class RunSpan(Span):
         self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_OBJECTS, self._objects, schema=False)
-        self.set_attribute(SPAN_ATTRIBUTE_OBJECT_SCHEMAS, self._object_schemas, schema=False)
+        self.set_attribute(
+            SPAN_ATTRIBUTE_OBJECT_SCHEMAS,
+            self._object_schemas,
+            schema=False,
+        )
         self.set_attribute(SPAN_ATTRIBUTE_ARTIFACTS, self._artifacts, schema=False)
 
         # Mark our objects attribute as large so it's stored separately
@@ -428,7 +435,12 @@ class RunSpan(Span):
     def get_object(self, hash_: str) -> t.Any:
         return self._objects[hash_]
 
-    def link_objects(self, object_hash: str, link_hash: str, **attributes: JsonValue) -> None:
+    def link_objects(
+        self,
+        object_hash: str,
+        link_hash: str,
+        **attributes: JsonValue,
+    ) -> None:
         self.log_event(
             name=EVENT_NAME_OBJECT_LINK,
             attributes={
@@ -454,8 +466,8 @@ class RunSpan(Span):
         for key, value in params.items():
             self._params[key] = value
 
-        if self._span is None:
-            return
+        # Always push updates for run params
+        self.push_update()
 
     @property
     def inputs(self) -> AnyDict:
@@ -780,7 +792,9 @@ class TaskSpan(Span, t.Generic[R]):
         )
 
 
-def prepare_otlp_attributes(attributes: AnyDict) -> dict[str, otel_types.AttributeValue]:
+def prepare_otlp_attributes(
+    attributes: AnyDict,
+) -> dict[str, otel_types.AttributeValue]:
     return {key: prepare_otlp_attribute(value) for key, value in attributes.items()}
 
 

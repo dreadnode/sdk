@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import inspect
 import os
@@ -34,7 +32,11 @@ from dreadnode.constants import (
 )
 from dreadnode.metric import Metric, Scorer, ScorerCallable, T
 from dreadnode.task import P, R, Task
-from dreadnode.tracing.exporters import FileExportConfig, FileMetricReader, FileSpanExporter
+from dreadnode.tracing.exporters import (
+    FileExportConfig,
+    FileMetricReader,
+    FileSpanExporter,
+)
 from dreadnode.tracing.span import (
     RunSpan,
     Span,
@@ -42,8 +44,11 @@ from dreadnode.tracing.span import (
     current_run_span,
     current_task_span,
 )
-
-from .version import VERSION
+from dreadnode.types import (
+    AnyDict,
+    JsonValue,
+)
+from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
@@ -51,10 +56,6 @@ if t.TYPE_CHECKING:
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
 
-    from dreadnode.types import (
-        AnyDict,
-        JsonValue,
-    )
 
 ToObject = t.Literal["task-or-run", "run"]
 
@@ -244,8 +245,10 @@ class Dreadnode:
                 key=credentials.access_key_id,
                 secret=credentials.secret_access_key,
                 token=credentials.session_token,
-                endpoint_url=credentials.endpoint,
-                client_kwargs={"region_name": credentials.region},
+                client_kwargs={
+                    "endpoint_url": credentials.endpoint,
+                    "region_name": credentials.region,
+                },
             )
             self._fs_prefix = f"{credentials.bucket}/{credentials.prefix}/"
 
@@ -292,7 +295,7 @@ class Dreadnode:
 
         return self._api
 
-    def _get_tracer(self, *, is_span_tracer: bool = True) -> Tracer:
+    def _get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
         return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
             self.otel_scope,
             VERSION,
@@ -350,6 +353,53 @@ class Dreadnode:
             tags=tags,
         )
 
+    # Some excessive typing here to ensure we can properly
+    # overload our decorator for sync/async and cases
+    # where we need the return type of the task to align
+    # with the scorer inputs
+
+    class TaskDecorator(t.Protocol):
+        @t.overload
+        def __call__(
+            self,
+            func: t.Callable[P, t.Awaitable[R]],
+        ) -> Task[P, R]:
+            ...
+
+        @t.overload
+        def __call__(
+            self,
+            func: t.Callable[P, R],
+        ) -> Task[P, R]:
+            ...
+
+        def __call__(
+            self,
+            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
+        ) -> Task[P, R]:
+            ...
+
+    class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
+        @t.overload
+        def __call__(
+            self,
+            func: t.Callable[P, t.Awaitable[R]],
+        ) -> Task[P, R]:
+            ...
+
+        @t.overload
+        def __call__(
+            self,
+            func: t.Callable[P, R],
+        ) -> Task[P, R]:
+            ...
+
+        def __call__(
+            self,
+            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
+        ) -> Task[P, R]:
+            ...
+
     @t.overload
     def task(
         self,
@@ -362,7 +412,7 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
+    ) -> TaskDecorator:
         ...
 
     @t.overload
@@ -377,13 +427,13 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
+    ) -> ScoredTaskDecorator[R]:
         ...
 
     def task(
         self,
         *,
-        scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[R]] | None = None,
+        scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[t.Any]] | None = None,
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | t.Literal[True] | None = None,
@@ -391,7 +441,7 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> t.Callable[[t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]], Task[P, R]]:
+    ) -> TaskDecorator:
         """
         Create a new task from a function.
 
@@ -419,14 +469,18 @@ class Dreadnode:
             A new Task object.
         """
 
-        def make_task(func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]) -> Task[P, R]:
-            func = inspect.unwrap(func)
+        def make_task(
+            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
+        ) -> Task[P, R]:
+            unwrapped = inspect.unwrap(func)
 
-            if inspect.isgeneratorfunction(func) or inspect.isasyncgenfunction(func):
+            if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
+                unwrapped,
+            ):
                 raise TypeError("@task cannot be applied to generators")
 
             func_name = getattr(
-                func,
+                unwrapped,
                 "__qualname__",
                 getattr(func, "__name__", safe_repr(func)),
             )
@@ -440,11 +494,11 @@ class Dreadnode:
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
             with contextlib.suppress(Exception):
-                _attributes["code.lineno"] = func.__code__.co_firstlineno
+                _attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
             with contextlib.suppress(Exception):
                 _attributes.update(
                     get_filepath_attribute(
-                        inspect.getsourcefile(func),  # type: ignore [arg-type]
+                        inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
                     ),
                 )
 
@@ -630,7 +684,13 @@ class Dreadnode:
 
         run.push_update()
 
-    def log_param(self, key: str, value: JsonValue, *, to: ToObject = "task-or-run") -> None:
+    def log_param(
+        self,
+        key: str,
+        value: JsonValue,
+        *,
+        to: ToObject = "task-or-run",
+    ) -> None:
         """
         Log a single parameter to the current task or run.
 
@@ -689,7 +749,9 @@ class Dreadnode:
 
         elif to == "run":
             if run is None:
-                raise RuntimeError("log_params() with to='run' must be called within a run")
+                raise RuntimeError(
+                    "log_params() with to='run' must be called within a run",
+                )
             run.log_params(**params)
 
     @t.overload
@@ -789,7 +851,9 @@ class Dreadnode:
 
         elif to == "run":
             if run is None:
-                raise RuntimeError("log_metric() with to='run' must be called within a run")
+                raise RuntimeError(
+                    "log_metric() with to='run' must be called within a run",
+                )
             run.log_metric(key, metric, origin=origin)
 
     def log_artifact(
@@ -883,7 +947,9 @@ class Dreadnode:
 
         elif to == "run":
             if run is None:
-                raise RuntimeError("log_inputs() with to='run' must be called within a run")
+                raise RuntimeError(
+                    "log_inputs() with to='run' must be called within a run",
+                )
             run.log_input(name, value, label=label, **attributes)
 
     def log_inputs(
@@ -941,7 +1007,9 @@ class Dreadnode:
 
         elif to == "run":
             if run is None:
-                raise RuntimeError("log_output() with to='run' must be called within a run")
+                raise RuntimeError(
+                    "log_output() with to='run' must be called within a run",
+                )
             run.log_output(name, value, label=label, **attributes)
 
     def log_outputs(
