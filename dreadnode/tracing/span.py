@@ -29,6 +29,7 @@ from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
 from dreadnode.storage.artifact_storage import ArtifactStorage
+from dreadnode.tracing.artifact_merger import ArtifactMerger
 from dreadnode.tracing.artifact_tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
 from dreadnode.version import VERSION
@@ -257,7 +258,13 @@ class RunSpan(Span):
         self._object_schemas: dict[str, JsonDict] = {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
+        self._artifact_storage = ArtifactStorage(file_system=file_system)
         self._artifacts: list[DirectoryNode] = []
+        self._artifact_merger = ArtifactMerger()
+        self._artifact_tree_builder = ArtifactTreeBuilder(
+            storage=self._artifact_storage,
+            prefix_path=prefix_path,
+        )
         self.project = project
 
         self._last_pushed_params = deepcopy(self._params)
@@ -474,7 +481,7 @@ class RunSpan(Span):
     def log_artifact(
         self,
         local_uri: str | Path,
-    ) -> DirectoryNode:
+    ) -> None:
         """
         Logs a local file or directory as an artifact to the object store.
         Preserves directory structure and uses content hashing for deduplication.
@@ -488,16 +495,12 @@ class RunSpan(Span):
         Raises:
             FileNotFoundError: If the path doesn't exist
         """
-        storage = ArtifactStorage(file_system=self._file_system)
 
-        tree_builder = ArtifactTreeBuilder(
-            storage=storage,
-            prefix_path=self._prefix_path,
-        )
-        artifact_tree = tree_builder.process_artifact(local_uri)
-        self._artifacts.append(artifact_tree)
+        artifact_tree = self._artifact_tree_builder.process_artifact(local_uri)
 
-        return artifact_tree
+        self._artifact_merger.add_tree(artifact_tree)
+
+        self._artifacts = self._artifact_merger.get_merged_trees()
 
     @property
     def metrics(self) -> MetricDict:

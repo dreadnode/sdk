@@ -1,13 +1,11 @@
 """
 Tree structure builder for artifacts with directory hierarchy preservation.
-Provides efficient concurrent uploads and caching.
+Provides efficient uploads and tree construction for frontend to consume.
 """
 
 import hashlib
-import multiprocessing
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from logging import getLogger
 from pathlib import Path
 from typing import Literal, TypedDict, Union
@@ -15,33 +13,29 @@ from typing import Literal, TypedDict, Union
 from dreadnode.storage.artifact_storage import ArtifactStorage
 
 logger = getLogger(__name__)
-MAX_CONCURRENT_UPLOADS = 10
 
 
 class FileNode(TypedDict):
     """
     Represents a file node in the artifact tree.
-    Contains metadata about the file, including its name, hash, size, and storage URI.
+    Contains metadata about the file, including its name, uri, size_bytes, and final_real_path.
     """
 
     type: Literal["file"]
-    name: str
-    uri: str
     hash: str
+    uri: str
     size_bytes: int
-    mime_type: str | None
-    file_extension: str
     final_real_path: str
 
 
 class DirectoryNode(TypedDict):
     """
     Represents a directory node in the artifact tree.
-    Contains metadata about the directory, including its name, hash, and children nodes.
+    Contains metadata about the directory, including its dir_path, hash, and children nodes.
     """
 
     type: Literal["dir"]
-    name: str
+    dir_path: str
     hash: str
     children: list[Union["DirectoryNode", FileNode]]
 
@@ -50,14 +44,11 @@ class DirectoryNode(TypedDict):
 class ArtifactTreeBuilder:
     """
     Builds a hierarchical tree structure for artifacts while uploading them to storage.
-    Preserves directory structure and handles concurrent uploads.
+    Preserves directory structure and handles efficient uploads.
     """
 
     storage: ArtifactStorage
     prefix_path: str | None = None
-
-    # Cache for previously processed files to avoid redundant uploads
-    processed_files: dict[str, FileNode] = field(default_factory=dict)
 
     def process_artifact(self, local_uri: str | Path) -> DirectoryNode:
         """
@@ -93,70 +84,89 @@ class ArtifactTreeBuilder:
         """
         file_node = self._process_file(file_path)
 
-        file_node["final_real_path"] = f"/{file_path.parent.name}/{file_path.name}"
+        file_node["final_real_path"] = file_path.resolve().as_posix()
 
-        dir_name = file_path.parent.name or file_path.name
+        dir_path = file_path.parent.resolve().as_posix()
         return {
             "type": "dir",
-            "name": dir_name,
+            "dir_path": dir_path,
             "hash": file_node["hash"],
             "children": [file_node],
         }
 
     def _process_directory(self, dir_path: Path) -> DirectoryNode:
         """
-        Process a directory and all its contents concurrently.
-
-        This method recursively lists all files in the given directory and processes
-        them concurrently using a thread pool. Each file is processed by the `_process_file`
-        method, and the results are used to build a hierarchical directory tree structure.
-
-        The number of concurrent threads is dynamically determined based on the number
-        of available CPU cores, ensuring efficient resource utilization.
+        Process a directory and all its contents efficiently.
 
         Args:
-            dir_path (Path): Path to the directory to be processed.
+            dir_path: Path to the directory to be processed.
 
         Returns:
             DirectoryNode: A hierarchical tree structure representing the directory and its contents.
-
-        Raises:
-            FileNotFoundError: If the directory does not exist.
-            OSError: If there is an issue accessing the directory or its contents.
         """
-        logger.info("Processing directory: %s", dir_path)
+        logger.info(f"Processing directory: {dir_path}")
 
-        # Configure concurrent processing
-        cpu_count = multiprocessing.cpu_count() or 1
-        max_concurrent_uploads = max(MAX_CONCURRENT_UPLOADS, cpu_count * 2)
-        logger.info("Using %d threads for concurrent processing", max_concurrent_uploads)
-
-        # Collect all files
-        all_files = []
+        all_files: list[Path] = []
         for root, _, files in os.walk(dir_path):
             root_path = Path(root)
             for file in files:
                 file_path = root_path / file
                 all_files.append(file_path)
 
-        # Process files concurrently
-        file_nodes_by_path = {}
-        with ThreadPoolExecutor(max_workers=max_concurrent_uploads) as executor:
-            future_to_path = {
-                executor.submit(self._process_file, file_path): file_path for file_path in all_files
+        file_hashes = self.storage.compute_file_hashes(all_files)
+
+        source_paths = []
+        target_paths = []
+        file_nodes_by_path: dict[Path, FileNode] = {}
+        file_hash_cache: dict[str, FileNode] = {}
+
+        for file_path in all_files:
+            file_path_str = file_path.resolve().as_posix()
+            file_hash = file_hashes.get(file_path_str)
+            if not file_hash:
+                raise ValueError(f"File {file_path} not found in hash computation")
+
+            # Check local cache for duplicates within this directory
+            if file_hash in file_hash_cache:
+                cached_node = file_hash_cache[file_hash].copy()
+                cached_node["final_real_path"] = file_path_str
+                file_nodes_by_path[file_path] = cached_node
+                continue
+
+            file_extension = file_path.suffix
+            file_size = file_path.stat().st_size
+
+            if self.prefix_path:
+                prefix = self.prefix_path.rstrip("/")
+                target_key = f"{prefix}/artifacts/{file_hash}{file_extension}"
+            else:
+                raise ValueError("Prefix path is invalid or empty")
+
+            source_paths.append(file_path_str)
+            target_paths.append(target_key)
+
+            # Create the file node without URI (will be set after upload)
+            file_node: FileNode = {
+                "type": "file",
+                "uri": "",
+                "hash": file_hash,
+                "size_bytes": file_size,
+                "final_real_path": file_path.resolve().as_posix(),
             }
 
-            for future in as_completed(future_to_path):
-                file_path = future_to_path[future]
-                try:
-                    file_node = future.result()
-                    file_nodes_by_path[file_path] = file_node
-                except FileNotFoundError:
-                    logger.exception("File not found while processing %s", file_path)
-                except Exception:
-                    logger.exception("Unexpected error processing %s", file_path)
+            file_nodes_by_path[file_path] = file_node
+            file_hash_cache[file_hash] = file_node
 
-        # Build tree structure
+        if source_paths:
+            logger.info(f"Uploading {len(source_paths)} files in batch")
+            uris = self.storage.batch_upload_files(source_paths, target_paths)
+
+            # Update file nodes with URIs
+            for i, file_path_str in enumerate(source_paths):
+                file_path = Path(file_path_str)
+                if file_path in file_nodes_by_path:
+                    file_nodes_by_path[file_path]["uri"] = uris[i]
+
         return self._build_tree_structure(dir_path, file_nodes_by_path)
 
     def _build_tree_structure(
@@ -245,82 +255,166 @@ class ArtifactTreeBuilder:
         dir_structure: dict[str, DirectoryNode] = {}
 
         # Create root node
-        root_name = base_dir.name
+        root_dir_path = base_dir.resolve().as_posix()
         root_node: DirectoryNode = {
             "type": "dir",
-            "name": root_name,
+            "dir_path": root_dir_path,
             "hash": "",  # Will be computed later
             "children": [],
         }
-        dir_structure[str(base_dir)] = root_node
+        dir_structure[root_dir_path] = root_node
 
-        # Create directory structure
         for file_path in file_nodes_by_path:
             try:
                 rel_path = file_path.relative_to(base_dir)
                 parts = rel_path.parts
             except ValueError:
-                logger.warning("File %s is not relative to base directory %s", file_path, base_dir)
+                logger.warning(f"File {file_path} is not relative to base directory {base_dir}")
                 continue
 
             # File in the root directory
             if len(parts) == 1:
+                root_node["children"].append(file_nodes_by_path[file_path])
                 continue
 
             # Create parent directories
             current_dir = base_dir
+            current_dir_str = current_dir.resolve().as_posix()
             for part in parts[:-1]:
                 next_dir = current_dir / part
-                if str(next_dir) not in dir_structure:
+                next_dir_str = next_dir.resolve().as_posix()
+                if next_dir_str not in dir_structure:
                     dir_node: DirectoryNode = {
                         "type": "dir",
-                        "name": part,
+                        "dir_path": next_dir_str,
                         "hash": "",  # Will be computed later
                         "children": [],
                     }
-                    dir_structure[str(next_dir)] = dir_node
-                    dir_structure[str(current_dir)]["children"].append(dir_node)
+                    dir_structure[next_dir_str] = dir_node
+                    dir_structure[current_dir_str]["children"].append(dir_node)
                 current_dir = next_dir
-
-        # Now add all files to their respective parent directories
-        for file_path, file_node in file_nodes_by_path.items():
-            parent_dir = file_path.parent
-            rel_path = file_path.relative_to(base_dir.parent)
-            file_node["final_real_path"] = f"/{rel_path}"
-
-            if str(parent_dir) in dir_structure:
-                dir_structure[str(parent_dir)]["children"].append(file_node)
-            elif parent_dir == base_dir:
-                root_node["children"].append(file_node)
-
-        # Compute directory hashes bottom-up
-        self._compute_directory_hashes(base_dir, dir_structure)
+                current_dir_str = next_dir_str
+            # Now add the file to its parent directory
+            parent_dir_str = file_path.parent.resolve().as_posix()
+            if parent_dir_str in dir_structure:
+                dir_structure[parent_dir_str]["children"].append(file_nodes_by_path[file_path])
+        self._compute_directory_hashes(dir_structure)
 
         return root_node
 
-    def _compute_directory_hashes(
+    def _compute_directory_hashes(self, dir_structure: dict[str, DirectoryNode]) -> None:
+        """
+        Compute hashes for all directories in the structure.
+
+        Args:
+            dir_structure: Dictionary mapping directory paths to DirectoryNode objects
+        """
+        parents = self._map_parent_child_relationships(dir_structure)
+        leaf_dirs = self._find_leaf_directories(dir_structure, parents)
+        self._process_directories_bottom_up(dir_structure, parents, leaf_dirs)
+
+    def _map_parent_child_relationships(
         self,
-        dir_path: Path,
         dir_structure: dict[str, DirectoryNode],
-    ) -> str:
-        """Compute content-based hash for a directory recursively."""
-        dir_node = dir_structure[str(dir_path)]
-        child_hashes = []
+    ) -> dict[str, str]:
+        """
+        Create a mapping of parent-child relationships for directories.
 
-        for child in dir_node["children"]:
-            if child["type"] == "file":
-                child_hashes.append(f"{child['hash']}")
-            else:
-                child_path = dir_path / child["name"]
-                child_hash = self._compute_directory_hashes(child_path, dir_structure)
-                child_hashes.append(f"{child_hash}")
+        Args:
+            dir_structure: Dictionary mapping directory paths to DirectoryNode objects
 
-        child_hashes.sort()  # Ensure consistent hash regardless of order
+        Returns:
+            A dictionary mapping child directory paths to their parent directory paths.
+        """
+        parents = {}
+        for dir_path, dir_node in dir_structure.items():
+            for child in dir_node["children"]:
+                if child["type"] == "dir":
+                    child_path = child["dir_path"]
+                    parents[child_path] = dir_path
+        return parents
+
+    def _find_leaf_directories(
+        self,
+        dir_structure: dict[str, DirectoryNode],
+        parents: dict[str, str],
+    ) -> set[str]:
+        """
+        Find leaf directories (those with no directory children).
+
+        Args:
+            dir_structure: Dictionary mapping directory paths to DirectoryNode objects
+            parents: Dictionary mapping child directory paths to parent directory paths
+
+        Returns:
+            A set of leaf directory paths.
+        """
+        leaf_dirs = set()
+        for dir_path in dir_structure:
+            if dir_path not in parents.values():
+                leaf_dirs.add(dir_path)
+        return leaf_dirs
+
+    def _process_directories_bottom_up(
+        self,
+        dir_structure: dict[str, DirectoryNode],
+        parents: dict[str, str],
+        leaf_dirs: set[str],
+    ) -> None:
+        """
+        Process directories bottom-up starting from leaf directories.
+
+        Args:
+            dir_structure: Dictionary mapping directory paths to DirectoryNode objects
+            parents: Dictionary mapping child directory paths to parent directory paths
+            leaf_dirs: Set of leaf directory paths
+        """
+        processed = set()
+        while leaf_dirs:
+            dir_path = leaf_dirs.pop()
+            dir_node = dir_structure[dir_path]
+
+            # Compute hash based on children
+            dir_node["hash"] = self._compute_directory_hash(dir_node)
+
+            processed.add(dir_path)
+
+            # Add parent to leaf_dirs if all its children are processed
+            if dir_path in parents:
+                parent_path = parents[dir_path]
+                if self._are_all_children_processed(dir_structure[parent_path], processed):
+                    leaf_dirs.add(parent_path)
+
+    def _compute_directory_hash(self, dir_node: DirectoryNode) -> str:
+        """
+        Compute the hash for a directory based on its children.
+
+        Args:
+            dir_node: The DirectoryNode object
+
+        Returns:
+            The computed hash as a string.
+        """
+        child_hashes = [child["hash"] for child in dir_node["children"]]
+        child_hashes.sort()  # Ensure consistent hash
         hash_input = "|".join(child_hashes)
-        dir_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324
+        return hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324
 
-        dir_node["hash"] = dir_hash
-        return dir_hash
+    def _are_all_children_processed(self, parent_node: DirectoryNode, processed: set[str]) -> bool:
+        """
+        Check if all children of a parent directory have been processed.
+
+        Args:
+            parent_node: The parent DirectoryNode object
+            processed: Set of processed directory paths
+
+        Returns:
+            True if all children are processed, False otherwise.
+        """
+        for child in parent_node["children"]:
+            if child["type"] == "dir" and child["dir_path"] not in processed:
+                return False
+        return True
 
     def _process_file(self, file_path: Path) -> FileNode:
         """
@@ -340,47 +434,24 @@ class ArtifactTreeBuilder:
         Returns:
             FileNode: A dictionary representing the processed file, including its metadata
             and storage URI.
-
-        Raises:
-            FileNotFoundError: If the file does not exist.
-            OSError: If there is an issue accessing the file.
         """
-        # Use cache if available
         file_hash = self.storage.compute_file_hash(file_path)
 
-        if file_hash in self.processed_files:
-            logger.debug("Using cached result for %s with hash %s", file_path, file_hash)
-            cached_node = self.processed_files[file_hash].copy()
-            cached_node["name"] = file_path.name
-            return cached_node
-
-        # Get file metadata
         file_extension = file_path.suffix
-        clean_extension = file_extension.lstrip(".").lower()
-        file_name = file_path.name
         file_size = file_path.stat().st_size
 
-        # Determine storage path
         if self.prefix_path:
             prefix = self.prefix_path.rstrip("/")
             target_key = f"{prefix}/artifacts/{file_hash}{file_extension}"
         else:
             raise ValueError("Prefix path is invalid or empty")
 
-        # Store the file
         uri = self.storage.store_file(file_path, target_key)
 
-        # Create and cache file node
-        file_node: FileNode = {
+        return {
             "type": "file",
-            "name": file_name,
             "uri": uri,
             "hash": file_hash,
             "size_bytes": file_size,
-            "mime_type": self.storage.get_mime_type(file_path),
-            "file_extension": clean_extension,
-            "final_real_path": target_key,
+            "final_real_path": file_path.resolve().as_posix(),
         }
-        self.processed_files[file_hash] = file_node
-
-        return file_node
