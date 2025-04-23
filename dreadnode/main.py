@@ -11,7 +11,9 @@ from urllib.parse import urljoin
 
 import coolname  # type: ignore [import-untyped]
 import logfire
-from fsspec.implementations.local import LocalFileSystem  # type: ignore [import-untyped]
+from fsspec.implementations.local import (  # type: ignore [import-untyped]
+    LocalFileSystem,
+)
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
@@ -155,8 +157,12 @@ class Dreadnode:
 
         self._initialized = False
 
-        self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-        self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+        self.server = (
+            server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+        )
+        self.token = (
+            token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+        )
 
         if local_dir is False and ENV_LOCAL_DIR in os.environ:
             env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -363,42 +369,36 @@ class Dreadnode:
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
     class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
     @t.overload
     def task(
@@ -407,13 +407,12 @@ class Dreadnode:
         scorers: None = None,
         name: str | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | t.Literal[True] | None = None,
-        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_params: t.Sequence[str] | bool = False,
+        log_inputs: t.Sequence[str] | bool = True,
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> TaskDecorator:
-        ...
+    ) -> TaskDecorator: ...
 
     @t.overload
     def task(
@@ -422,13 +421,12 @@ class Dreadnode:
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
         name: str | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | t.Literal[True] | None = None,
-        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_params: t.Sequence[str] | bool = False,
+        log_inputs: t.Sequence[str] | bool = True,
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> ScoredTaskDecorator[R]:
-        ...
+    ) -> ScoredTaskDecorator[R]: ...
 
     def task(
         self,
@@ -436,8 +434,8 @@ class Dreadnode:
         scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[t.Any]] | None = None,
         name: str | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | t.Literal[True] | None = None,
-        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_params: t.Sequence[str] | bool = False,
+        log_inputs: t.Sequence[str] | bool = True,
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
@@ -645,7 +643,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
-            **attributes: A dictionary of attributes to attach to the run.
+            **attributes: Additional attributes to attach to the run span.
         """
         if not self._initialized:
             self.initialize()
@@ -713,7 +711,7 @@ class Dreadnode:
         """
         self.log_params(to=to, **{key: value})
 
-    def log_params(self, to: ToObject = "task-or-run", **params: JsonValue) -> None:
+    def log_params(self, to: ToObject = "run", **params: JsonValue) -> None:
         """
         Log multiple parameters to the current task or run.
 

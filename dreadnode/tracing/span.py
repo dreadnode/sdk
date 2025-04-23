@@ -624,7 +624,7 @@ class TaskSpan(Span, t.Generic[R]):
         *,
         label: str | None = None,
         **attributes: JsonValue,
-    ) -> None:
+    ) -> str:
         label = label or re.sub(r"\W+", "_", name.lower())
         hash_ = self.run.log_object(
             value,
@@ -633,6 +633,7 @@ class TaskSpan(Span, t.Generic[R]):
             **attributes,
         )
         self._outputs.append(ObjectRef(name, label=label, hash=hash_))
+        return hash_
 
     @property
     def params(self) -> AnyDict:
@@ -655,7 +656,7 @@ class TaskSpan(Span, t.Generic[R]):
         *,
         label: str | None = None,
         **attributes: JsonValue,
-    ) -> None:
+    ) -> str:
         label = label or re.sub(r"\W+", "_", name.lower())
         hash_ = self.run.log_object(
             value,
@@ -664,6 +665,7 @@ class TaskSpan(Span, t.Generic[R]):
             **attributes,
         )
         self._inputs.append(ObjectRef(name, label=label, hash=hash_))
+        return hash_
 
     @property
     def metrics(self) -> dict[str, list[Metric]]:

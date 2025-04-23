@@ -38,7 +38,11 @@ class TaskSpanList(list[TaskSpan[R]]):
             A new TaskSpanList sorted by average metric value.
         """
         return TaskSpanList(
-            sorted(self, key=lambda span: span.get_average_metric_value(), reverse=reverse),
+            sorted(
+                self,
+                key=lambda span: span.get_average_metric_value(),
+                reverse=reverse,
+            ),
         )
 
     @t.overload
@@ -48,12 +52,16 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[False] = False,
         reverse: bool = True,
-    ) -> "TaskSpanList[R]":
-        ...
+    ) -> "TaskSpanList[R]": ...
 
     @t.overload
-    def top_n(self, n: int, *, as_outputs: t.Literal[True], reverse: bool = True) -> list[R]:
-        ...
+    def top_n(
+        self,
+        n: int,
+        *,
+        as_outputs: t.Literal[True],
+        reverse: bool = True,
+    ) -> list[R]: ...
 
     def top_n(
         self,
@@ -104,15 +112,19 @@ class Task(t.Generic[P, R]):
     tags: list[str]
     "A list of tags to attach to the task span."
 
-    log_params: t.Sequence[str] | t.Literal[True] | None = None
+    log_params: t.Sequence[str] | bool = False
     "Whether to log all, or specific, incoming arguments to the function as parameters."
-    log_inputs: t.Sequence[str] | t.Literal[True] | None = None
+    log_inputs: t.Sequence[str] | bool = True
     "Whether to log all, or specific, incoming arguments to the function as inputs."
     log_output: bool = True
     "Whether to automatically log the result of the function as an output."
 
     def __post_init__(self) -> None:
-        self.__signature__ = getattr(self.func, "__signature__", inspect.signature(self.func))
+        self.__signature__ = getattr(
+            self.func,
+            "__signature__",
+            inspect.signature(self.func),
+        )
         self.__name__ = getattr(self.func, "__name__", self.name)
         self.__doc__ = getattr(self.func, "__doc__", None)
 
@@ -149,8 +161,8 @@ class Task(t.Generic[P, R]):
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | t.Literal[True] | None = None,
-        log_inputs: t.Sequence[str] | t.Literal[True] | None = None,
+        log_params: t.Sequence[str] | bool | None = None,
+        log_inputs: t.Sequence[str] | bool | None = None,
         log_output: bool | None = None,
         append: bool = False,
         **attributes: t.Any,
@@ -179,7 +191,9 @@ class Task(t.Generic[P, R]):
         task.log_inputs = log_inputs if log_inputs is not None else task.log_inputs
         task.log_output = log_output if log_output is not None else task.log_output
 
-        new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
+        new_scorers = [
+            Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])
+        ]
         new_tags = list(tags or [])
 
         if append:
@@ -210,28 +224,37 @@ class Task(t.Generic[P, R]):
 
         bound_args = self._bind_args(*args, **kwargs)
 
-        params = (
+        params_to_log = (
             bound_args
             if self.log_params is True
-            else {k: v for k, v in bound_args.items() if k in (self.log_params or [])}
+            else {k: v for k, v in bound_args.items() if k in self.log_params}
+            if self.log_params is not False
+            else {}
         )
-        inputs = (
+        inputs_to_log = (
             bound_args
             if self.log_inputs is True
-            else {k: v for k, v in bound_args.items() if k in (self.log_inputs or [])}
+            else {k: v for k, v in bound_args.items() if k in self.log_inputs}
+            if self.log_inputs is not False
+            else {}
         )
 
         with TaskSpan[R](
             name=self.name,
             label=self.label,
             attributes=self.attributes,
-            params=params,
+            params=params_to_log,
             tags=self.tags,
             run_id=run.run_id,
             tracer=self.tracer,
         ) as span:
-            for name, value in inputs.items():
+            for name, value in params_to_log.items():
+                span.log_param(name, value)
+
+            input_object_hashes: list[str] = [
                 span.log_input(name, value, label=f"{self.label}.input.{name}")
+                for name, value in inputs_to_log.items()
+            ]
 
             output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))
             if inspect.isawaitable(output):
@@ -240,11 +263,17 @@ class Task(t.Generic[P, R]):
             span.output = output
 
             if self.log_output:
-                span.log_output("output", output, label=f"{self.label}.output")
+                output_object_hash = span.log_output(
+                    "output", output, label=f"{self.label}.output"
+                )
+
+                # Link the output to the inputs
+                for input_object_hash in input_object_hashes:
+                    span.run.link_objects(output_object_hash, input_object_hash)
 
             for scorer in self.scorers:
-                metric = await scorer(span.output)
-                span.log_metric(scorer.name, metric, origin=span.output)
+                metric = await scorer(output)
+                span.log_metric(scorer.name, metric, origin=output)
 
         return span
 
@@ -255,7 +284,12 @@ class Task(t.Generic[P, R]):
     # NOTE(nick): Not sure I'm in love with these being instance methods here.
     # We could move them to the top level class maybe.
 
-    async def map_run(self, count: int, *args: P.args, **kwargs: P.kwargs) -> TaskSpanList[R]:
+    async def map_run(
+        self,
+        count: int,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> TaskSpanList[R]:
         """
         Run the task multiple times and return a list of spans.
 
@@ -285,7 +319,13 @@ class Task(t.Generic[P, R]):
         spans = await self.map_run(count, *args, **kwargs)
         return [span.output for span in spans]
 
-    async def top_n(self, count: int, n: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
+    async def top_n(
+        self,
+        count: int,
+        n: int,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> list[R]:
         """
         Run the task multiple times and return the top n outputs.
 
@@ -337,7 +377,12 @@ class Task(t.Generic[P, R]):
         span = await self.try_run(*args, **kwargs)
         return span.output if span else None
 
-    async def try_map_run(self, count: int, *args: P.args, **kwargs: P.kwargs) -> TaskSpanList[R]:
+    async def try_map_run(
+        self,
+        count: int,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> TaskSpanList[R]:
         """
         Attempt to run the task multiple times and return a list of spans.
         If any task fails, a warning is logged and None is returned for that task.
@@ -350,10 +395,18 @@ class Task(t.Generic[P, R]):
         Returns:
             A TaskSpanList associated with each task execution.
         """
-        spans = await asyncio.gather(*[self.try_run(*args, **kwargs) for _ in range(count)])
+        spans = await asyncio.gather(
+            *[self.try_run(*args, **kwargs) for _ in range(count)],
+        )
         return TaskSpanList([span for span in spans if span])
 
-    async def try_top_n(self, count: int, n: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
+    async def try_top_n(
+        self,
+        count: int,
+        n: int,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> list[R]:
         """
         Attempt to run the task multiple times and return the top n outputs.
         If any task fails, a warning is logged and None is returned for that task.
