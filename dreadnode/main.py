@@ -42,8 +42,7 @@ from dreadnode.tracing.span import (
     current_run_span,
     current_task_span,
 )
-
-from .version import VERSION
+from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
@@ -422,13 +421,13 @@ class Dreadnode:
         """
 
         def make_task(func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R]) -> Task[P, R]:
-            func = inspect.unwrap(func)
+            unwrapped = inspect.unwrap(func)
 
-            if inspect.isgeneratorfunction(func) or inspect.isasyncgenfunction(func):
+            if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(unwrapped):
                 raise TypeError("@task cannot be applied to generators")
 
             func_name = getattr(
-                func,
+                unwrapped,
                 "__qualname__",
                 getattr(func, "__name__", safe_repr(func)),
             )
@@ -442,11 +441,11 @@ class Dreadnode:
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
             with contextlib.suppress(Exception):
-                _attributes["code.lineno"] = func.__code__.co_firstlineno
+                _attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
             with contextlib.suppress(Exception):
                 _attributes.update(
                     get_filepath_attribute(
-                        inspect.getsourcefile(func),  # type: ignore [arg-type]
+                        inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
                     ),
                 )
 
