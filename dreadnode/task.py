@@ -52,7 +52,8 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[False] = False,
         reverse: bool = True,
-    ) -> "TaskSpanList[R]": ...
+    ) -> "TaskSpanList[R]":
+        ...
 
     @t.overload
     def top_n(
@@ -61,7 +62,8 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[True],
         reverse: bool = True,
-    ) -> list[R]: ...
+    ) -> list[R]:
+        ...
 
     def top_n(
         self,
@@ -191,9 +193,7 @@ class Task(t.Generic[P, R]):
         task.log_inputs = log_inputs if log_inputs is not None else task.log_inputs
         task.log_output = log_output if log_output is not None else task.log_output
 
-        new_scorers = [
-            Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])
-        ]
+        new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
 
         if append:
@@ -264,7 +264,9 @@ class Task(t.Generic[P, R]):
 
             if self.log_output:
                 output_object_hash = span.log_output(
-                    "output", output, label=f"{self.label}.output"
+                    "output",
+                    output,
+                    label=f"{self.label}.output",
                 )
 
                 # Link the output to the inputs

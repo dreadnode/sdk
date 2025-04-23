@@ -3,10 +3,10 @@ Utility for merging artifact tree structures while preserving directory hierarch
 """
 
 import hashlib
-import os
-from typing import Optional, cast
+from pathlib import Path
+from typing import cast
 
-from dreadnode.tracing.artifact_tree_builder import DirectoryNode, FileNode
+from dreadnode.artifact.tree_builder import DirectoryNode, FileNode
 
 
 class ArtifactMerger:
@@ -186,7 +186,7 @@ class ArtifactMerger:
             # Look for existing directory
             next_node = None
             for child in current["children"]:
-                if child["type"] == "dir" and os.path.basename(child["dir_path"]) == part:
+                if child["type"] == "dir" and Path(child["dir_path"]).name == part:
                     next_node = child
                     break
 
@@ -340,7 +340,7 @@ class ArtifactMerger:
                 return True
         return False
 
-    def _build_maps(self, new_tree: Optional[DirectoryNode] = None) -> None:
+    def _build_maps(self, new_tree: DirectoryNode | None = None) -> None:
         """
         Build or rebuild the path and hash maps.
 

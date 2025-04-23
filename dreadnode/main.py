@@ -50,6 +50,7 @@ from dreadnode.types import (
     AnyDict,
     JsonValue,
 )
+from dreadnode.util import handle_internal_errors
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -63,6 +64,10 @@ ToObject = t.Literal["task-or-run", "run"]
 
 
 class DreadnodeConfigWarning(UserWarning):
+    pass
+
+
+class DreadnodeUsageWarning(UserWarning):
     pass
 
 
@@ -157,12 +162,8 @@ class Dreadnode:
 
         self._initialized = False
 
-        self.server = (
-            server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-        )
-        self.token = (
-            token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
-        )
+        self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+        self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
 
         if local_dir is False and ENV_LOCAL_DIR in os.environ:
             env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -308,6 +309,7 @@ class Dreadnode:
             is_span_tracer=is_span_tracer,
         )
 
+    @handle_internal_errors()
     def shutdown(self) -> None:
         """
         Shutdown any associate OpenTelemetry components and flush any pending spans.
@@ -369,36 +371,42 @@ class Dreadnode:
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
     class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
     @t.overload
     def task(
@@ -412,7 +420,8 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> TaskDecorator: ...
+    ) -> TaskDecorator:
+        ...
 
     @t.overload
     def task(
@@ -426,7 +435,8 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> ScoredTaskDecorator[R]: ...
+    ) -> ScoredTaskDecorator[R]:
+        ...
 
     def task(
         self,
@@ -552,7 +562,7 @@ class Dreadnode:
             A TaskSpan object.
         """
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("task_span() must be called within a run")
+            raise RuntimeError("Task spans must be created within a run")
 
         label = label or re.sub(r"[\W_]+", "_", name.lower())
         return TaskSpan(
@@ -662,6 +672,7 @@ class Dreadnode:
             prefix_path=self._fs_prefix,
         )
 
+    @handle_internal_errors()
     def push_update(self) -> None:
         """
         Push any pending metric or parameter data to the server.
@@ -682,6 +693,7 @@ class Dreadnode:
 
         run.push_update()
 
+    @handle_internal_errors()
     def log_param(
         self,
         key: str,
@@ -711,6 +723,7 @@ class Dreadnode:
         """
         self.log_params(to=to, **{key: value})
 
+    @handle_internal_errors()
     def log_params(self, to: ToObject = "run", **params: JsonValue) -> None:
         """
         Log multiple parameters to the current task or run.
@@ -737,20 +750,11 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        if to == "task-or-run":
-            target = task or run
-            if target is None:
-                raise RuntimeError(
-                    "log_params() with to='task-or-run' must be called within a run or a task",
-                )
-            target.log_params(**params)
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError("log_params() must be called within a run")
 
-        elif to == "run":
-            if run is None:
-                raise RuntimeError(
-                    "log_params() with to='run' must be called within a run",
-                )
-            run.log_params(**params)
+        target.log_params(**params)
 
     @t.overload
     def log_metric(
@@ -820,6 +824,7 @@ class Dreadnode:
         """
         ...
 
+    @handle_internal_errors()
     def log_metric(
         self,
         key: str,
@@ -833,32 +838,21 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError("log_metric() must be called within a run")
+
         metric = (
             value
             if isinstance(value, Metric)
             else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
         )
+        target.log_metric(key, metric, origin=origin)
 
-        if to == "task-or-run":
-            target = task or run
-            if target is None:
-                raise RuntimeError(
-                    "log_metric() with to='task-or-run' must be called within a run or a task",
-                )
-            target.log_metric(key, metric, origin=origin)
-
-        elif to == "run":
-            if run is None:
-                raise RuntimeError(
-                    "log_metric() with to='run' must be called within a run",
-                )
-            run.log_metric(key, metric, origin=origin)
-
+    @handle_internal_errors()
     def log_artifact(
         self,
         local_uri: str | Path,
-        *,
-        to: ToObject = "run",
     ) -> None:
         """
         Log a file or directory artifact to the current run.
@@ -893,17 +887,12 @@ class Dreadnode:
             local_uri: The local path to the file to upload.
             to: The target object to log the artifact to. Only "run" is supported.
         """
-
-        if to != "run":
-            raise RuntimeError("Artifacts can only be logged to runs")
-
-        run = current_run_span.get()
-
-        if run is None:
-            raise RuntimeError("log_artifact() with to='run' must be called within a run")
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("log_artifact() must be called within a run")
 
         run.log_artifact(local_uri=local_uri)
 
+    @handle_internal_errors()
     def log_input(
         self,
         name: str,
@@ -935,21 +924,13 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        if to == "task-or-run":
-            target = task or run
-            if target is None:
-                raise RuntimeError(
-                    "log_inputs() with to='task-or-run' must be called within a run or a task",
-                )
-            target.log_input(name, value, label=label, **attributes)
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError("log_inputs() must be called within a run")
 
-        elif to == "run":
-            if run is None:
-                raise RuntimeError(
-                    "log_inputs() with to='run' must be called within a run",
-                )
-            run.log_input(name, value, label=label, **attributes)
+        target.log_input(name, value, label=label, **attributes)
 
+    @handle_internal_errors()
     def log_inputs(
         self,
         to: ToObject = "task-or-run",
@@ -963,6 +944,7 @@ class Dreadnode:
         for name, value in inputs.items():
             self.log_input(name, value, to=to)
 
+    @handle_internal_errors()
     def log_output(
         self,
         name: str,
@@ -995,21 +977,15 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        if to == "task-or-run":
-            target = task or run
-            if target is None:
-                raise RuntimeError(
-                    "log_output() with to='task-or-run' must be called within a run or a task",
-                )
-            target.log_output(name, value, label=label, **attributes)
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError(
+                "log_output() must be called within a run or a task",
+            )
 
-        elif to == "run":
-            if run is None:
-                raise RuntimeError(
-                    "log_output() with to='run' must be called within a run",
-                )
-            run.log_output(name, value, label=label, **attributes)
+        target.log_output(name, value, label=label, **attributes)
 
+    @handle_internal_errors()
     def log_outputs(
         self,
         to: ToObject = "task-or-run",
@@ -1023,6 +999,7 @@ class Dreadnode:
         for name, value in outputs.items():
             self.log_output(name, value, to=to)
 
+    @handle_internal_errors()
     def link_objects(self, origin: t.Any, link: t.Any, **attributes: JsonValue) -> None:
         """
         Associate two runtime objects with each other.

@@ -5,7 +5,7 @@ if importlib.util.find_spec("transformers") is None:
 
 import typing as t
 
-from transformers.trainer_callback import (  # type: ignore
+from transformers.trainer_callback import (  # type: ignore [import-untyped]
     TrainerCallback,
     TrainerControl,
     TrainerState,
@@ -15,14 +15,16 @@ from transformers.trainer_callback import (  # type: ignore
 import dreadnode as dn
 
 if t.TYPE_CHECKING:
-    from dreadnode.tracing import RunSpan, Span
+    from dreadnode.tracing.span import RunSpan, Span
+
+# ruff: noqa: ARG002
 
 
 def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
     cleaned: dict[str, t.Any] = {}
     for key, val in data.items():
-        key = key.replace("eval_", "eval/").replace("test_", "test/").replace("train_", "train/")
-        cleaned[key] = val
+        _key = key.replace("eval_", "eval/").replace("test_", "test/").replace("train_", "train/")
+        cleaned[_key] = val
     return cleaned
 
 

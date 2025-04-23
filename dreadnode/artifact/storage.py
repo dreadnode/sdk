@@ -4,12 +4,11 @@ Provides efficient uploading of files and directories with deduplication.
 """
 
 import hashlib
-import logging
 from pathlib import Path
 
-import fsspec
+import fsspec  # type: ignore[import-untyped]
 
-logger = logging.getLogger(__name__)
+from dreadnode.util import logger
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
 
@@ -43,16 +42,11 @@ class ArtifactStorage:
         Returns:
             Full URI with protocol to the stored file
         """
-        try:
-            if not self._file_system.exists(target_key):
-                logger.info(f"Storing file: {file_path} to {target_key}")
-                self._file_system.put(str(file_path), target_key)
-                logger.info(f"File successfully stored at {target_key}")
-            else:
-                logger.info(f"File already exists at {target_key}, skipping upload.")
-        except Exception:
-            logger.exception(f"An error occurred while storing the file: {file_path}.")
-            raise
+        if not self._file_system.exists(target_key):
+            self._file_system.put(str(file_path), target_key)
+            logger.debug("Artifact successfully stored at %s", target_key)
+        else:
+            logger.debug("Artifact already exists at %s, skipping upload.", target_key)
 
         return str(self._file_system.unstrip_protocol(target_key))
 
@@ -70,28 +64,23 @@ class ArtifactStorage:
         if not source_paths:
             return []
 
-        try:
-            logger.info(f"Batch uploading {len(source_paths)} files")
+        logger.debug("Batch uploading %d files", len(source_paths))
 
-            srcs = []
-            dsts = []
+        srcs = []
+        dsts = []
 
-            for src, dst in zip(source_paths, target_paths, strict=False):
-                if not self._file_system.exists(dst):
-                    srcs.append(src)
-                    dsts.append(dst)
+        for src, dst in zip(source_paths, target_paths, strict=False):
+            if not self._file_system.exists(dst):
+                srcs.append(src)
+                dsts.append(dst)
 
-            if srcs:
-                self._file_system.put(srcs, dsts)
-                logger.info(f"Batch upload completed for {len(srcs)} files")
-            else:
-                logger.info("All files already exist, skipping upload")
+        if srcs:
+            self._file_system.put(srcs, dsts)
+            logger.debug("Batch upload completed for %d files", len(srcs))
+        else:
+            logger.debug("All files already exist, skipping upload")
 
-            return [str(self._file_system.unstrip_protocol(target)) for target in target_paths]
-
-        except Exception as e:
-            logger.exception(f"Error during batch upload of files: {e}")
-            raise
+        return [str(self._file_system.unstrip_protocol(target)) for target in target_paths]
 
     def compute_file_hash(self, file_path: Path, stream_threshold_mb: int = 10) -> str:
         """

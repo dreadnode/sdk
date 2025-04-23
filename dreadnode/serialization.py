@@ -419,7 +419,7 @@ def _handle_pydub_audio_segment(
     obj: t.Any,
     _seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
-    from pydub import AudioSegment  # type: ignore[import-untyped]
+    from pydub import AudioSegment  # type: ignore[import-untyped, unused-ignore, import-not-found]
 
     if not isinstance(obj, AudioSegment):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -431,12 +431,12 @@ def _handle_pydub_audio_segment(
     # Raw audio data from AudioSegment class is in bytes format.
     raw_bytes_data = obj.raw_data
     schema = {
-            "x-python-datatype": "pydub.AudioSegment",
-            "format": export_format,
-            "x-audio-sample-rate": obj.frame_rate,
-            "x-audio-channels": obj.channels,
-            "x-audio-sample-width": obj.sample_width,
-        }
+        "x-python-datatype": "pydub.AudioSegment",
+        "format": export_format,
+        "x-audio-sample-rate": obj.frame_rate,
+        "x-audio-channels": obj.channels,
+        "x-audio-sample-width": obj.sample_width,
+    }
 
     return _handle_bytes(raw_bytes_data, _seen, schema)
 
@@ -448,7 +448,9 @@ def _handle_moviepy_video_clip(
     import tempfile
     from pathlib import Path
 
-    from moviepy import VideoFileClip  # type: ignore[import-untyped]
+    from moviepy import (  # type: ignore[import-untyped, unused-ignore, import-not-found]
+        VideoFileClip,
+    )
 
     if not isinstance(obj, VideoFileClip):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -465,8 +467,7 @@ def _handle_moviepy_video_clip(
         obj.write_videofile(
             temp_file.name,
         )
-        with open(temp_file.name, "rb") as f:
-            raw_bytes_data = f.read()
+        raw_bytes_data = Path(temp_file.name).read_bytes()
 
     schema = {
         "x-python-datatype": "moviepy.VideoFileClip",
@@ -597,13 +598,11 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[datasets.Dataset] = _handle_dataset
 
     with contextlib.suppress(Exception):
-
         from pydub import AudioSegment
 
         handlers[AudioSegment] = _handle_pydub_audio_segment
 
     with contextlib.suppress(Exception):
-
         from moviepy import VideoFileClip
 
         handlers[VideoFileClip] = _handle_moviepy_video_clip

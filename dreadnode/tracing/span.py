@@ -24,13 +24,13 @@ from opentelemetry.trace import Tracer
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
+from dreadnode.artifact.merger import ArtifactMerger
+from dreadnode.artifact.storage import ArtifactStorage
+from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
 from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
-from dreadnode.storage.artifact_storage import ArtifactStorage
-from dreadnode.tracing.artifact_merger import ArtifactMerger
-from dreadnode.tracing.artifact_tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
 from dreadnode.version import VERSION
 
@@ -186,7 +186,9 @@ class Span(ReadableSpan):
         self._added_attributes = True
         if schema and raw is False:
             self._schema[key] = create_json_schema(value, set())
-        otel_value = self._pre_attributes[key] = value if raw else prepare_otlp_attribute(value)
+        otel_value = self._pre_attributes[key] = (
+            value if raw else prepare_otlp_attribute(value)
+        )
         if self._span is not None:
             self._span.set_attribute(key, otel_value)
         self._pre_attributes[key] = otel_value
@@ -387,12 +389,12 @@ class RunSpan(Span):
         self.log_event(name=event_name, attributes=event_attributes)
         return object_.hash
 
-    def _store_file_by_hash(self, data: str | bytes, full_path: str) -> str:
+    def _store_file_by_hash(self, data: bytes, full_path: str) -> str:
         """
         Writes data to the given full_path in the object store if it doesn't already exist.
 
         Args:
-            data: Content to write. Can be a string or bytes.
+            data: Content to write.
             full_path: The path in the object store (e.g., S3 key or local path).
 
         Returns:
@@ -400,8 +402,7 @@ class RunSpan(Span):
         """
         if not self._file_system.exists(full_path):
             logger.debug("Storing new object at: %s", full_path)
-            mode = "w" if isinstance(data, str) else "wb"
-            with self._file_system.open(full_path, mode) as f:
+            with self._file_system.open(full_path, "wb") as f:
                 f.write(data)
 
         return str(self._file_system.unstrip_protocol(full_path))
@@ -409,11 +410,12 @@ class RunSpan(Span):
     def _create_object(self, serialized: Serialized) -> Object:
         """Create an ObjectVal or ObjectUri depending on size."""
         data = serialized.data
+        data_bytes = serialized.data_bytes
         data_len = serialized.data_len
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        if data is None or data_len <= MAX_INLINE_OBJECT_BYTES:
+        if data is None or data_bytes is None or data_len <= MAX_INLINE_OBJECT_BYTES:
             return ObjectVal(
                 hash=data_hash,
                 value=data,
@@ -422,8 +424,7 @@ class RunSpan(Span):
 
         # Offload to file system (e.g., S3)
         full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}"
-
-        object_uri = self._store_file_by_hash(data, full_path)
+        object_uri = self._store_file_by_hash(data_bytes, full_path)
 
         return ObjectUri(
             hash=data_hash,
@@ -527,8 +528,7 @@ class RunSpan(Span):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @t.overload
     def log_metric(
@@ -537,8 +537,7 @@ class RunSpan(Span):
         value: Metric,
         *,
         origin: t.Any | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def log_metric(
         self,
@@ -609,7 +608,9 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._output: R | Unset = UNSET  # For the python output
 
-        self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
+        self._context_token: Token[TaskSpan[t.Any] | None] | None = (
+            None  # contextvars context
+        )
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
@@ -738,8 +739,7 @@ class TaskSpan(Span, t.Generic[R]):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @t.overload
     def log_metric(
@@ -748,8 +748,7 @@ class TaskSpan(Span, t.Generic[R]):
         value: Metric,
         *,
         origin: t.Any | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def log_metric(
         self,
