@@ -1,14 +1,13 @@
 import io
 import json
 import typing as t
-from logging import getLogger
 
 import httpx
 import pandas as pd
 from pydantic import BaseModel
-from rich import print as rich_print
 from ulid import ULID
 
+from dreadnode.util import logger
 from dreadnode.version import VERSION
 
 from .models import (
@@ -22,8 +21,6 @@ from .models import (
     TraceSpan,
     UserDataCredentials,
 )
-
-logger = getLogger(__name__)
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
@@ -59,20 +56,20 @@ class ApiClient:
     def _log_request(self, request: httpx.Request) -> None:
         """Log every request to the console if debug is enabled."""
 
-        rich_print("-------------------------------------------")
-        rich_print(f"[bold]{request.method}[/] {request.url}")
-        rich_print("Headers:", request.headers)
-        rich_print("Content:", request.content)
-        rich_print("-------------------------------------------")
+        logger.debug("-------------------------------------------")
+        logger.debug("%s %s", request.method, request.url)
+        logger.debug("Headers: %s", request.headers)
+        logger.debug("Content: %s", request.content)
+        logger.debug("-------------------------------------------")
 
     def _log_response(self, response: httpx.Response) -> None:
         """Log every response to the console if debug is enabled."""
 
-        rich_print("-------------------------------------------")
-        rich_print(f"Response: {response.status_code}")
-        rich_print("Headers:", response.headers)
-        rich_print("Content:", response.read())
-        rich_print("--------------------------------------------")
+        logger.debug("-------------------------------------------")
+        logger.debug("Response: %s", response.status_code)
+        logger.debug("Headers: %s", response.headers)
+        logger.debug("Content: %s", response.read())
+        logger.debug("--------------------------------------------")
 
     def _get_error_message(self, response: httpx.Response) -> str:
         """Get the error message from the response."""
