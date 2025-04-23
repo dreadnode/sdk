@@ -1,9 +1,11 @@
+import logging
 import re
 import types
 import typing as t
 from contextvars import ContextVar, Token
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 
 import typing_extensions as te
 from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
@@ -26,6 +28,9 @@ from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
 from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
+from dreadnode.storage.artifact_storage import ArtifactStorage
+from dreadnode.tracing.artifact_merger import ArtifactMerger
+from dreadnode.tracing.artifact_tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
 from dreadnode.version import VERSION
 
@@ -40,6 +45,7 @@ from .constants import (
     EVENT_NAME_OBJECT_METRIC,
     EVENT_NAME_OBJECT_OUTPUT,
     METRIC_ATTRIBUTE_SOURCE_HASH,
+    SPAN_ATTRIBUTE_ARTIFACTS,
     SPAN_ATTRIBUTE_INPUTS,
     SPAN_ATTRIBUTE_LABEL,
     SPAN_ATTRIBUTE_LARGE_ATTRIBUTES,
@@ -57,6 +63,8 @@ from .constants import (
     SPAN_ATTRIBUTE_VERSION,
     SpanType,
 )
+
+logger = logging.getLogger(__name__)
 
 R = t.TypeVar("R")
 
@@ -253,6 +261,13 @@ class RunSpan(Span):
         self._object_schemas: dict[str, JsonDict] = {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
+        self._artifact_storage = ArtifactStorage(file_system=file_system)
+        self._artifacts: list[DirectoryNode] = []
+        self._artifact_merger = ArtifactMerger()
+        self._artifact_tree_builder = ArtifactTreeBuilder(
+            storage=self._artifact_storage,
+            prefix_path=prefix_path,
+        )
         self.project = project
 
         self._last_pushed_params = deepcopy(self._params)
@@ -293,7 +308,7 @@ class RunSpan(Span):
             self._object_schemas,
             schema=False,
         )
-        self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._outputs, schema=False)
+        self.set_attribute(SPAN_ATTRIBUTE_ARTIFACTS, self._artifacts, schema=False)
 
         # Mark our objects attribute as large so it's stored separately
         self.set_attribute(
@@ -372,6 +387,25 @@ class RunSpan(Span):
         self.log_event(name=event_name, attributes=event_attributes)
         return object_.hash
 
+    def _store_file_by_hash(self, data: str | bytes, full_path: str) -> str:
+        """
+        Writes data to the given full_path in the object store if it doesn't already exist.
+
+        Args:
+            data: Content to write. Can be a string or bytes.
+            full_path: The path in the object store (e.g., S3 key or local path).
+
+        Returns:
+            The unstrip_protocol version of the full path (for object store URI).
+        """
+        if not self._file_system.exists(full_path):
+            logger.debug("Storing new object at: %s", full_path)
+            mode = "w" if isinstance(data, str) else "wb"
+            with self._file_system.open(full_path, mode) as f:
+                f.write(data)
+
+        return str(self._file_system.unstrip_protocol(full_path))
+
     def _create_object(self, serialized: Serialized) -> Object:
         """Create an ObjectVal or ObjectUri depending on size."""
         data = serialized.data
@@ -388,12 +422,12 @@ class RunSpan(Span):
 
         # Offload to file system (e.g., S3)
         full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}"
-        with self._file_system.open(full_path, "wb") as f:
-            f.write(serialized.data_bytes)
+
+        object_uri = self._store_file_by_hash(data, full_path)
 
         return ObjectUri(
             hash=data_hash,
-            uri=self._file_system.unstrip_protocol(full_path),
+            uri=object_uri,
             schema_hash=schema_hash,
             size=data_len,
         )
@@ -455,6 +489,30 @@ class RunSpan(Span):
             **attributes,
         )
         self._inputs.append(ObjectRef(name, label=label, hash=hash_))
+
+    def log_artifact(
+        self,
+        local_uri: str | Path,
+    ) -> None:
+        """
+        Logs a local file or directory as an artifact to the object store.
+        Preserves directory structure and uses content hashing for deduplication.
+
+        Args:
+            local_uri: Path to the local file or directory
+
+        Returns:
+            DirectoryNode representing the artifact's tree structure
+
+        Raises:
+            FileNotFoundError: If the path doesn't exist
+        """
+
+        artifact_tree = self._artifact_tree_builder.process_artifact(local_uri)
+
+        self._artifact_merger.add_tree(artifact_tree)
+
+        self._artifacts = self._artifact_merger.get_merged_trees()
 
     @property
     def metrics(self) -> MetricDict:

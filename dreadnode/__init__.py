@@ -24,6 +24,7 @@ log_input = DEFAULT_INSTANCE.log_input
 log_inputs = DEFAULT_INSTANCE.log_inputs
 log_output = DEFAULT_INSTANCE.log_output
 link_objects = DEFAULT_INSTANCE.link_objects
+log_artifact = DEFAULT_INSTANCE.log_artifact
 
 __version__ = VERSION
 

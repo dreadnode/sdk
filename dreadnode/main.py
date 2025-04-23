@@ -854,6 +854,56 @@ class Dreadnode:
                 )
             run.log_metric(key, metric, origin=origin)
 
+    def log_artifact(
+        self,
+        local_uri: str | Path,
+        *,
+        to: ToObject = "run",
+    ) -> None:
+        """
+        Log a file or directory artifact to the current run.
+
+        This method uploads a local file or directory to the artifact storage associated with the run.
+
+        Examples:
+            Log a single file:
+            ```
+            with dreadnode.run("my_run") as run:
+                # Save a file
+                with open("results.json", "w") as f:
+                    json.dump(results, f)
+
+                # Log it as an artifact
+                run.log_artifact("results.json")
+            ```
+
+            Log a directory:
+            ```
+            with dreadnode.run("my_run") as run:
+                # Create a directory with model files
+                os.makedirs("model_output", exist_ok=True)
+                save_model("model_output/model.pkl")
+                save_config("model_output/config.yaml")
+
+                # Log the entire directory as an artifact
+                run.log_artifact("model_output")
+            ```
+
+        Args:
+            local_uri: The local path to the file to upload.
+            to: The target object to log the artifact to. Only "run" is supported.
+        """
+
+        if to != "run":
+            raise RuntimeError("Artifacts can only be logged to runs")
+
+        run = current_run_span.get()
+
+        if run is None:
+            raise RuntimeError("log_artifact() with to='run' must be called within a run")
+
+        run.log_artifact(local_uri=local_uri)
+
     def log_input(
         self,
         name: str,
