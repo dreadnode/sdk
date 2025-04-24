@@ -586,9 +586,9 @@ class ArtifactMerger:
 
         for child in dir_node["children"]:
             if child["type"] == "file":
-                child_hashes.append(cast(FileNode, child)["hash"])
+                child_hashes.append(cast("FileNode", child)["hash"])
             else:
-                child_hash = self._update_directory_hash(cast(DirectoryNode, child))
+                child_hash = self._update_directory_hash(cast("DirectoryNode", child))
                 child_hashes.append(child_hash)
 
         child_hashes.sort()  # Ensure consistent hash regardless of order
