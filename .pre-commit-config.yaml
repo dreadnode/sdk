@@ -33,6 +33,28 @@ repos:
       - id: codespell
         entry: codespell -q 3 -f --skip=".git,.github,README.md" --ignore-words-list="astroid"
 
+  - repo: https://github.com/RodrigoGonzalez/check-mkdocs
+    rev: v1.2.0
+    hooks:
+      - id: check-mkdocs
+        name: check-mkdocs
+        args: ["--config", "mkdocs.yaml"]
+        additional_dependencies:
+          - mkdocs-material
+          - mkdocs-section-index
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      - id: script-must-have-extension
+        name: Ensure shell scripts end with .sh
+        types: [shell]
+      - id: shellcheck
+      - id: shfmt
+      # Configuration in .mdlrc and .hooks/linters/mdstyle.rb
+      - id: markdownlint
+        exclude: README.md
+
   # Python code security
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3

@@ -13,10 +13,12 @@ import typing as t
 import rigging as rg
 import typer
 
-TRUNCATION_WARNING = "\n---\n**Note**: Due to the large size of this diff, some content has been truncated."
+TRUNCATION_WARNING = (
+    "\n---\n**Note**: Due to the large size of this diff, some content has been truncated."
+)
 
 
-@rg.prompt  # type: ignore
+@rg.prompt
 def generate_pr_description(diff: str) -> t.Annotated[str, rg.Ctx("markdown")]:  # type: ignore[empty-body]
     """
     Analyze the provided git diff and create a PR description in markdown format.
@@ -40,7 +42,9 @@ async def _run_git_command(args: list[str]) -> str:
     """
     # Validate git exists in PATH
     git_path = "git"  # Could use shutil.which("git") for more security
-    if not any(os.path.isfile(os.path.join(path, "git")) for path in os.environ["PATH"].split(os.pathsep)):
+    if not any(
+        os.path.isfile(os.path.join(path, "git")) for path in os.environ["PATH"].split(os.pathsep)
+    ):
         raise ValueError("Git executable not found in PATH")
 
     # Validate input parameters
@@ -63,7 +67,7 @@ async def _run_git_command(args: list[str]) -> str:
 
         return stdout.decode().strip()
     except Exception as e:
-        raise RuntimeError(f"Failed to execute git command: {e}") from e
+        raise RuntimeError(f"Failed to execute git command: {e}")
 
 
 async def get_diff(base_ref: str, source_ref: str, *, exclude: list[str] | None = None) -> str:
