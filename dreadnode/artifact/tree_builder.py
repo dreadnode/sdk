@@ -262,7 +262,7 @@ class ArtifactTreeBuilder:
         }
         dir_structure[root_dir_path] = root_node
 
-        for file_path in file_nodes_by_path:
+        for file_path, file_node in file_nodes_by_path.items():
             try:
                 rel_path = file_path.relative_to(base_dir)
                 parts = rel_path.parts
@@ -272,7 +272,7 @@ class ArtifactTreeBuilder:
 
             # File in the root directory
             if len(parts) == 1:
-                root_node["children"].append(file_nodes_by_path[file_path])
+                root_node["children"].append(file_node)
                 continue
 
             # Create parent directories
@@ -295,7 +295,7 @@ class ArtifactTreeBuilder:
             # Now add the file to its parent directory
             parent_dir_str = file_path.parent.resolve().as_posix()
             if parent_dir_str in dir_structure:
-                dir_structure[parent_dir_str]["children"].append(file_nodes_by_path[file_path])
+                dir_structure[parent_dir_str]["children"].append(file_node)
         self._compute_directory_hashes(dir_structure)
 
         return root_node

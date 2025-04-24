@@ -4,39 +4,9 @@ version = "1.0.0-rc.0"
 description = "Dreadnode SDK"
 requires-python = ">=3.10,<3.13"
 
-[build-system]
-requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.bandit]
-exclude_dirs = ["tests"]
-skips = ["B101"]
-
-[tool.coverage.run]
-branch = true
-source = ["scripts"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[tool.hatch.build.targets.sdist]
-packages = ["src"]
-
-[tool.mypy]
-strict = true
-
 [tool.poetry]
 name = "dreadnode"
-version = "0.1.4"
+version = "1.0.0-rc.0"
 description = "Dreadnode SDK"
 authors = ["Nick Landers <monoxgas@gmail.com>"]
 repository = "https://github.com/dreadnode/sdk"
@@ -50,9 +20,7 @@ logfire = "^3.5.3"
 python-ulid = "^3.0.0"
 fast-depends = "^2.4.12"
 coolname = "^2.2.0"
-fsspec = { extras = [
-    "s3",
-], version = "2024.12.0" } # pinned this version to be compatible with datasets
+fsspec = {version = ">=2023.1.0,<=2025.3.0", extras = ["s3"]} # Pinned for datasets compatibility
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
@@ -71,9 +39,39 @@ datasets = "^3.5.0"
 pandas = "^2.2.3"
 pyarrow = "^19.0.1"
 
+[build-system]
+requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.sdist]
+packages = ["src"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+strict = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]
+
+[tool.coverage.run]
+branch = true
+source = ["scripts"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 target-version = "py310"

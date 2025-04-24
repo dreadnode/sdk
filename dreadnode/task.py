@@ -52,8 +52,7 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[False] = False,
         reverse: bool = True,
-    ) -> "TaskSpanList[R]":
-        ...
+    ) -> "TaskSpanList[R]": ...
 
     @t.overload
     def top_n(
@@ -62,8 +61,7 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[True],
         reverse: bool = True,
-    ) -> list[R]:
-        ...
+    ) -> list[R]: ...
 
     def top_n(
         self,
@@ -85,7 +83,7 @@ class TaskSpanList(list[TaskSpan[R]]):
         """
         sorted_ = self.sorted(reverse=reverse)[:n]
         return (
-            t.cast(list[R], [span.output for span in sorted_])
+            t.cast("list[R]", [span.output for span in sorted_])
             if as_outputs
             else TaskSpanList(sorted_)
         )
@@ -259,7 +257,7 @@ class Task(t.Generic[P, R]):
             ]
 
             try:
-                output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))
+                output = t.cast("R | t.Awaitable[R]", self.func(*args, **kwargs))
                 if inspect.isawaitable(output):
                     output = await output
             except Exception:
