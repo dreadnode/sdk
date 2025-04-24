@@ -87,15 +87,3 @@ repos:
         entry: .hooks/prettier.sh
         language: script
         types: [json, yaml]
-
-      - id: generate-readme
-        name: Generate README
-        description: Updates auto-generated sections in README.md
-        entry: python scripts/generate_readme.py
-        language: python
-        files: ^(pyproject\.toml|templates/README\.md\.j2)$
-        pass_filenames: false
-        require_serial: true
-        additional_dependencies:
-          - jinja2
-          - tomli>=2.0.1

@@ -5,7 +5,7 @@ if importlib.util.find_spec("transformers") is None:
 
 import typing as t
 
-from transformers.trainer_callback import (  # type: ignore
+from transformers.trainer_callback import (  # type: ignore [import-untyped]
     TrainerCallback,
     TrainerControl,
     TrainerState,
@@ -15,18 +15,27 @@ from transformers.trainer_callback import (  # type: ignore
 import dreadnode as dn
 
 if t.TYPE_CHECKING:
-    from dreadnode.tracing import RunSpan, Span
+    from dreadnode.tracing.span import RunSpan, Span
+
+# ruff: noqa: ARG002
 
 
 def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
     cleaned: dict[str, t.Any] = {}
     for key, val in data.items():
-        key = key.replace("eval_", "eval/").replace("test_", "test/").replace("train_", "train/")
-        cleaned[key] = val
+        _key = key.replace("eval_", "eval/").replace("test_", "test/").replace("train_", "train/")
+        cleaned[_key] = val
     return cleaned
 
 
 class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
+    """
+    An implementation of the `TrainerCallback` interface for Dreadnode.
+
+    This callback is used to log metrics and parameters to Dreadnode during training inside
+    the `transformers` library or derivations (`trl`, etc.).
+    """
+
     def __init__(
         self,
         project: str | None = None,
@@ -67,7 +76,9 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         combined_dict = {**args.to_sanitized_dict()}
 
         if hasattr(model, "config") and model.config is not None:
-            model_config = model.config if isinstance(model.config, dict) else model.config.to_dict()
+            model_config = (
+                model.config if isinstance(model.config, dict) else model.config.to_dict()
+            )
             for key, value in model_config.items():
                 combined_dict[f"model/{key}"] = value
         if hasattr(model, "peft_config") and model.peft_config is not None:
@@ -98,7 +109,11 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
             self._setup(args, state, model)
 
     def on_train_end(
-        self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: t.Any
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: t.Any,
     ) -> None:
         self._shutdown()
 

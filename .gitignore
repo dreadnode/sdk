@@ -1,5 +1,6 @@
 # Testing code
 notebooks/
+examples/.logfire
 
 # Logfire temp
 .logfire/

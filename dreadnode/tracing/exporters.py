@@ -18,6 +18,8 @@ from opentelemetry.sdk.metrics.export import (
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
+from dreadnode.util import logger
+
 
 @dataclass
 class FileExportConfig:
@@ -51,8 +53,8 @@ class FileMetricReader(MetricReader):
     def _receive_metrics(
         self,
         metrics_data: MetricsData,
-        timeout_millis: float = 10_000,
-        **kwargs: t.Any,
+        timeout_millis: float = 10_000,  # noqa: ARG002
+        **kwargs: t.Any,  # noqa: ARG002
     ) -> None:
         if metrics_data is None:
             return
@@ -63,10 +65,14 @@ class FileMetricReader(MetricReader):
             with self._lock:
                 self.file.write(json_str + "\n")
                 self.file.flush()
-        except Exception as e:
-            print(f"Failed to export metrics: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to export metrics: {e}")
 
-    def shutdown(self, timeout_millis: float = 30_000, **kwargs: t.Any) -> None:
+    def shutdown(
+        self,
+        timeout_millis: float = 30_000,  # noqa: ARG002
+        **kwargs: t.Any,  # noqa: ARG002
+    ) -> None:
         with self._lock:
             if self._file:
                 self._file.close()
@@ -94,12 +100,15 @@ class FileSpanExporter(SpanExporter):
             with self._lock:
                 self.file.write(json_str + "\n")
                 self.file.flush()
-            return SpanExportResult.SUCCESS
-        except Exception as e:
-            print(f"Failed to export spans: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to export spans: {e}")
             return SpanExportResult.FAILURE
+        return SpanExportResult.SUCCESS
 
-    def force_flush(self, timeout_millis: float = 30_000) -> bool:
+    def force_flush(
+        self,
+        timeout_millis: float = 30_000,  # noqa: ARG002
+    ) -> bool:
         return True  # We flush above
 
     def shutdown(self) -> None:
@@ -130,12 +139,15 @@ class FileLogExporter(LogExporter):
             with self._lock:
                 self.file.write(json_str + "\n")
                 self.file.flush()
-            return LogExportResult.SUCCESS
-        except Exception as e:
-            print(f"Failed to export logs: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to export logs: {e}")
             return LogExportResult.FAILURE
+        return LogExportResult.SUCCESS
 
-    def force_flush(self, timeout_millis: float = 30_000) -> bool:
+    def force_flush(
+        self,
+        timeout_millis: float = 30_000,  # noqa: ARG002
+    ) -> bool:
         return True
 
     def shutdown(self) -> None:
