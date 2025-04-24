@@ -54,7 +54,7 @@ def log_internal_error() -> None:
         reraise = False
 
     if reraise:
-        raise  # noqa: PLE0704
+        raise
 
     with suppress_instrumentation():  # prevent infinite recursion from the logging integration
         logger.exception(

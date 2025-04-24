@@ -217,7 +217,7 @@ class Dreadnode:
 
             try:
                 self._api.list_projects()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 raise RuntimeError(
                     "Failed to authenticate with the provided server and token",
                 ) from e
@@ -371,36 +371,42 @@ class Dreadnode:
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
     class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
+        ) -> Task[P, R]:
+            ...
 
     @t.overload
     def task(
@@ -414,7 +420,8 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> TaskDecorator: ...
+    ) -> TaskDecorator:
+        ...
 
     @t.overload
     def task(
@@ -428,7 +435,8 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> ScoredTaskDecorator[R]: ...
+    ) -> ScoredTaskDecorator[R]:
+        ...
 
     def task(
         self,
@@ -824,13 +832,14 @@ class Dreadnode:
                 - direct: do not modify the value at all (default)
                 - min: always report the lowest ovbserved value for this metric
                 - max: always report the highest observed value for this metric
+                - avg: report the average of all values for this metric
                 - sum: report a rolling sum of all values for this metric
                 - count: report the number of times this metric has been logged
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
         """
-        ...  # noqa: PIE790
+        ...
 
     @handle_internal_errors()
     def log_metric(

@@ -135,7 +135,7 @@ class Span(ReadableSpan):
         if self._token is None or self._span is None:
             return
 
-        context_api.detach(self._token)
+        context_api.detach(self._token)  # type: ignore [arg-type]
         self._token = None
 
         if not self._span.is_recording():
