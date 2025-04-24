@@ -257,16 +257,16 @@ class ArtifactMerger:
                 existing_file = cast("FileNode", existing_node)
                 new_file = cast("FileNode", new_node)
 
-                if existing_file["hash"] != new_file["hash"]:
-                    # Find the parent directory and update the file
+                # Always propagate URIs between files with identical hash
+                if existing_file["hash"] == new_file["hash"]:
+                    self._propagate_uri(existing_file, new_file)
+                    merged = True
+                else:
+                    # Different hash - find the parent directory and update the file
                     for tree in self._merged_trees:
                         if self._update_file_in_tree(tree, existing_file, new_file):
                             merged = True
                             break
-                else:
-                    # Same hash - ensure URI is propagated
-                    self._propagate_uri(existing_file, new_file)
-                    merged = True
 
         return merged
 
@@ -367,6 +367,26 @@ class ArtifactMerger:
         else:
             for tree in self._merged_trees:
                 self._build_path_and_hash_maps(tree, self._path_map, self._hash_map)
+        self._propagate_uris_by_hash()
+
+    def _propagate_uris_by_hash(self) -> None:
+        """
+        Ensure all files with the same hash have the same URI.
+
+        This function ensures that if multiple file nodes have the same hash,
+        but only some have URIs, the URI is propagated to all instances.
+        """
+        for file_nodes in self._hash_map.values():
+            if len(file_nodes) <= 1:
+                continue
+
+            uri = next((node["uri"] for node in file_nodes if node["uri"]), "")
+            if not uri:
+                continue
+
+            for node in file_nodes:
+                if not node["uri"]:
+                    node["uri"] = uri
 
     def _build_path_and_hash_maps(
         self,
@@ -530,7 +550,11 @@ class ArtifactMerger:
             if existing_child["type"] == "file":
                 # Propagate URI if needed
                 self._propagate_uri(cast("FileNode", existing_child), source_file)
-            # Keep both files since they're at different paths
+
+            if source_file["uri"] and file_hash in self._hash_map:
+                for other_file in self._hash_map[file_hash]:
+                    if not other_file["uri"]:
+                        other_file["uri"] = source_file["uri"]
             target_dir["children"].append(source_file)
         else:
             # File only in source - add to target
@@ -562,9 +586,9 @@ class ArtifactMerger:
 
         for child in dir_node["children"]:
             if child["type"] == "file":
-                child_hashes.append(cast(FileNode, child)["hash"])  # noqa: TC006
+                child_hashes.append(cast("FileNode", child)["hash"])
             else:
-                child_hash = self._update_directory_hash(cast(DirectoryNode, child))  # noqa: TC006
+                child_hash = self._update_directory_hash(cast("DirectoryNode", child))
                 child_hashes.append(child_hash)
 
         child_hashes.sort()  # Ensure consistent hash regardless of order
