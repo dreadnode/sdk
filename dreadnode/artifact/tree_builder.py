@@ -262,7 +262,7 @@ class ArtifactTreeBuilder:
         }
         dir_structure[root_dir_path] = root_node
 
-        for file_path in file_nodes_by_path:
+        for file_path in file_nodes_by_path:  # noqa: PLC0206
             try:
                 rel_path = file_path.relative_to(base_dir)
                 parts = rel_path.parts

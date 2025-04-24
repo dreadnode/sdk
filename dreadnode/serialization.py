@@ -76,7 +76,7 @@ def _handle_sequence(
             non_empty_schemas_found = True
 
     schema: JsonDict = {"type": "array"}
-    if obj_type != list:
+    if obj_type != list:  # noqa: E721
         schema["title"] = obj_type.__name__
         type_name_map = {tuple: "tuple", set: "set", frozenset: "set", deque: "deque"}
         schema["x-python-datatype"] = type_name_map.get(obj_type, obj_type.__name__)

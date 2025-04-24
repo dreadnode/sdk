@@ -54,19 +54,24 @@ coolname = "^2.2.0"
 pandas = "^2.2.3"
 pyarrow = "^19.0.1"
 loguru = "^0.7.3"
-fsspec = {extras = ["s3"], version = "^2025.3.0"}
+fsspec = { extras = [
+    "s3",
+], version = "2024.12.0" } # pinned this version to be compatible with datasets
 pydub = "^0.25.1"
 moviepy = "^2.1.2"
+datasets = "^3.5.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
-ruff = "^0.1.14"
+ruff = "^0.11.6"
 pre-commit = "^3.8.0"
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 types-protobuf = "^5.29.1.20250208"
 pandas-stubs = "^2.2.3.250308"
 types-requests = "^2.32.0.20250306"
+rigging = "^2.3.0"
+typer = "^0.15.2"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -82,23 +87,35 @@ emoji = "🐍"
 target-version = "py310"
 line-length = 100
 extend-exclude = [
-    "*.ipynb" # jupyter notebooks
+    "*.ipynb", # jupyter notebooks
 ]
 
 [tool.ruff.lint]
-select = [ "ALL" ]
+select = ["ALL"]
 ignore = [
-    "E501",     # line too long (we make best effort)
-    "TRY003",   # long messages in exception classes
-    "EM",       # picky message construction for exceptions
-    "C90",      # mccabe complexity
-    "A002",     # shadowing built-in
-    "D",        # docstrings
-    "ANN",      # annotations (handled by mypy)
-    "PLR0913",  # too many arguments
-    "ERA001",   # commented out code
-    "FIX002",   # contains todo, consider fixing
+    "E501",    # line too long (we make best effort)
+    "TRY003",  # long messages in exception classes
+    "EM",      # picky message construction for exceptions
+    "C90",     # mccabe complexity
+    "A002",    # shadowing built-in
+    "D",       # docstrings
+    "ANN",     # annotations (handled by mypy)
+    "PLR0913", # too many arguments
+    "ERA001",  # commented out code
+    "FIX002",  # contains todo, consider fixing
+    "COM812",  # disabled for formatting
+    "ISC001",  # disabled for formatting
 ]
 
 [tool.ruff.format]
 skip-magic-trailing-comma = false
+
+[tool.ruff.lint.extend-per-file-ignores]
+".hooks/**/*.py" = [
+    "ARG001", # temporary for rigging decorators
+    "T201",   # printing is fine for hooks
+]
+"tests/**/*.py" = [
+    "INP001", # namespace not required for pytest
+    "S101",   # asserts allowed in tests...
+]
