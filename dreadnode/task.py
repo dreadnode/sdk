@@ -52,7 +52,8 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[False] = False,
         reverse: bool = True,
-    ) -> "TaskSpanList[R]": ...
+    ) -> "TaskSpanList[R]":
+        ...
 
     @t.overload
     def top_n(
@@ -61,7 +62,8 @@ class TaskSpanList(list[TaskSpan[R]]):
         *,
         as_outputs: t.Literal[True],
         reverse: bool = True,
-    ) -> list[R]: ...
+    ) -> list[R]:
+        ...
 
     def top_n(
         self,
@@ -83,7 +85,7 @@ class TaskSpanList(list[TaskSpan[R]]):
         """
         sorted_ = self.sorted(reverse=reverse)[:n]
         return (
-            t.cast(list[R], [span.output for span in sorted_])  # noqa: TC006
+            t.cast(list[R], [span.output for span in sorted_])
             if as_outputs
             else TaskSpanList(sorted_)
         )
@@ -246,6 +248,8 @@ class Task(t.Generic[P, R]):
             run_id=run.run_id,
             tracer=self.tracer,
         ) as span:
+            span.run.log_metric(f"{self.label}.exec.count", 1, mode="count")
+
             for name, value in params_to_log.items():
                 span.log_param(name, value)
 
@@ -254,10 +258,15 @@ class Task(t.Generic[P, R]):
                 for name, value in inputs_to_log.items()
             ]
 
-            output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))  # noqa: TC006
-            if inspect.isawaitable(output):
-                output = await output
+            try:
+                output = t.cast(R | t.Awaitable[R], self.func(*args, **kwargs))
+                if inspect.isawaitable(output):
+                    output = await output
+            except Exception:
+                span.run.log_metric(f"{self.label}.exec.success_rate", 0, mode="avg")
+                raise
 
+            span.run.log_metric(f"{self.label}.exec.success_rate", 1, mode="avg")
             span.output = output
 
             if self.log_output:

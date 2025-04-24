@@ -32,7 +32,7 @@ from dreadnode.constants import (
     ENV_SERVER,
     ENV_SERVER_URL,
 )
-from dreadnode.metric import Metric, Scorer, ScorerCallable, T
+from dreadnode.metric import Metric, MetricMode, Scorer, ScorerCallable, T
 from dreadnode.task import P, R, Task
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -757,6 +757,7 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
+        mode: MetricMode = "direct",
         to: ToObject = "task-or-run",
     ) -> None:
         """
@@ -778,6 +779,14 @@ class Dreadnode:
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
             timestamp: The timestamp of the metric - defaults to the current time.
+            mode: The aggregation mode to use for the metric. Helpful when you want to let
+                the library take care of translating your raw values into better representations.
+                - direct: do not modify the value at all (default)
+                - min: the lowest observed value reported for this metric
+                - max: the highest observed value reported for this metric
+                - avg: the average of all reported values for this metric
+                - sum: the cumulative sum of all reported values for this metric
+                - count: increment every time this metric is logged - disregard value
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
@@ -790,6 +799,7 @@ class Dreadnode:
         value: Metric,
         *,
         origin: t.Any | None = None,
+        mode: MetricMode = "direct",
         to: ToObject = "task-or-run",
     ) -> None:
         """
@@ -809,6 +819,13 @@ class Dreadnode:
             value: The metric object.
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
+            mode: The aggregation mode to use for the metric. Helpful when you want to let
+                the library take care of translating your raw values into better representations.
+                - direct: do not modify the value at all (default)
+                - min: always report the lowest ovbserved value for this metric
+                - max: always report the highest observed value for this metric
+                - sum: report a rolling sum of all values for this metric
+                - count: report the number of times this metric has been logged
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
@@ -824,6 +841,7 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
+        mode: MetricMode = "direct",
         to: ToObject = "task-or-run",
     ) -> None:
         task = current_task_span.get()
@@ -838,7 +856,7 @@ class Dreadnode:
             if isinstance(value, Metric)
             else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
         )
-        target.log_metric(key, metric, origin=origin)
+        target.log_metric(key, metric, origin=origin, mode=mode)
 
     @handle_internal_errors()
     def log_artifact(

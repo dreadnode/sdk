@@ -10,6 +10,8 @@ from dreadnode.types import JsonDict, JsonValue
 
 T = t.TypeVar("T")
 
+MetricMode = t.Literal["direct", "avg", "sum", "min", "max", "count"]
+
 
 @dataclass
 class Metric:
@@ -54,6 +56,46 @@ class Metric:
         weight = sum(weight for _, _, weight in values)
         score_attributes = {name: value for name, value, _ in values}
         return cls(value=total / weight, step=step, attributes={**attributes, **score_attributes})
+
+    def apply_mode(self, mode: MetricMode, others: "list[Metric]") -> "Metric":
+        """
+        Apply an aggregation mode to the metric.
+        This will modify the metric in place.
+
+        Args:
+            mode: The mode to apply. One of "sum", "min", "max", or "inc".
+            others: A list of other metrics to apply the mode to.
+
+        Returns:
+            self
+        """
+        previous_mode = next((m.attributes.get("mode") for m in others), mode) or "direct"
+        if mode != previous_mode:
+            raise ValueError(
+                f"Cannot mix metric modes {mode} != {previous_mode}",
+            )
+
+        if mode == "direct":
+            return self
+
+        self.attributes["original"] = self.value
+        self.attributes["mode"] = mode
+
+        prior_values = [m.value for m in sorted(others, key=lambda m: m.timestamp)]
+
+        if mode == "sum":
+            self.value += max(prior_values)
+        elif mode == "min":
+            self.value = min([self.value, *prior_values])
+        elif mode == "max":
+            self.value = max([self.value, *prior_values])
+        elif mode == "count":
+            self.value = len(others) + 1
+        elif mode == "avg" and prior_values:
+            current_avg = prior_values[-1]
+            self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
+
+        return self
 
 
 MetricDict = dict[str, list[Metric]]

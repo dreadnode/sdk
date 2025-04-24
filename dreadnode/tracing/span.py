@@ -28,7 +28,7 @@ from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
-from dreadnode.metric import Metric, MetricDict
+from dreadnode.metric import Metric, MetricDict, MetricMode
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
@@ -526,7 +526,9 @@ class RunSpan(Span):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-    ) -> None: ...
+        mode: MetricMode = "direct",
+    ) -> None:
+        ...
 
     @t.overload
     def log_metric(
@@ -535,7 +537,9 @@ class RunSpan(Span):
         value: Metric,
         *,
         origin: t.Any | None = None,
-    ) -> None: ...
+        mode: MetricMode = "direct",
+    ) -> None:
+        ...
 
     def log_metric(
         self,
@@ -545,6 +549,7 @@ class RunSpan(Span):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
+        mode: MetricMode = "direct",
     ) -> None:
         metric = (
             value
@@ -560,9 +565,8 @@ class RunSpan(Span):
             )
             metric.attributes[METRIC_ATTRIBUTE_SOURCE_HASH] = origin_hash
 
-        self._metrics.setdefault(key, []).append(metric)
-        if self._span is None:
-            return
+        metrics = self._metrics.setdefault(key, [])
+        metrics.append(metric.apply_mode(mode, metrics))
 
     @property
     def outputs(self) -> AnyDict:
@@ -735,7 +739,9 @@ class TaskSpan(Span, t.Generic[R]):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-    ) -> None: ...
+        mode: MetricMode = "direct",
+    ) -> None:
+        ...
 
     @t.overload
     def log_metric(
@@ -744,7 +750,9 @@ class TaskSpan(Span, t.Generic[R]):
         value: Metric,
         *,
         origin: t.Any | None = None,
-    ) -> None: ...
+        mode: MetricMode = "direct",
+    ) -> None:
+        ...
 
     def log_metric(
         self,
@@ -754,6 +762,7 @@ class TaskSpan(Span, t.Generic[R]):
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
+        mode: MetricMode = "direct",
     ) -> None:
         metric = (
             value
@@ -769,12 +778,13 @@ class TaskSpan(Span, t.Generic[R]):
             )
             metric.attributes[METRIC_ATTRIBUTE_SOURCE_HASH] = origin_hash
 
-        self._metrics.setdefault(key, []).append(metric)
+        metrics = self._metrics.setdefault(key, [])
+        metrics.append(metric.apply_mode(mode, metrics))
 
         # For every metric we log, also log it to the run
         # with our `label` as a prefix.
         #
-        # Don't include `source` as we handled it here.
+        # Don't include `source` and `mode` as we handled it here.
         if (run := current_run_span.get()) is not None:
             run.log_metric(f"{self._label}.{key}", metric)
 
