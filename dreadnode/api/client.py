@@ -76,7 +76,7 @@ class ApiClient:
 
         try:
             obj = response.json()
-            return f'{response.status_code}: {obj.get("detail", json.dumps(obj))}'
+            return f"{response.status_code}: {obj.get('detail', json.dumps(obj))}"
         except Exception:  # noqa: BLE001
             return str(response.content)
 

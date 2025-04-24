@@ -83,7 +83,7 @@ class Scorer(t.Generic[T]):
     def from_callable(
         cls,
         tracer: Tracer,
-        func: ScorerCallable[T] | "Scorer[T]",
+        func: ScorerCallable[T] | "Scorer[T]",  # noqa: TC010
         *,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,

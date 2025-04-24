@@ -186,9 +186,7 @@ class Span(ReadableSpan):
         self._added_attributes = True
         if schema and raw is False:
             self._schema[key] = create_json_schema(value, set())
-        otel_value = self._pre_attributes[key] = (
-            value if raw else prepare_otlp_attribute(value)
-        )
+        otel_value = self._pre_attributes[key] = value if raw else prepare_otlp_attribute(value)
         if self._span is not None:
             self._span.set_attribute(key, otel_value)
         self._pre_attributes[key] = otel_value
@@ -608,9 +606,7 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._output: R | Unset = UNSET  # For the python output
 
-        self._context_token: Token[TaskSpan[t.Any] | None] | None = (
-            None  # contextvars context
-        )
+        self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),

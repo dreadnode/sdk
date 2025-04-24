@@ -217,7 +217,7 @@ class Dreadnode:
 
             try:
                 self._api.list_projects()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 raise RuntimeError(
                     "Failed to authenticate with the provided server and token",
                 ) from e
@@ -371,42 +371,36 @@ class Dreadnode:
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
     class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         @t.overload
         def __call__(
             self,
             func: t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
         def __call__(
             self,
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]:
-            ...
+        ) -> Task[P, R]: ...
 
     @t.overload
     def task(
@@ -420,8 +414,7 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> TaskDecorator:
-        ...
+    ) -> TaskDecorator: ...
 
     @t.overload
     def task(
@@ -435,8 +428,7 @@ class Dreadnode:
         log_output: bool = True,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
-    ) -> ScoredTaskDecorator[R]:
-        ...
+    ) -> ScoredTaskDecorator[R]: ...
 
     def task(
         self,
@@ -514,7 +506,7 @@ class Dreadnode:
                 tracer=self._get_tracer(),
                 name=_name,
                 attributes=_attributes,
-                func=t.cast(t.Callable[P, R], func),
+                func=t.cast("t.Callable[P, R]", func),
                 scorers=[
                     scorer
                     if isinstance(scorer, Scorer)
@@ -790,7 +782,6 @@ class Dreadnode:
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
         """
-        ...
 
     @t.overload
     def log_metric(
@@ -822,7 +813,7 @@ class Dreadnode:
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
         """
-        ...
+        ...  # noqa: PIE790
 
     @handle_internal_errors()
     def log_metric(
