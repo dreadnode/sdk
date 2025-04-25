@@ -1,12 +1,12 @@
 [project]
 name = "dreadnode"
-version = "1.0.0-rc.0"
+version = "1.0.0-rc.1"
 description = "Dreadnode SDK"
 requires-python = ">=3.10,<3.13"
 
 [tool.poetry]
 name = "dreadnode"
-version = "1.0.0-rc.0"
+version = "1.0.0-rc.1"
 description = "Dreadnode SDK"
 authors = ["Nick Landers <monoxgas@gmail.com>"]
 repository = "https://github.com/dreadnode/sdk"
