@@ -22,6 +22,11 @@ fast-depends = "^2.4.12"
 coolname = "^2.2.0"
 fsspec = {version = ">=2023.1.0,<=2025.3.0", extras = ["s3"]} # Pinned for datasets compatibility
 
+transformers = { version = "^4.41.0", optional = true }
+
+[tool.poetry.extras]
+training = ["transformers"]
+
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
 ruff = "^0.11.6"
@@ -39,10 +44,7 @@ datasets = "^3.5.0"
 pandas = "^2.2.3"
 pyarrow = "^19.0.1"
 
-transformers = { version = "^4.41.0", optional = true }
 
-[tool.poetry.extras]
-training = ["transformers"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]
