@@ -44,10 +44,10 @@ jobs:
       run: poetry install --all-extras
 
     - name: Lint
-      run: poetry run ruff check --output-format=github rigging
+      run: poetry run ruff check --output-format=github .
 
     - name: Typecheck
-      run: poetry run mypy rigging
+      run: poetry run mypy .
 
     - name: Test
       run: poetry run pytest
