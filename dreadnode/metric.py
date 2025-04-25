@@ -3,6 +3,7 @@ import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from logfire._internal.stack_info import warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
 
@@ -10,7 +11,11 @@ from dreadnode.types import JsonDict, JsonValue
 
 T = t.TypeVar("T")
 
-MetricMode = t.Literal["direct", "avg", "sum", "min", "max", "count"]
+MetricAggMode = t.Literal["avg", "sum", "min", "max", "count"]
+
+
+class MetricWarning(UserWarning):
+    pass
 
 
 @dataclass
@@ -57,7 +62,7 @@ class Metric:
         score_attributes = {name: value for name, value, _ in values}
         return cls(value=total / weight, step=step, attributes={**attributes, **score_attributes})
 
-    def apply_mode(self, mode: MetricMode, others: "list[Metric]") -> "Metric":
+    def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
         """
         Apply an aggregation mode to the metric.
         This will modify the metric in place.
@@ -69,14 +74,12 @@ class Metric:
         Returns:
             self
         """
-        previous_mode = next((m.attributes.get("mode") for m in others), mode) or "direct"
-        if mode != previous_mode:
-            raise ValueError(
-                f"Cannot mix metric modes {mode} != {previous_mode}",
+        previous_mode = next((m.attributes.get("mode") for m in others), mode)
+        if previous_mode is not None and mode != previous_mode:
+            warn_at_user_stacklevel(
+                f"Metric logged with different modes ({mode} != {previous_mode}). This may result in unexpected behavior.",
+                MetricWarning,
             )
-
-        if mode == "direct":
-            return self
 
         self.attributes["original"] = self.value
         self.attributes["mode"] = mode

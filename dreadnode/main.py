@@ -32,7 +32,7 @@ from dreadnode.constants import (
     ENV_SERVER,
     ENV_SERVER_URL,
 )
-from dreadnode.metric import Metric, MetricMode, Scorer, ScorerCallable, T
+from dreadnode.metric import Metric, MetricAggMode, Scorer, ScorerCallable, T
 from dreadnode.task import P, R, Task
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -757,7 +757,7 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-        mode: MetricMode = "direct",
+        mode: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
         """
@@ -799,7 +799,7 @@ class Dreadnode:
         value: Metric,
         *,
         origin: t.Any | None = None,
-        mode: MetricMode = "direct",
+        mode: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
         """
@@ -821,7 +821,6 @@ class Dreadnode:
                 as an input or output anywhere in the run.
             mode: The aggregation mode to use for the metric. Helpful when you want to let
                 the library take care of translating your raw values into better representations.
-                - direct: do not modify the value at all (default)
                 - min: always report the lowest ovbserved value for this metric
                 - max: always report the highest observed value for this metric
                 - avg: report the average of all values for this metric
@@ -841,7 +840,7 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-        mode: MetricMode = "direct",
+        mode: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
         task = current_task_span.get()
