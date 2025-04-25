@@ -23,10 +23,11 @@ Dreadnode Strikes SDK
 
 </br>
 
-Strikes is an platform for building, experimenting with, and evaluating AI security agent code.
+Strikes is a platform for building, experimenting with, and evaluating AI security agent code.
 
 - **Experiment + Tasking + Observability** in a single place that's lightweight and scales.
 - **Track your data** with parameters, inputs, and outputs all connected to your tasks.
+- **Log your artifacts** — data, models, files, and folders — to track data of your Dreadnode runs, enabling easy reuse and reproducibility.
 - **Measure everything** with metrics throughout your code and anywhere you need them.
 - **Scale your code** from a single run to thousands.
 
