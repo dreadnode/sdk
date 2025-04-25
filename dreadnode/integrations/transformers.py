@@ -5,12 +5,8 @@ if importlib.util.find_spec("transformers") is None:
 
 import typing as t
 
-from transformers.trainer_callback import (  # type: ignore [import-untyped]
-    TrainerCallback,
-    TrainerControl,
-    TrainerState,
-    TrainingArguments,
-)
+from transformers.trainer_callback import TrainerCallback, TrainerControl, TrainerState
+from transformers.training_args import TrainingArguments
 
 import dreadnode as dn
 
@@ -28,7 +24,7 @@ def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
     return cleaned
 
 
-class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
+class DreadnodeCallback(TrainerCallback):
     """
     An implementation of the `TrainerCallback` interface for Dreadnode.
 
@@ -124,7 +120,7 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
-        if self._run is None:
+        if self._run is None or state.epoch is None:
             return
 
         dn.log_metric("epoch", state.epoch)
