@@ -268,6 +268,7 @@ class Dreadnode:
             service_version=self.service_version,
             console=logfire.ConsoleOptions() if self.console is True else self.console,
             scrubbing=False,
+            inspect_arguments=False,
         )
         self._logfire.config.ignore_no_config = True
 
