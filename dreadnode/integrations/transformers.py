@@ -1,3 +1,10 @@
+"""
+This module provides an integration with the `transformers` library for logging
+metrics and parameters to Dreadnode during training. It includes a custom
+`TrainerCallback` implementation that tracks training progress and logs relevant
+information to Dreadnode.
+"""
+
 import importlib.util
 
 if importlib.util.find_spec("transformers") is None:
@@ -21,6 +28,15 @@ if t.TYPE_CHECKING:
 
 
 def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
+    """
+    Cleans the keys of a dictionary by replacing certain prefixes with slashes.
+
+    Args:
+        data (dict[str, t.Any]): The dictionary to clean.
+
+    Returns:
+        dict[str, t.Any]: A new dictionary with cleaned keys.
+    """
     cleaned: dict[str, t.Any] = {}
     for key, val in data.items():
         _key = key.replace("eval_", "eval/").replace("test_", "test/").replace("train_", "train/")
@@ -34,6 +50,12 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
 
     This callback is used to log metrics and parameters to Dreadnode during training inside
     the `transformers` library or derivations (`trl`, etc.).
+
+
+    Attributes:
+        project (str | None): The project name in Dreadnode.
+        run_name (str | None): The name of the training run.
+        tags (list[str]): A list of tags associated with the run.
     """
 
     def __init__(
@@ -42,6 +64,14 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         run_name: str | None = None,
         tags: list[str] | None = None,
     ):
+        """
+        Initializes the DreadnodeCallback.
+
+        Args:
+            project (str | None): The project name in Dreadnode.
+            run_name (str | None): The name of the training run.
+            tags (list[str] | None): A list of tags associated with the run.
+        """
         self.project = project
         self.run_name = run_name
         self.tags = tags or []
@@ -52,6 +82,9 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         self._step_span: Span | None = None
 
     def _shutdown(self) -> None:
+        """
+        Shuts down the callback by closing any active spans and the run.
+        """
         if self._step_span is not None:
             self._step_span.__exit__(None, None, None)
             self._step_span = None
@@ -65,6 +98,14 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
             self._run = None
 
     def _setup(self, args: TrainingArguments, state: TrainerState, model: t.Any) -> None:
+        """
+        Sets up the callback by initializing the Dreadnode run and logging parameters.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            model (t.Any): The model being trained.
+        """
         if self._initialized:
             return
 
@@ -105,6 +146,16 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         model: t.Any | None = None,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called at the beginning of training.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            model (t.Any | None): The model being trained.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         if not self._initialized:
             self._setup(args, state, model)
 
@@ -115,6 +166,15 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called at the end of training.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         self._shutdown()
 
     def on_epoch_begin(
@@ -124,6 +184,15 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called at the beginning of an epoch.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         if self._run is None:
             return
 
@@ -139,6 +208,15 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called at the end of an epoch.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         if self._epoch_span is not None:
             self._epoch_span.__exit__(None, None, None)
             self._epoch_span = None
@@ -150,6 +228,15 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called at the beginning of a training step.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         if self._run is None:
             return
 
@@ -165,6 +252,15 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called at the end of a training step.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         if self._step_span is not None:
             self._step_span.__exit__(None, None, None)
             self._step_span = None
@@ -177,6 +273,16 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         logs: dict[str, t.Any] | None = None,
         **kwargs: t.Any,
     ) -> None:
+        """
+        Called when logs are reported.
+
+        Args:
+            args (TrainingArguments): The training arguments.
+            state (TrainerState): The state of the trainer.
+            control (TrainerControl): The control object for the trainer.
+            logs (dict[str, t.Any] | None): The logs to process.
+            **kwargs (t.Any): Additional keyword arguments.
+        """
         if self._run is None or logs is None:
             return
 
