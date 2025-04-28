@@ -48,6 +48,7 @@ from dreadnode.tracing.span import (
 )
 from dreadnode.types import (
     AnyDict,
+    JsonDict,
     JsonValue,
 )
 from dreadnode.util import handle_internal_errors
@@ -759,6 +760,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
         """
@@ -788,6 +790,7 @@ class Dreadnode:
                 - avg: the average of all reported values for this metric
                 - sum: the cumulative sum of all reported values for this metric
                 - count: increment every time this metric is logged - disregard value
+            attributes: A dictionary of additional attributes to attach to the metric.
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
@@ -842,6 +845,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
         task = current_task_span.get()
@@ -854,7 +858,9 @@ class Dreadnode:
         metric = (
             value
             if isinstance(value, Metric)
-            else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
+            else Metric(
+                float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+            )
         )
         target.log_metric(key, metric, origin=origin, mode=mode)
 

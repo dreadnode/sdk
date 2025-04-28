@@ -527,6 +527,7 @@ class RunSpan(Span):
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
     ) -> None: ...
 
     @t.overload
@@ -548,11 +549,14 @@ class RunSpan(Span):
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
     ) -> None:
         metric = (
             value
             if isinstance(value, Metric)
-            else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
+            else Metric(
+                float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+            )
         )
 
         if origin is not None:
@@ -740,6 +744,7 @@ class TaskSpan(Span, t.Generic[R]):
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
     ) -> None: ...
 
     @t.overload
@@ -761,11 +766,14 @@ class TaskSpan(Span, t.Generic[R]):
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
     ) -> None:
         metric = (
             value
             if isinstance(value, Metric)
-            else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
+            else Metric(
+                float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+            )
         )
 
         if origin is not None:
