@@ -128,6 +128,25 @@ class Task(t.Generic[P, R]):
         self.__name__ = getattr(self.func, "__name__", self.name)
         self.__doc__ = getattr(self.func, "__doc__", None)
 
+    def __get__(self, obj: t.Any, objtype: t.Any) -> "Task[P, R]":
+        if obj is None:
+            return self
+
+        bound_func = self.func.__get__(obj, objtype)
+
+        return Task(
+            tracer=self.tracer,
+            name=self.name,
+            label=self.label,
+            attributes=self.attributes,
+            func=bound_func,
+            scorers=[scorer.clone() for scorer in self.scorers],
+            tags=self.tags.copy(),
+            log_params=self.log_params,
+            log_inputs=self.log_inputs,
+            log_output=self.log_output,
+        )
+
     def _bind_args(self, *args: P.args, **kwargs: P.kwargs) -> dict[str, t.Any]:
         signature = inspect.signature(self.func)
         bound_args = signature.bind(*args, **kwargs)
