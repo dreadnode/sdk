@@ -301,6 +301,7 @@ class RunSpan(Span):
     ) -> None:
         self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._params)
         self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs, schema=False)
+        self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._outputs, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_OBJECTS, self._objects, schema=False)
         self.set_attribute(
