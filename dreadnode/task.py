@@ -9,6 +9,7 @@ from opentelemetry.trace import Tracer
 
 from dreadnode.metric import Scorer, ScorerCallable
 from dreadnode.tracing.span import TaskSpan, current_run_span
+from dreadnode.types import INHERITED, Inherited
 
 P = t.ParamSpec("P")
 R = t.TypeVar("R")
@@ -114,9 +115,9 @@ class Task(t.Generic[P, R]):
 
     log_params: t.Sequence[str] | bool = False
     "Whether to log all, or specific, incoming arguments to the function as parameters."
-    log_inputs: t.Sequence[str] | bool = True
+    log_inputs: t.Sequence[str] | bool | Inherited = INHERITED
     "Whether to log all, or specific, incoming arguments to the function as inputs."
-    log_output: bool = True
+    log_output: bool | Inherited = INHERITED
     "Whether to automatically log the result of the function as an output."
 
     def __post_init__(self) -> None:
@@ -239,6 +240,9 @@ class Task(t.Generic[P, R]):
         if run is None or not run.is_recording:
             raise RuntimeError("Tasks must be executed within a run")
 
+        log_inputs = run.autolog if isinstance(self.log_inputs, Inherited) else self.log_inputs
+        log_output = run.autolog if isinstance(self.log_output, Inherited) else self.log_output
+
         bound_args = self._bind_args(*args, **kwargs)
 
         params_to_log = (
@@ -250,9 +254,9 @@ class Task(t.Generic[P, R]):
         )
         inputs_to_log = (
             bound_args
-            if self.log_inputs is True
-            else {k: v for k, v in bound_args.items() if k in self.log_inputs}
-            if self.log_inputs is not False
+            if log_inputs is True
+            else {k: v for k, v in bound_args.items() if k in log_inputs}
+            if log_inputs is not False
             else {}
         )
 
@@ -265,13 +269,16 @@ class Task(t.Generic[P, R]):
             run_id=run.run_id,
             tracer=self.tracer,
         ) as span:
-            span.run.log_metric(f"{self.label}.exec.count", 1, mode="count")
+            if run.autolog:
+                span.run.log_metric(
+                    "count", 1, prefix=f"{self.label}.exec", mode="count", attributes={"auto": True}
+                )
 
             for name, value in params_to_log.items():
                 span.log_param(name, value)
 
             input_object_hashes: list[str] = [
-                span.log_input(name, value, label=f"{self.label}.input.{name}")
+                span.log_input(name, value, label=f"{self.label}.input.{name}", auto=True)
                 for name, value in inputs_to_log.items()
             ]
 
@@ -280,17 +287,29 @@ class Task(t.Generic[P, R]):
                 if inspect.isawaitable(output):
                     output = await output
             except Exception:
-                span.run.log_metric(f"{self.label}.exec.success_rate", 0, mode="avg")
+                if run.autolog:
+                    span.run.log_metric(
+                        "success_rate",
+                        0,
+                        prefix=f"{self.label}.exec",
+                        mode="avg",
+                        attributes={"auto": True},
+                    )
                 raise
 
-            span.run.log_metric(f"{self.label}.exec.success_rate", 1, mode="avg")
+            if run.autolog:
+                span.run.log_metric(
+                    "success_rate",
+                    1,
+                    prefix=f"{self.label}.exec",
+                    mode="avg",
+                    attributes={"auto": True},
+                )
             span.output = output
 
-            if self.log_output:
+            if log_output:
                 output_object_hash = span.log_output(
-                    "output",
-                    output,
-                    label=f"{self.label}.output",
+                    "output", output, label=f"{self.label}.output", auto=True
                 )
 
                 # Link the output to the inputs
