@@ -128,11 +128,11 @@ class ApiClient:
         return Run(**response.json())
 
     def get_run_tasks(self, run: str | ULID) -> list[Task]:
-        response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks")
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks/full")
         return [Task(**task) for task in response.json()]
 
     def get_run_trace(self, run: str | ULID) -> list[Task | TraceSpan]:
-        response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans")
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans/full")
         spans: list[Task | TraceSpan] = []
         for item in response.json():
             if "parent_task_span_id" in item:
