@@ -1,12 +1,15 @@
 import typing as t
 from dataclasses import dataclass
 
+from dreadnode.types import JsonDict
+
 
 @dataclass
 class ObjectRef:
     name: str
     label: str
     hash: str
+    attributes: JsonDict
 
 
 @dataclass
