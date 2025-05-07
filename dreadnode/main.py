@@ -7,7 +7,7 @@ import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -204,6 +204,16 @@ class Dreadnode:
                 f"or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
                 category=DreadnodeConfigWarning,
             )
+
+        if self.server:
+            parsed_url = urlparse(self.server)
+            if not parsed_url.scheme:
+                netloc = parsed_url.path.split("/")[0]
+                path = "/".join(parsed_url.path.split("/")[1:])
+                parsed_new = parsed_url._replace(
+                    scheme="https", netloc=netloc, path=f"/{path}" if path else ""
+                )
+                self.server = urlunparse(parsed_new)
 
         if self.local_dir is not False:
             config = FileExportConfig(
