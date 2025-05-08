@@ -1,0 +1,219 @@
+---
+title: 'exporters'
+sidebarTitle: 'exporters'
+groups: ["strikes"]
+---
+
+# Module `exporters`
+
+*(Full name: `dreadnode.tracing.exporters`)*
+
+**Source file:** `exporters.py`
+
+## Classes
+
+
+### Class `FileExportConfig`
+
+**Inherits from:** `object`
+
+Configuration for signal exports to JSONL files.
+
+#### Methods
+
+##### `__eq__`
+
+`__eq__(...)`
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+`__repr__(...)`
+
+Return repr(self).
+
+---
+
+##### `get_path`
+
+`get_path(...)`
+
+Get the file path for a specific signal type.
+
+---
+
+
+### Class `FileLogExporter`
+
+**Inherits from:** `opentelemetry.sdk._logs._internal.export.LogExporter`
+
+LogExporter that writes logs to a file in OTLP format.
+
+#### Properties
+
+##### `file`
+
+**Type:** `IO[str]` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `export`
+
+`export(...)`
+
+Exports a batch of logs.
+
+**Parameters:**
+
+- **`batch`**: The list of `LogData` objects to be exported
+
+**Returns:** The result of the export
+
+---
+
+##### `force_flush`
+
+`force_flush(...)`
+
+---
+
+##### `shutdown`
+
+`shutdown(...)`
+
+Shuts down the exporter.
+
+Called when the SDK is shut down.
+
+---
+
+
+### Class `FileMetricReader`
+
+**Inherits from:** `opentelemetry.sdk.metrics._internal.export.MetricReader`
+
+MetricReader that writes metrics to a file in OTLP format.
+
+#### Properties
+
+##### `file`
+
+**Type:** `IO[str]` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `shutdown`
+
+`shutdown(...)`
+
+Shuts down the MetricReader. This method provides a way
+
+for the MetricReader to do any cleanup required. A metric reader can
+only be shutdown once, any subsequent calls are ignored and return
+failure status.
+
+When a `MetricReader` is registered on a
+:class:`~opentelemetry.sdk.metrics.MeterProvider`,
+:meth:`~opentelemetry.sdk.metrics.MeterProvider.shutdown` will invoke this
+automatically.
+
+---
+
+
+### Class `FileSpanExporter`
+
+**Inherits from:** `opentelemetry.sdk.trace.export.SpanExporter`
+
+SpanExporter that writes spans to a file in OTLP format.
+
+#### Properties
+
+##### `file`
+
+**Type:** `IO[str]` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `export`
+
+`export(...)`
+
+Exports a batch of telemetry data.
+
+**Parameters:**
+
+- **`spans`**: The list of `opentelemetry.trace.Span` objects to be exported
+
+**Returns:** The result of the export
+
+---
+
+##### `force_flush`
+
+`force_flush(...)`
+
+Hint to ensure that the export of any spans the exporter has received
+
+prior to the call to ForceFlush SHOULD be completed as soon as possible, preferably
+before returning from this method.
+
+---
+
+##### `shutdown`
+
+`shutdown(...)`
+
+Shuts down the exporter.
+
+Called when the SDK is shut down.
+
+---
+
+

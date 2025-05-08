@@ -1,0 +1,652 @@
+---
+title: 'span'
+sidebarTitle: 'span'
+groups: ["strikes"]
+---
+
+# Module `span`
+
+*(Full name: `dreadnode.tracing.span`)*
+
+**Source file:** `span.py`
+
+## Classes
+
+
+### Class `RunSpan`
+
+**Inherits from:** `dreadnode.tracing.span.Span`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `inputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `metrics`
+
+**Type:** `dict[str, list[dreadnode.metric.Metric]]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `outputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `params`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `run_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+`__enter__(...)`
+
+---
+
+##### `__exit__`
+
+`__exit__(...)`
+
+---
+
+##### `__getattr__`
+
+`__getattr__(...)`
+
+---
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+`get_attribute(...)`
+
+---
+
+##### `get_attributes`
+
+`get_attributes(...)`
+
+---
+
+##### `get_object`
+
+`get_object(...)`
+
+---
+
+##### `link_objects`
+
+`link_objects(...)`
+
+---
+
+##### `log_artifact`
+
+`log_artifact(...)`
+
+Logs a local file or directory as an artifact to the object store.
+
+Preserves directory structure and uses content hashing for deduplication.
+
+**Parameters:**
+
+- **`local_uri`**: Path to the local file or directory
+
+**Returns:** DirectoryNode representing the artifact's tree structure
+
+**Raises:**
+
+- `FileNotFoundError` — If the path doesn't exist
+
+---
+
+##### `log_event`
+
+`log_event(...)`
+
+---
+
+##### `log_input`
+
+`log_input(...)`
+
+---
+
+##### `log_metric`
+
+`log_metric(...)`
+
+---
+
+##### `log_object`
+
+`log_object(...)`
+
+---
+
+##### `log_output`
+
+`log_output(...)`
+
+---
+
+##### `log_param`
+
+`log_param(...)`
+
+---
+
+##### `log_params`
+
+`log_params(...)`
+
+---
+
+##### `push_update`
+
+`push_update(...)`
+
+---
+
+##### `set_attribute`
+
+`set_attribute(...)`
+
+---
+
+##### `set_attributes`
+
+`set_attributes(...)`
+
+---
+
+
+### Class `RunUpdateSpan`
+
+**Inherits from:** `dreadnode.tracing.span.Span`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+`__enter__(...)`
+
+---
+
+##### `__exit__`
+
+`__exit__(...)`
+
+---
+
+##### `__getattr__`
+
+`__getattr__(...)`
+
+---
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+`get_attribute(...)`
+
+---
+
+##### `get_attributes`
+
+`get_attributes(...)`
+
+---
+
+##### `log_event`
+
+`log_event(...)`
+
+---
+
+##### `set_attribute`
+
+`set_attribute(...)`
+
+---
+
+##### `set_attributes`
+
+`set_attributes(...)`
+
+---
+
+
+### Class `Span`
+
+**Inherits from:** `opentelemetry.sdk.trace.ReadableSpan`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+`__enter__(...)`
+
+---
+
+##### `__exit__`
+
+`__exit__(...)`
+
+---
+
+##### `__getattr__`
+
+`__getattr__(...)`
+
+---
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+`get_attribute(...)`
+
+---
+
+##### `get_attributes`
+
+`get_attributes(...)`
+
+---
+
+##### `log_event`
+
+`log_event(...)`
+
+---
+
+##### `set_attribute`
+
+`set_attribute(...)`
+
+---
+
+##### `set_attributes`
+
+`set_attributes(...)`
+
+---
+
+
+### Class `TaskSpan`
+
+**Inherits from:** `dreadnode.tracing.span.Span`, `typing.Generic`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `inputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `metrics`
+
+**Type:** `dict[str, list[dreadnode.metric.Metric]]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `output`
+
+**Type:** `~R` *(property)*
+
+*Has: getter, setter*
+
+---
+
+##### `outputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `params`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `parent_task_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `run`
+
+**Type:** `\<class 'dreadnode.tracing.span.RunSpan'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `run_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `tags`
+
+**Type:** `tuple[str, ...]` *(property)*
+
+*Has: getter, setter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+`__enter__(...)`
+
+---
+
+##### `__exit__`
+
+`__exit__(...)`
+
+---
+
+##### `__getattr__`
+
+`__getattr__(...)`
+
+---
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `get_attribute`
+
+`get_attribute(...)`
+
+---
+
+##### `get_attributes`
+
+`get_attributes(...)`
+
+---
+
+##### `get_average_metric_value`
+
+`get_average_metric_value(...)`
+
+---
+
+##### `log_event`
+
+`log_event(...)`
+
+---
+
+##### `log_input`
+
+`log_input(...)`
+
+---
+
+##### `log_metric`
+
+`log_metric(...)`
+
+---
+
+##### `log_output`
+
+`log_output(...)`
+
+---
+
+##### `log_param`
+
+`log_param(...)`
+
+---
+
+##### `log_params`
+
+`log_params(...)`
+
+---
+
+##### `set_attribute`
+
+`set_attribute(...)`
+
+---
+
+##### `set_attributes`
+
+`set_attributes(...)`
+
+---
+
+
+## Functions
+
+### `prepare_otlp_attribute`
+
+```python
+prepare_otlp_attribute(value: Any) -> Union[str, bool, int, float, Sequence[str], Sequence[bool], Sequence[int], Sequence[float]]
+```
+
+### `prepare_otlp_attributes`
+
+```python
+prepare_otlp_attributes(attributes: dict[str, typing.Any]) -> dict[str, typing.Union[str, bool, int, float, typing.Sequence[str], typing.Sequence[bool], typing.Sequence[int], typing.Sequence[float]]]
+```
+
+
