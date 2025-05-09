@@ -123,7 +123,7 @@ class DreadnodeCallback(TrainerCallback):
         if self._run is None or state.epoch is None:
             return
 
-        dn.log_metric("epoch", state.epoch)
+        dn.log_metric("epoch", state.epoch, to="run")
 
         self._epoch_span = dn.task_span(f"Epoch {state.epoch}")
         self._epoch_span.__enter__()
@@ -149,7 +149,7 @@ class DreadnodeCallback(TrainerCallback):
         if self._run is None:
             return
 
-        dn.log_metric("step", state.global_step)
+        dn.log_metric("step", state.global_step, to="run")
 
         self._step_span = dn.span(f"Step {state.global_step}")
         self._step_span.__enter__()
@@ -178,6 +178,6 @@ class DreadnodeCallback(TrainerCallback):
 
         for key, value in _clean_keys(logs).items():
             if isinstance(value, float | int):
-                dn.log_metric(key, value, step=state.global_step)
+                dn.log_metric(key, value, step=state.global_step, to="run")
 
         dn.push_update()
