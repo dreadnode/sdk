@@ -112,10 +112,12 @@ class Video(BaseDataType):
         if not isinstance(self._data, (np.ndarray, list)):
             raise TypeError("data must be a numpy array or list of numpy arrays")
         frames = []
+        rgb_dim = 3
+        rgba_dim = 4
         if isinstance(self._data, np.ndarray):
-            if self._data.ndim == 3:  # Single frame
+            if self._data.ndim == rgb_dim:  # Single frame
                 frames = [self._data]
-            elif self._data.ndim == 4:  # Multiple frames
+            elif self._data.ndim == rgba_dim:  # Multiple frames
                 frames = [self._data[i] for i in range(self._data.shape[0])]
             else:
                 raise ValueError(f"Unsupported numpy array shape: {self._data.ndim}")

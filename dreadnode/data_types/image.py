@@ -255,11 +255,12 @@ class Image(BaseDataType):
     def _guess_mode(self, data: np.ndarray[t.Any, np.dtype[t.Any]]) -> str:
         """Guess what type of image the np.array is representing."""
         ndims = data.ndim
-
-        if ndims == 2:
+        grayscale_dim = 2
+        rgb_dim = 3
+        if ndims == grayscale_dim:
             return "L"
 
-        if ndims == 3:
+        if ndims == rgb_dim:
             # Map shape to mode for channels-last (HWC) and channels-first (CHW)
             shape_to_mode = {
                 (1,): "L",
@@ -277,12 +278,14 @@ class Image(BaseDataType):
         self, array: np.ndarray[t.Any, np.dtype[t.Any]]
     ) -> np.ndarray[t.Any, np.dtype[t.Any]]:
         """Convert numpy array to a format suitable for PIL."""
+        grayscale_dim = 2
+        rgb_dim = 3
         # Handle grayscale (2D arrays)
-        if array.ndim == 2:
+        if array.ndim == grayscale_dim:
             return array
 
         # Handle standard 3D arrays
-        if array.ndim == 3:
+        if array.ndim == rgb_dim:
             # Channels-last format (HWC) - standard for PIL
             if array.shape[2] in (1, 3, 4):
                 return array
