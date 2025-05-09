@@ -1,0 +1,16 @@
+"""Module for managing tracing in the Dreadnode SDK.
+
+This module provides functionality for tracing operations within the SDK.
+It may include tools for collecting, analyzing, and exporting trace data
+to help monitor and debug the system.
+
+Modules:
+    (List submodules or classes if applicable, e.g., tracing_manager, tracing_utils)
+
+Example:
+    Import the module and use its functionality as follows:
+
+        from dreadnode.tracing import tracing_manager
+
+        tracing_manager.start_trace(operation="example_operation")
+"""

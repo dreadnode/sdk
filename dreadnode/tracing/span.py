@@ -1,3 +1,11 @@
+"""
+This module provides classes and utilities for tracing spans in the Dreadnode SDK.
+
+It includes the `Span` base class and its specialized subclasses such as `RunSpan`,
+`RunUpdateSpan`, and `TaskSpan`. These classes are used to manage and log tracing
+information, metrics, parameters, and artifacts during the execution of tasks and runs.
+"""
+
 import logging
 import re
 import types
@@ -80,6 +88,18 @@ current_run_span: ContextVar["RunSpan | None"] = ContextVar(
 
 
 class Span(ReadableSpan):
+    """
+    Base class for tracing spans.
+
+    Attributes:
+        name (str): The name of the span.
+        attributes (AnyDict): Attributes associated with the span.
+        tracer (Tracer): The tracer instance used for the span.
+        label (str | None): Optional label for the span.
+        type (SpanType): The type of the span (e.g., "span").
+        tags (t.Sequence[str] | None): Optional tags for the span.
+    """
+
     def __init__(
         self,
         name: str,
@@ -90,6 +110,17 @@ class Span(ReadableSpan):
         type: SpanType = "span",
         tags: t.Sequence[str] | None = None,
     ) -> None:
+        """
+        Initializes a Span instance.
+
+        Args:
+            name (str): The name of the span.
+            attributes (AnyDict): Attributes associated with the span.
+            tracer (Tracer): The tracer instance used for the span.
+            label (str | None, optional): Optional label for the span. Defaults to None.
+            type (SpanType, optional): The type of the span. Defaults to "span".
+            tags (t.Sequence[str] | None, optional): Optional tags for the span. Defaults to None.
+        """
         self._label = label or ""
         self._span_name = name
         self._pre_attributes = {
@@ -111,6 +142,12 @@ class Span(ReadableSpan):
             return getattr(self._span, name)
 
     def __enter__(self) -> te.Self:
+        """
+        Enters the span context.
+
+        Returns:
+            te.Self: The span instance.
+        """
         if self._span is None:
             self._span = self._tracer.start_span(
                 name=self._span_name,
@@ -132,6 +169,14 @@ class Span(ReadableSpan):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
+        """
+        Exits the span context.
+
+        Args:
+            exc_type (type[BaseException] | None): The exception type, if any.
+            exc_value (BaseException | None): The exception value, if any.
+            traceback (types.TracebackType | None): The traceback, if any.
+        """
         if self._token is None or self._span is None:
             return
 
@@ -151,28 +196,64 @@ class Span(ReadableSpan):
 
     @property
     def span_id(self) -> str:
+        """
+        Returns the span ID.
+
+        Returns:
+            str: The span ID.
+
+        Raises:
+            ValueError: If the span is not active.
+        """
         if self._span is None:
             raise ValueError("Span is not active")
         return trace_api.format_span_id(self._span.get_span_context().span_id)
 
     @property
     def trace_id(self) -> str:
+        """
+        Returns the trace ID.
+
+        Returns:
+            str: The trace ID.
+
+        Raises:
+            ValueError: If the span is not active.
+        """
         if self._span is None:
             raise ValueError("Span is not active")
         return trace_api.format_trace_id(self._span.get_span_context().trace_id)
 
     @property
     def is_recording(self) -> bool:
+        """
+        Checks if the span is recording.
+
+        Returns:
+            bool: True if the span is recording, False otherwise.
+        """
         if self._span is None:
             return False
         return self._span.is_recording()
 
     @property
     def tags(self) -> tuple[str, ...]:
+        """
+        Gets the tags associated with the span.
+
+        Returns:
+            tuple[str, ...]: The tags.
+        """
         return tuple(self.get_attribute(SPAN_ATTRIBUTE_TAGS_, ()))
 
     @tags.setter
     def tags(self, new_tags: t.Sequence[str]) -> None:
+        """
+        Sets the tags for the span.
+
+        Args:
+            new_tags (t.Sequence[str]): The new tags.
+        """
         self.set_attribute(SPAN_ATTRIBUTE_TAGS_, uniquify_sequence(new_tags))
 
     def set_attribute(
@@ -183,6 +264,15 @@ class Span(ReadableSpan):
         schema: bool = True,
         raw: bool = False,
     ) -> None:
+        """
+        Sets an attribute for the span.
+
+        Args:
+            key (str): The attribute key.
+            value (t.Any): The attribute value.
+            schema (bool, optional): Whether to include the attribute in the schema. Defaults to True.
+            raw (bool, optional): Whether to store the raw value. Defaults to False.
+        """
         self._added_attributes = True
         if schema and raw is False:
             self._schema[key] = create_json_schema(value, set())
@@ -192,15 +282,37 @@ class Span(ReadableSpan):
         self._pre_attributes[key] = otel_value
 
     def set_attributes(self, attributes: AnyDict) -> None:
+        """
+        Sets multiple attributes for the span.
+
+        Args:
+            attributes (AnyDict): A dictionary of attributes to set.
+        """
         for key, value in attributes.items():
             self.set_attribute(key, value)
 
     def get_attributes(self) -> AnyDict:
+        """
+        Gets all attributes of the span.
+
+        Returns:
+            AnyDict: A dictionary of attributes.
+        """
         if self._span is not None:
             return getattr(self._span, "attributes", {})
         return self._pre_attributes
 
     def get_attribute(self, key: str, default: t.Any) -> t.Any:
+        """
+        Gets a specific attribute of the span.
+
+        Args:
+            key (str): The attribute key.
+            default (t.Any): The default value if the attribute is not found.
+
+        Returns:
+            t.Any: The attribute value or the default value.
+        """
         return self.get_attributes().get(key, default)
 
     def log_event(
@@ -208,6 +320,13 @@ class Span(ReadableSpan):
         name: str,
         attributes: AnyDict | None = None,
     ) -> None:
+        """
+        Logs an event to the span.
+
+        Args:
+            name (str): The name of the event.
+            attributes (AnyDict | None, optional): Attributes associated with the event. Defaults to None.
+        """
         if self._span is not None:
             self._span.add_event(
                 name,
@@ -216,6 +335,18 @@ class Span(ReadableSpan):
 
 
 class RunUpdateSpan(Span):
+    """
+    A specialized span for updating run information.
+
+    Attributes:
+        run_id (str): The ID of the run.
+        tracer (Tracer): The tracer instance.
+        project (str): The project name.
+        metrics (MetricDict | None): Optional metrics for the run.
+        params (JsonDict | None): Optional parameters for the run.
+        inputs (JsonDict | None): Optional inputs for the run.
+    """
+
     def __init__(
         self,
         run_id: str,
@@ -226,6 +357,17 @@ class RunUpdateSpan(Span):
         params: JsonDict | None = None,
         inputs: JsonDict | None = None,
     ) -> None:
+        """
+        Initializes a RunUpdateSpan instance.
+
+        Args:
+            run_id (str): The ID of the run.
+            tracer (Tracer): The tracer instance.
+            project (str): The project name.
+            metrics (MetricDict | None, optional): Optional metrics for the run. Defaults to None.
+            params (JsonDict | None, optional): Optional parameters for the run. Defaults to None.
+            inputs (JsonDict | None, optional): Optional inputs for the run. Defaults to None.
+        """
         attributes: AnyDict = {
             SPAN_ATTRIBUTE_RUN_ID: run_id,
             SPAN_ATTRIBUTE_PROJECT: project,
@@ -242,6 +384,19 @@ class RunUpdateSpan(Span):
 
 
 class RunSpan(Span):
+    """
+    A specialized span for managing and logging tracing information for a run.
+
+    Attributes:
+        project (str): The project name associated with the run.
+        params (AnyDict): Parameters associated with the run.
+        metrics (MetricDict): Metrics associated with the run.
+        inputs (list[ObjectRef]): Input objects for the run.
+        outputs (list[ObjectRef]): Output objects for the run.
+        artifacts (list[DirectoryNode]): Artifacts associated with the run.
+        run_id (str): The unique identifier for the run.
+    """
+
     def __init__(
         self,
         name: str,
@@ -255,6 +410,21 @@ class RunSpan(Span):
         run_id: str | None = None,
         tags: t.Sequence[str] | None = None,
     ) -> None:
+        """
+        Initializes a RunSpan instance.
+
+        Args:
+            name (str): The name of the span.
+            project (str): The project name associated with the run.
+            attributes (AnyDict): Attributes associated with the span.
+            tracer (Tracer): The tracer instance used for the span.
+            file_system (AbstractFileSystem): The file system for artifact storage.
+            prefix_path (str): The prefix path for artifact storage.
+            params (AnyDict | None, optional): Parameters for the run. Defaults to None.
+            metrics (MetricDict | None, optional): Metrics for the run. Defaults to None.
+            run_id (str | None, optional): The unique identifier for the run. Defaults to None.
+            tags (t.Sequence[str] | None, optional): Tags for the span. Defaults to None.
+        """
         self._params = params or {}
         self._metrics = metrics or {}
         self._objects: dict[str, Object] = {}
@@ -323,6 +493,12 @@ class RunSpan(Span):
             current_run_span.reset(self._context_token)
 
     def push_update(self) -> None:
+        """
+        Pushes updates for the run's parameters and metrics to the tracing system.
+
+        If there are no changes to the parameters or metrics since the last push,
+        this method does nothing.
+        """
         if self._span is None:
             return
 
@@ -360,6 +536,18 @@ class RunSpan(Span):
         event_name: str = EVENT_NAME_OBJECT,
         **attributes: JsonValue,
     ) -> str:
+        """
+        Logs an object to the span.
+
+        Args:
+            value (t.Any): The object to log.
+            label (str | None, optional): An optional label for the object. Defaults to None.
+            event_name (str, optional): The name of the event. Defaults to EVENT_NAME_OBJECT.
+            **attributes (JsonValue): Additional attributes for the event.
+
+        Returns:
+            str: The hash of the logged object.
+        """
         serialized = serialize(value)
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
@@ -407,7 +595,15 @@ class RunSpan(Span):
         return str(self._file_system.unstrip_protocol(full_path))
 
     def _create_object(self, serialized: Serialized) -> Object:
-        """Create an ObjectVal or ObjectUri depending on size."""
+        """
+        Creates an ObjectVal or ObjectUri depending on the size of the serialized data.
+
+        Args:
+            serialized (Serialized): The serialized object data.
+
+        Returns:
+            Object: The created object (either ObjectVal or ObjectUri).
+        """
         data = serialized.data
         data_bytes = serialized.data_bytes
         data_len = serialized.data_len
@@ -433,6 +629,15 @@ class RunSpan(Span):
         )
 
     def get_object(self, hash_: str) -> t.Any:
+        """
+        Retrieves an object by its hash.
+
+        Args:
+            hash_ (str): The hash of the object to retrieve.
+
+        Returns:
+            t.Any: The retrieved object.
+        """
         return self._objects[hash_]
 
     def link_objects(
@@ -441,6 +646,14 @@ class RunSpan(Span):
         link_hash: str,
         **attributes: JsonValue,
     ) -> None:
+        """
+        Logs a link between two objects in the span.
+
+        Args:
+            object_hash (str): The hash of the source object.
+            link_hash (str): The hash of the linked object.
+            **attributes (JsonValue): Additional attributes for the link event.
+        """
         self.log_event(
             name=EVENT_NAME_OBJECT_LINK,
             attributes={
@@ -552,6 +765,18 @@ class RunSpan(Span):
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
     ) -> None:
+        """
+        Logs a metric to the span.
+
+        Args:
+            key (str): The key for the metric.
+            value (float | bool | Metric): The value of the metric.
+            step (int, optional): The step associated with the metric. Defaults to 0.
+            origin (t.Any | None, optional): The origin of the metric. Defaults to None.
+            timestamp (datetime | None, optional): The timestamp of the metric. Defaults to None.
+            mode (MetricAggMode | None, optional): The aggregation mode for the metric. Defaults to None.
+            attributes (JsonDict | None, optional): Additional attributes for the metric. Defaults to None.
+        """
         metric = (
             value
             if isinstance(value, Metric)
@@ -596,6 +821,23 @@ class RunSpan(Span):
 
 
 class TaskSpan(Span, t.Generic[R]):
+    """
+    A specialized span for managing and logging tracing information for a task.
+
+    Attributes:
+        name (str): The name of the task span.
+        attributes (AnyDict): Attributes associated with the task span.
+        run_id (str): The unique identifier for the run associated with the task.
+        tracer (Tracer): The tracer instance used for the task span.
+        label (str | None): An optional label for the task span.
+        params (AnyDict): Parameters associated with the task.
+        metrics (MetricDict): Metrics associated with the task.
+        tags (t.Sequence[str] | None): Optional tags for the task span.
+        inputs (list[ObjectRef]): Input objects for the task.
+        outputs (list[ObjectRef]): Output objects for the task.
+        output (R | Unset): The Python output of the task.
+    """
+
     def __init__(
         self,
         name: str,
@@ -608,6 +850,19 @@ class TaskSpan(Span, t.Generic[R]):
         metrics: MetricDict | None = None,
         tags: t.Sequence[str] | None = None,
     ) -> None:
+        """
+        Initializes a TaskSpan instance.
+
+        Args:
+            name (str): The name of the task span.
+            attributes (AnyDict): Attributes associated with the task span.
+            run_id (str): The unique identifier for the run associated with the task.
+            tracer (Tracer): The tracer instance used for the task span.
+            label (str | None, optional): An optional label for the task span. Defaults to None.
+            params (AnyDict | None, optional): Parameters for the task. Defaults to None.
+            metrics (MetricDict | None, optional): Metrics for the task. Defaults to None.
+            tags (t.Sequence[str] | None, optional): Tags for the task span. Defaults to None.
+        """
         self._params = params or {}
         self._metrics = metrics or {}
         self._inputs: list[ObjectRef] = []
@@ -628,6 +883,15 @@ class TaskSpan(Span, t.Generic[R]):
         super().__init__(name, attributes, tracer, type="task", label=label, tags=tags)
 
     def __enter__(self) -> te.Self:
+        """
+        Enters the task span context.
+
+        Returns:
+            te.Self: The task span instance.
+
+        Raises:
+            RuntimeError: If a task span is started without an active run.
+        """
         self._parent_task = current_task_span.get()
         if self._parent_task is not None:
             self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
@@ -645,6 +909,14 @@ class TaskSpan(Span, t.Generic[R]):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
+        """
+        Exits the task span context.
+
+        Args:
+            exc_type (type[BaseException] | None): The exception type, if any.
+            exc_value (BaseException | None): The exception value, if any.
+            traceback (types.TracebackType | None): The traceback, if any.
+        """
         self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._params)
         self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics, schema=False)
@@ -655,24 +927,60 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def run_id(self) -> str:
+        """
+        Gets the run ID associated with the task span.
+
+        Returns:
+            str: The run ID.
+        """
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, ""))
 
     @property
     def parent_task_id(self) -> str:
+        """
+        Gets the parent task ID, if any.
+
+        Returns:
+            str: The parent task ID.
+        """
         return str(self.get_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, ""))
 
     @property
     def run(self) -> RunSpan:
+        """
+        Gets the active run span associated with the task.
+
+        Returns:
+            RunSpan: The active run span.
+
+        Raises:
+            ValueError: If the task span is not in an active run.
+        """
         if self._run is None:
             raise ValueError("Task span is not in an active run")
         return self._run
 
     @property
     def outputs(self) -> AnyDict:
+        """
+        Gets the output objects logged to the task span.
+
+        Returns:
+            AnyDict: A dictionary of output objects.
+        """
         return {ref.name: self.run.get_object(ref.hash) for ref in self._outputs}
 
     @property
     def output(self) -> R:
+        """
+        Gets the Python output of the task.
+
+        Returns:
+            R: The Python output.
+
+        Raises:
+            TypeError: If the task output is not set.
+        """
         if isinstance(self._output, Unset):
             raise TypeError("Task output is not set")
         return self._output
@@ -689,6 +997,18 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> str:
+        """
+        Logs an output object to the task span.
+
+        Args:
+            name (str): The name of the output.
+            value (t.Any): The value of the output.
+            label (str | None, optional): An optional label for the output. Defaults to None.
+            **attributes (JsonValue): Additional attributes for the output.
+
+        Returns:
+            str: The hash of the logged output.
+        """
         label = label or re.sub(r"\W+", "_", name.lower())
         hash_ = self.run.log_object(
             value,
@@ -701,16 +1021,41 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def params(self) -> AnyDict:
+        """
+        Gets the parameters associated with the task.
+
+        Returns:
+            AnyDict: A dictionary of task parameters.
+        """
         return self._params
 
     def log_param(self, key: str, value: t.Any) -> None:
+        """
+        Logs a single parameter to the task span.
+
+        Args:
+            key (str): The parameter key.
+            value (t.Any): The parameter value.
+        """
         self.log_params(**{key: value})
 
     def log_params(self, **params: t.Any) -> None:
+        """
+        Logs multiple parameters to the task span.
+
+        Args:
+            **params (t.Any): The parameters to log.
+        """
         self._params.update(params)
 
     @property
     def inputs(self) -> AnyDict:
+        """
+        Gets the input objects logged to the task span.
+
+        Returns:
+            AnyDict: A dictionary of input objects.
+        """
         return {ref.name: self.run.get_object(ref.hash) for ref in self._inputs}
 
     def log_input(
@@ -721,6 +1066,18 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> str:
+        """
+        Logs an input object to the task span.
+
+        Args:
+            name (str): The name of the input.
+            value (t.Any): The value of the input.
+            label (str | None, optional): An optional label for the input. Defaults to None.
+            **attributes (JsonValue): Additional attributes for the input.
+
+        Returns:
+            str: The hash of the logged input.
+        """
         label = label or re.sub(r"\W+", "_", name.lower())
         hash_ = self.run.log_object(
             value,
@@ -733,6 +1090,12 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def metrics(self) -> dict[str, list[Metric]]:
+        """
+        Gets the metrics logged to the task span.
+
+        Returns:
+            dict[str, list[Metric]]: A dictionary of metrics.
+        """
         return self._metrics
 
     @t.overload
@@ -769,6 +1132,18 @@ class TaskSpan(Span, t.Generic[R]):
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
     ) -> None:
+        """
+        Logs a metric to the task span.
+
+        Args:
+            key (str): The key for the metric.
+            value (float | bool | Metric): The value of the metric.
+            step (int, optional): The step associated with the metric. Defaults to 0.
+            origin (t.Any | None, optional): The origin of the metric. Defaults to None.
+            timestamp (datetime | None, optional): The timestamp of the metric. Defaults to None.
+            mode (MetricAggMode | None, optional): The aggregation mode for the metric. Defaults to None.
+            attributes (JsonDict | None, optional): Additional attributes for the metric. Defaults to None.
+        """
         metric = (
             value
             if isinstance(value, Metric)
@@ -798,6 +1173,16 @@ class TaskSpan(Span, t.Generic[R]):
             run.log_metric(f"{self._label}.{key}", metric)
 
     def get_average_metric_value(self, key: str | None = None) -> float:
+        """
+        Calculates the average value of a metric or all metrics.
+
+        Args:
+            key (str | None, optional): The key of the metric to calculate the average for.
+                If None, calculates the average for all metrics. Defaults to None.
+
+        Returns:
+            float: The average value of the metric(s).
+        """
         metrics = (
             self._metrics.get(key, [])
             if key is not None
@@ -811,10 +1196,28 @@ class TaskSpan(Span, t.Generic[R]):
 def prepare_otlp_attributes(
     attributes: AnyDict,
 ) -> dict[str, otel_types.AttributeValue]:
+    """
+    Prepares attributes for OTLP export.
+    Converts attributes to a format suitable for OTLP export.
+
+    Args:
+        attributes (AnyDict): A dictionary of attributes to prepare.
+    Returns:
+        dict[str, otel_types.AttributeValue]: A dictionary of prepared attributes.
+    """
     return {key: prepare_otlp_attribute(value) for key, value in attributes.items()}
 
 
 def prepare_otlp_attribute(value: t.Any) -> otel_types.AttributeValue:
+    """
+    Prepares a single attribute for OTLP export.
+    Converts the attribute to a format suitable for OTLP export.
+
+    Args:
+        value (t.Any): The attribute value to prepare.
+    Returns:
+        otel_types.AttributeValue: The prepared attribute value.
+    """
     if isinstance(value, str | int | bool | float):
         return value
     return json_dumps(value)

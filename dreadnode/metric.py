@@ -1,3 +1,24 @@
+"""
+This module provides classes and methods for managing and reporting metrics.
+
+Metrics are used to track the state of a run, task, or object (input/output).
+The `Metric` class represents a single metric, while the `Scorer` class is used
+to generate metrics from callable functions.
+
+Classes:
+    Metric: Represents a single metric with value, step, timestamp, and attributes.
+    Scorer: Generates metrics from callable functions.
+
+Exceptions:
+    MetricWarning: A warning class for metric-related issues.
+
+Types:
+    MetricAggMode: Literal type for aggregation modes.
+    MetricDict: Dictionary type for storing metrics.
+    ScorerResult: Union type for scorer results.
+    ScorerCallable: Callable type for scorer functions.
+"""
+
 import inspect
 import typing as t
 from dataclasses import dataclass, field
@@ -15,23 +36,25 @@ MetricAggMode = t.Literal["avg", "sum", "min", "max", "count"]
 
 
 class MetricWarning(UserWarning):
-    pass
+    """A warning class for metric-related issues."""
 
 
 @dataclass
 class Metric:
     """
-    Any reported value regarding the state of a run, task, and optionally object (input/output).
+    Represents a single metric with value, step, timestamp, and attributes.
+
+    Attributes:
+        value (float): The value of the metric, e.g., 0.5, 1.0, 2.0, etc.
+        step (int): The step value to indicate when this metric was reported.
+        timestamp (datetime): The timestamp when the metric was reported.
+        attributes (JsonDict): A dictionary of attributes to attach to the metric.
     """
 
     value: float
-    "The value of the metric, e.g. 0.5, 1.0, 2.0, etc."
     step: int = 0
-    "An step value to indicate when this metric was reported."
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    "The timestamp when the metric was reported."
     attributes: JsonDict = field(default_factory=dict)
-    "A dictionary of attributes to attach to the metric."
 
     @classmethod
     def from_many(
@@ -43,19 +66,14 @@ class Metric:
         """
         Create a composite metric from individual values and weights.
 
-        This is useful for creating a metric that is the weighted average of multiple values.
-        The values should be a sequence of tuples, where each tuple contains the name of the metric,
-        the value of the metric, and the weight of the metric.
-
-        The individual values will be reported in the attributes of the metric.
-
         Args:
-            values: A sequence of tuples containing the name, value, and weight of each metric.
-            step: The step value to attach to the metric.
+            values (Sequence[tuple[str, float, float]]): A sequence of tuples containing
+                the name, value, and weight of each metric.
+            step (int): The step value to attach to the metric.
             **attributes: Additional attributes to attach to the metric.
 
         Returns:
-            A composite Metric
+            Metric: A composite metric.
         """
         total = sum(value * weight for _, value, weight in values)
         weight = sum(weight for _, _, weight in values)
@@ -65,14 +83,15 @@ class Metric:
     def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
         """
         Apply an aggregation mode to the metric.
-        This will modify the metric in place.
+
+        This modifies the metric in place based on the specified mode.
 
         Args:
-            mode: The mode to apply. One of "sum", "min", "max", or "inc".
-            others: A list of other metrics to apply the mode to.
+            mode (MetricAggMode): The mode to apply. One of "sum", "min", "max", "count", or "avg".
+            others (list[Metric]): A list of other metrics to apply the mode to.
 
         Returns:
-            self
+            Metric: The modified metric.
         """
         previous_mode = next((m.attributes.get("mode") for m in others), mode)
         if previous_mode is not None and mode != previous_mode:
@@ -109,20 +128,26 @@ ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], Sc
 
 @dataclass
 class Scorer(t.Generic[T]):
-    tracer: Tracer
+    """
+    Generates metrics from callable functions.
 
+    Attributes:
+        tracer (Tracer): The tracer to use for reporting metrics.
+        name (str): The name of the scorer, used for reporting metrics.
+        tags (Sequence[str]): A list of tags to attach to the metric.
+        attributes (dict[str, Any]): A dictionary of attributes to attach to the metric.
+        func (ScorerCallable[T]): The function to call to get the metric.
+        step (int): The step value to attach to metrics produced by this Scorer.
+        auto_increment_step (bool): Whether to automatically increment the step for each call.
+    """
+
+    tracer: Tracer
     name: str
-    "The name of the scorer, used for reporting metrics."
     tags: t.Sequence[str]
-    "A list of tags to attach to the metric."
     attributes: dict[str, t.Any]
-    "A dictionary of attributes to attach to the metric."
     func: ScorerCallable[T]
-    "The function to call to get the metric."
     step: int = 0
-    "The step value to attach to metrics produced by this Scorer."
     auto_increment_step: bool = False
-    "Whether to automatically increment the step for each time this scorer is called."
 
     @classmethod
     def from_callable(
@@ -138,14 +163,14 @@ class Scorer(t.Generic[T]):
         Create a scorer from a callable function.
 
         Args:
-            tracer: The tracer to use for reporting metrics.
-            func: The function to call to get the metric.
-            name: The name of the scorer, used for reporting metrics.
-            tags: A list of tags to attach to the metric.
-            **attributes: A dictionary of attributes to attach to the metric.
+            tracer (Tracer): The tracer to use for reporting metrics.
+            func (ScorerCallable[T] | Scorer[T]): The function to call to get the metric.
+            name (str | None): The name of the scorer, used for reporting metrics.
+            tags (Sequence[str] | None): A list of tags to attach to the metric.
+            **attributes: Additional attributes to attach to the metric.
 
         Returns:
-            A Scorer object.
+            Scorer[T]: A Scorer object.
         """
         if isinstance(func, Scorer):
             if name is not None or attributes is not None:
@@ -170,6 +195,7 @@ class Scorer(t.Generic[T]):
         )
 
     def __post_init__(self) -> None:
+        """Initialize the scorer's signature and name."""
         self.__signature__ = inspect.signature(self.func)
         self.__name__ = self.name
 
@@ -178,7 +204,7 @@ class Scorer(t.Generic[T]):
         Clone the scorer.
 
         Returns:
-            A new Scorer.
+            Scorer[T]: A new Scorer object with the same attributes.
         """
         return Scorer(
             tracer=self.tracer,
@@ -194,13 +220,11 @@ class Scorer(t.Generic[T]):
         """
         Execute the scorer and return the metric.
 
-        Any output value will be converted to a Metric object.
-
         Args:
-            object: The object to score.
+            object (T): The object to score.
 
         Returns:
-            A Metric object.
+            Metric: A Metric object representing the result of the scoring function.
         """
         from dreadnode.tracing.span import Span
 

@@ -1,3 +1,20 @@
+"""
+Dreadnode SDK
+
+This module provides the core functionality for the Dreadnode SDK, enabling
+users to track tasks, runs, metrics, and artifacts in a structured and
+configurable manner. It integrates with OpenTelemetry for tracing and
+Logfire for logging.
+
+Classes:
+    Dreadnode: The core SDK class for configuring and interacting with Dreadnode.
+    DreadnodeConfigWarning: Warning for configuration-related issues.
+    DreadnodeUsageWarning: Warning for usage-related issues.
+
+Constants:
+    DEFAULT_INSTANCE: A default instance of the Dreadnode class.
+"""
+
 import contextlib
 import inspect
 import os
@@ -77,9 +94,19 @@ class Dreadnode:
     """
     The core Dreadnode SDK class.
 
-    A default instance of this class is created and can be used directly with `dreadnode.*`.
+    This class provides methods to configure the SDK, track tasks and runs,
+    log metrics, parameters, and artifacts, and interact with the Dreadnode API.
 
-    Otherwise, you can create your own instance and configure it with `configure()`.
+    Attributes:
+        server (str | None): The Dreadnode server URL.
+        token (str | None): The Dreadnode API token.
+        local_dir (str | Path | t.Literal[False]): The local directory for storing data.
+        project (str | None): The default project name for runs.
+        service_name (str | None): The service name for OpenTelemetry.
+        service_version (str | None): The service version for OpenTelemetry.
+        console (logfire.ConsoleOptions | t.Literal[False, True]): Console logging options.
+        send_to_logfire (bool | t.Literal["if-token-present"]): Whether to send data to Logfire.
+        otel_scope (str): The OpenTelemetry scope name.
     """
 
     server: str | None
@@ -105,6 +132,20 @@ class Dreadnode:
         send_to_logfire: bool | t.Literal["if-token-present"] = "if-token-present",
         otel_scope: str = "dreadnode",
     ) -> None:
+        """
+        Initializes a new instance of the Dreadnode class.
+
+        Args:
+            server (str | None): The Dreadnode server URL.
+            token (str | None): The Dreadnode API token.
+            local_dir (str | Path | t.Literal[False]): The local directory for storing data.
+            project (str | None): The default project name for runs.
+            service_name (str | None): The service name for OpenTelemetry.
+            service_version (str | None): The service version for OpenTelemetry.
+            console (logfire.ConsoleOptions | t.Literal[False, True]): Console logging options.
+            send_to_logfire (bool | t.Literal["if-token-present"]): Whether to send data to Logfire.
+            otel_scope (str): The OpenTelemetry scope name.
+        """
         self.server = server
         self.token = token
         self.local_dir = local_dir
@@ -139,28 +180,22 @@ class Dreadnode:
         otel_scope: str = "dreadnode",
     ) -> None:
         """
-        Configure the Dreadnode SDK and call `initialize()`.
+        Configures the Dreadnode SDK and initializes it.
 
-        This method should always be called before using the SDK.
-
-        If `server` and `token` are not provided, the SDK will look in
-        the associated environment variables:
-
-        - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
-        - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+        This method should be called before using the SDK. It sets up the
+        server, token, local directory, and other configuration options.
 
         Args:
-            server: The Dreadnode server URL.
-            token: The Dreadnode API token.
-            local_dir: The local directory to store data in.
-            project: The defautlt project name to associate all runs with.
-            service_name: The service name to use for OpenTelemetry.
-            service_version: The service version to use for OpenTelemetry.
-            console: Whether to log span information to the console.
-            send_to_logfire: Whether to send data to Logfire.
-            otel_scope: The OpenTelemetry scope name.
+            server (str | None): The Dreadnode server URL.
+            token (str | None): The Dreadnode API token.
+            local_dir (str | Path | t.Literal[False]): The local directory for storing data.
+            project (str | None): The default project name for runs.
+            service_name (str | None): The service name for OpenTelemetry.
+            service_version (str | None): The service version for OpenTelemetry.
+            console (logfire.ConsoleOptions | t.Literal[False, True]): Console logging options.
+            send_to_logfire (bool | t.Literal["if-token-present"]): Whether to send data to Logfire.
+            otel_scope (str): The OpenTelemetry scope name.
         """
-
         self._initialized = False
 
         self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
@@ -186,9 +221,10 @@ class Dreadnode:
 
     def initialize(self) -> None:
         """
-        Initialize the Dreadnode SDK.
+        Initializes the Dreadnode SDK.
 
-        This method is called automatically when you call `configure()`.
+        This method is called automatically by `configure()`. It sets up
+        OpenTelemetry components, Logfire configuration, and API clients.
         """
         if self._initialized:
             return
@@ -277,21 +313,27 @@ class Dreadnode:
 
     @property
     def is_default(self) -> bool:
+        """
+        Checks if this instance is the default Dreadnode instance.
+
+        Returns:
+            bool: True if this is the default instance, False otherwise.
+        """
         return self is DEFAULT_INSTANCE
 
     def api(self, *, server: str | None = None, token: str | None = None) -> ApiClient:
         """
-        Get an API client based on the current configuration or the provided server and token.
-
-        If the server and token are not provided, the method will use the current configuration
-        and `configure()` needs to be called first.
+        Retrieves an API client based on the current configuration.
 
         Args:
-            server: The server URL to use for the API client.
-            token: The API token to use for authentication.
+            server (str | None): The server URL for the API client.
+            token (str | None): The API token for authentication.
 
         Returns:
-            An ApiClient instance.
+            ApiClient: An instance of the API client.
+
+        Raises:
+            RuntimeError: If the SDK is not configured or the API is unavailable.
         """
         if server is not None and token is not None:
             return ApiClient(server, token)
@@ -314,13 +356,9 @@ class Dreadnode:
     @handle_internal_errors()
     def shutdown(self) -> None:
         """
-        Shutdown any associate OpenTelemetry components and flush any pending spans.
+        Shuts down OpenTelemetry components and flushes pending spans.
 
-        It is not required to call this method, as the SDK will automatically
-        flush and shutdown when the process exits.
-
-        However, if you want to ensure that all spans are flushed before
-        exiting, you can call this method manually.
+        This method ensures that all spans are flushed before exiting.
         """
         if not self._initialized:
             return
@@ -335,26 +373,15 @@ class Dreadnode:
         **attributes: t.Any,
     ) -> Span:
         """
-        Create a new OpenTelemety span.
-
-        Spans are more lightweight than tasks, but still let you track
-        work being performed and view it in the UI. You cannot
-        log parameters, inputs, or outputs to spans.
-
-        Example:
-            ```
-            with dreadnode.span("my_span") as span:
-                # do some work here
-                pass
-            ```
+        Creates a new OpenTelemetry span.
 
         Args:
-            name: The name of the span.
-            tags: A list of tags to attach to the span.
-            **attributes: A dictionary of attributes to attach to the span.
+            name (str): The name of the span.
+            tags (t.Sequence[str] | None): A list of tags to attach to the span.
+            **attributes (t.Any): Additional attributes for the span.
 
         Returns:
-            A Span object.
+            Span: A new span object.
         """
         return Span(
             name=name,
@@ -445,30 +472,20 @@ class Dreadnode:
         **attributes: t.Any,
     ) -> TaskDecorator:
         """
-        Create a new task from a function.
-
-        Example:
-            ```
-            @dreadnode.task(name="my_task")
-            async def my_task(x: int) -> int:
-                return x * 2
-
-            await my_task(2)
-            ```
+        Creates a new task from a function.
 
         Args:
-            scorers: A list of scorers to attach to the task. These will be called after every execution
-                of the task and will be passed the task's output.
-            name: The name of the task.
-            label: The label of the task - useful for filtering in the UI.
-            log_params: Whether to log all, or specific, incoming arguments to the function as parameters.
-            log_inputs: Whether to log all, or specific, incoming arguments to the function as inputs.
-            log_output: Whether to log the result of the function as an output.
-            tags: A list of tags to attach to the task span.
-            **attributes: A dictionary of attributes to attach to the task span.
+            scorers (t.Sequence[Scorer[t.Any] | ScorerCallable[t.Any]] | None): A list of scorers for the task.
+            name (str | None): The name of the task.
+            label (str | None): The label of the task.
+            log_params (t.Sequence[str] | bool): Whether to log parameters.
+            log_inputs (t.Sequence[str] | bool): Whether to log inputs.
+            log_output (bool): Whether to log the output.
+            tags (t.Sequence[str] | None): A list of tags for the task.
+            **attributes (t.Any): Additional attributes for the task.
 
         Returns:
-            A new Task object.
+            TaskDecorator: A decorator for creating tasks.
         """
 
         def make_task(
@@ -625,7 +642,7 @@ class Dreadnode:
         **attributes: t.Any,
     ) -> RunSpan:
         """
-        Create a new run.
+        Creates a new run.
 
         Runs are the main way to track work in Dreadnode. They are
         associated with a specific project and can have parameters,
@@ -641,13 +658,16 @@ class Dreadnode:
             ```
 
         Args:
-            name: The name of the run. If not provided, a random name will be generated.
-            tags: A list of tags to attach to the run.
-            params: A dictionary of parameters to attach to the run.
-            project: The project name to associate the run with. If not provided,
+            name (str | None): The name of the run. If not provided, a random name will be generated.
+            tags (t.Sequence[str] | None): A list of tags to attach to the run.
+            params (AnyDict | None): A dictionary of parameters to attach to the run.
+            project (str | None): The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
-            **attributes: Additional attributes to attach to the run span.
+            **attributes (t.Any): Additional attributes to attach to the run span.
+
+        Returns:
+            RunSpan: A new run object.
         """
         if not self._initialized:
             self.initialize()
@@ -848,6 +868,19 @@ class Dreadnode:
         attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
     ) -> None:
+        """
+        Logs a metric to the current task or run.
+
+        Args:
+            key (str): The name of the metric.
+            value (float | bool | Metric): The value of the metric.
+            step (int): The step of the metric.
+            origin (t.Any | None): The origin of the metric.
+            timestamp (datetime | None): The timestamp of the metric.
+            mode (MetricAggMode | None): The aggregation mode for the metric.
+            attributes (JsonDict | None): Additional attributes for the metric.
+            to (ToObject): The target object to log the metric to.
+        """
         task = current_task_span.get()
         run = current_run_span.get()
 
@@ -899,8 +932,7 @@ class Dreadnode:
             ```
 
         Args:
-            local_uri: The local path to the file to upload.
-            to: The target object to log the artifact to. Only "run" is supported.
+            local_uri (str | Path): The local path to the file or directory to upload.
         """
         if (run := current_run_span.get()) is None:
             raise RuntimeError("log_artifact() must be called within a run")
@@ -935,13 +967,20 @@ class Dreadnode:
 
                 await my_task(2)
             ```
+
+        Args:
+            name (str): The name of the input.
+            value (JsonValue): The value of the input.
+            label (str | None): An optional label for the input.
+            to (ToObject): The target object to log the input to. Defaults to "task-or-run".
+            **attributes (t.Any): Additional attributes to attach to the input.
         """
         task = current_task_span.get()
         run = current_run_span.get()
 
         target = (task or run) if to == "task-or-run" else run
         if target is None:
-            raise RuntimeError("log_inputs() must be called within a run")
+            raise RuntimeError("log_input() must be called within a run")
 
         target.log_input(name, value, label=label, **attributes)
 
@@ -980,7 +1019,7 @@ class Dreadnode:
             @dreadnode.task
             async def my_task(x: int) -> int:
                 result = x * 2
-                dreadnode.log_output("result", x * 2)
+                dreadnode.log_output("result", result)
                 return result
 
             with dreadnode.run("my_run"):
@@ -988,6 +1027,13 @@ class Dreadnode:
 
                 dreadnode.log_output("other", 123)
             ```
+
+        Args:
+            name (str): The name of the output.
+            value (t.Any): The value of the output.
+            label (str | None): An optional label for the output.
+            to (ToObject): The target object to log the output to. Defaults to "task-or-run".
+            **attributes (JsonValue): Additional attributes to attach to the output.
         """
         task = current_task_span.get()
         run = current_run_span.get()
@@ -1033,12 +1079,12 @@ class Dreadnode:
             ```
 
         Args:
-            origin: The origin object to link from.
-            link: The linked object to link to.
-            **attributes: Additional attributes to attach to the link.
+            origin (t.Any): The origin object to link from.
+            link (t.Any): The linked object to link to.
+            **attributes (JsonValue): Additional attributes to attach to the link.
         """
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("link() must be called within a run")
+            raise RuntimeError("link_objects() must be called within a run")
 
         origin_hash = run.log_object(origin)
         link_hash = run.log_object(link)
