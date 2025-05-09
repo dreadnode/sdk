@@ -1,3 +1,11 @@
+"""
+This module defines constants used for tracing spans and events in the Dreadnode SDK.
+
+The constants include span attributes, event names, and event attributes, all of which
+are namespaced under the `dreadnode` prefix. These constants are used to standardize
+the structure and metadata of spans and events for tracing purposes.
+"""
+
 import typing as t
 
 SPAN_NAMESPACE = "dreadnode"

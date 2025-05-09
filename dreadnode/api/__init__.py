@@ -1,0 +1,10 @@
+"""
+This module initializes the `dreadnode.api` package.
+
+The `dreadnode.api` package provides the API layer for interacting with the
+Dreadnode SDK. It includes modules and functions for handling requests,
+responses, and other API-related functionality.
+
+Modules in this package should be imported and used to facilitate communication
+with external services or internal components of the Dreadnode system.
+"""

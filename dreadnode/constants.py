@@ -1,3 +1,24 @@
+"""Constants for the Dreadnode SDK.
+
+This module defines environment variable names and default values used
+throughout the Dreadnode SDK. These constants are used for configuration
+and managing default behaviors.
+
+Attributes:
+    ENV_SERVER_URL (str): The environment variable for the Dreadnode server URL.
+    ENV_SERVER (str): An alternative environment variable for the server URL.
+    ENV_API_TOKEN (str): The environment variable for the API token.
+    ENV_API_KEY (str): An alternative environment variable for the API token.
+    ENV_LOCAL_DIR (str): The environment variable for the local directory path.
+    ENV_PROJECT (str): The environment variable for the project name.
+
+    DEFAULT_SERVER_URL (str): The default URL for the Dreadnode server.
+    DEFAULT_LOCAL_OBJECT_DIR (str): The default directory for local objects.
+
+    MAX_INLINE_OBJECT_BYTES (int): The maximum size (in bytes) for inline objects
+        in S3 storage.
+"""
+
 # Environment variable names
 
 ENV_SERVER_URL = "DREADNODE_SERVER_URL"

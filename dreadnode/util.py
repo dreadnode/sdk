@@ -29,9 +29,18 @@ add_non_user_code_prefix(Path(dreadnode.__file__).parent)
 
 def safe_repr(obj: t.Any) -> str:
     """
-    Return some kind of non-empty string representation of an object, catching exceptions.
-    """
+    Safely generates a string representation of an object.
 
+    This function attempts to generate a string representation of the given object
+    using `repr()`. If `repr()` raises an exception, it falls back to returning
+    a generic representation.
+
+    Args:
+        obj (Any): The object to represent.
+
+    Returns:
+        str: A string representation of the object.
+    """
     try:
         result = repr(obj)
     except Exception:  # noqa: BLE001
@@ -47,6 +56,17 @@ def safe_repr(obj: t.Any) -> str:
 
 
 def log_internal_error() -> None:
+    """
+    Logs an internal error in the Dreadnode application.
+
+    This function captures and logs exceptions that occur internally in the
+    application. If running under pytest, it may re-raise the exception
+    depending on the test context.
+
+    Raises:
+        Exception: Re-raises the exception if running under pytest and the
+            test context allows it.
+    """
     try:
         current_test = os.environ.get("PYTEST_CURRENT_TEST", "")
         reraise = bool(current_test and "test_internal_exception" not in current_test)
@@ -64,7 +84,15 @@ def log_internal_error() -> None:
 
 
 def _internal_error_exc_info() -> SysExcInfo:
-    """Returns an exc_info tuple with a nicely tweaked traceback."""
+    """
+    Retrieves an exception info tuple with an adjusted traceback.
+
+    This function modifies the traceback to remove redundant frames and add
+    useful context, including up to three frames from user code.
+
+    Returns:
+        SysExcInfo: A tuple containing the exception type, value, and traceback.
+    """
     original_exc_info: SysExcInfo = sys.exc_info()
     exc_type, exc_val, original_tb = original_exc_info
     try:
@@ -141,6 +169,15 @@ def _internal_error_exc_info() -> SysExcInfo:
 
 @contextmanager
 def handle_internal_errors() -> t.Iterator[None]:
+    """
+    A context manager to handle internal errors gracefully.
+
+    This context manager catches exceptions raised within its block and logs
+    them using `log_internal_error()`.
+
+    Yields:
+        None: Allows the execution of the block within the context manager.
+    """
     try:
         yield
     except Exception:  # noqa: BLE001
