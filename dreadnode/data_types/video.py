@@ -4,14 +4,13 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
-from moviepy.video.VideoClip import VideoClip
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore  # noqa: PGH003
+from moviepy.video.VideoClip import VideoClip  # type: ignore  # noqa: PGH003
+from numpy.typing import NDArray
 
 from dreadnode.data_types.base_data_type import BaseDataType
 
-VideoDataType = (
-    str | Path | np.ndarray[t.Any, t.Any] | bytes | list[np.ndarray[t.Any, t.Any]] | VideoClip
-)
+VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | VideoClip
 
 
 class Video(BaseDataType):
@@ -81,6 +80,8 @@ class Video(BaseDataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
+        if not isinstance(self._data, (str, Path)):
+            raise TypeError("Expected file path as str or Path")
         video_bytes = Path(self._data).read_bytes()
         format_name = self._format
 
@@ -98,6 +99,8 @@ class Video(BaseDataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
+        if not isinstance(self._data, bytes):
+            raise TypeError("Expected bytes for video data")
         metadata = self._generate_metadata(self._format)
         return self._data, metadata
 

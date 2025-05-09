@@ -3,12 +3,12 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
-from pydub import AudioSegment
+import soundfile as sf  # type: ignore  # noqa: PGH003
+from pydub import AudioSegment  # type: ignore  # noqa: PGH003
 
 from dreadnode.data_types.base_data_type import BaseDataType
 
-AudioDataType = str | Path | np.ndarray[t.Any, t.Any] | bytes | AudioSegment
+AudioDataType: t.TypeAlias = str | Path | np.ndarray[t.Any, t.Any] | bytes | AudioSegment
 
 
 class Audio(BaseDataType):
