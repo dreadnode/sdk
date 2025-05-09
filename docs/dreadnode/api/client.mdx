@@ -10,6 +10,19 @@ groups: ["strikes"]
 
 **Source file:** `client.py`
 
+This module provides the `ApiClient` class, which serves as a client for interacting
+
+with the Dreadnode API. It includes methods for managing projects, runs, tasks, and
+exporting data in various formats.
+
+Dependencies:
+    - httpx
+    - pandas
+    - pydantic
+    - ulid
+    - dreadnode.util.logger
+    - dreadnode.version.VERSION
+
 ## Classes
 
 
@@ -19,13 +32,27 @@ groups: ["strikes"]
 
 Client for the Dreadnode API.
 
+This class provides methods to interact with the Dreadnode API, including
+managing projects, runs, tasks, and exporting data.
+
+**Parameters:**
+
+- **`_base_url`** (`str`): The base URL of the API.
+- **`_client`** (`httpx.Client`): The HTTP client used for making requests.
+
 #### Methods
 
 ##### `__init__`
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes the ApiClient.
+
+**Parameters:**
+
+- **`base_url`** (`str`): The base URL of the API.
+- **`api_key`** (`str`): The API key for authentication.
+- **`debug`** (`bool`) *(optional)*: Whether to enable debug logging. Defaults to False. Default: `False`
 
 ---
 
@@ -33,11 +60,36 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `export_metrics(...)`
 
+Exports metric data for a specific project.
+
+**Parameters:**
+
+- **`project`** (`str`): The project identifier.
+- **`filter`** (`str`) *(optional)*: A filter string. Defaults to None. Default: `None`
+- **`status`** (`StatusFilter`) *(optional)*: The status filter. Defaults to "completed". Default: `"completed"`
+- **`metrics`** (`list[str]`) *(optional)*: A list of metrics to include. Defaults to None. Default: `None`
+- **`aggregations`** (`list[MetricAggregationType]`) *(optional)*: Aggregations to apply. Defaults to None. Default: `None`
+
+**Returns:** `pd.DataFrame` — A DataFrame containing the exported data.
+
 ---
 
 ##### `export_parameters`
 
 `export_parameters(...)`
+
+Exports parameter data for a specific project.
+
+**Parameters:**
+
+- **`project`** (`str`): The project identifier.
+- **`filter`** (`str`) *(optional)*: A filter string. Defaults to None. Default: `None`
+- **`status`** (`StatusFilter`) *(optional)*: The status filter. Defaults to "completed". Default: `"completed"`
+- **`parameters`** (`list[str]`) *(optional)*: A list of parameters to include. Defaults to None. Default: `None`
+- **`metrics`** (`list[str]`) *(optional)*: A list of metrics to include. Defaults to None. Default: `None`
+- **`aggregations`** (`list[MetricAggregationType]`) *(optional)*: Aggregations to apply. Defaults to None. Default: `None`
+
+**Returns:** `pd.DataFrame` — A DataFrame containing the exported data.
 
 ---
 
@@ -45,11 +97,35 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `export_runs(...)`
 
+Exports run data for a specific project.
+
+**Parameters:**
+
+- **`project`** (`str`): The project identifier.
+- **`filter`** (`str`) *(optional)*: A filter string. Defaults to None. Default: `None`
+- **`status`** (`StatusFilter`) *(optional)*: The status filter. Defaults to "completed". Default: `"completed"`
+- **`aggregations`** (`list[MetricAggregationType]`) *(optional)*: Aggregations to apply. Defaults to None. Default: `None`
+
+**Returns:** `pd.DataFrame` — A DataFrame containing the exported data.
+
 ---
 
 ##### `export_timeseries`
 
 `export_timeseries(...)`
+
+Exports timeseries data for a specific project.
+
+**Parameters:**
+
+- **`project`** (`str`): The project identifier.
+- **`filter`** (`str`) *(optional)*: A filter string. Defaults to None. Default: `None`
+- **`status`** (`StatusFilter`) *(optional)*: The status filter. Defaults to "completed". Default: `"completed"`
+- **`metrics`** (`list[str]`) *(optional)*: A list of metrics to include. Defaults to None. Default: `None`
+- **`time_axis`** (`TimeAxisType`) *(optional)*: The time axis type. Defaults to "relative". Default: `"relative"`
+- **`aggregations`** (`list[TimeAggregationType]`) *(optional)*: Aggregations to apply. Defaults to None. Default: `None`
+
+**Returns:** `pd.DataFrame` — A DataFrame containing the exported data.
 
 ---
 
@@ -57,11 +133,27 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_project(...)`
 
+Retrieves details of a specific project.
+
+**Parameters:**
+
+- **`project`** (`str`): The project identifier.
+
+**Returns:** `Project` — The Project object.
+
 ---
 
 ##### `get_run`
 
 `get_run(...)`
+
+Retrieves details of a specific run.
+
+**Parameters:**
+
+- **`run`** (`Union[str, ULID]`): The run identifier.
+
+**Returns:** `Run` — The Run object.
 
 ---
 
@@ -69,11 +161,27 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_run_tasks(...)`
 
+Lists all tasks for a specific run.
+
+**Parameters:**
+
+- **`run`** (`Union[str, ULID]`): The run identifier.
+
+**Returns:** `list[Task]` — A list of Task objects.
+
 ---
 
 ##### `get_run_trace`
 
 `get_run_trace(...)`
+
+Retrieves the trace spans for a specific run.
+
+**Parameters:**
+
+- **`run`** (`Union[str, ULID]`): The run identifier.
+
+**Returns:** `Union[list[Task, TraceSpan]]` — A list of Task or TraceSpan objects.
 
 ---
 
@@ -81,11 +189,19 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_user_data_credentials(...)`
 
+Retrieves user data credentials.
+
+**Returns:** `UserDataCredentials` — The user data credentials.
+
 ---
 
 ##### `list_projects`
 
 `list_projects(...)`
+
+Lists all projects.
+
+**Returns:** `list[Project]` — A list of Project objects.
 
 ---
 
@@ -93,13 +209,34 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `list_runs(...)`
 
+Lists all runs for a specific project.
+
+**Parameters:**
+
+- **`project`** (`str`): The project identifier.
+
+**Returns:** `list[Run]` — A list of Run objects.
+
 ---
 
 ##### `request`
 
 `request(...)`
 
-Make a request to the API. Raise an exception for non-200 status codes.
+Makes an HTTP request to the API and raises exceptions for errors.
+
+**Parameters:**
+
+- **`method`** (`str`): The HTTP method (e.g., "GET", "POST").
+- **`path`** (`str`): The API endpoint path.
+- **`params`** (`dict[str, t.Any]`) *(optional)*: Query parameters. Defaults to None. Default: `None`
+- **`json_data`** (`dict[str, t.Any]`) *(optional)*: JSON payload. Defaults to None. Default: `None`
+
+**Returns:** `httpx.Response` — The HTTP response object.
+
+**Raises:**
+
+- `RuntimeError` — If the response status code indicates an error.
 
 ---
 

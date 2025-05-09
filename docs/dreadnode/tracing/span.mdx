@@ -10,6 +10,12 @@ groups: ["strikes"]
 
 **Source file:** `span.py`
 
+This module provides classes and utilities for tracing spans in the Dreadnode SDK.
+
+It includes the `Span` base class and its specialized subclasses such as `RunSpan`,
+`RunUpdateSpan`, and `TaskSpan`. These classes are used to manage and log tracing
+information, metrics, parameters, and artifacts during the execution of tasks and runs.
+
 ## Classes
 
 
@@ -17,10 +23,17 @@ groups: ["strikes"]
 
 **Inherits from:** `dreadnode.tracing.span.Span`
 
-Provides read-only access to span attributes.
+A specialized span for managing and logging tracing information for a run.
 
-Users should NOT be creating these objects directly. `ReadableSpan`s are created as
-a direct result from using the tracing pipeline via the `Tracer`.
+**Parameters:**
+
+- **`project`** (`str`): The project name associated with the run.
+- **`params`** (`AnyDict`): Parameters associated with the run.
+- **`metrics`** (`MetricDict`): Metrics associated with the run.
+- **`inputs`** (`list[ObjectRef]`): Input objects for the run.
+- **`outputs`** (`list[ObjectRef]`): Output objects for the run.
+- **`artifacts`** (`list[DirectoryNode]`): Artifacts associated with the run.
+- **`run_id`** (`str`): The unique identifier for the run.
 
 #### Properties
 
@@ -35,6 +48,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `is_recording`
 
 **Type:** `\<class 'bool'>` *(property)*
+
+Checks if the span is recording.
+
+**Returns:** `bool` — True if the span is recording, False otherwise.
 
 *Has: getter*
 
@@ -76,6 +93,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `\<class 'str'>` *(property)*
 
+Returns the span ID.
+
+**Returns:** `str` — The span ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
+
 *Has: getter*
 
 ---
@@ -84,6 +109,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `tuple[str, ...]` *(property)*
 
+Gets the tags associated with the span.
+
+**Returns:** `tuple[str, ...]` — The tags.
+
 *Has: getter, setter*
 
 ---
@@ -91,6 +120,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `trace_id`
 
 **Type:** `\<class 'str'>` *(property)*
+
+Returns the trace ID.
+
+**Returns:** `str` — The trace ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
 
 *Has: getter*
 
@@ -102,11 +139,23 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__enter__(...)`
 
+Enters the span context.
+
+**Returns:** `te.Self` — The span instance.
+
 ---
 
 ##### `__exit__`
 
 `__exit__(...)`
+
+Exits the span context.
+
+**Parameters:**
+
+- **`exc_type`** (`Optional[type[BaseException]]`): The exception type, if any.
+- **`exc_value`** (`Optional[BaseException]`): The exception value, if any.
+- **`traceback`** (`Optional[types.TracebackType]`): The traceback, if any.
 
 ---
 
@@ -120,7 +169,20 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes a RunSpan instance.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the span.
+- **`project`** (`str`): The project name associated with the run.
+- **`attributes`** (`AnyDict`): Attributes associated with the span.
+- **`tracer`** (`Tracer`): The tracer instance used for the span.
+- **`file_system`** (`AbstractFileSystem`): The file system for artifact storage.
+- **`prefix_path`** (`str`): The prefix path for artifact storage.
+- **`params`** (`Optional[AnyDict]`) *(optional)*: Parameters for the run. Defaults to None. Default: `None`
+- **`metrics`** (`Optional[MetricDict]`) *(optional)*: Metrics for the run. Defaults to None. Default: `None`
+- **`run_id`** (`Optional[str]`) *(optional)*: The unique identifier for the run. Defaults to None. Default: `None`
+- **`tags`** (`Optional[t.Sequence[str]]`) *(optional)*: Tags for the span. Defaults to None. Default: `None`
 
 ---
 
@@ -128,11 +190,24 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_attribute(...)`
 
+Gets a specific attribute of the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`default`** (`t.Any`): The default value if the attribute is not found.
+
+**Returns:** `t.Any` — The attribute value or the default value.
+
 ---
 
 ##### `get_attributes`
 
 `get_attributes(...)`
+
+Gets all attributes of the span.
+
+**Returns:** `AnyDict` — A dictionary of attributes.
 
 ---
 
@@ -140,11 +215,27 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_object(...)`
 
+Retrieves an object by its hash.
+
+**Parameters:**
+
+- **`hash_`** (`str`): The hash of the object to retrieve.
+
+**Returns:** `t.Any` — The retrieved object.
+
 ---
 
 ##### `link_objects`
 
 `link_objects(...)`
+
+Logs a link between two objects in the span.
+
+**Parameters:**
+
+- **`object_hash`** (`str`): The hash of the source object.
+- **`link_hash`** (`str`): The hash of the linked object.
+- **`**attributes`** (`JsonValue`): Additional attributes for the link event.
 
 ---
 
@@ -172,6 +263,13 @@ Preserves directory structure and uses content hashing for deduplication.
 
 `log_event(...)`
 
+Logs an event to the span.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the event.
+- **`attributes`** (`Optional[AnyDict]`) *(optional)*: Attributes associated with the event. Defaults to None. Default: `None`
+
 ---
 
 ##### `log_input`
@@ -184,11 +282,34 @@ Preserves directory structure and uses content hashing for deduplication.
 
 `log_metric(...)`
 
+Logs a metric to the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The key for the metric.
+- **`value`** (`Union[float, bool, Metric]`): The value of the metric.
+- **`step`** (`int`) *(optional)*: The step associated with the metric. Defaults to 0. Default: `0`
+- **`origin`** (`Optional[t.Any]`) *(optional)*: The origin of the metric. Defaults to None. Default: `None`
+- **`timestamp`** (`Optional[datetime]`) *(optional)*: The timestamp of the metric. Defaults to None. Default: `None`
+- **`mode`** (`Optional[MetricAggMode]`) *(optional)*: The aggregation mode for the metric. Defaults to None. Default: `None`
+- **`attributes`** (`Optional[JsonDict]`) *(optional)*: Additional attributes for the metric. Defaults to None. Default: `None`
+
 ---
 
 ##### `log_object`
 
 `log_object(...)`
+
+Logs an object to the span.
+
+**Parameters:**
+
+- **`value`** (`t.Any`): The object to log.
+- **`label`** (`Optional[str]`) *(optional)*: An optional label for the object. Defaults to None. Default: `None`
+- **`event_name`** (`str`) *(optional)*: The name of the event. Defaults to EVENT_NAME_OBJECT. Default: `EVENT_NAME_OBJECT`
+- **`**attributes`** (`JsonValue`): Additional attributes for the event.
+
+**Returns:** `str` — The hash of the logged object.
 
 ---
 
@@ -214,17 +335,37 @@ Preserves directory structure and uses content hashing for deduplication.
 
 `push_update(...)`
 
+Pushes updates for the run's parameters and metrics to the tracing system.
+
+If there are no changes to the parameters or metrics since the last push,
+this method does nothing.
+
 ---
 
 ##### `set_attribute`
 
 `set_attribute(...)`
 
+Sets an attribute for the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`value`** (`t.Any`): The attribute value.
+- **`schema`** (`bool`) *(optional)*: Whether to include the attribute in the schema. Defaults to True. Default: `True`
+- **`raw`** (`bool`) *(optional)*: Whether to store the raw value. Defaults to False. Default: `False`
+
 ---
 
 ##### `set_attributes`
 
 `set_attributes(...)`
+
+Sets multiple attributes for the span.
+
+**Parameters:**
+
+- **`attributes`** (`AnyDict`): A dictionary of attributes to set.
 
 ---
 
@@ -233,16 +374,26 @@ Preserves directory structure and uses content hashing for deduplication.
 
 **Inherits from:** `dreadnode.tracing.span.Span`
 
-Provides read-only access to span attributes.
+A specialized span for updating run information.
 
-Users should NOT be creating these objects directly. `ReadableSpan`s are created as
-a direct result from using the tracing pipeline via the `Tracer`.
+**Parameters:**
+
+- **`run_id`** (`str`): The ID of the run.
+- **`tracer`** (`Tracer`): The tracer instance.
+- **`project`** (`str`): The project name.
+- **`metrics`** (`Optional[MetricDict]`): Optional metrics for the run.
+- **`params`** (`Optional[JsonDict]`): Optional parameters for the run.
+- **`inputs`** (`Optional[JsonDict]`): Optional inputs for the run.
 
 #### Properties
 
 ##### `is_recording`
 
 **Type:** `\<class 'bool'>` *(property)*
+
+Checks if the span is recording.
+
+**Returns:** `bool` — True if the span is recording, False otherwise.
 
 *Has: getter*
 
@@ -252,6 +403,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `\<class 'str'>` *(property)*
 
+Returns the span ID.
+
+**Returns:** `str` — The span ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
+
 *Has: getter*
 
 ---
@@ -260,6 +419,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `tuple[str, ...]` *(property)*
 
+Gets the tags associated with the span.
+
+**Returns:** `tuple[str, ...]` — The tags.
+
 *Has: getter, setter*
 
 ---
@@ -267,6 +430,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `trace_id`
 
 **Type:** `\<class 'str'>` *(property)*
+
+Returns the trace ID.
+
+**Returns:** `str` — The trace ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
 
 *Has: getter*
 
@@ -278,11 +449,23 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__enter__(...)`
 
+Enters the span context.
+
+**Returns:** `te.Self` — The span instance.
+
 ---
 
 ##### `__exit__`
 
 `__exit__(...)`
+
+Exits the span context.
+
+**Parameters:**
+
+- **`exc_type`** (`Optional[type[BaseException]]`): The exception type, if any.
+- **`exc_value`** (`Optional[BaseException]`): The exception value, if any.
+- **`traceback`** (`Optional[types.TracebackType]`): The traceback, if any.
 
 ---
 
@@ -296,7 +479,16 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes a RunUpdateSpan instance.
+
+**Parameters:**
+
+- **`run_id`** (`str`): The ID of the run.
+- **`tracer`** (`Tracer`): The tracer instance.
+- **`project`** (`str`): The project name.
+- **`metrics`** (`Optional[MetricDict]`) *(optional)*: Optional metrics for the run. Defaults to None. Default: `None`
+- **`params`** (`Optional[JsonDict]`) *(optional)*: Optional parameters for the run. Defaults to None. Default: `None`
+- **`inputs`** (`Optional[JsonDict]`) *(optional)*: Optional inputs for the run. Defaults to None. Default: `None`
 
 ---
 
@@ -304,11 +496,24 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_attribute(...)`
 
+Gets a specific attribute of the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`default`** (`t.Any`): The default value if the attribute is not found.
+
+**Returns:** `t.Any` — The attribute value or the default value.
+
 ---
 
 ##### `get_attributes`
 
 `get_attributes(...)`
+
+Gets all attributes of the span.
+
+**Returns:** `AnyDict` — A dictionary of attributes.
 
 ---
 
@@ -316,17 +521,39 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `log_event(...)`
 
+Logs an event to the span.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the event.
+- **`attributes`** (`Optional[AnyDict]`) *(optional)*: Attributes associated with the event. Defaults to None. Default: `None`
+
 ---
 
 ##### `set_attribute`
 
 `set_attribute(...)`
 
+Sets an attribute for the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`value`** (`t.Any`): The attribute value.
+- **`schema`** (`bool`) *(optional)*: Whether to include the attribute in the schema. Defaults to True. Default: `True`
+- **`raw`** (`bool`) *(optional)*: Whether to store the raw value. Defaults to False. Default: `False`
+
 ---
 
 ##### `set_attributes`
 
 `set_attributes(...)`
+
+Sets multiple attributes for the span.
+
+**Parameters:**
+
+- **`attributes`** (`AnyDict`): A dictionary of attributes to set.
 
 ---
 
@@ -335,16 +562,26 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 **Inherits from:** `opentelemetry.sdk.trace.ReadableSpan`
 
-Provides read-only access to span attributes.
+Base class for tracing spans.
 
-Users should NOT be creating these objects directly. `ReadableSpan`s are created as
-a direct result from using the tracing pipeline via the `Tracer`.
+**Parameters:**
+
+- **`name`** (`str`): The name of the span.
+- **`attributes`** (`AnyDict`): Attributes associated with the span.
+- **`tracer`** (`Tracer`): The tracer instance used for the span.
+- **`label`** (`Optional[str]`): Optional label for the span.
+- **`type`** (`SpanType`): The type of the span (e.g., "span").
+- **`tags`** (`Optional[t.Sequence[str]]`): Optional tags for the span.
 
 #### Properties
 
 ##### `is_recording`
 
 **Type:** `\<class 'bool'>` *(property)*
+
+Checks if the span is recording.
+
+**Returns:** `bool` — True if the span is recording, False otherwise.
 
 *Has: getter*
 
@@ -354,6 +591,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `\<class 'str'>` *(property)*
 
+Returns the span ID.
+
+**Returns:** `str` — The span ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
+
 *Has: getter*
 
 ---
@@ -362,6 +607,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `tuple[str, ...]` *(property)*
 
+Gets the tags associated with the span.
+
+**Returns:** `tuple[str, ...]` — The tags.
+
 *Has: getter, setter*
 
 ---
@@ -369,6 +618,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `trace_id`
 
 **Type:** `\<class 'str'>` *(property)*
+
+Returns the trace ID.
+
+**Returns:** `str` — The trace ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
 
 *Has: getter*
 
@@ -380,11 +637,23 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__enter__(...)`
 
+Enters the span context.
+
+**Returns:** `te.Self` — The span instance.
+
 ---
 
 ##### `__exit__`
 
 `__exit__(...)`
+
+Exits the span context.
+
+**Parameters:**
+
+- **`exc_type`** (`Optional[type[BaseException]]`): The exception type, if any.
+- **`exc_value`** (`Optional[BaseException]`): The exception value, if any.
+- **`traceback`** (`Optional[types.TracebackType]`): The traceback, if any.
 
 ---
 
@@ -398,7 +667,16 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes a Span instance.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the span.
+- **`attributes`** (`AnyDict`): Attributes associated with the span.
+- **`tracer`** (`Tracer`): The tracer instance used for the span.
+- **`label`** (`Optional[str]`) *(optional)*: Optional label for the span. Defaults to None. Default: `None`
+- **`type`** (`SpanType`) *(optional)*: The type of the span. Defaults to "span". Default: `"span"`
+- **`tags`** (`Optional[t.Sequence[str]]`) *(optional)*: Optional tags for the span. Defaults to None. Default: `None`
 
 ---
 
@@ -406,11 +684,24 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_attribute(...)`
 
+Gets a specific attribute of the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`default`** (`t.Any`): The default value if the attribute is not found.
+
+**Returns:** `t.Any` — The attribute value or the default value.
+
 ---
 
 ##### `get_attributes`
 
 `get_attributes(...)`
+
+Gets all attributes of the span.
+
+**Returns:** `AnyDict` — A dictionary of attributes.
 
 ---
 
@@ -418,17 +709,39 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `log_event(...)`
 
+Logs an event to the span.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the event.
+- **`attributes`** (`Optional[AnyDict]`) *(optional)*: Attributes associated with the event. Defaults to None. Default: `None`
+
 ---
 
 ##### `set_attribute`
 
 `set_attribute(...)`
 
+Sets an attribute for the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`value`** (`t.Any`): The attribute value.
+- **`schema`** (`bool`) *(optional)*: Whether to include the attribute in the schema. Defaults to True. Default: `True`
+- **`raw`** (`bool`) *(optional)*: Whether to store the raw value. Defaults to False. Default: `False`
+
 ---
 
 ##### `set_attributes`
 
 `set_attributes(...)`
+
+Sets multiple attributes for the span.
+
+**Parameters:**
+
+- **`attributes`** (`AnyDict`): A dictionary of attributes to set.
 
 ---
 
@@ -437,16 +750,31 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 **Inherits from:** `dreadnode.tracing.span.Span`, `typing.Generic`
 
-Provides read-only access to span attributes.
+A specialized span for managing and logging tracing information for a task.
 
-Users should NOT be creating these objects directly. `ReadableSpan`s are created as
-a direct result from using the tracing pipeline via the `Tracer`.
+**Parameters:**
+
+- **`name`** (`str`): The name of the task span.
+- **`attributes`** (`AnyDict`): Attributes associated with the task span.
+- **`run_id`** (`str`): The unique identifier for the run associated with the task.
+- **`tracer`** (`Tracer`): The tracer instance used for the task span.
+- **`label`** (`Optional[str]`): An optional label for the task span.
+- **`params`** (`AnyDict`): Parameters associated with the task.
+- **`metrics`** (`MetricDict`): Metrics associated with the task.
+- **`tags`** (`Optional[t.Sequence[str]]`): Optional tags for the task span.
+- **`inputs`** (`list[ObjectRef]`): Input objects for the task.
+- **`outputs`** (`list[ObjectRef]`): Output objects for the task.
+- **`output`** (`Union[R, Unset]`): The Python output of the task.
 
 #### Properties
 
 ##### `inputs`
 
 **Type:** `dict[str, Any]` *(property)*
+
+Gets the input objects logged to the task span.
+
+**Returns:** `AnyDict` — A dictionary of input objects.
 
 *Has: getter*
 
@@ -455,6 +783,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `is_recording`
 
 **Type:** `\<class 'bool'>` *(property)*
+
+Checks if the span is recording.
+
+**Returns:** `bool` — True if the span is recording, False otherwise.
 
 *Has: getter*
 
@@ -464,6 +796,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `dict[str, list[dreadnode.metric.Metric]]` *(property)*
 
+Gets the metrics logged to the task span.
+
+**Returns:** `dict[str, list[Metric]]` — A dictionary of metrics.
+
 *Has: getter*
 
 ---
@@ -471,6 +807,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `output`
 
 **Type:** `~R` *(property)*
+
+Gets the Python output of the task.
+
+**Returns:** `R` — The Python output.
+
+**Raises:**
+
+- `TypeError` — If the task output is not set.
 
 *Has: getter, setter*
 
@@ -480,6 +824,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `dict[str, Any]` *(property)*
 
+Gets the output objects logged to the task span.
+
+**Returns:** `AnyDict` — A dictionary of output objects.
+
 *Has: getter*
 
 ---
@@ -487,6 +835,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `params`
 
 **Type:** `dict[str, Any]` *(property)*
+
+Gets the parameters associated with the task.
+
+**Returns:** `AnyDict` — A dictionary of task parameters.
 
 *Has: getter*
 
@@ -496,6 +848,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `\<class 'str'>` *(property)*
 
+Gets the parent task ID, if any.
+
+**Returns:** `str` — The parent task ID.
+
 *Has: getter*
 
 ---
@@ -503,6 +859,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `run`
 
 **Type:** `\<class 'dreadnode.tracing.span.RunSpan'>` *(property)*
+
+Gets the active run span associated with the task.
+
+**Returns:** `RunSpan` — The active run span.
+
+**Raises:**
+
+- `ValueError` — If the task span is not in an active run.
 
 *Has: getter*
 
@@ -512,6 +876,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `\<class 'str'>` *(property)*
 
+Gets the run ID associated with the task span.
+
+**Returns:** `str` — The run ID.
+
 *Has: getter*
 
 ---
@@ -519,6 +887,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `span_id`
 
 **Type:** `\<class 'str'>` *(property)*
+
+Returns the span ID.
+
+**Returns:** `str` — The span ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
 
 *Has: getter*
 
@@ -528,6 +904,10 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 **Type:** `tuple[str, ...]` *(property)*
 
+Gets the tags associated with the span.
+
+**Returns:** `tuple[str, ...]` — The tags.
+
 *Has: getter, setter*
 
 ---
@@ -535,6 +915,14 @@ a direct result from using the tracing pipeline via the `Tracer`.
 ##### `trace_id`
 
 **Type:** `\<class 'str'>` *(property)*
+
+Returns the trace ID.
+
+**Returns:** `str` — The trace ID.
+
+**Raises:**
+
+- `ValueError` — If the span is not active.
 
 *Has: getter*
 
@@ -546,11 +934,27 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__enter__(...)`
 
+Enters the task span context.
+
+**Returns:** `te.Self` — The task span instance.
+
+**Raises:**
+
+- `RuntimeError` — If a task span is started without an active run.
+
 ---
 
 ##### `__exit__`
 
 `__exit__(...)`
+
+Exits the task span context.
+
+**Parameters:**
+
+- **`exc_type`** (`Optional[type[BaseException]]`): The exception type, if any.
+- **`exc_value`** (`Optional[BaseException]`): The exception value, if any.
+- **`traceback`** (`Optional[types.TracebackType]`): The traceback, if any.
 
 ---
 
@@ -564,7 +968,18 @@ a direct result from using the tracing pipeline via the `Tracer`.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes a TaskSpan instance.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the task span.
+- **`attributes`** (`AnyDict`): Attributes associated with the task span.
+- **`run_id`** (`str`): The unique identifier for the run associated with the task.
+- **`tracer`** (`Tracer`): The tracer instance used for the task span.
+- **`label`** (`Optional[str]`) *(optional)*: An optional label for the task span. Defaults to None. Default: `None`
+- **`params`** (`Optional[AnyDict]`) *(optional)*: Parameters for the task. Defaults to None. Default: `None`
+- **`metrics`** (`Optional[MetricDict]`) *(optional)*: Metrics for the task. Defaults to None. Default: `None`
+- **`tags`** (`Optional[t.Sequence[str]]`) *(optional)*: Tags for the task span. Defaults to None. Default: `None`
 
 ---
 
@@ -572,11 +987,24 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_attribute(...)`
 
+Gets a specific attribute of the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`default`** (`t.Any`): The default value if the attribute is not found.
+
+**Returns:** `t.Any` — The attribute value or the default value.
+
 ---
 
 ##### `get_attributes`
 
 `get_attributes(...)`
+
+Gets all attributes of the span.
+
+**Returns:** `AnyDict` — A dictionary of attributes.
 
 ---
 
@@ -584,11 +1012,27 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `get_average_metric_value(...)`
 
+Calculates the average value of a metric or all metrics.
+
+**Parameters:**
+
+- **`key`** (`Optional[str]`) *(optional)*: The key of the metric to calculate the average for.
+If None, calculates the average for all metrics. Defaults to None.
+
+**Returns:** `float` — The average value of the metric(s).
+
 ---
 
 ##### `log_event`
 
 `log_event(...)`
+
+Logs an event to the span.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the event.
+- **`attributes`** (`Optional[AnyDict]`) *(optional)*: Attributes associated with the event. Defaults to None. Default: `None`
 
 ---
 
@@ -596,11 +1040,34 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `log_input(...)`
 
+Logs an input object to the task span.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the input.
+- **`value`** (`t.Any`): The value of the input.
+- **`label`** (`Optional[str]`) *(optional)*: An optional label for the input. Defaults to None. Default: `None`
+- **`**attributes`** (`JsonValue`): Additional attributes for the input.
+
+**Returns:** `str` — The hash of the logged input.
+
 ---
 
 ##### `log_metric`
 
 `log_metric(...)`
+
+Logs a metric to the task span.
+
+**Parameters:**
+
+- **`key`** (`str`): The key for the metric.
+- **`value`** (`Union[float, bool, Metric]`): The value of the metric.
+- **`step`** (`int`) *(optional)*: The step associated with the metric. Defaults to 0. Default: `0`
+- **`origin`** (`Optional[t.Any]`) *(optional)*: The origin of the metric. Defaults to None. Default: `None`
+- **`timestamp`** (`Optional[datetime]`) *(optional)*: The timestamp of the metric. Defaults to None. Default: `None`
+- **`mode`** (`Optional[MetricAggMode]`) *(optional)*: The aggregation mode for the metric. Defaults to None. Default: `None`
+- **`attributes`** (`Optional[JsonDict]`) *(optional)*: Additional attributes for the metric. Defaults to None. Default: `None`
 
 ---
 
@@ -608,11 +1075,29 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `log_output(...)`
 
+Logs an output object to the task span.
+
+**Parameters:**
+
+- **`name`** (`str`): The name of the output.
+- **`value`** (`t.Any`): The value of the output.
+- **`label`** (`Optional[str]`) *(optional)*: An optional label for the output. Defaults to None. Default: `None`
+- **`**attributes`** (`JsonValue`): Additional attributes for the output.
+
+**Returns:** `str` — The hash of the logged output.
+
 ---
 
 ##### `log_param`
 
 `log_param(...)`
+
+Logs a single parameter to the task span.
+
+**Parameters:**
+
+- **`key`** (`str`): The parameter key.
+- **`value`** (`t.Any`): The parameter value.
 
 ---
 
@@ -620,17 +1105,38 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `log_params(...)`
 
+Logs multiple parameters to the task span.
+
+**Parameters:**
+
+- **`**params`** (`t.Any`): The parameters to log.
+
 ---
 
 ##### `set_attribute`
 
 `set_attribute(...)`
 
+Sets an attribute for the span.
+
+**Parameters:**
+
+- **`key`** (`str`): The attribute key.
+- **`value`** (`t.Any`): The attribute value.
+- **`schema`** (`bool`) *(optional)*: Whether to include the attribute in the schema. Defaults to True. Default: `True`
+- **`raw`** (`bool`) *(optional)*: Whether to store the raw value. Defaults to False. Default: `False`
+
 ---
 
 ##### `set_attributes`
 
 `set_attributes(...)`
+
+Sets multiple attributes for the span.
+
+**Parameters:**
+
+- **`attributes`** (`AnyDict`): A dictionary of attributes to set.
 
 ---
 
@@ -643,10 +1149,30 @@ Initialize self.  See help(type(self)) for accurate signature.
 prepare_otlp_attribute(value: Any) -> Union[str, bool, int, float, Sequence[str], Sequence[bool], Sequence[int], Sequence[float]]
 ```
 
+Prepares a single attribute for OTLP export.
+
+Converts the attribute to a format suitable for OTLP export.
+
+**Parameters:**
+
+- **`value`** (`t.Any`): The attribute value to prepare.
+
+**Returns:** `otel_types.AttributeValue` — The prepared attribute value.
+
 ### `prepare_otlp_attributes`
 
 ```python
 prepare_otlp_attributes(attributes: dict[str, typing.Any]) -> dict[str, typing.Union[str, bool, int, float, typing.Sequence[str], typing.Sequence[bool], typing.Sequence[int], typing.Sequence[float]]]
 ```
+
+Prepares attributes for OTLP export.
+
+Converts attributes to a format suitable for OTLP export.
+
+**Parameters:**
+
+- **`attributes`** (`AnyDict`): A dictionary of attributes to prepare.
+
+**Returns:** `dict[str, otel_types.AttributeValue]` — A dictionary of prepared attributes.
 
 

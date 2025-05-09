@@ -18,11 +18,29 @@ groups: ["strikes"]
 handle_internal_errors() -> Iterator[NoneType]
 ```
 
+A context manager to handle internal errors gracefully.
+
+This context manager catches exceptions raised within its block and logs
+them using `log_internal_error()`.
+
+**Returns:** `None` — Allows the execution of the block within the context manager.
+
 ### `log_internal_error`
 
 ```python
 log_internal_error() -> None
 ```
+
+Logs an internal error in the Dreadnode application.
+
+This function captures and logs exceptions that occur internally in the
+application. If running under pytest, it may re-raise the exception
+depending on the test context.
+
+**Raises:**
+
+- `Exception` — Re-raises the exception if running under pytest and the
+test context allows it.
 
 ### `safe_repr`
 
@@ -30,6 +48,16 @@ log_internal_error() -> None
 safe_repr(obj: Any) -> str
 ```
 
-Return some kind of non-empty string representation of an object, catching exceptions.
+Safely generates a string representation of an object.
+
+This function attempts to generate a string representation of the given object
+using `repr()`. If `repr()` raises an exception, it falls back to returning
+a generic representation.
+
+**Parameters:**
+
+- **`obj`** (`Any`): The object to represent.
+
+**Returns:** `str` — A string representation of the object.
 
 

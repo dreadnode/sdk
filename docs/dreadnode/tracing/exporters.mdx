@@ -10,6 +10,11 @@ groups: ["strikes"]
 
 **Source file:** `exporters.py`
 
+This module provides classes for exporting metrics, spans, and logs to JSONL files
+
+in OTLP format. It includes configurations for file paths and exporters for
+different telemetry signals.
+
 ## Classes
 
 
@@ -18,6 +23,11 @@ groups: ["strikes"]
 **Inherits from:** `object`
 
 Configuration for signal exports to JSONL files.
+
+**Parameters:**
+
+- **`base_path`** (`Union[str, Path]`): The base directory where files will be stored.
+- **`prefix`** (`str`): A prefix to add to the filenames.
 
 #### Methods
 
@@ -51,6 +61,12 @@ Return repr(self).
 
 Get the file path for a specific signal type.
 
+**Parameters:**
+
+- **`signal`** (`str`): The type of signal (e.g., "metrics", "traces", "logs").
+
+**Returns:** `Path` — The full path to the file for the given signal type.
+
 ---
 
 
@@ -60,11 +76,19 @@ Get the file path for a specific signal type.
 
 LogExporter that writes logs to a file in OTLP format.
 
+**Parameters:**
+
+- **`config`** (`FileExportConfig`): Configuration for file export.
+
 #### Properties
 
 ##### `file`
 
 **Type:** `IO[str]` *(property)*
+
+Lazily opens and returns the file for writing logs.
+
+**Returns:** `IO[str]` — The file object for writing logs.
 
 *Has: getter*
 
@@ -76,7 +100,11 @@ LogExporter that writes logs to a file in OTLP format.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes the FileLogExporter.
+
+**Parameters:**
+
+- **`config`** (`FileExportConfig`): Configuration for file export.
 
 ---
 
@@ -84,13 +112,13 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `export(...)`
 
-Exports a batch of logs.
+Exports logs to the file.
 
 **Parameters:**
 
-- **`batch`**: The list of `LogData` objects to be exported
+- **`batch`** (`Sequence[LogData]`): The logs to export.
 
-**Returns:** The result of the export
+**Returns:** `LogExportResult` — The result of the export operation.
 
 ---
 
@@ -98,15 +126,21 @@ Exports a batch of logs.
 
 `force_flush(...)`
 
+Forces a flush of the exporter.
+
+**Parameters:**
+
+- **`timeout_millis`** (`float`): Timeout in milliseconds (unused).
+
+**Returns:** `bool` — Always returns True as the file is flushed during export.
+
 ---
 
 ##### `shutdown`
 
 `shutdown(...)`
 
-Shuts down the exporter.
-
-Called when the SDK is shut down.
+Shuts down the log exporter and closes the file.
 
 ---
 
@@ -117,11 +151,19 @@ Called when the SDK is shut down.
 
 MetricReader that writes metrics to a file in OTLP format.
 
+**Parameters:**
+
+- **`config`** (`FileExportConfig`): Configuration for file export.
+
 #### Properties
 
 ##### `file`
 
 **Type:** `IO[str]` *(property)*
+
+Lazily opens and returns the file for writing metrics.
+
+**Returns:** `IO[str]` — The file object for writing metrics.
 
 *Has: getter*
 
@@ -133,7 +175,11 @@ MetricReader that writes metrics to a file in OTLP format.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes the FileMetricReader.
+
+**Parameters:**
+
+- **`config`** (`FileExportConfig`): Configuration for file export.
 
 ---
 
@@ -141,16 +187,12 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `shutdown(...)`
 
-Shuts down the MetricReader. This method provides a way
+Shuts down the metric reader and closes the file.
 
-for the MetricReader to do any cleanup required. A metric reader can
-only be shutdown once, any subsequent calls are ignored and return
-failure status.
+**Parameters:**
 
-When a `MetricReader` is registered on a
-:class:`~opentelemetry.sdk.metrics.MeterProvider`,
-:meth:`~opentelemetry.sdk.metrics.MeterProvider.shutdown` will invoke this
-automatically.
+- **`timeout_millis`** (`float`): Timeout in milliseconds (unused).
+- **`**kwargs`**: Additional arguments (unused).
 
 ---
 
@@ -161,11 +203,19 @@ automatically.
 
 SpanExporter that writes spans to a file in OTLP format.
 
+**Parameters:**
+
+- **`config`** (`FileExportConfig`): Configuration for file export.
+
 #### Properties
 
 ##### `file`
 
 **Type:** `IO[str]` *(property)*
+
+Lazily opens and returns the file for writing spans.
+
+**Returns:** `IO[str]` — The file object for writing spans.
 
 *Has: getter*
 
@@ -177,7 +227,11 @@ SpanExporter that writes spans to a file in OTLP format.
 
 `__init__(...)`
 
-Initialize self.  See help(type(self)) for accurate signature.
+Initializes the FileSpanExporter.
+
+**Parameters:**
+
+- **`config`** (`FileExportConfig`): Configuration for file export.
 
 ---
 
@@ -185,13 +239,13 @@ Initialize self.  See help(type(self)) for accurate signature.
 
 `export(...)`
 
-Exports a batch of telemetry data.
+Exports spans to the file.
 
 **Parameters:**
 
-- **`spans`**: The list of `opentelemetry.trace.Span` objects to be exported
+- **`spans`** (`Sequence[ReadableSpan]`): The spans to export.
 
-**Returns:** The result of the export
+**Returns:** `SpanExportResult` — The result of the export operation.
 
 ---
 
@@ -199,10 +253,13 @@ Exports a batch of telemetry data.
 
 `force_flush(...)`
 
-Hint to ensure that the export of any spans the exporter has received
+Forces a flush of the exporter.
 
-prior to the call to ForceFlush SHOULD be completed as soon as possible, preferably
-before returning from this method.
+**Parameters:**
+
+- **`timeout_millis`** (`float`): Timeout in milliseconds (unused).
+
+**Returns:** `bool` — Always returns True as the file is flushed during export.
 
 ---
 
@@ -210,9 +267,7 @@ before returning from this method.
 
 `shutdown(...)`
 
-Shuts down the exporter.
-
-Called when the SDK is shut down.
+Shuts down the span exporter and closes the file.
 
 ---
 
