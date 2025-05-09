@@ -118,7 +118,8 @@ class ApiClient:
         try:
             obj = response.json()
             return f"{response.status_code}: {obj.get('detail', json.dumps(obj))}"
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # BLE001: Catching Exception is generally discouraged, but here we want to catch all exceptions
             return str(response.content)
 
     def _request(
@@ -163,7 +164,7 @@ class ApiClient:
             RuntimeError: If the response status code indicates an error.
         """
         response = self._request(method, path, params, json_data)
-        if response.status_code == 401:
+        if response.status_code == 401:  # noqa: PLR2004
             raise RuntimeError("Authentication failed, please check your API token.")
 
         try:
