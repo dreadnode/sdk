@@ -47,7 +47,9 @@ from dreadnode.tracing.span import (
     current_task_span,
 )
 from dreadnode.types import (
+    INHERITED,
     AnyDict,
+    Inherited,
     JsonDict,
     JsonValue,
 )
@@ -422,8 +424,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator: ...
@@ -436,8 +438,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> ScoredTaskDecorator[R]: ...
@@ -449,8 +451,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator:
@@ -632,6 +634,7 @@ class Dreadnode:
         tags: t.Sequence[str] | None = None,
         params: AnyDict | None = None,
         project: str | None = None,
+        autolog: bool = True,
         **attributes: t.Any,
     ) -> RunSpan:
         """
@@ -657,6 +660,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
+            autolog: Whether to automatically log task inputs, outputs, and execution metrics if unspecified.
             **attributes: Additional attributes to attach to the run span.
         """
         if not self._initialized:
@@ -674,6 +678,7 @@ class Dreadnode:
             tags=tags,
             file_system=self._fs,
             prefix_path=self._fs_prefix,
+            autolog=autolog,
         )
 
     @handle_internal_errors()
