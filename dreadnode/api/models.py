@@ -285,11 +285,9 @@ class TaskTree(BaseModel):
     children: list["TaskTree"] = []
 
 
-class SpanTree(BaseModel):
-    """Tree representation of a trace span with its children"""
-
+class TraceTree(BaseModel):
     span: Task | TraceSpan
-    children: list["SpanTree"] = []
+    children: list["TraceTree"] = []
 
 
 # User data credentials

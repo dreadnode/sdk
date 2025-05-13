@@ -9,10 +9,47 @@ from .models import (
     RawTask,
     Run,
     Task,
+    TaskTree,
+    TraceSpan,
+    TraceTree,
     V0Object,
 )
 
 logger = getLogger(__name__)
+
+
+def convert_flat_tasks_to_tree(tasks: list[Task]) -> list[TaskTree]:
+    tree_nodes: dict[str, TaskTree] = {}
+    for task in tasks:
+        tree_nodes[task.span_id] = TaskTree(task=task)
+
+    roots: list[TaskTree] = []
+    for task in tasks:
+        if task.parent_task_span_id not in tree_nodes:
+            roots.append(tree_nodes[task.span_id])
+        else:
+            parent_node = tree_nodes.get(task.parent_task_span_id)
+            if parent_node:
+                parent_node.children.append(tree_nodes[task.span_id])
+
+    return roots
+
+
+def convert_flat_trace_to_tree(trace: list[Task | TraceSpan]) -> list[TraceTree]:
+    tree_nodes: dict[str, TraceTree] = {}
+    for span in trace:
+        tree_nodes[span.span_id] = TraceTree(span=span)
+
+    roots: list[TraceTree] = []
+    for span in trace:
+        if span.parent_span_id not in tree_nodes:
+            roots.append(tree_nodes[span.span_id])
+        else:
+            parent_node = tree_nodes.get(span.parent_span_id)
+            if parent_node:
+                parent_node.children.append(tree_nodes[span.span_id])
+
+    return roots
 
 
 def process_run(run: RawRun) -> Run:
