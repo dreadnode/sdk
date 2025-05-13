@@ -7,13 +7,17 @@ import pandas as pd
 from pydantic import BaseModel
 from ulid import ULID
 
+from dreadnode.api.util import process_run, process_task
 from dreadnode.util import logger
 from dreadnode.version import VERSION
 
 from .models import (
     MetricAggregationType,
     Project,
+    RawRun,
+    RawTask,
     Run,
+    RunSummary,
     StatusFilter,
     Task,
     TimeAggregationType,
@@ -119,27 +123,33 @@ class ApiClient:
         response = self.request("GET", f"/strikes/projects/{project!s}")
         return Project(**response.json())
 
-    def list_runs(self, project: str) -> list[Run]:
+    def list_runs(self, project: str) -> list[RunSummary]:
         response = self.request("GET", f"/strikes/projects/{project!s}/runs")
-        return [Run(**run) for run in response.json()]
+        return [RunSummary(**run) for run in response.json()]
+
+    def _get_run(self, run: str | ULID) -> RawRun:
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}")
+        return RawRun(**response.json())
 
     def get_run(self, run: str | ULID) -> Run:
-        response = self.request("GET", f"/strikes/projects/runs/{run!s}")
-        return Run(**response.json())
+        return process_run(self._get_run(run))
 
     def get_run_tasks(self, run: str | ULID) -> list[Task]:
+        raw_run = self._get_run(run)
         response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks/full")
-        return [Task(**task) for task in response.json()]
+        raw_tasks = [RawTask(**task) for task in response.json()]
+        return [process_task(task, raw_run) for task in raw_tasks]
 
     def get_run_trace(self, run: str | ULID) -> list[Task | TraceSpan]:
+        raw_run = self._get_run(run)
         response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans/full")
-        spans: list[Task | TraceSpan] = []
+        trace: list[Task | TraceSpan] = []
         for item in response.json():
             if "parent_task_span_id" in item:
-                spans.append(Task(**item))
+                trace.append(process_task(RawTask(**item), raw_run))
             else:
-                spans.append(TraceSpan(**item))
-        return spans
+                trace.append(TraceSpan(**item))
+        return trace
 
     # Data exports
 

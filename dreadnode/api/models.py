@@ -1,8 +1,19 @@
+import contextlib
 import typing as t
 from datetime import datetime
+from functools import cached_property
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+import requests
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 from ulid import ULID
 
 AnyDict = dict[str, t.Any]
@@ -79,17 +90,17 @@ class TraceLog(BaseModel):
 class TraceSpan(BaseModel):
     timestamp: datetime
     duration: int
-    trace_id: str
+    trace_id: str = Field(repr=False)
     span_id: str
-    parent_span_id: str | None
-    service_name: str | None
+    parent_span_id: str | None = Field(repr=False)
+    service_name: str | None = Field(repr=False)
     status: SpanStatus
     exception: SpanException | None
     name: str
-    attributes: AnyDict
-    resource_attributes: AnyDict
-    events: list[SpanEvent]
-    links: list[SpanLink]
+    attributes: AnyDict = Field(repr=False)
+    resource_attributes: AnyDict = Field(repr=False)
+    events: list[SpanEvent] = Field(repr=False)
+    links: list[SpanLink] = Field(repr=False)
 
 
 class Metric(BaseModel):
@@ -105,7 +116,7 @@ class ObjectRef(BaseModel):
     hash: str
 
 
-class ObjectUri(BaseModel):
+class RawObjectUri(BaseModel):
     hash: str
     schema_hash: str
     uri: str
@@ -113,14 +124,14 @@ class ObjectUri(BaseModel):
     type: t.Literal["uri"]
 
 
-class ObjectVal(BaseModel):
+class RawObjectVal(BaseModel):
     hash: str
     schema_hash: str
     value: t.Any
     type: t.Literal["val"]
 
 
-Object = ObjectUri | ObjectVal
+RawObject = RawObjectUri | RawObjectVal
 
 
 class V0Object(BaseModel):
@@ -129,56 +140,141 @@ class V0Object(BaseModel):
     value: t.Any
 
 
-class Run(BaseModel):
+class ObjectVal(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str
+    label: str
+    hash: str = Field(repr=False)
+    schema_: AnyDict
+    schema_hash: str = Field(repr=False)
+    value: t.Any
+
+    @field_validator("value")
+    @classmethod
+    def validate_value(cls, value: t.Any) -> t.Any:
+        if isinstance(value, str):
+            with contextlib.suppress(ValidationError):
+                return TypeAdapter(t.Any).validate_json(value)
+
+        return value
+
+
+class ObjectUri(BaseModel):
+    name: str
+    label: str
+    hash: str = Field(repr=False)
+    schema_: AnyDict
+    schema_hash: str = Field(repr=False)
+    uri: str
+    size: int
+
+    _value: t.Any = PrivateAttr(default=None)
+
+    @cached_property
+    def value(self) -> t.Any:
+        if self._value is not None:
+            return self._value
+
+        try:
+            response = requests.get(self.uri, timeout=5)
+            response.raise_for_status()
+            self._value = response.text
+        except requests.RequestException as e:
+            raise RuntimeError(f"Failed to fetch object from {self.uri}") from e
+
+        if isinstance(self._value, str):
+            with contextlib.suppress(ValidationError):
+                self._value = TypeAdapter(t.Any).validate_json(self._value)
+
+        return self._value
+
+
+Object = ObjectVal | ObjectUri
+
+
+class ArtifactFile(BaseModel):
+    hash: str
+    uri: str
+    size_bytes: int
+    final_real_path: str
+
+
+class ArtifactDir(BaseModel):
+    dir_path: str
+    hash: str
+    children: list[t.Union["ArtifactDir", ArtifactFile]]
+
+
+class RunSummary(BaseModel):
     id: ULID
     name: str
-    span_id: str
-    trace_id: str
+    span_id: str = Field(repr=False)
+    trace_id: str = Field(repr=False)
     timestamp: datetime
     duration: int
     status: SpanStatus
     exception: SpanException | None
     tags: set[str]
-    params: AnyDict
-    metrics: dict[str, list[Metric]]
-    inputs: list[ObjectRef]
-    outputs: list[ObjectRef]
-    objects: dict[str, Object]
-    object_schemas: AnyDict
-    schema_: AnyDict = Field(alias="schema")
+    params: AnyDict = Field(repr=False)
+    metrics: dict[str, list[Metric]] = Field(repr=False)
 
 
-class Task(BaseModel):
+class RawRun(RunSummary):
+    inputs: list[ObjectRef] = Field(repr=False)
+    outputs: list[ObjectRef] = Field(repr=False)
+    objects: dict[str, RawObject] = Field(repr=False)
+    object_schemas: AnyDict = Field(repr=False)
+    artifacts: list[ArtifactDir] = Field(repr=False)
+    schema_: AnyDict = Field(alias="schema", repr=False)
+
+
+class Run(RunSummary):
+    inputs: dict[str, Object] = Field(repr=False)
+    outputs: dict[str, Object] = Field(repr=False)
+    artifacts: list[ArtifactDir] = Field(repr=False)
+    schema_: AnyDict = Field(alias="schema", repr=False)
+
+
+class _Task(BaseModel):
     name: str
     span_id: str
-    trace_id: str
-    parent_span_id: str | None
-    parent_task_span_id: str | None
+    trace_id: str = Field(repr=False)
+    parent_span_id: str | None = Field(repr=False)
+    parent_task_span_id: str | None = Field(repr=False)
     timestamp: datetime
     duration: int
     status: SpanStatus
     exception: SpanException | None
     tags: set[str]
-    params: AnyDict
-    metrics: dict[str, list[Metric]]
-    inputs: list[ObjectRef] | list[V0Object]  # v0 compat
-    outputs: list[ObjectRef] | list[V0Object]  # v0 compat
-    schema_: AnyDict = Field(alias="schema")
-    attributes: AnyDict
-    resource_attributes: AnyDict
-    events: list[SpanEvent]
-    links: list[SpanLink]
+    params: AnyDict = Field(repr=False)
+    metrics: dict[str, list[Metric]] = Field(repr=False)
+    schema_: AnyDict = Field(alias="schema", repr=False)
+    attributes: AnyDict = Field(repr=False)
+    resource_attributes: AnyDict = Field(repr=False)
+    events: list[SpanEvent] = Field(repr=False)
+    links: list[SpanLink] = Field(repr=False)
+
+
+class RawTask(_Task):
+    inputs: list[ObjectRef] | list[V0Object] = Field(repr=False)
+    outputs: list[ObjectRef] | list[V0Object] = Field(repr=False)
+
+
+class Task(_Task):
+    inputs: dict[str, Object] = Field(repr=False)
+    outputs: dict[str, Object] = Field(repr=False)
 
 
 class Project(BaseModel):
-    id: UUID
+    id: UUID = Field(repr=False)
     key: str
     name: str
-    description: str | None
+    description: str | None = Field(repr=False)
     created_at: datetime
     updated_at: datetime
     run_count: int
-    last_run: Run | None
+    last_run: RawRun | None = Field(repr=False)
 
 
 # Derived types
