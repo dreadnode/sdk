@@ -144,9 +144,7 @@ class ApiClient:
     TraceFormat = t.Literal["tree", "flat"]
 
     @t.overload
-    def get_run_tasks(
-        self, run: str | ULID, *, format: t.Literal["tree"] = "tree"
-    ) -> list[TaskTree]: ...
+    def get_run_tasks(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TaskTree]: ...
 
     @t.overload
     def get_run_tasks(
@@ -164,9 +162,7 @@ class ApiClient:
         return tasks if format == "flat" else convert_flat_tasks_to_tree(tasks)
 
     @t.overload
-    def get_run_trace(
-        self, run: str | ULID, *, format: t.Literal["tree"] = "tree"
-    ) -> list[TraceTree]: ...
+    def get_run_trace(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TraceTree]: ...
 
     @t.overload
     def get_run_trace(
