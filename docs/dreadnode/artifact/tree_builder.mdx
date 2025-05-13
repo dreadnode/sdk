@@ -1,0 +1,90 @@
+---
+title: 'tree_builder'
+sidebarTitle: 'tree_builder'
+groups: ["strikes"]
+---
+
+# Module `tree_builder`
+
+*(Full name: `dreadnode.artifact.tree_builder`)*
+
+**Source file:** `tree_builder.py`
+
+Tree structure builder for artifacts with directory hierarchy preservation.
+
+Provides efficient uploads and tree construction for frontend to consume.
+
+## Classes
+
+
+### Class `ArtifactTreeBuilder`
+
+**Inherits from:** `object`
+
+Builds a hierarchical tree structure for artifacts while uploading them to storage.
+
+Preserves directory structure and handles efficient uploads.
+
+#### Methods
+
+##### `__eq__`
+
+`__eq__(...)`
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+`__init__(...)`
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+`__repr__(...)`
+
+Return repr(self).
+
+---
+
+##### `process_artifact`
+
+`process_artifact(...)`
+
+Process an artifact (file or directory) and build its tree representation.
+
+**Parameters:**
+
+- **`local_uri`**: Path to the local file or directory
+
+**Returns:** Directory tree structure representing the artifact
+
+**Raises:**
+
+- `FileNotFoundError` — If the path doesn't exist
+
+---
+
+
+### Class `DirectoryNode`
+
+**Inherits from:** `dict`
+
+Represents a directory node in the artifact tree.
+
+Contains metadata about the directory, including its dir_path, hash, and children nodes.
+
+
+### Class `FileNode`
+
+**Inherits from:** `dict`
+
+Represents a file node in the artifact tree.
+
+Contains metadata about the file, including its name, uri, size_bytes, and final_real_path.
+
+

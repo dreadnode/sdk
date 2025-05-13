@@ -23,3 +23,11 @@ class Unset:
 
 
 UNSET: Unset = Unset()
+
+
+class Inherited:
+    def __repr__(self) -> str:
+        return "Inherited"
+
+
+INHERITED: Inherited = Inherited()

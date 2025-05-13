@@ -7,7 +7,7 @@ import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -47,7 +47,9 @@ from dreadnode.tracing.span import (
     current_task_span,
 )
 from dreadnode.types import (
+    INHERITED,
     AnyDict,
+    Inherited,
     JsonDict,
     JsonValue,
 )
@@ -204,6 +206,16 @@ class Dreadnode:
                 f"or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
                 category=DreadnodeConfigWarning,
             )
+
+        if self.server:
+            parsed_url = urlparse(self.server)
+            if not parsed_url.scheme:
+                netloc = parsed_url.path.split("/")[0]
+                path = "/".join(parsed_url.path.split("/")[1:])
+                parsed_new = parsed_url._replace(
+                    scheme="https", netloc=netloc, path=f"/{path}" if path else ""
+                )
+                self.server = urlunparse(parsed_new)
 
         if self.local_dir is not False:
             config = FileExportConfig(
@@ -412,8 +424,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator: ...
@@ -426,8 +438,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> ScoredTaskDecorator[R]: ...
@@ -439,8 +451,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator:
@@ -622,6 +634,7 @@ class Dreadnode:
         tags: t.Sequence[str] | None = None,
         params: AnyDict | None = None,
         project: str | None = None,
+        autolog: bool = True,
         **attributes: t.Any,
     ) -> RunSpan:
         """
@@ -647,6 +660,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
+            autolog: Whether to automatically log task inputs, outputs, and execution metrics if unspecified.
             **attributes: Additional attributes to attach to the run span.
         """
         if not self._initialized:
@@ -664,6 +678,7 @@ class Dreadnode:
             tags=tags,
             file_system=self._fs,
             prefix_path=self._fs_prefix,
+            autolog=autolog,
         )
 
     @handle_internal_errors()

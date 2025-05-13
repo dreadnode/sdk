@@ -1,0 +1,41 @@
+{
+  "group": "API Reference",
+  "pages": [
+    {
+      "group": "api",
+      "pages": [
+        "strikes/library/api/client",
+        "strikes/library/api",
+        "strikes/library/api/models"
+      ]
+    },
+    {
+      "group": "artifact",
+      "pages": [
+        "strikes/library/artifact",
+        "strikes/library/artifact/merger",
+        "strikes/library/artifact/storage",
+        "strikes/library/artifact/tree_builder"
+      ]
+    },
+    "strikes/library/constants",
+    "strikes/library/integrations",
+    "strikes/library/main",
+    "strikes/library/metric",
+    "strikes/library/object",
+    "strikes/library/serialization",
+    "strikes/library/task",
+    {
+      "group": "tracing",
+      "pages": [
+        "strikes/library/tracing/constants",
+        "strikes/library/tracing/exporters",
+        "strikes/library/tracing",
+        "strikes/library/tracing/span"
+      ]
+    },
+    "strikes/library/types",
+    "strikes/library/util",
+    "strikes/library/version"
+  ]
+}

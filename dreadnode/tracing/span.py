@@ -250,11 +250,15 @@ class RunSpan(Span):
         tracer: Tracer,
         file_system: AbstractFileSystem,
         prefix_path: str,
+        *,
         params: AnyDict | None = None,
         metrics: MetricDict | None = None,
         run_id: str | None = None,
         tags: t.Sequence[str] | None = None,
+        autolog: bool = True,
     ) -> None:
+        self.autolog = autolog
+
         self._params = params or {}
         self._metrics = metrics or {}
         self._objects: dict[str, Object] = {}
@@ -486,9 +490,8 @@ class RunSpan(Span):
             value,
             label=label,
             event_name=EVENT_NAME_OBJECT_INPUT,
-            **attributes,
         )
-        self._inputs.append(ObjectRef(name, label=label, hash=hash_))
+        self._inputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
 
     def log_artifact(
         self,
@@ -528,6 +531,7 @@ class RunSpan(Span):
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        prefix: str | None = None,
         attributes: JsonDict | None = None,
     ) -> None: ...
 
@@ -539,6 +543,7 @@ class RunSpan(Span):
         *,
         origin: t.Any | None = None,
         mode: MetricAggMode | None = None,
+        prefix: str | None = None,
     ) -> None: ...
 
     def log_metric(
@@ -550,6 +555,7 @@ class RunSpan(Span):
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
+        prefix: str | None = None,
         attributes: JsonDict | None = None,
     ) -> None:
         metric = (
@@ -559,6 +565,10 @@ class RunSpan(Span):
                 float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
             )
         )
+
+        key = re.sub(r"[^\w/]+", "_", key.lower())
+        if prefix is not None:
+            key = f"{prefix}.{key}"
 
         if origin is not None:
             origin_hash = self.log_object(
@@ -590,9 +600,8 @@ class RunSpan(Span):
             value,
             label=label,
             event_name=EVENT_NAME_OBJECT_OUTPUT,
-            **attributes,
         )
-        self._outputs.append(ObjectRef(name, label=label, hash=hash_))
+        self._outputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
 
 
 class TaskSpan(Span, t.Generic[R]):
@@ -694,9 +703,8 @@ class TaskSpan(Span, t.Generic[R]):
             value,
             label=label,
             event_name=EVENT_NAME_OBJECT_OUTPUT,
-            **attributes,
         )
-        self._outputs.append(ObjectRef(name, label=label, hash=hash_))
+        self._outputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
         return hash_
 
     @property
@@ -726,9 +734,8 @@ class TaskSpan(Span, t.Generic[R]):
             value,
             label=label,
             event_name=EVENT_NAME_OBJECT_INPUT,
-            **attributes,
         )
-        self._inputs.append(ObjectRef(name, label=label, hash=hash_))
+        self._inputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
         return hash_
 
     @property
@@ -777,6 +784,8 @@ class TaskSpan(Span, t.Generic[R]):
             )
         )
 
+        key = re.sub(r"[^\w/]+", "_", key.lower())
+
         if origin is not None:
             origin_hash = self.run.log_object(
                 origin,
@@ -795,7 +804,7 @@ class TaskSpan(Span, t.Generic[R]):
         #
         # Don't include `source` and `mode` as we handled it here.
         if (run := current_run_span.get()) is not None:
-            run.log_metric(f"{self._label}.{key}", metric)
+            run.log_metric(key, metric, prefix=self._label)
 
     def get_average_metric_value(self, key: str | None = None) -> float:
         metrics = (
