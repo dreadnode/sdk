@@ -3080,7 +3080,7 @@ version = "0.25.1"
 description = "Manipulate audio with an simple and easy high level interface"
 optional = false
 python-versions = "*"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "pydub-0.25.1-py2.py3-none-any.whl", hash = "sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6"},
     {file = "pydub-0.25.1.tar.gz", hash = "sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f"},
@@ -4595,4 +4595,4 @@ training = ["transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "5de28adea02b5d3763e9fd942b8d5077b71eaa158bc1ebf05aa7ce7befc88d92"
+content-hash = "5385eea978274d5d19adaa7fc49a3325016b0391e942c3881adc42cba8146f7e"

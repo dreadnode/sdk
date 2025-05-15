@@ -25,6 +25,7 @@ fsspec = {version = ">=2023.1.0,<=2025.3.0", extras = ["s3"]} # Pinned for datas
 transformers = { version = "^4.41.0", optional = true }
 soundfile = "^0.13.1"
 moviepy = "^2.1.2"
+pydub = "^0.25.1"
 
 [tool.poetry.extras]
 training = ["transformers"]
