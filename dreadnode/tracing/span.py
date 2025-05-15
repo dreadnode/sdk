@@ -314,7 +314,9 @@ class RunSpan(Span):
             raise RuntimeError("You cannot start a run span within another run")
 
         self._context_token = current_run_span.set(self)
-        return super().__enter__()
+        span = super().__enter__()
+        self.push_update(force=True)
+        return span
 
     def __exit__(
         self,
