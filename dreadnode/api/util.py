@@ -59,11 +59,13 @@ def process_run(run: RawRun) -> Run:
     for references, converted in ((run.inputs, inputs), (run.outputs, outputs)):
         for ref in references:
             if (_object := run.objects.get(ref.hash)) is None:
-                logger.error("Object %s not found in run %s", ref.hash, run.id)
+                if run.status != "pending":  # In-progress runs may not have all the objects ready
+                    logger.error("Object %s not found in run %s", ref.hash, run.id)
                 continue
 
             if (_schema := run.object_schemas.get(_object.schema_hash)) is None:
-                logger.error("Schema for object %s not found in run %s", ref.hash, run.id)
+                if run.status != "pending":
+                    logger.error("Schema for object %s not found in run %s", ref.hash, run.id)
                 continue
 
             if isinstance(_object, RawObjectVal):
@@ -123,11 +125,13 @@ def process_task(task: RawTask, run: RawRun) -> Task:
                 continue
 
             if (_object := run.objects.get(ref.hash)) is None:
-                logger.error("Object %s not found in run %s", ref.hash, run.id)
+                if run.status != "pending":
+                    logger.error("Object %s not found in run %s", ref.hash, run.id)
                 continue
 
             if (_schema := run.object_schemas.get(_object.schema_hash)) is None:
-                logger.error("Schema for object %s not found in run %s", ref.hash, run.id)
+                if run.status != "pending":
+                    logger.error("Schema for object %s not found in run %s", ref.hash, run.id)
                 continue
 
             if isinstance(_object, RawObjectVal):

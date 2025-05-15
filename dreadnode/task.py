@@ -320,6 +320,9 @@ class Task(t.Generic[P, R]):
                 metric = await scorer(output)
                 span.log_metric(scorer.name, metric, origin=output)
 
+        # Trigger a run update whenever a task completes
+        run.push_update()
+
         return span
 
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
