@@ -777,7 +777,7 @@ class Dreadnode:
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         """
         Log a single metric to the current task or run.
 
@@ -809,6 +809,9 @@ class Dreadnode:
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
+
+        Returns:
+            The logged metric object.
         """
 
     @t.overload
@@ -820,7 +823,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         mode: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         """
         Log a single metric to the current task or run.
 
@@ -848,6 +851,9 @@ class Dreadnode:
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
+
+        Returns:
+            The logged metric object.
         """
 
     @handle_internal_errors()
@@ -862,7 +868,7 @@ class Dreadnode:
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         task = current_task_span.get()
         run = current_run_span.get()
 
@@ -877,7 +883,7 @@ class Dreadnode:
                 float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
             )
         )
-        target.log_metric(key, metric, origin=origin, mode=mode)
+        return target.log_metric(key, metric, origin=origin, mode=mode)
 
     @handle_internal_errors()
     def log_artifact(

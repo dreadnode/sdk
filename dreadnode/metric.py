@@ -68,7 +68,7 @@ class Metric:
         This will modify the metric in place.
 
         Args:
-            mode: The mode to apply. One of "sum", "min", "max", or "inc".
+            mode: The mode to apply. One of "sum", "min", "max", or "count".
             others: A list of other metrics to apply the mode to.
 
         Returns:
@@ -87,7 +87,8 @@ class Metric:
         prior_values = [m.value for m in sorted(others, key=lambda m: m.timestamp)]
 
         if mode == "sum":
-            self.value = sum([self.value, *prior_values])
+            # Take the max of the priors because they might already be summed
+            self.value += max(prior_values) if prior_values else 0
         elif mode == "min":
             self.value = min([self.value, *prior_values])
         elif mode == "max":
