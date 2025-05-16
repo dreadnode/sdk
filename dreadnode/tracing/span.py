@@ -533,7 +533,7 @@ class RunSpan(Span):
         mode: MetricAggMode | None = None,
         prefix: str | None = None,
         attributes: JsonDict | None = None,
-    ) -> None: ...
+    ) -> Metric: ...
 
     @t.overload
     def log_metric(
@@ -544,7 +544,7 @@ class RunSpan(Span):
         origin: t.Any | None = None,
         mode: MetricAggMode | None = None,
         prefix: str | None = None,
-    ) -> None: ...
+    ) -> Metric: ...
 
     def log_metric(
         self,
@@ -557,7 +557,7 @@ class RunSpan(Span):
         mode: MetricAggMode | None = None,
         prefix: str | None = None,
         attributes: JsonDict | None = None,
-    ) -> None:
+    ) -> Metric:
         metric = (
             value
             if isinstance(value, Metric)
@@ -582,6 +582,8 @@ class RunSpan(Span):
         if mode is not None:
             metric = metric.apply_mode(mode, metrics)
         metrics.append(metric)
+
+        return metric
 
     @property
     def outputs(self) -> AnyDict:
@@ -753,7 +755,7 @@ class TaskSpan(Span, t.Generic[R]):
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
-    ) -> None: ...
+    ) -> Metric: ...
 
     @t.overload
     def log_metric(
@@ -763,7 +765,7 @@ class TaskSpan(Span, t.Generic[R]):
         *,
         origin: t.Any | None = None,
         mode: MetricAggMode | None = None,
-    ) -> None: ...
+    ) -> Metric: ...
 
     def log_metric(
         self,
@@ -775,7 +777,7 @@ class TaskSpan(Span, t.Generic[R]):
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
-    ) -> None:
+    ) -> Metric:
         metric = (
             value
             if isinstance(value, Metric)
@@ -786,25 +788,19 @@ class TaskSpan(Span, t.Generic[R]):
 
         key = re.sub(r"[^\w/]+", "_", key.lower())
 
-        if origin is not None:
-            origin_hash = self.run.log_object(
-                origin,
-                label=key,
-                event_name=EVENT_NAME_OBJECT_METRIC,
-            )
-            metric.attributes[METRIC_ATTRIBUTE_SOURCE_HASH] = origin_hash
-
-        metrics = self._metrics.setdefault(key, [])
-        if mode is not None:
-            metric = metric.apply_mode(mode, metrics)
-        metrics.append(metric)
-
         # For every metric we log, also log it to the run
         # with our `label` as a prefix.
         #
-        # Don't include `source` and `mode` as we handled it here.
+        # Let the run handle the origin and mode aggregation
+        # for us as we don't have access to the other times
+        # this task-metric was logged here.
+
         if (run := current_run_span.get()) is not None:
-            run.log_metric(key, metric, prefix=self._label)
+            metric = run.log_metric(key, metric, prefix=self._label, origin=origin, mode=mode)
+
+        self._metrics.setdefault(key, []).append(metric)
+
+        return metric
 
     def get_average_metric_value(self, key: str | None = None) -> float:
         metrics = (
