@@ -87,7 +87,7 @@ class Metric:
         prior_values = [m.value for m in sorted(others, key=lambda m: m.timestamp)]
 
         if mode == "sum":
-            self.value += max(prior_values)
+            self.value = sum([self.value, *prior_values])
         elif mode == "min":
             self.value = min([self.value, *prior_values])
         elif mode == "max":
