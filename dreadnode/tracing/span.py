@@ -293,7 +293,6 @@ class RunSpan(Span):
         self._pending_params = deepcopy(self._params)
         self._pending_inputs = deepcopy(self._inputs)
         self._pending_outputs = deepcopy(self._outputs)
-        self._pending_artifacts = deepcopy(self._artifacts)
         self._pending_metrics = deepcopy(self._metrics)
         self._pending_objects = deepcopy(self._objects)
         self._pending_object_schemas = deepcopy(self._object_schemas)
@@ -357,7 +356,6 @@ class RunSpan(Span):
             self._pending_params
             or self._pending_inputs
             or self._pending_outputs
-            or self._pending_artifacts
             or self._pending_metrics
             or self._pending_objects
             or self._pending_object_schemas
