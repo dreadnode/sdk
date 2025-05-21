@@ -2,7 +2,6 @@ import contextlib
 import inspect
 import os
 import random
-import re
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -53,7 +52,7 @@ from dreadnode.types import (
     JsonDict,
     JsonValue,
 )
-from dreadnode.util import handle_internal_errors
+from dreadnode.util import clean_str, handle_internal_errors
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -503,7 +502,7 @@ class Dreadnode:
             _label = label or func_name
 
             # conform our label for sanity
-            _label = re.sub(r"[\W_]+", "_", _label.lower())
+            _label = clean_str(_label)
 
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
@@ -570,7 +569,7 @@ class Dreadnode:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("Task spans must be created within a run")
 
-        label = label or re.sub(r"[\W_]+", "_", name.lower())
+        label = label or clean_str(name)
         return TaskSpan(
             name=name,
             label=label,
@@ -680,6 +679,31 @@ class Dreadnode:
             prefix_path=self._fs_prefix,
             autolog=autolog,
         )
+
+    def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
+        """
+        Add one or many tags to the current task or run.
+
+        Example:
+            ```
+            with dreadnode.run("my_run") as run:
+                run.tag("my_tag")
+            ```
+
+        Args:
+            tag: The tag to attach to the task or run.
+            to: The target object to log the tag to. Can be "task-or-run" or "run".
+                Defaults to "task-or-run". If "task-or-run", the tag will be logged
+                to the current task or run, whichever is the nearest ancestor.
+        """
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError("Tagging must be done within a run")
+
+        target.add_tags(tag)
 
     @handle_internal_errors()
     def push_update(self) -> None:
@@ -932,7 +956,7 @@ class Dreadnode:
     def log_input(
         self,
         name: str,
-        value: JsonValue,
+        value: t.Any,
         *,
         label: str | None = None,
         to: ToObject = "task-or-run",

@@ -4,6 +4,7 @@
 import inspect
 import logging
 import os
+import re
 import sys
 import typing as t
 from contextlib import contextmanager
@@ -25,6 +26,13 @@ The return type of sys.exc_info(): exc_type, exc_val, exc_tb.
 logger = logging.getLogger("dreadnode")
 
 add_non_user_code_prefix(Path(dreadnode.__file__).parent)
+
+
+def clean_str(s: str) -> str:
+    """
+    Clean a string by replacing all non-alphanumeric characters with underscores.
+    """
+    return re.sub(r"[^\w/]+", "_", s.lower())
 
 
 def safe_repr(obj: t.Any) -> str:

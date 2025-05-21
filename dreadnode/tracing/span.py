@@ -1,5 +1,4 @@
 import logging
-import re
 import types
 import typing as t
 from contextvars import ContextVar, Token
@@ -32,6 +31,7 @@ from dreadnode.metric import Metric, MetricAggMode, MetricDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
+from dreadnode.util import clean_str
 from dreadnode.version import VERSION
 
 from .constants import (
@@ -92,11 +92,16 @@ class Span(ReadableSpan):
     ) -> None:
         self._label = label or ""
         self._span_name = name
+
+        tags = [tags] if isinstance(tags, str) else list(tags or [])
+        tags = [clean_str(t) for t in tags]
+        self.tags: tuple[str, ...] = uniquify_sequence(tags)
+
         self._pre_attributes = {
             SPAN_ATTRIBUTE_VERSION: VERSION,
             SPAN_ATTRIBUTE_TYPE: type,
             SPAN_ATTRIBUTE_LABEL: self._label,
-            SPAN_ATTRIBUTE_TAGS_: uniquify_sequence(tags or ()),
+            SPAN_ATTRIBUTE_TAGS_: self.tags,
             **attributes,
         }
         self._tracer = tracer
@@ -145,6 +150,8 @@ class Span(ReadableSpan):
             SPAN_ATTRIBUTE_SCHEMA,
             attributes_json_schema(self._schema) if self._schema else r"{}",
         )
+        self._span.set_attribute(SPAN_ATTRIBUTE_TAGS_, self.tags)
+
         self._span.__exit__(exc_type, exc_value, traceback)
 
         OPEN_SPANS.discard(self._span)  # type: ignore [arg-type]
@@ -167,13 +174,14 @@ class Span(ReadableSpan):
             return False
         return self._span.is_recording()
 
-    @property
-    def tags(self) -> tuple[str, ...]:
-        return tuple(self.get_attribute(SPAN_ATTRIBUTE_TAGS_, ()))
+    def set_tags(self, tags: t.Sequence[str]) -> None:
+        tags = [tags] if isinstance(tags, str) else list(tags)
+        tags = [clean_str(t) for t in tags]
+        self.tags = uniquify_sequence(tags)
 
-    @tags.setter
-    def tags(self, new_tags: t.Sequence[str]) -> None:
-        self.set_attribute(SPAN_ATTRIBUTE_TAGS_, uniquify_sequence(new_tags))
+    def add_tags(self, tags: t.Sequence[str]) -> None:
+        tags = [tags] if isinstance(tags, str) else list(tags)
+        self.set_tags([*self.tags, *tags])
 
     def set_attribute(
         self,
@@ -485,7 +493,7 @@ class RunSpan(Span):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> None:
-        label = label or re.sub(r"\W+", "_", name.lower())
+        label = label or clean_str(name)
         hash_ = self.log_object(
             value,
             label=label,
@@ -566,7 +574,7 @@ class RunSpan(Span):
             )
         )
 
-        key = re.sub(r"[^\w/]+", "_", key.lower())
+        key = clean_str(key)
         if prefix is not None:
             key = f"{prefix}.{key}"
 
@@ -597,7 +605,7 @@ class RunSpan(Span):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> None:
-        label = label or re.sub(r"\W+", "_", name.lower())
+        label = label or clean_str(name)
         hash_ = self.log_object(
             value,
             label=label,
@@ -700,7 +708,7 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> str:
-        label = label or re.sub(r"\W+", "_", name.lower())
+        label = label or clean_str(name)
         hash_ = self.run.log_object(
             value,
             label=label,
@@ -731,7 +739,7 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> str:
-        label = label or re.sub(r"\W+", "_", name.lower())
+        label = label or clean_str(name)
         hash_ = self.run.log_object(
             value,
             label=label,
@@ -786,7 +794,7 @@ class TaskSpan(Span, t.Generic[R]):
             )
         )
 
-        key = re.sub(r"[^\w/]+", "_", key.lower())
+        key = clean_str(key)
 
         # For every metric we log, also log it to the run
         # with our `label` as a prefix.
