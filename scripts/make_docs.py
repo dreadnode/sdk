@@ -138,7 +138,8 @@ class MDXDoc(pydoc.HTMLDoc):
                     param_header += " *(optional)*"
                 output.write(f"- {param_header}")
                 if param.description:
-                    output.write(f": {param.description.replace('<', r'\\<')}")
+                    updated_description = param.description.replace("<", r"\<")
+                    output.write(f": {updated_description}")
                 if param.default:
                     safe_default = param.default.replace("`", r"\`")
                     output.write(f" Default: `{safe_default}`")
