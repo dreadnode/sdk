@@ -323,14 +323,17 @@ class RunSpan(Span):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
-        self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._pending_params)
-        self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._pending_inputs, schema=False)
-        self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._pending_outputs, schema=False)
-        self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._pending_metrics, schema=False)
-        self.set_attribute(SPAN_ATTRIBUTE_OBJECTS, self._pending_objects, schema=False)
+        # When we finally close out the final span, include all the
+        # full data attributes, so we can skip the update spans during
+        # db queries later.
+        self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._params, schema=False)
+        self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs, schema=False)
+        self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._outputs, schema=False)
+        self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics, schema=False)
+        self.set_attribute(SPAN_ATTRIBUTE_OBJECTS, self._objects, schema=False)
         self.set_attribute(
             SPAN_ATTRIBUTE_OBJECT_SCHEMAS,
-            self._pending_object_schemas,
+            self._object_schemas,
             schema=False,
         )
         self.set_attribute(SPAN_ATTRIBUTE_ARTIFACTS, self._artifacts, schema=False)
