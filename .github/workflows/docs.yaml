@@ -1,0 +1,20 @@
+name: Notify Documentation Update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+
+jobs:
+  notify-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger docs repository workflow
+        run: echo "Triggering docs repository workflow not yet implemented"
+        # uses: peter-evans/repository-dispatch@v2
+        # with:
+        #   token: ${{ secrets.DOCS_REPO_PAT }}
+        #   repository: dreadnode/prod-docs
+        #   event-type: code-update
+        #   client-payload: '{"repository": "${{ github.repository }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "product": "sdk"}'
