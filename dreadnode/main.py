@@ -2,12 +2,11 @@ import contextlib
 import inspect
 import os
 import random
-import re
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -32,7 +31,7 @@ from dreadnode.constants import (
     ENV_SERVER,
     ENV_SERVER_URL,
 )
-from dreadnode.metric import Metric, Scorer, ScorerCallable, T
+from dreadnode.metric import Metric, MetricAggMode, Scorer, ScorerCallable, T
 from dreadnode.task import P, R, Task
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -47,10 +46,13 @@ from dreadnode.tracing.span import (
     current_task_span,
 )
 from dreadnode.types import (
+    INHERITED,
     AnyDict,
+    Inherited,
+    JsonDict,
     JsonValue,
 )
-from dreadnode.util import handle_internal_errors
+from dreadnode.util import clean_str, handle_internal_errors
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -204,6 +206,16 @@ class Dreadnode:
                 category=DreadnodeConfigWarning,
             )
 
+        if self.server:
+            parsed_url = urlparse(self.server)
+            if not parsed_url.scheme:
+                netloc = parsed_url.path.split("/")[0]
+                path = "/".join(parsed_url.path.split("/")[1:])
+                parsed_new = parsed_url._replace(
+                    scheme="https", netloc=netloc, path=f"/{path}" if path else ""
+                )
+                self.server = urlunparse(parsed_new)
+
         if self.local_dir is not False:
             config = FileExportConfig(
                 base_path=self.local_dir,
@@ -268,6 +280,7 @@ class Dreadnode:
             service_version=self.service_version,
             console=logfire.ConsoleOptions() if self.console is True else self.console,
             scrubbing=False,
+            inspect_arguments=False,
         )
         self._logfire.config.ignore_no_config = True
 
@@ -410,8 +423,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator: ...
@@ -424,8 +437,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> ScoredTaskDecorator[R]: ...
@@ -437,8 +450,8 @@ class Dreadnode:
         name: str | None = None,
         label: str | None = None,
         log_params: t.Sequence[str] | bool = False,
-        log_inputs: t.Sequence[str] | bool = True,
-        log_output: bool = True,
+        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+        log_output: bool | Inherited = INHERITED,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator:
@@ -489,7 +502,7 @@ class Dreadnode:
             _label = label or func_name
 
             # conform our label for sanity
-            _label = re.sub(r"[\W_]+", "_", _label.lower())
+            _label = clean_str(_label)
 
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
@@ -556,7 +569,7 @@ class Dreadnode:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("Task spans must be created within a run")
 
-        label = label or re.sub(r"[\W_]+", "_", name.lower())
+        label = label or clean_str(name)
         return TaskSpan(
             name=name,
             label=label,
@@ -620,6 +633,7 @@ class Dreadnode:
         tags: t.Sequence[str] | None = None,
         params: AnyDict | None = None,
         project: str | None = None,
+        autolog: bool = True,
         **attributes: t.Any,
     ) -> RunSpan:
         """
@@ -645,6 +659,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
+            autolog: Whether to automatically log task inputs, outputs, and execution metrics if unspecified.
             **attributes: Additional attributes to attach to the run span.
         """
         if not self._initialized:
@@ -662,7 +677,33 @@ class Dreadnode:
             tags=tags,
             file_system=self._fs,
             prefix_path=self._fs_prefix,
+            autolog=autolog,
         )
+
+    def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
+        """
+        Add one or many tags to the current task or run.
+
+        Example:
+            ```
+            with dreadnode.run("my_run") as run:
+                run.tag("my_tag")
+            ```
+
+        Args:
+            tag: The tag to attach to the task or run.
+            to: The target object to log the tag to. Can be "task-or-run" or "run".
+                Defaults to "task-or-run". If "task-or-run", the tag will be logged
+                to the current task or run, whichever is the nearest ancestor.
+        """
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError("Tagging must be done within a run")
+
+        target.add_tags(tag)
 
     @handle_internal_errors()
     def push_update(self) -> None:
@@ -757,8 +798,10 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
+        mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         """
         Log a single metric to the current task or run.
 
@@ -778,9 +821,21 @@ class Dreadnode:
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
             timestamp: The timestamp of the metric - defaults to the current time.
+            mode: The aggregation mode to use for the metric. Helpful when you want to let
+                the library take care of translating your raw values into better representations.
+                - direct: do not modify the value at all (default)
+                - min: the lowest observed value reported for this metric
+                - max: the highest observed value reported for this metric
+                - avg: the average of all reported values for this metric
+                - sum: the cumulative sum of all reported values for this metric
+                - count: increment every time this metric is logged - disregard value
+            attributes: A dictionary of additional attributes to attach to the metric.
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
+
+        Returns:
+            The logged metric object.
         """
 
     @t.overload
@@ -790,8 +845,9 @@ class Dreadnode:
         value: Metric,
         *,
         origin: t.Any | None = None,
+        mode: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         """
         Log a single metric to the current task or run.
 
@@ -809,11 +865,20 @@ class Dreadnode:
             value: The metric object.
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
+            mode: The aggregation mode to use for the metric. Helpful when you want to let
+                the library take care of translating your raw values into better representations.
+                - min: always report the lowest ovbserved value for this metric
+                - max: always report the highest observed value for this metric
+                - avg: report the average of all values for this metric
+                - sum: report a rolling sum of all values for this metric
+                - count: report the number of times this metric has been logged
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
+
+        Returns:
+            The logged metric object.
         """
-        ...  # noqa: PIE790
 
     @handle_internal_errors()
     def log_metric(
@@ -824,8 +889,10 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
+        mode: MetricAggMode | None = None,
+        attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         task = current_task_span.get()
         run = current_run_span.get()
 
@@ -836,9 +903,11 @@ class Dreadnode:
         metric = (
             value
             if isinstance(value, Metric)
-            else Metric(float(value), step, timestamp or datetime.now(timezone.utc))
+            else Metric(
+                float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+            )
         )
-        target.log_metric(key, metric, origin=origin)
+        return target.log_metric(key, metric, origin=origin, mode=mode)
 
     @handle_internal_errors()
     def log_artifact(
@@ -887,7 +956,7 @@ class Dreadnode:
     def log_input(
         self,
         name: str,
-        value: JsonValue,
+        value: t.Any,
         *,
         label: str | None = None,
         to: ToObject = "task-or-run",

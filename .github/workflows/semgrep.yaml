@@ -1,5 +1,5 @@
 ---
-name: 🚨 Semgrep Analysis
+name: Semgrep Analysis
 on:
   merge_group:
   pull_request:
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   semgrep:
-    name: 🚨 Semgrep Analysis
+    name: Semgrep Analysis
     runs-on: ubuntu-latest
     container:
       image: returntocorp/semgrep

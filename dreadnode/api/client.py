@@ -7,18 +7,29 @@ import pandas as pd
 from pydantic import BaseModel
 from ulid import ULID
 
+from dreadnode.api.util import (
+    convert_flat_tasks_to_tree,
+    convert_flat_trace_to_tree,
+    process_run,
+    process_task,
+)
 from dreadnode.util import logger
 from dreadnode.version import VERSION
 
 from .models import (
     MetricAggregationType,
     Project,
+    RawRun,
+    RawTask,
     Run,
+    RunSummary,
     StatusFilter,
     Task,
+    TaskTree,
     TimeAggregationType,
     TimeAxisType,
     TraceSpan,
+    TraceTree,
     UserDataCredentials,
 )
 
@@ -160,11 +171,6 @@ class ApiClient:
 
         return response
 
-    # This currently won't work with API keys
-    # def get_user(self) -> UserResponse:
-    #     response = self.request("GET", "/user")
-    #     return UserResponse(**response.json())
-
     def list_projects(self) -> list[Project]:
         """Retrieves a list of projects.
 
@@ -186,59 +192,59 @@ class ApiClient:
         response = self.request("GET", f"/strikes/projects/{project!s}")
         return Project(**response.json())
 
-    def list_runs(self, project: str) -> list[Run]:
-        """Retrieves a list of runs for a specific project.
-
-        Args:
-            project (str): The project identifier.
-
-        Returns:
-            list[Run]: A list of Run objects.
-        """
+    def list_runs(self, project: str) -> list[RunSummary]:
         response = self.request("GET", f"/strikes/projects/{project!s}/runs")
-        return [Run(**run) for run in response.json()]
+        return [RunSummary(**run) for run in response.json()]
+
+    def _get_run(self, run: str | ULID) -> RawRun:
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}")
+        return RawRun(**response.json())
 
     def get_run(self, run: str | ULID) -> Run:
-        """Retrieves details of a specific run.
+        return process_run(self._get_run(run))
 
-        Args:
-            run (str | ULID): The run identifier.
+    TraceFormat = t.Literal["tree", "flat"]
 
-        Returns:
-            Run: The Run object.
-        """
-        response = self.request("GET", f"/strikes/projects/runs/{run!s}")
-        return Run(**response.json())
+    @t.overload
+    def get_run_tasks(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TaskTree]: ...
 
-    def get_run_tasks(self, run: str | ULID) -> list[Task]:
-        """Retrieves tasks for a specific run.
+    @t.overload
+    def get_run_tasks(
+        self, run: str | ULID, *, format: t.Literal["flat"] = "flat"
+    ) -> list[Task]: ...
 
-        Args:
-            run (str | ULID): The run identifier.
+    def get_run_tasks(
+        self, run: str | ULID, *, format: TraceFormat = "flat"
+    ) -> list[Task] | list[TaskTree]:
+        raw_run = self._get_run(run)
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks/full")
+        raw_tasks = [RawTask(**task) for task in response.json()]
+        tasks = [process_task(task, raw_run) for task in raw_tasks]
+        tasks = sorted(tasks, key=lambda x: x.timestamp)
+        return tasks if format == "flat" else convert_flat_tasks_to_tree(tasks)
 
-        Returns:
-            list[Task]: A list of Task objects.
-        """
-        response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks")
-        return [Task(**task) for task in response.json()]
+    @t.overload
+    def get_run_trace(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TraceTree]: ...
 
-    def get_run_trace(self, run: str | ULID) -> list[Task | TraceSpan]:
-        """Retrieves trace spans for a specific run.
+    @t.overload
+    def get_run_trace(
+        self, run: str | ULID, *, format: t.Literal["flat"] = "flat"
+    ) -> list[Task | TraceSpan]: ...
 
-        Args:
-            run (str | ULID): The run identifier.
-
-        Returns:
-            list[Task | TraceSpan]: A list of Task or TraceSpan objects.
-        """
-        response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans")
-        spans: list[Task | TraceSpan] = []
+    def get_run_trace(
+        self, run: str | ULID, *, format: TraceFormat = "flat"
+    ) -> list[Task | TraceSpan] | list[TraceTree]:
+        raw_run = self._get_run(run)
+        response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans/full")
+        trace: list[Task | TraceSpan] = []
         for item in response.json():
             if "parent_task_span_id" in item:
-                spans.append(Task(**item))
+                trace.append(process_task(RawTask(**item), raw_run))
             else:
-                spans.append(TraceSpan(**item))
-        return spans
+                trace.append(TraceSpan(**item))
+
+        trace = sorted(trace, key=lambda x: x.timestamp)
+        return trace if format == "flat" else convert_flat_trace_to_tree(trace)
 
     # Data exports
 

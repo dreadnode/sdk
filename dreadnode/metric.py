@@ -3,12 +3,19 @@ import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from logfire._internal.stack_info import warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
 
 from dreadnode.types import JsonDict, JsonValue
 
 T = t.TypeVar("T")
+
+MetricAggMode = t.Literal["avg", "sum", "min", "max", "count"]
+
+
+class MetricWarning(UserWarning):
+    pass
 
 
 @dataclass
@@ -55,6 +62,45 @@ class Metric:
         score_attributes = {name: value for name, value, _ in values}
         return cls(value=total / weight, step=step, attributes={**attributes, **score_attributes})
 
+    def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
+        """
+        Apply an aggregation mode to the metric.
+        This will modify the metric in place.
+
+        Args:
+            mode: The mode to apply. One of "sum", "min", "max", or "count".
+            others: A list of other metrics to apply the mode to.
+
+        Returns:
+            self
+        """
+        previous_mode = next((m.attributes.get("mode") for m in others), mode)
+        if previous_mode is not None and mode != previous_mode:
+            warn_at_user_stacklevel(
+                f"Metric logged with different modes ({mode} != {previous_mode}). This may result in unexpected behavior.",
+                MetricWarning,
+            )
+
+        self.attributes["original"] = self.value
+        self.attributes["mode"] = mode
+
+        prior_values = [m.value for m in sorted(others, key=lambda m: m.timestamp)]
+
+        if mode == "sum":
+            # Take the max of the priors because they might already be summed
+            self.value += max(prior_values) if prior_values else 0
+        elif mode == "min":
+            self.value = min([self.value, *prior_values])
+        elif mode == "max":
+            self.value = max([self.value, *prior_values])
+        elif mode == "count":
+            self.value = len(others) + 1
+        elif mode == "avg" and prior_values:
+            current_avg = prior_values[-1]
+            self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
+
+        return self
+
 
 MetricDict = dict[str, list[Metric]]
 
@@ -83,7 +129,7 @@ class Scorer(t.Generic[T]):
     def from_callable(
         cls,
         tracer: Tracer,
-        func: ScorerCallable[T] | "Scorer[T]",  # noqa: TC010
+        func: "ScorerCallable[T] | Scorer[T]",
         *,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,

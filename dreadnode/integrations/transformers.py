@@ -12,12 +12,8 @@ if importlib.util.find_spec("transformers") is None:
 
 import typing as t
 
-from transformers.trainer_callback import (  # type: ignore [import-untyped]
-    TrainerCallback,
-    TrainerControl,
-    TrainerState,
-    TrainingArguments,
-)
+from transformers.trainer_callback import TrainerCallback, TrainerControl, TrainerState
+from transformers.training_args import TrainingArguments
 
 import dreadnode as dn
 
@@ -44,7 +40,7 @@ def _clean_keys(data: dict[str, t.Any]) -> dict[str, t.Any]:
     return cleaned
 
 
-class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
+class DreadnodeCallback(TrainerCallback):
     """
     An implementation of the `TrainerCallback` interface for Dreadnode.
 
@@ -184,19 +180,10 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         control: TrainerControl,
         **kwargs: t.Any,
     ) -> None:
-        """
-        Called at the beginning of an epoch.
-
-        Args:
-            args (TrainingArguments): The training arguments.
-            state (TrainerState): The state of the trainer.
-            control (TrainerControl): The control object for the trainer.
-            **kwargs (t.Any): Additional keyword arguments.
-        """
-        if self._run is None:
+        if self._run is None or state.epoch is None:
             return
 
-        dn.log_metric("epoch", state.epoch)
+        dn.log_metric("epoch", state.epoch, to="run")
 
         self._epoch_span = dn.task_span(f"Epoch {state.epoch}")
         self._epoch_span.__enter__()
@@ -240,7 +227,7 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
         if self._run is None:
             return
 
-        dn.log_metric("step", state.global_step)
+        dn.log_metric("step", state.global_step, to="run")
 
         self._step_span = dn.span(f"Step {state.global_step}")
         self._step_span.__enter__()
@@ -288,6 +275,6 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore [misc]
 
         for key, value in _clean_keys(logs).items():
             if isinstance(value, float | int):
-                dn.log_metric(key, value, step=state.global_step)
+                dn.log_metric(key, value, step=state.global_step, to="run")
 
         dn.push_update()
