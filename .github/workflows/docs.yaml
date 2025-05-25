@@ -19,7 +19,7 @@ jobs:
           private-key: ${{ secrets.UPDATE_DOCS_PRIVATE_KEY }}
           owner: "${{ github.repository_owner }}"
           repositories: |
-            spyglass
+            sdk
             prod-docs
 
       - name: Trigger docs repository workflow
