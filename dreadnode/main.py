@@ -197,8 +197,8 @@ class Dreadnode:
         span_processors: list[SpanProcessor] = []
         metric_readers: list[MetricReader] = []
 
-        self.server = self.server or DEFAULT_SERVER_URL
-        if self.server is None and self.local_dir is False:
+        self.server = self.server or (DEFAULT_SERVER_URL if self.token else None)
+        if not (self.server and self.token and self.local_dir):
             warn_at_user_stacklevel(
                 "Your current configuration won't persist run data anywhere. "
                 "Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, "
@@ -206,17 +206,7 @@ class Dreadnode:
                 category=DreadnodeConfigWarning,
             )
 
-        if self.server:
-            parsed_url = urlparse(self.server)
-            if not parsed_url.scheme:
-                netloc = parsed_url.path.split("/")[0]
-                path = "/".join(parsed_url.path.split("/")[1:])
-                parsed_new = parsed_url._replace(
-                    scheme="https", netloc=netloc, path=f"/{path}" if path else ""
-                )
-                self.server = urlunparse(parsed_new)
-
-        if self.local_dir is not False:
+        if self.local_dir:
             config = FileExportConfig(
                 base_path=self.local_dir,
                 prefix=self.project + "-" if self.project else "",
@@ -224,14 +214,23 @@ class Dreadnode:
             span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
             metric_readers.append(FileMetricReader(config))
 
-        if self.token is not None:
-            self._api = ApiClient(self.server, self.token)
-
+        if self.token and self.server:
             try:
+                parsed_url = urlparse(self.server)
+                if not parsed_url.scheme:
+                    netloc = parsed_url.path.split("/")[0]
+                    path = "/".join(parsed_url.path.split("/")[1:])
+                    parsed_new = parsed_url._replace(
+                        scheme="https", netloc=netloc, path=f"/{path}" if path else ""
+                    )
+                    self.server = urlunparse(parsed_new)
+
+                self._api = ApiClient(self.server, self.token)
+
                 self._api.list_projects()
             except Exception as e:
                 raise RuntimeError(
-                    "Failed to authenticate with the provided server and token",
+                    "Failed to connect to the Dreadnode server.",
                 ) from e
 
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
