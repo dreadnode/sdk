@@ -103,7 +103,7 @@ class Dreadnode:
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | t.Literal[False, True] = True,
-        send_to_logfire: bool | t.Literal["if-token-present"] = "if-token-present",
+        send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
         self.server = server
@@ -136,7 +136,7 @@ class Dreadnode:
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | t.Literal[False, True] = True,
-        send_to_logfire: bool | t.Literal["if-token-present"] = "if-token-present",
+        send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
         """
