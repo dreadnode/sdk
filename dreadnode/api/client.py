@@ -37,7 +37,11 @@ ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
 
 class ApiClient:
-    """Client for the Dreadnode API."""
+    """Client for the Dreadnode API.
+
+    This class provides methods to interact with the Dreadnode API, including
+    retrieving projects, runs, tasks, and exporting data.
+    """
 
     def __init__(
         self,
@@ -46,6 +50,13 @@ class ApiClient:
         *,
         debug: bool = False,
     ):
+        """Initializes the API client.
+
+        Args:
+            base_url (str): The base URL of the Dreadnode API.
+            api_key (str): The API key for authentication.
+            debug (bool, optional): Whether to enable debug logging. Defaults to False.
+        """
         self._base_url = base_url.rstrip("/")
         if not self._base_url.endswith("/api"):
             self._base_url += "/api"
@@ -65,7 +76,11 @@ class ApiClient:
             self._client.event_hooks["response"].append(self._log_response)
 
     def _log_request(self, request: httpx.Request) -> None:
-        """Log every request to the console if debug is enabled."""
+        """Logs HTTP requests if debug mode is enabled.
+
+        Args:
+            request (httpx.Request): The HTTP request object.
+        """
 
         logger.debug("-------------------------------------------")
         logger.debug("%s %s", request.method, request.url)
@@ -74,7 +89,11 @@ class ApiClient:
         logger.debug("-------------------------------------------")
 
     def _log_response(self, response: httpx.Response) -> None:
-        """Log every response to the console if debug is enabled."""
+        """Logs HTTP responses if debug mode is enabled.
+
+        Args:
+            response (httpx.Response): The HTTP response object.
+        """
 
         logger.debug("-------------------------------------------")
         logger.debug("Response: %s", response.status_code)
@@ -83,7 +102,14 @@ class ApiClient:
         logger.debug("--------------------------------------------")
 
     def _get_error_message(self, response: httpx.Response) -> str:
-        """Get the error message from the response."""
+        """Extracts the error message from an HTTP response.
+
+        Args:
+            response (httpx.Response): The HTTP response object.
+
+        Returns:
+            str: The error message extracted from the response.
+        """
 
         try:
             obj = response.json()
@@ -98,7 +124,17 @@ class ApiClient:
         params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
-        """Make a raw request to the API."""
+        """Makes a raw HTTP request to the API.
+
+        Args:
+            method (str): The HTTP method (e.g., "GET", "POST").
+            path (str): The API endpoint path.
+            params (dict[str, Any] | None, optional): Query parameters for the request. Defaults to None.
+            json_data (dict[str, Any] | None, optional): JSON payload for the request. Defaults to None.
+
+        Returns:
+            httpx.Response: The HTTP response object.
+        """
 
         return self._client.request(method, path, json=json_data, params=params)
 
@@ -109,7 +145,20 @@ class ApiClient:
         params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
-        """Make a request to the API. Raise an exception for non-200 status codes."""
+        """Makes an HTTP request to the API and raises exceptions for errors.
+
+        Args:
+            method (str): The HTTP method (e.g., "GET", "POST").
+            path (str): The API endpoint path.
+            params (dict[str, Any] | None, optional): Query parameters for the request. Defaults to None.
+            json_data (dict[str, Any] | None, optional): JSON payload for the request. Defaults to None.
+
+        Returns:
+            httpx.Response: The HTTP response object.
+
+        Raises:
+            RuntimeError: If the response status code indicates an error.
+        """
 
         response = self._request(method, path, params, json_data)
 
@@ -121,10 +170,23 @@ class ApiClient:
         return response
 
     def list_projects(self) -> list[Project]:
+        """Retrieves a list of projects.
+
+        Returns:
+            list[Project]: A list of Project objects.
+        """
         response = self.request("GET", "/strikes/projects")
         return [Project(**project) for project in response.json()]
 
     def get_project(self, project: str) -> Project:
+        """Retrieves details of a specific project.
+
+        Args:
+            project (str): The project identifier.
+
+        Returns:
+            Project: The Project object.
+        """
         response = self.request("GET", f"/strikes/projects/{project!s}")
         return Project(**response.json())
 
@@ -193,6 +255,17 @@ class ApiClient:
         status: StatusFilter = "completed",
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
+        """Exports run data for a specific project.
+
+        Args:
+            project (str): The project identifier.
+            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
+            status (StatusFilter, optional): The status of runs to include. Defaults to "completed".
+            aggregations (list[MetricAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the exported run data.
+        """
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export",
@@ -215,6 +288,18 @@ class ApiClient:
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
+        """Exports metric data for a specific project.
+
+        Args:
+            project (str): The project identifier.
+            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
+            status (StatusFilter, optional): The status of metrics to include. Defaults to "completed".
+            metrics (list[str] | None, optional): A list of metric names to include. Defaults to None.
+            aggregations (list[MetricAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the exported metric data.
+        """
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/metrics",
@@ -239,6 +324,19 @@ class ApiClient:
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
+        """Exports parameter data for a specific project.
+
+        Args:
+            project (str): The project identifier.
+            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
+            status (StatusFilter, optional): The status of parameters to include. Defaults to "completed".
+            parameters (list[str] | None, optional): A list of parameter names to include. Defaults to None.
+            metrics (list[str] | None, optional): A list of metric names to include. Defaults to None.
+            aggregations (list[MetricAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the exported parameter data.
+        """
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/parameters",
@@ -264,6 +362,19 @@ class ApiClient:
         time_axis: TimeAxisType = "relative",
         aggregations: list[TimeAggregationType] | None = None,
     ) -> pd.DataFrame:
+        """Exports timeseries data for a specific project.
+
+        Args:
+            project (str): The project identifier.
+            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
+            status (StatusFilter, optional): The status of timeseries to include. Defaults to "completed".
+            metrics (list[str] | None, optional): A list of metric names to include. Defaults to None.
+            time_axis (TimeAxisType, optional): The type of time axis to use. Defaults to "relative".
+            aggregations (list[TimeAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the exported timeseries data.
+        """
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/timeseries",
@@ -281,5 +392,10 @@ class ApiClient:
     # User data access
 
     def get_user_data_credentials(self) -> UserDataCredentials:
+        """Retrieves user data credentials.
+
+        Returns:
+            UserDataCredentials: The user data credentials object.
+        """
         response = self.request("GET", "/user-data/credentials")
         return UserDataCredentials(**response.json())
