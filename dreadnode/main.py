@@ -230,7 +230,7 @@ class Dreadnode:
                 self._api.list_projects()
             except Exception as e:
                 raise RuntimeError(
-                    "Failed to connect to the Dreadnode server.",
+                    f"Failed to connect to the Dreadnode server: {e}",
                 ) from e
 
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
@@ -707,11 +707,11 @@ class Dreadnode:
     @handle_internal_errors()
     def push_update(self) -> None:
         """
-        Push any pending metric or parameter data to the server.
+        Push any pending run data to the server before run completion.
 
         This is useful for ensuring that the UI is up to date with the
-        latest data. Otherwise, all data for the run will be pushed
-        automatically when the run is closed.
+        latest data. Data is automatically pushed periodically, but
+        you can call this method to force a push.
 
         Example:
             ```
@@ -719,11 +719,13 @@ class Dreadnode:
                 dreadnode.log_params(...)
                 dreadnode.log_metric(...)
                 dreadnode.push_update()
+
+                # do more work
         """
         if (run := current_run_span.get()) is None:
             raise RuntimeError("Run updates must be pushed within a run")
 
-        run.push_update()
+        run.push_update(force=True)
 
     @handle_internal_errors()
     def log_param(
