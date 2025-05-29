@@ -112,8 +112,6 @@ class ApiClient:
         """Make a request to the API. Raise an exception for non-200 status codes."""
 
         response = self._request(method, path, params, json_data)
-        if response.status_code == 401:  # noqa: PLR2004
-            raise RuntimeError("Authentication failed, please check your API token.")
 
         try:
             response.raise_for_status()

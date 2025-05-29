@@ -17,6 +17,7 @@ run = DEFAULT_INSTANCE.run
 scorer = DEFAULT_INSTANCE.scorer
 task_span = DEFAULT_INSTANCE.task_span
 push_update = DEFAULT_INSTANCE.push_update
+tag = DEFAULT_INSTANCE.tag
 
 log_metric = DEFAULT_INSTANCE.log_metric
 log_param = DEFAULT_INSTANCE.log_param
@@ -39,7 +40,6 @@ __all__ = [
     "Object3D",
     "Run",
     "RunSpan",
-    "Score",
     "Scorer",
     "Span",
     "Table",
@@ -47,11 +47,23 @@ __all__ = [
     "TaskSpan",
     "Video",
     "__version__",
+    "api",
     "configure",
+    "link_objects",
+    "log_artifact",
+    "log_input",
+    "log_inputs",
     "log_metric",
+    "log_output",
     "log_param",
+    "log_params",
+    "push_update",
     "run",
+    "scorer",
     "shutdown",
     "span",
+    "tag",
     "task",
+    "task_span",
+    "task_span",
 ]
