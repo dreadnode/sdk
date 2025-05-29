@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import types
 import typing as t
@@ -376,20 +377,28 @@ class RunSpan(Span):
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        # Store object if we haven't already
-        if data_hash not in self._objects:
-            self._objects[data_hash] = self._create_object(serialized)
-
-        object_ = self._objects[data_hash]
+        # Create a composite key that represents both data and schema
+        hash_input = f"{data_hash}:{schema_hash}"
+        composite_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324
 
         # Store schema if new
         if schema_hash not in self._object_schemas:
             self._object_schemas[schema_hash] = serialized.schema
 
-        # Build event attributes
+        # Check if we already have this exact composite hash
+        if composite_hash not in self._objects:
+            # Create a new object, but use the data_hash for deduplication of storage
+            obj = self._create_object_by_hash(serialized, composite_hash)
+
+            # Store with composite hash so we can look it up by the combination
+            self._objects[composite_hash] = obj
+
+        object_ = self._objects[composite_hash]
+
+        # Build event attributes, use composite hash in events
         event_attributes = {
             **attributes,
-            EVENT_ATTRIBUTE_OBJECT_HASH: object_.hash,
+            EVENT_ATTRIBUTE_OBJECT_HASH: composite_hash,
             EVENT_ATTRIBUTE_ORIGIN_SPAN_ID: trace_api.format_span_id(
                 trace_api.get_current_span().get_span_context().span_id,
             ),
@@ -418,8 +427,8 @@ class RunSpan(Span):
 
         return str(self._file_system.unstrip_protocol(full_path))
 
-    def _create_object(self, serialized: Serialized) -> Object:
-        """Create an ObjectVal or ObjectUri depending on size."""
+    def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
+        """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
         data = serialized.data
         data_bytes = serialized.data_bytes
         data_len = serialized.data_len
@@ -428,17 +437,19 @@ class RunSpan(Span):
 
         if data is None or data_bytes is None or data_len <= MAX_INLINE_OBJECT_BYTES:
             return ObjectVal(
-                hash=data_hash,
+                hash=object_hash,
                 value=data,
                 schema_hash=schema_hash,
             )
 
         # Offload to file system (e.g., S3)
+        # For storage efficiency, still use just the data_hash for the file path
+        # This ensures we don't duplicate storage for the same data
         full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}"
         object_uri = self._store_file_by_hash(data_bytes, full_path)
 
         return ObjectUri(
-            hash=data_hash,
+            hash=object_hash,
             uri=object_uri,
             schema_hash=schema_hash,
             size=data_len,

@@ -1,3 +1,4 @@
+from dreadnode.data_types import Audio, Image, Object3D, Table, Video
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
 from dreadnode.object import Object
@@ -30,15 +31,22 @@ log_artifact = DEFAULT_INSTANCE.log_artifact
 __version__ = VERSION
 
 __all__ = [
+    "Audio",
     "Dreadnode",
+    "Image",
     "Metric",
     "MetricDict",
     "Object",
+    "Object3D",
+    "Run",
     "RunSpan",
     "Scorer",
     "Span",
+    "Table",
     "Task",
     "TaskSpan",
+    "Video",
+    "__version__",
     "api",
     "configure",
     "link_objects",
