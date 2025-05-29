@@ -23,6 +23,7 @@ from pathlib import PosixPath
 from re import Pattern
 from uuid import UUID
 
+from dreadnode.data_types.base_data_type import BaseDataType
 from dreadnode.types import JsonDict, JsonValue
 from dreadnode.util import safe_repr
 
@@ -388,105 +389,6 @@ def _handle_pandas_series(
     return serialized, schema
 
 
-def _handle_pil_image(
-    obj: t.Any,
-    _seen: set[int],
-) -> tuple[JsonValue, JsonDict]:
-    import PIL.Image
-
-    if not isinstance(obj, PIL.Image.Image):
-        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
-
-    buffer = io.BytesIO()
-    export_format = "PNG"
-
-    if hasattr(obj, "format") and isinstance(obj.format, str):
-        export_format = obj.format.lower()
-
-    obj.save(buffer, format=export_format)
-
-    return _handle_bytes(
-        buffer.getvalue(),
-        _seen,
-        {
-            "x-python-datatype": "PIL.Image",
-            "format": export_format.lower(),
-        },
-    )
-
-
-def _handle_pydub_audio_segment(
-    obj: t.Any,
-    _seen: set[int],
-) -> tuple[JsonValue, JsonDict]:
-    from pydub import AudioSegment  # type: ignore[import-untyped, unused-ignore, import-not-found]
-
-    if not isinstance(obj, AudioSegment):
-        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
-
-    # AudioSegment can be in different formats, but we will use WAV as a default
-    # Since there is no way to get the format from the AudioSegment object, we will use WAV
-    # as a default format for export. TODO: Add a way to get the format from the user via tags may be.
-    export_format = "wav"
-    # Raw audio data from AudioSegment class is in bytes format.
-    raw_bytes_data = obj.raw_data
-    schema = {
-        "x-python-datatype": "pydub.AudioSegment",
-        "format": export_format,
-        "x-audio-sample-rate": obj.frame_rate,
-        "x-audio-channels": obj.channels,
-        "x-audio-sample-width": obj.sample_width,
-    }
-
-    return _handle_bytes(raw_bytes_data, _seen, schema)
-
-
-def _handle_moviepy_video_clip(
-    obj: t.Any,
-    _seen: set[int],
-) -> tuple[JsonValue, JsonDict]:
-    import tempfile
-    from pathlib import Path
-
-    from moviepy import (  # type: ignore[import-untyped, unused-ignore, import-not-found]
-        VideoFileClip,
-    )
-
-    if not isinstance(obj, VideoFileClip):
-        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
-
-    # Infer format from filename if available
-    export_format = "mp4"
-    if getattr(obj, "filename", None):
-        ext = Path(obj.filename).suffix.lstrip(".").lower()
-        if ext:
-            export_format = ext
-
-    # Export video to temp file
-    with tempfile.NamedTemporaryFile(suffix=f".{export_format}") as temp_file:
-        obj.write_videofile(
-            temp_file.name,
-        )
-        raw_bytes_data = Path(temp_file.name).read_bytes()
-
-    schema = {
-        "x-python-datatype": "moviepy.VideoFileClip",
-        "format": export_format,
-        "start": obj.start,
-        "end": obj.end,
-        "duration": obj.duration,
-        "fps": obj.fps,
-        "size": obj.size,
-        "rotation": obj.rotation,
-        "aspect_ratio": obj.aspect_ratio,
-        "w": obj.w,
-        "h": obj.h,
-        "n_frames": obj.n_frames,
-    }
-
-    return _handle_bytes(raw_bytes_data, _seen, schema)
-
-
 def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
     import datasets  # type: ignore[import-untyped]
 
@@ -504,6 +406,22 @@ def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
             "format": "parquet",
         },
     )
+
+
+def _handle_custom_data_type(obj: BaseDataType, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
+    """Handler for Dreadnode custom data types."""
+    if not isinstance(obj, BaseDataType):
+        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
+
+    # Get the serialized data and metadata from the media type
+    data, metadata = obj.to_serializable()
+
+    if isinstance(data, bytes):
+        return _handle_bytes(data, _seen, metadata)
+    serialized, schema = _serialize(data, _seen)
+    schema.update(metadata)
+
+    return serialized, schema
 
 
 @lru_cache(maxsize=1)
@@ -588,24 +506,12 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[pd.Series] = _handle_pandas_series
 
     with contextlib.suppress(Exception):
-        import PIL.Image
-
-        handlers[PIL.Image.Image] = _handle_pil_image
-
-    with contextlib.suppress(Exception):
         import datasets
 
         handlers[datasets.Dataset] = _handle_dataset
 
     with contextlib.suppress(Exception):
-        from pydub import AudioSegment
-
-        handlers[AudioSegment] = _handle_pydub_audio_segment
-
-    with contextlib.suppress(Exception):
-        from moviepy import VideoFileClip
-
-        handlers[VideoFileClip] = _handle_moviepy_video_clip
+        handlers[BaseDataType] = _handle_custom_data_type
 
     return handlers
 

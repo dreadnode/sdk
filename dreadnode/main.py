@@ -2,7 +2,6 @@ import contextlib
 import inspect
 import os
 import random
-import re
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -53,7 +52,7 @@ from dreadnode.types import (
     JsonDict,
     JsonValue,
 )
-from dreadnode.util import handle_internal_errors
+from dreadnode.util import clean_str, handle_internal_errors
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -104,7 +103,7 @@ class Dreadnode:
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | t.Literal[False, True] = True,
-        send_to_logfire: bool | t.Literal["if-token-present"] = "if-token-present",
+        send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
         self.server = server
@@ -137,7 +136,7 @@ class Dreadnode:
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | t.Literal[False, True] = True,
-        send_to_logfire: bool | t.Literal["if-token-present"] = "if-token-present",
+        send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
         """
@@ -198,8 +197,8 @@ class Dreadnode:
         span_processors: list[SpanProcessor] = []
         metric_readers: list[MetricReader] = []
 
-        self.server = self.server or DEFAULT_SERVER_URL
-        if self.server is None and self.local_dir is False:
+        self.server = self.server or (DEFAULT_SERVER_URL if self.token else None)
+        if not (self.server and self.token and self.local_dir):
             warn_at_user_stacklevel(
                 "Your current configuration won't persist run data anywhere. "
                 "Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, "
@@ -207,17 +206,7 @@ class Dreadnode:
                 category=DreadnodeConfigWarning,
             )
 
-        if self.server:
-            parsed_url = urlparse(self.server)
-            if not parsed_url.scheme:
-                netloc = parsed_url.path.split("/")[0]
-                path = "/".join(parsed_url.path.split("/")[1:])
-                parsed_new = parsed_url._replace(
-                    scheme="https", netloc=netloc, path=f"/{path}" if path else ""
-                )
-                self.server = urlunparse(parsed_new)
-
-        if self.local_dir is not False:
+        if self.local_dir:
             config = FileExportConfig(
                 base_path=self.local_dir,
                 prefix=self.project + "-" if self.project else "",
@@ -225,14 +214,23 @@ class Dreadnode:
             span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
             metric_readers.append(FileMetricReader(config))
 
-        if self.token is not None:
-            self._api = ApiClient(self.server, self.token)
-
+        if self.token and self.server:
             try:
+                parsed_url = urlparse(self.server)
+                if not parsed_url.scheme:
+                    netloc = parsed_url.path.split("/")[0]
+                    path = "/".join(parsed_url.path.split("/")[1:])
+                    parsed_new = parsed_url._replace(
+                        scheme="https", netloc=netloc, path=f"/{path}" if path else ""
+                    )
+                    self.server = urlunparse(parsed_new)
+
+                self._api = ApiClient(self.server, self.token)
+
                 self._api.list_projects()
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to connect to Dreadnode: {e}",
+                    f"Failed to connect to the Dreadnode server: {e}",
                 ) from e
 
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
@@ -503,7 +501,7 @@ class Dreadnode:
             _label = label or func_name
 
             # conform our label for sanity
-            _label = re.sub(r"[\W_]+", "_", _label.lower())
+            _label = clean_str(_label)
 
             _attributes = attributes or {}
             _attributes["code.function"] = func_name
@@ -570,7 +568,7 @@ class Dreadnode:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("Task spans must be created within a run")
 
-        label = label or re.sub(r"[\W_]+", "_", name.lower())
+        label = label or clean_str(name)
         return TaskSpan(
             name=name,
             label=label,
@@ -681,6 +679,31 @@ class Dreadnode:
             autolog=autolog,
         )
 
+    def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
+        """
+        Add one or many tags to the current task or run.
+
+        Example:
+            ```
+            with dreadnode.run("my_run") as run:
+                run.tag("my_tag")
+            ```
+
+        Args:
+            tag: The tag to attach to the task or run.
+            to: The target object to log the tag to. Can be "task-or-run" or "run".
+                Defaults to "task-or-run". If "task-or-run", the tag will be logged
+                to the current task or run, whichever is the nearest ancestor.
+        """
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            raise RuntimeError("Tagging must be done within a run")
+
+        target.add_tags(tag)
+
     @handle_internal_errors()
     def push_update(self) -> None:
         """
@@ -779,7 +802,7 @@ class Dreadnode:
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         """
         Log a single metric to the current task or run.
 
@@ -811,6 +834,9 @@ class Dreadnode:
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
+
+        Returns:
+            The logged metric object.
         """
 
     @t.overload
@@ -822,7 +848,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         mode: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         """
         Log a single metric to the current task or run.
 
@@ -850,6 +876,9 @@ class Dreadnode:
             to: The target object to log the metric to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metric will be logged
                 to the current task or run, whichever is the nearest ancestor.
+
+        Returns:
+            The logged metric object.
         """
 
     @handle_internal_errors()
@@ -864,7 +893,7 @@ class Dreadnode:
         mode: MetricAggMode | None = None,
         attributes: JsonDict | None = None,
         to: ToObject = "task-or-run",
-    ) -> None:
+    ) -> Metric:
         task = current_task_span.get()
         run = current_run_span.get()
 
@@ -879,7 +908,7 @@ class Dreadnode:
                 float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
             )
         )
-        target.log_metric(key, metric, origin=origin, mode=mode)
+        return target.log_metric(key, metric, origin=origin, mode=mode)
 
     @handle_internal_errors()
     def log_artifact(
@@ -928,7 +957,7 @@ class Dreadnode:
     def log_input(
         self,
         name: str,
-        value: JsonValue,
+        value: t.Any,
         *,
         label: str | None = None,
         to: ToObject = "task-or-run",
