@@ -20,7 +20,7 @@ logfire = "^3.5.3"
 python-ulid = "^3.0.0"
 coolname = "^2.2.0"
 pandas = "^2.2.3"
-fsspec = { version = ">=2023.1.0,<=2025.3.0", extras = [
+fsspec = { version = ">=2025.5.1,<=2025.5.1", extras = [
     "s3",
 ] } # Pinned for datasets compatibility
 
