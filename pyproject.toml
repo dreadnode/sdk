@@ -46,7 +46,7 @@ typer = "^0.15.2"
 pydub = "^0.25.1"
 moviepy = "^2.1.2"
 datasets = "^3.5.0"
-pyarrow = "^19.0.1"
+pyarrow = "^20.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]
