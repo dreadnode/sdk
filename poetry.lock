@@ -1780,14 +1780,14 @@ proxy = ["PyJWT (>=2.8.0,<3.0.0)", "apscheduler (>=3.10.4,<4.0.0)", "backoff", "
 
 [[package]]
 name = "logfire"
-version = "3.15.1"
+version = "3.16.1"
 description = "The best Python observability tool! 🪵🔥"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "logfire-3.15.1-py3-none-any.whl", hash = "sha256:97550d5e7d9689cbce014a1858db83be7ed4f97a52e52e99269b2592aa233515"},
-    {file = "logfire-3.15.1.tar.gz", hash = "sha256:fb2ad223b0079d1ecc17455dc8ede681b9a5533e55a6db365db569d33e3d6752"},
+    {file = "logfire-3.16.1-py3-none-any.whl", hash = "sha256:0622089e776294f54de31ede0c6cb23d4891f8f7e4bd4dbd89ee5fed8eb8c27f"},
+    {file = "logfire-3.16.1.tar.gz", hash = "sha256:de91504243737cf161d4704a9980fbe3640f1e20c6df5f1948cb1cc559356a28"},
 ]
 
 [package.dependencies]
