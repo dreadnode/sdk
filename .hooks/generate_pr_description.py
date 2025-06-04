@@ -9,7 +9,6 @@
 import asyncio
 import os
 import typing as t
-from pathlib import Path
 
 import rigging as rg
 import typer
@@ -44,17 +43,13 @@ async def _run_git_command(args: list[str]) -> str:
     # Validate git exists in PATH
     git_path = "git"  # Could use shutil.which("git") for more security
     if not any(
-        Path(path).joinpath("git").is_file() for path in os.environ["PATH"].split(os.pathsep)
+        os.path.isfile(os.path.join(path, "git")) for path in os.environ["PATH"].split(os.pathsep)
     ):
         raise ValueError("Git executable not found in PATH")
 
     # Validate input parameters
     if not all(isinstance(arg, str) for arg in args):
         raise ValueError("All command arguments must be strings")
-
-    def check_return_code(return_code: int):
-        if return_code != 0:
-            raise RuntimeError(f"Git command failed: {stderr.decode()}")
 
     # Use os.execv for more secure command execution
     try:
@@ -67,15 +62,12 @@ async def _run_git_command(args: list[str]) -> str:
         )
         stdout, stderr = await proc.communicate()
 
-        check_return_code(proc.returncode)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Git command failed: {stderr.decode()}")
 
         return stdout.decode().strip()
-    except FileNotFoundError as e:
-        raise RuntimeError("Git executable not found or invalid command") from e
-    except asyncio.SubprocessError as e:
-        raise RuntimeError("Error occurred while running the subprocess") from e
-    except UnicodeDecodeError as e:
-        raise RuntimeError("Failed to decode the output of the git command") from e
+    except Exception as e:
+        raise RuntimeError(f"Failed to execute git command: {e}")
 
 
 async def get_diff(base_ref: str, source_ref: str, *, exclude: list[str] | None = None) -> str:
