@@ -19,6 +19,7 @@ from logfire._internal.json_schema import (
 from logfire._internal.tracer import OPEN_SPANS
 from logfire._internal.utils import uniquify_sequence
 from opentelemetry import context as context_api
+from opentelemetry import propagate
 from opentelemetry import trace as trace_api
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import Tracer
@@ -225,6 +226,15 @@ class Span(ReadableSpan):
             )
 
 
+class RunContext(te.TypedDict):
+    """Context for transferring and continuing runs in other places."""
+
+    run_id: str
+    run_name: str
+    project: str
+    trace_context: dict[str, str]
+
+
 class RunUpdateSpan(Span):
     def __init__(
         self,
@@ -274,10 +284,11 @@ class RunSpan(Span):
         *,
         params: AnyDict | None = None,
         metrics: MetricDict | None = None,
-        run_id: str | None = None,
         tags: t.Sequence[str] | None = None,
         autolog: bool = True,
         update_frequency: int = 5,
+        run_id: str | ULID | None = None,
+        type: SpanType = "run",
     ) -> None:
         self.autolog = autolog
         self.project = project
@@ -307,6 +318,8 @@ class RunSpan(Span):
         self._pending_object_schemas = deepcopy(self._object_schemas)
 
         self._context_token: Token[RunSpan | None] | None = None  # contextvars context
+        self._remote_context: dict[str, str] | None = None  # remote run trace context
+        self._remote_token: object | None = None
         self._file_system = file_system
         self._prefix_path = prefix_path
 
@@ -315,16 +328,45 @@ class RunSpan(Span):
             SPAN_ATTRIBUTE_PROJECT: project,
             **attributes,
         }
-        super().__init__(name, attributes, tracer, type="run", tags=tags)
+        super().__init__(name, attributes, tracer, type=type, tags=tags)
+
+    @classmethod
+    def from_context(
+        cls,
+        context: RunContext,
+        tracer: Tracer,
+        file_system: AbstractFileSystem,
+        prefix_path: str,
+    ) -> "RunSpan":
+        self = RunSpan(
+            name=f"run.{context['run_id']}.fragment",
+            project=context["project"],
+            attributes={},
+            tracer=tracer,
+            file_system=file_system,
+            prefix_path=prefix_path,
+            type="run_fragment",
+            run_id=context["run_id"],
+        )
+
+        self._remote_context = context["trace_context"]
+
+        return self
 
     def __enter__(self) -> te.Self:
         if current_run_span.get() is not None:
             raise RuntimeError("You cannot start a run span within another run")
 
+        if self._remote_context is not None:
+            otel_context = propagate.extract(carrier=self._remote_context)
+            self._remote_token = context_api.attach(otel_context)
+        else:
+            super().__enter__()
+
         self._context_token = current_run_span.set(self)
-        span = super().__enter__()
         self.push_update(force=True)
-        return span
+
+        return self
 
     def __exit__(
         self,
@@ -332,6 +374,9 @@ class RunSpan(Span):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
+        if self._remote_context is not None:
+            super().__enter__()  # Now we can open our actually span
+
         # When we finally close out the final span, include all the
         # full data attributes, so we can skip the update spans during
         # db queries later.
@@ -355,6 +400,10 @@ class RunSpan(Span):
         )
 
         super().__exit__(exc_type, exc_value, traceback)
+
+        if self._remote_token is not None:
+            context_api.detach(self._remote_token)  # type: ignore [arg-type]
+
         if self._context_token is not None:
             current_run_span.reset(self._context_token)
 
@@ -416,7 +465,7 @@ class RunSpan(Span):
 
         # Create a composite key that represents both data and schema
         hash_input = f"{data_hash}:{schema_hash}"
-        composite_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324
+        composite_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324 # nosec
 
         # Store schema if new
         if schema_hash not in self._object_schemas:

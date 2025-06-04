@@ -63,7 +63,7 @@ class Audio(BaseDataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
         if isinstance(self._data, np.ndarray):
             return self._process_numpy_array()
@@ -159,7 +159,7 @@ class Audio(BaseDataType):
             "x-python-datatype": "dreadnode.Audio.bytes",
         }
 
-        if isinstance(self._data, (str, Path)):
+        if isinstance(self._data, str | Path):
             metadata["source-type"] = "file"
             metadata["source-path"] = str(self._data)
         elif isinstance(self._data, np.ndarray):

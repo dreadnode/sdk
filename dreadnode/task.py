@@ -236,8 +236,8 @@ class Task(t.Generic[P, R]):
         Returns:
             The span associated with task execution.
         """
-        run = current_run_span.get()
-        if run is None or not run.is_recording:
+
+        if (run := current_run_span.get()) is None:
             raise RuntimeError("Tasks must be executed within a run")
 
         log_inputs = run.autolog if isinstance(self.log_inputs, Inherited) else self.log_inputs
