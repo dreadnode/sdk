@@ -25,6 +25,7 @@ log_params = DEFAULT_INSTANCE.log_params
 log_input = DEFAULT_INSTANCE.log_input
 log_inputs = DEFAULT_INSTANCE.log_inputs
 log_output = DEFAULT_INSTANCE.log_output
+log_outputs = DEFAULT_INSTANCE.log_outputs
 link_objects = DEFAULT_INSTANCE.link_objects
 log_artifact = DEFAULT_INSTANCE.log_artifact
 
