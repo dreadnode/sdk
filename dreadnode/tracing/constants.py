@@ -2,7 +2,7 @@ import typing as t
 
 SPAN_NAMESPACE = "dreadnode"
 
-SpanType = t.Literal["run", "task", "span", "run_update"]
+SpanType = t.Literal["run", "task", "span", "run_update", "run_fragment"]
 
 SPAN_ATTRIBUTE_VERSION = f"{SPAN_NAMESPACE}.version"
 SPAN_ATTRIBUTE_TYPE = f"{SPAN_NAMESPACE}.type"

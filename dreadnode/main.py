@@ -16,6 +16,7 @@ from fsspec.implementations.local import (  # type: ignore [import-untyped]
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
+from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -39,6 +40,7 @@ from dreadnode.tracing.exporters import (
     FileSpanExporter,
 )
 from dreadnode.tracing.span import (
+    RunContext,
     RunSpan,
     Span,
     TaskSpan,
@@ -154,7 +156,7 @@ class Dreadnode:
             server: The Dreadnode server URL.
             token: The Dreadnode API token.
             local_dir: The local directory to store data in.
-            project: The defautlt project name to associate all runs with.
+            project: The default project name to associate all runs with.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
             console: Whether to log span information to the console.
@@ -198,7 +200,7 @@ class Dreadnode:
         metric_readers: list[MetricReader] = []
 
         self.server = self.server or (DEFAULT_SERVER_URL if self.token else None)
-        if not (self.server and self.token and self.local_dir):
+        if not (self.server or self.token or self.local_dir):
             warn_at_user_stacklevel(
                 "Your current configuration won't persist run data anywhere. "
                 "Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, "
@@ -280,6 +282,7 @@ class Dreadnode:
             console=logfire.ConsoleOptions() if self.console is True else self.console,
             scrubbing=False,
             inspect_arguments=False,
+            distributed_tracing=False,
         )
         self._logfire.config.ignore_no_config = True
 
@@ -660,12 +663,16 @@ class Dreadnode:
                 run will be associated with a default project.
             autolog: Whether to automatically log task inputs, outputs, and execution metrics if unspecified.
             **attributes: Additional attributes to attach to the run span.
+
+        Returns:
+            A RunSpan object that can be used as a context manager.
+            The run will automatically be completed when the context manager exits.
         """
         if not self._initialized:
             self.initialize()
 
         if name is None:
-            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311
+            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311 # nosec
 
         return RunSpan(
             name=name,
@@ -677,6 +684,52 @@ class Dreadnode:
             file_system=self._fs,
             prefix_path=self._fs_prefix,
             autolog=autolog,
+        )
+
+    def get_run_context(self) -> RunContext:
+        """
+        Capture the current run context for transfer to another host, thread, or process.
+
+        Use `continue_run()` to continue the run anywhere else.
+
+        Returns:
+            RunContext containing run state and trace propagation headers.
+
+        Raises:
+            RuntimeError: If called outside of an active run.
+        """
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("get_run_context() must be called within a run")
+
+        # Capture OpenTelemetry trace context
+        trace_context: dict[str, str] = {}
+        propagate.inject(trace_context)
+
+        return {
+            "run_id": run.run_id,
+            "run_name": run.name,
+            "project": run.project,
+            "trace_context": trace_context,
+        }
+
+    def continue_run(self, run_context: RunContext) -> RunSpan:
+        """
+        Continue a run from captured context on a remote host.
+
+        Args:
+            run_context: The RunContext captured from get_run_context().
+
+        Returns:
+            A RunSpan object that can be used as a context manager.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        return RunSpan.from_context(
+            context=run_context,
+            tracer=self._get_tracer(),
+            file_system=self._fs,
+            prefix_path=self._fs_prefix,
         )
 
     def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:

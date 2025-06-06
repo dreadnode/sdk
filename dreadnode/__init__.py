@@ -18,6 +18,8 @@ scorer = DEFAULT_INSTANCE.scorer
 task_span = DEFAULT_INSTANCE.task_span
 push_update = DEFAULT_INSTANCE.push_update
 tag = DEFAULT_INSTANCE.tag
+get_run_context = DEFAULT_INSTANCE.get_run_context
+continue_run = DEFAULT_INSTANCE.continue_run
 
 log_metric = DEFAULT_INSTANCE.log_metric
 log_param = DEFAULT_INSTANCE.log_param

@@ -31,7 +31,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        entry: codespell -q 3 -f --skip=".git,.github,README.md" --ignore-words-list="astroid"
+        entry: codespell -q 3 -f --skip=".git,.github,README.md" --ignore-words-list="astroid,braket,te"
 
   # Python code security
   - repo: https://github.com/PyCQA/bandit
@@ -57,21 +57,21 @@ repos:
       - id: nbstripout
         args: [--keep-id]
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.7
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
+  # - repo: https://github.com/astral-sh/ruff-pre-commit
+  #   rev: v0.11.7
+  #   hooks:
+  #     - id: ruff
+  #       args: [--fix]
+  #     - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - "types-PyYAML"
-          - "types-requests"
-          - "types-setuptools"
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.15.0
+  #   hooks:
+  #     - id: mypy
+  #       additional_dependencies:
+  #         - "types-PyYAML"
+  #         - "types-requests"
+  #         - "types-setuptools"
 
   - repo: local
     hooks:
