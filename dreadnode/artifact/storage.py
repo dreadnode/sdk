@@ -96,7 +96,7 @@ class ArtifactStorage:
         file_size = file_path.stat().st_size
         stream_threshold = stream_threshold_mb * 1024 * 1024  # Convert MB to bytes
 
-        sha1 = hashlib.sha1()  # noqa: S324
+        sha1 = hashlib.sha1()  # noqa: S324 # nosec
 
         if file_size < stream_threshold:
             with file_path.open("rb") as f:

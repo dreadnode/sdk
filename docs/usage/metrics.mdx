@@ -1,0 +1,230 @@
+---
+title: 'Metrics'
+description: 'Measure anything inside your runs'
+public: true
+---
+
+Metrics are the backbone of measurement and evaluation in Strikes. They allow you to track performance, behavior, and outcomes of your agents and evaluations in a structured way.
+
+Each metric has:
+
+- A **name** that identifies what is being measured
+- A **value** (typically numeric) representing the measurement
+- A **timestamp** recording when the measurement was taken
+- An optional **step** for ordered measurements
+- Optional **attributes** for additional context
+
+Metrics can be associated with runs, tasks, or even specific objects in your system, providing a flexible way to track performance at different levels of granularity. Metrics are organized inside a larger map and grouped by a `name` that you choose. You can log a metric either once or at multiple points in your code.
+
+Here are a few examples:
+
+- Report the loss of your model during training epochs.
+- Track the number of times inference failed during your agent run.
+- Log the average time it takes to pivot between two hosts.
+- Track the total assets discovered during a network scan.
+
+```json
+{
+    "task_scan_failed": [
+        {...},
+    ],
+    "eval_loss": [
+        {...},
+        {...},
+        {...}
+    ],
+    "assets_discovered": [
+        {...},
+        {...}
+    ]
+}
+```
+
+## Logging Metrics
+
+The simplest way to log a metric is:
+
+```python
+import dreadnode as dn
+
+with dn.run("my-experiment"):
+    # Log a simple metric
+    dn.log_metric("accuracy", 0.87)
+
+    # Log a metric with a step number
+    dn.log_metric("loss", 0.23, step=1)
+
+    # Multiple metrics with the same name create a time series
+    dn.log_metric("loss", 0.19, step=2)
+    dn.log_metric("loss", 0.15, step=3)
+
+    dn.log_metric("success", True)
+```
+
+Metrics can be logged for your run as a whole (run-level) or for individual tasks within a run (task-level). Run-level metrics are generally used to track the broad performance of the system, and task-level metrics monitor more nuanced behaviors inside your flows. To make things easy, any task-level metrics will also be mirrored to the run level using the label (name) of the originating task as a prefix. This means that you can still use the same metric name in different tasks, and they will be reported separately in the UI.
+
+### Adding Context with Attributes
+
+Metrics can include additional attributes to provide context:
+
+```python
+dn.log_metric(
+    "execution_time",
+    0.45,
+    attributes={
+        "function": "process_image",
+        "image_size": "large",
+        "batch_id": "batch_123"
+    }
+)
+```
+
+These attributes help categorize and filter metrics during analysis.
+
+### Tracking Origins
+
+A powerful feature of Strikes metrics is their ability to link measurements to specific objects:
+
+```python
+# Log an input object
+document = {"id": "doc123", "content": "..."}
+dn.log_input("document", document)
+
+# Log a metric linked to that object
+dn.log_metric("processing_time", 1.23, origin=document)
+```
+
+The `origin` parameter creates a reference to the object that was measured, allowing you to track which specific inputs led to particular performance outcomes.
+
+### Aggregation Modes
+
+When working with metrics, it's important to provide context—such as averages, sums, or counts. You can always do this manually by keeping separate variables or lists of previous values. But Strikes provides a way to do this automatically for you:
+
+```python
+# Simple value (no aggregation)
+dn.log_metric("accuracy", 0.85)
+
+# Average mode: maintain running average of all values
+dn.log_metric("accuracy", 0.90, mode="avg")
+dn.log_metric("accuracy", 0.80, mode="avg")  # Will be ~0.85
+
+# Min/Max modes: only keep the lowest/highest value
+dn.log_metric("best_accuracy", 0.90, mode="max")
+dn.log_metric("best_accuracy", 0.50, mode="max")  # Will be 0.90
+
+# Sum mode: accumulate values
+dn.log_metric("total_processed", 10, mode="sum")
+dn.log_metric("total_processed", 15, mode="sum")  # Will be 25
+
+# Count mode: count the number of times a metric is logged
+dn.log_metric("failures", 1, mode="count")
+dn.log_metric("failures", 1, mode="count")  # Will be 2
+```
+
+These modes help create meaningful aggregate metrics without requiring you to manually track previous values.
+
+## Metrics in Tasks
+
+When used within tasks, metrics provide a way to measure performance or behavior of specific code units:
+
+```python
+@dn.task()
+async def classify_document(doc):
+    # Start with a count metric
+    dn.log_metric("documents_processed", 1, mode="count")
+
+    # Measure processing time
+    start = time.time()
+    result = process_document(doc)
+    duration = time.time() - start
+    dn.log_metric("processing_time", duration)
+
+    # Track classification confidence
+    dn.log_metric("confidence", result["confidence"])
+
+    return result
+```
+
+Task-level metrics are automatically associated with the specific task invocation, making it easy to correlate inputs, outputs, and performance.
+
+### Automatic Task Metrics
+
+Strikes automatically logs some additional metrics for every task:
+
+```python
+"{task}.exec.count"         # Count of executions
+"{task}.exec.success_rate"  # Success rate %
+```
+
+You can use these metrics to track task reliability and usage patterns.
+
+## Creating Scorers
+
+Scorers are specialized functions that evaluate task outputs and log metrics automatically:
+
+```python
+async def accuracy_scorer(result: dict) -> float:
+    """Evaluate the accuracy of a classification result."""
+    if result["predicted_class"] == result["actual_class"]:
+        return 1.0
+    return 0.0
+
+@dn.task(scorers=[accuracy_scorer])
+async def classify_document(doc):
+    # Process document
+    return {
+        "predicted_class": "spam",
+        "actual_class": "spam",
+        "confidence": 0.92
+    }
+```
+
+When the task runs, the scorer will automatically:
+1. Receive the task's output
+2. Evaluate it according to your logic
+3. Log a metric with the scoring function's name and returned value
+
+### Composite Scoring
+
+For more complex evaluations, you can create composite metrics from multiple measurements, where each sub-metric can have its own weight. The metric will store the original values of all sub-metrics in the attributes.
+
+```python
+from dreadnode import Metric
+
+async def comprehensive_scorer(result: dict) -> Metric:
+    """Score multiple aspects of a model's output."""
+    values = [
+        ("accuracy", 1.0 if result["predicted"] == result["actual"] else 0.0, 0.7),
+        ("confidence", result["confidence"], 0.3)
+    ]
+    return Metric.from_many(values, step=result.get("step", 0))
+```
+
+## Tracking Metrics Over Time
+
+For time-series data, you can use the `step` parameter to maintain order:
+
+```python
+# Training loop example
+for epoch in range(10):
+    # Train model
+    train_loss = train_epoch(model, train_data)
+    dn.log_metric("train_loss", train_loss, step=epoch)
+
+    # Evaluate model
+    val_loss, accuracy = evaluate(model, val_data)
+    dn.log_metric("val_loss", val_loss, step=epoch)
+    dn.log_metric("accuracy", accuracy, step=epoch)
+```
+
+The step parameter helps organize metrics into sequences, which is especially useful for tracking training progress or iterative processes.
+
+## Best Practices
+
+1. **Use consistent naming**: Choose a naming convention and stick with it to make metrics easier to find and analyze.
+2. **Log meaningful metrics**: Focus on measurements that provide insight into your system's performance or behavior.
+3. **Use appropriate aggregation modes**: Choose aggregation modes that make sense for what you're measuring (for example, "max" for best performance, "avg" for typical performance).
+4. **Include context with attributes**: Add attributes to help filter and categorize metrics during analysis.
+5. **Link metrics to objects**: Use the `origin` parameter to connect measurements to the specific inputs or outputs that generated them.
+6. **Combine metrics with scorers**: For evaluation tasks, create scorers that automatically measure output quality.
+7. **Consider hierarchies**: Use naming prefixes to create logical groupings of related metrics.

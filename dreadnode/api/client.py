@@ -37,7 +37,8 @@ ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
 
 class ApiClient:
-    """Client for the Dreadnode API.
+    """
+    Client for the Dreadnode API.
 
     This class provides methods to interact with the Dreadnode API, including
     retrieving projects, runs, tasks, and exporting data.
@@ -191,6 +192,15 @@ class ApiClient:
         return Project(**response.json())
 
     def list_runs(self, project: str) -> list[RunSummary]:
+        """
+        Lists all runs for a specific project.
+
+        Args:
+            project: The project identifier.
+
+        Returns:
+            A list of RunSummary objects representing the runs in the project.
+        """
         response = self.request("GET", f"/strikes/projects/{project!s}/runs")
         return [RunSummary(**run) for run in response.json()]
 
@@ -199,6 +209,15 @@ class ApiClient:
         return RawRun(**response.json())
 
     def get_run(self, run: str | ULID) -> Run:
+        """
+        Retrieves details of a specific run.
+
+        Args:
+            run: The run identifier.
+
+        Returns:
+            The Run object containing details of the run.
+        """
         return process_run(self._get_run(run))
 
     TraceFormat = t.Literal["tree", "flat"]
@@ -214,6 +233,16 @@ class ApiClient:
     def get_run_tasks(
         self, run: str | ULID, *, format: TraceFormat = "flat"
     ) -> list[Task] | list[TaskTree]:
+        """
+        Gets all tasks for a specific run.
+
+        Args:
+            run: The run identifier.
+            format: The format of the tasks to return. Can be "flat" or "tree".
+
+        Returns:
+            A list of Task objects in flat format or a list of TaskTree objects in tree format.
+        """
         raw_run = self._get_run(run)
         response = self.request("GET", f"/strikes/projects/runs/{run!s}/tasks/full")
         raw_tasks = [RawTask(**task) for task in response.json()]
@@ -232,6 +261,16 @@ class ApiClient:
     def get_run_trace(
         self, run: str | ULID, *, format: TraceFormat = "flat"
     ) -> list[Task | TraceSpan] | list[TraceTree]:
+        """
+        Retrieves the run trace (spans+tasks) of a specific run.
+
+        Args:
+            run: The run identifier.
+            format: The format of the trace to return. Can be "flat" or "tree".
+
+        Returns:
+            A list of Task or TraceSpan objects in flat format or a list of TraceTree objects in tree format.
+        """
         raw_run = self._get_run(run)
         response = self.request("GET", f"/strikes/projects/runs/{run!s}/spans/full")
         trace: list[Task | TraceSpan] = []
@@ -258,13 +297,13 @@ class ApiClient:
         """Exports run data for a specific project.
 
         Args:
-            project (str): The project identifier.
-            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
-            status (StatusFilter, optional): The status of runs to include. Defaults to "completed".
-            aggregations (list[MetricAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+            project: The project identifier.
+            filter: A filter to apply to the exported data. Defaults to None.
+            status: The status of runs to include. Defaults to "completed".
+            aggregations: A list of aggregation types to apply. Defaults to None.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the exported run data.
+            A DataFrame containing the exported run data.
         """
         response = self.request(
             "GET",
@@ -291,14 +330,14 @@ class ApiClient:
         """Exports metric data for a specific project.
 
         Args:
-            project (str): The project identifier.
-            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
-            status (StatusFilter, optional): The status of metrics to include. Defaults to "completed".
-            metrics (list[str] | None, optional): A list of metric names to include. Defaults to None.
-            aggregations (list[MetricAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+            project: The project identifier.
+            filter: A filter to apply to the exported data. Defaults to None.
+            status: The status of metrics to include. Defaults to "completed".
+            metrics: A list of metric names to include. Defaults to None.
+            aggregations: A list of aggregation types to apply. Defaults to None.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the exported metric data.
+            A DataFrame containing the exported metric data.
         """
         response = self.request(
             "GET",
@@ -327,15 +366,15 @@ class ApiClient:
         """Exports parameter data for a specific project.
 
         Args:
-            project (str): The project identifier.
-            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
-            status (StatusFilter, optional): The status of parameters to include. Defaults to "completed".
-            parameters (list[str] | None, optional): A list of parameter names to include. Defaults to None.
-            metrics (list[str] | None, optional): A list of metric names to include. Defaults to None.
-            aggregations (list[MetricAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+            project: The project identifier.
+            filter: A filter to apply to the exported data. Defaults to None.
+            status : The status of parameters to include. Defaults to "completed".
+            parameters: A list of parameter names to include. Defaults to None.
+            metrics: A list of metric names to include. Defaults to None.
+            aggregations: A list of aggregation types to apply. Defaults to None.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the exported parameter data.
+            A DataFrame containing the exported parameter data.
         """
         response = self.request(
             "GET",
@@ -365,15 +404,15 @@ class ApiClient:
         """Exports timeseries data for a specific project.
 
         Args:
-            project (str): The project identifier.
-            filter (str | None, optional): A filter to apply to the exported data. Defaults to None.
-            status (StatusFilter, optional): The status of timeseries to include. Defaults to "completed".
-            metrics (list[str] | None, optional): A list of metric names to include. Defaults to None.
-            time_axis (TimeAxisType, optional): The type of time axis to use. Defaults to "relative".
-            aggregations (list[TimeAggregationType] | None, optional): A list of aggregation types to apply. Defaults to None.
+            project: The project identifier.
+            filter: A filter to apply to the exported data. Defaults to None.
+            status: The status of timeseries to include. Defaults to "completed".
+            metrics: A list of metric names to include. Defaults to None.
+            time_axis: The type of time axis to use. Defaults to "relative".
+            aggregations: A list of aggregation types to apply. Defaults to None.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the exported timeseries data.
+            A DataFrame containing the exported timeseries data.
         """
         response = self.request(
             "GET",
@@ -392,10 +431,11 @@ class ApiClient:
     # User data access
 
     def get_user_data_credentials(self) -> UserDataCredentials:
-        """Retrieves user data credentials.
+        """
+        Retrieves user data credentials for secondary storage access.
 
         Returns:
-            UserDataCredentials: The user data credentials object.
+            The user data credentials object.
         """
         response = self.request("GET", "/user-data/credentials")
         return UserDataCredentials(**response.json())

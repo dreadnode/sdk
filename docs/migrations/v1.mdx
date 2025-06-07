@@ -1,0 +1,98 @@
+---
+title: "Migrating from v0 to v1"
+description: "What's new in v1 and how to update your code"
+public: true
+---
+
+Much of v1 focuses on extending data storage, clarifying some confusion around scores versus metrics, and improving our ability to track data as it flows through your code. This means that most of the changes are additive, but there are a few places where we made breaking changes to the API. This topic covers all of these changes and where to migrate your code from v0 to v1.
+
+<Note>
+No code changes are required to maintain the behavior of v0.
+</Note>
+
+## Scores are now Metrics
+
+In v0, we had a concept of "scores" which were used at the task level to measure outputs. We also had "metrics" at the run level, but these objects were essentially the same thing, leading to confusion.
+
+Starting in v1, we've unified these concepts under metrics. Metrics can be reported anywhere in your code, and are associated with a task when logged inside of one. Just like scores, we also take any task-level metrics and mirror them to the run level using the label of the originating task as a prefix. This means that you can still use the same metric name in different tasks, and they will be reported separately in the UI.
+
+```python
+import dreadnode
+
+dreadnode.configure()
+
+@dreadnode.task()
+async def task_bar():
+    # "task_bar.metric"
+    dreadnode.log_metric("metric", 1.0)
+
+with dreadnode.run():
+    # "metric"
+    dreadnode.log_metric("metric", 1.0)
+
+    with dreadnode.task_span("task_foo"):
+        # "task_foo.metric"
+        dreadnode.log_metric("metric", 1.0)
+
+    await task_bar()
+```
+
+There are no constraints on the number of metrics you can log inside tasks and runs. Tasks can carry multiple metrics just like runs, and be associated with any object you'd like. All metrics carry a name, value, timestamp, step, and optional attributes.
+
+<Note>
+**You should replace any calls to `dreadnode.Score(...)`/`dreadnode.log_score(...)` with `dreadnode.log_metric(...)`**
+</Note>
+
+```python
+@dreadnode.task(name="Pivot to host")
+async def pivot(hostname: str) -> bool:
+    # ...
+
+    # score = dreadnode.Score(
+    #     name="pivot_result",
+    #     value=1.0,
+    #     attributes={"hostname": hostname},
+    # )
+    # dreadnode.log_score(score)
+
+    dreadnode.log_metric(
+        "pivot_result", 1.0,
+        attributes={"hostname": hostname},
+    )
+```
+
+## Logging Inputs and Outputs
+
+In v0, tasks always stored the arguments of function calls and their output for you. We love this functionality, but our first approach led to patterns where we would write tasks in specific ways just to align with the auto-logging. It felt like the SDK was getting in the way of your code.
+
+- What if you want the arguments to a task to be logged as the output for agent tools?
+- What if you want multiple outputs from a task without making the return type a large object?
+- What if one of your task arguments is an object you don't want to log?
+
+In v1 we've formalized this behavior for both tasks and runs under "inputs" (`dreadnode.log_input()`) and "outputs" (`dreadnode.log_output()`). Storing the arguments and output of a task still happens automatically, but now you can:
+
+1. Manually log any inputs and outputs you want to track by calling `dreadnode.log_input()` and `dreadnode.log_output()` inside of your tasks.
+2. Disable automatic logging of inputs and outputs by setting `log_inputs=False` and `log_outputs=False` in the task decorator.
+3. Control which parameters to your tasks are logged by setting `log_inputs={"param1", "param2"}` in the task decorator.
+4. Use `dreadnode.log_input()` and `dreadnode.log_output()` outside of tasks to log run-level inputs and outputs.
+
+This aligns more closely with instrumentation patterns from other libraries, and gives you more control over what data is logged.
+
+```python
+import dreadnode
+
+@rg.tool()
+@dn.task(name="Report finding", log_inputs={"file"}, log_output=False)
+async def report_finding(file: str, method: str, content: str) -> str:
+    # ...
+
+    dn.log_output(
+        "finding",
+        {
+            "location": f"{file}:{method}",
+            "content": content
+        },
+    )
+
+    return "Reported"
+```

@@ -1,0 +1,49 @@
+---
+title: 'Projects'
+description: 'Group your runs with projects'
+public: true
+---
+
+Projects are the highest level of organization for your work in Strikes. For the most part, they exist outside of code and organize related runs. Projects are the primary means for leveraging generated data, whether for performance comparison or data export and analysis.
+
+Runs are always associated with a project, and will be placed in a **Default** project if you don't specify one.
+
+Projects can be created manually using the UI, but it's often easier to let the Platform create one automatically by specifying a new project name in code or with an environment variable.
+
+<CodeGroup>
+```python dreadnode.run()
+import dreadnode
+
+dreadnode.configure()
+
+# Specify a project for a single run
+with dreadnode.run(project="my-project"):
+    # ...
+    pass
+```
+
+```python dreadnode.configure()
+import dreadnode
+
+# Specify a default project for all runs
+dreadnode.configure(project="my-project")
+
+with dreadnode.run():
+    # ...
+    pass
+```
+
+```python Environment variable
+import dreadnode
+
+# $ export DREADNODE_PROJECT=my-project
+
+dreadnode.configure()
+
+with dreadnode.run():
+    # ...
+    pass
+```
+</CodeGroup>
+
+![projects](/assets/projects.png)

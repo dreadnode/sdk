@@ -1,41 +1,90 @@
 {
-  "group": "API Reference",
-  "pages": [
-    {
-      "group": "api",
-      "pages": [
-        "strikes/library/api/client",
-        "strikes/library/api",
-        "strikes/library/api/models"
-      ]
-    },
-    {
-      "group": "artifact",
-      "pages": [
-        "strikes/library/artifact",
-        "strikes/library/artifact/merger",
-        "strikes/library/artifact/storage",
-        "strikes/library/artifact/tree_builder"
-      ]
-    },
-    "strikes/library/constants",
-    "strikes/library/integrations",
-    "strikes/library/main",
-    "strikes/library/metric",
-    "strikes/library/object",
-    "strikes/library/serialization",
-    "strikes/library/task",
-    {
-      "group": "tracing",
-      "pages": [
-        "strikes/library/tracing/constants",
-        "strikes/library/tracing/exporters",
-        "strikes/library/tracing",
-        "strikes/library/tracing/span"
-      ]
-    },
-    "strikes/library/types",
-    "strikes/library/util",
-    "strikes/library/version"
-  ]
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Dreadnode Documentation",
+  "colors": {
+    "primary": "#ea580c",
+    "light": "#F47150",
+    "dark": "#333333"
+  },
+  "background": {
+    "color": {
+      "light": "#e3e3e8",
+      "dark": "#09090b"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": ["intro", "install", "examples"]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/config",
+          "usage/projects",
+          "usage/runs",
+          "usage/tasks",
+          "usage/metrics",
+          "usage/data-tracking",
+          "usage/model-training",
+          "usage/export"
+        ]
+      },
+      {
+        "group": "How To",
+        "pages": [
+          "how-to/write-an-eval",
+          "how-to/write-a-ctf-agent",
+          "how-to/write-a-dotnet-reversing-agent"
+        ]
+      },
+      {
+        "group": "Migrations",
+        "pages": ["migrations/v1"]
+      },
+      {
+        "group": "SDK",
+        "pages": [
+          "sdk/api",
+          "sdk/artifact",
+          "sdk/data_types",
+          "sdk/integrations",
+          "sdk/main",
+          "sdk/metric",
+          "sdk/serialization",
+          "sdk/task"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Home",
+        "href": "https://docs.dreadnode.io"
+      },
+      {
+        "label": "Support",
+        "href": "mailto:support@dreadnode.io"
+      },
+      {
+        "label": "Blog",
+        "href": "https://dreadnode.io/blog"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Platform",
+      "href": "https://platform.dreadnode.io"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/dreadnode",
+      "github": "https://github.com/dreadnode",
+      "linkedin": "https://linkedin.com/company/dreadnode"
+    }
+  }
 }

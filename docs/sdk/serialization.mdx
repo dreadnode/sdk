@@ -1,0 +1,156 @@
+---
+title: dreadnode.serialization
+---
+
+{/*
+::: dreadnode.serialization
+*/}
+
+EMPTY\_HASH
+-----------
+
+```python
+EMPTY_HASH = '0' * 16
+```
+
+EMPTY\_SCHEMA
+-------------
+
+```python
+EMPTY_SCHEMA: JsonDict = {}
+```
+
+HandlerFunc
+-----------
+
+```python
+HandlerFunc = Callable[
+    [Any, set[int]], tuple[JsonValue, JsonDict]
+]
+```
+
+UNKNOWN\_OBJECT\_SCHEMA
+-----------------------
+
+```python
+UNKNOWN_OBJECT_SCHEMA: JsonDict = {
+    "type": "object",
+    "x-python-datatype": "unknown",
+}
+```
+
+Serialized
+----------
+
+```python
+Serialized(
+    data: JsonValue | None,
+    data_bytes: bytes | None,
+    data_len: int,
+    data_hash: str,
+    schema: JsonDict,
+    schema_hash: str,
+)
+```
+
+### data
+
+```python
+data: JsonValue | None
+```
+
+### data\_bytes
+
+```python
+data_bytes: bytes | None
+```
+
+### data\_hash
+
+```python
+data_hash: str
+```
+
+### data\_len
+
+```python
+data_len: int
+```
+
+### schema
+
+```python
+schema: JsonDict
+```
+
+### schema\_hash
+
+```python
+schema_hash: str
+```
+
+serialize
+---------
+
+```python
+serialize(obj: Any) -> Serialized
+```
+
+Serializes a Python object into a JSON-compatible structure and
+generates a corresponding JSON Schema, ensuring consistency between
+the serialization format and the schema.
+
+**Parameters:**
+
+* **`obj`**
+  (`Any`)
+  –The Python object to process.
+
+**Returns:**
+
+* `Serialized`
+  –An object containing the serialized data, schema, and their hashes.
+
+<Accordion title="Source code in dreadnode/serialization.py" icon="code">
+```python
+def serialize(obj: t.Any) -> Serialized:
+    """
+    Serializes a Python object into a JSON-compatible structure and
+    generates a corresponding JSON Schema, ensuring consistency between
+    the serialization format and the schema.
+
+    Args:
+        obj: The Python object to process.
+
+    Returns:
+        An object containing the serialized data, schema, and their hashes.
+    """
+    serialized, schema = _serialize(obj)
+
+    if isinstance(serialized, str | int | bool | float):
+        serialized_bytes = str(serialized).encode()
+    else:
+        serialized_bytes = json.dumps(serialized, separators=(",", ":")).encode()
+
+    schema_str = json.dumps(schema, separators=(",", ":"))
+
+    data_hash = EMPTY_HASH
+    if serialized is not None:
+        data_hash = hashlib.sha1(serialized_bytes).hexdigest()[:16]  # noqa: S324 # nosec (using sha1 for speed)
+
+    schema_hash = EMPTY_HASH
+    if schema and schema != EMPTY_SCHEMA:
+        schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324 # nosec
+
+    return Serialized(
+        data=serialized,
+        data_bytes=serialized_bytes if serialized is not None else None,
+        data_len=len(serialized_bytes) if serialized is not None else 0,
+        data_hash=data_hash,
+        schema=schema,
+        schema_hash=schema_hash,
+    )
+```
+
+
+</Accordion>

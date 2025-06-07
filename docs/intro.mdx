@@ -1,0 +1,289 @@
+---
+title: 'Introduction'
+description: 'Start building in Strikes'
+public: true
+---
+
+Strikes is a platform for building, experimenting, and evaluating AI-integrated code. This includes **agents**, **evaluation harnesses**, and **AI red teaming code**. You can think of Strikes like the best blend of experimentation, task orchestration, and observability.
+
+Strikes is **lightweight to start**, **flexible to extend**, and **powerful at scale**. Its top priority is providing the most value without requiring a steep learning curve. We intentionally designed the APIs to be simple and familiar to anyone who has used MLflow, Prefect, or similar tools.
+
+<Tip>
+This flexibility and power means it excels at workflows in complex domains like **Offensive Security**, where you need to build and experiment with complex agentic systems, then have the ability to measure and evaluate it.
+
+Which means, in order to evaluate Offensive Security agents, we need to develop agentic code, execute at scale, measure interactions with the target system(s), and evaluate the results.
+</Tip>
+
+## Basic Example
+
+The most basic use of Strikes is a run with some logged data:
+
+```python
+import asyncio
+import dreadnode
+
+# Initialize with default settings
+dreadnode.configure()
+
+NAMES = ["Nick", "Will", "Brad", "Brian"]
+
+# Create a new task
+@dreadnode.task()
+async def say_hello(name: str) -> str:
+    return f"Hello, {name}!"
+
+async def main() -> None:
+
+    # Start a new run
+    with dreadnode.run("first-run"):
+        # Log parameters
+        dreadnode.log_params(
+            name_count=len(NAMES),
+        )
+
+        # Log inputs
+        dn.log_input("names", NAMES)
+
+        # Run your tasks
+        greetings = [
+            await say_hello(name)
+            for name in NAMES
+        ]
+
+        # Save outputs
+        dn.log_output("greetings", greetings)
+
+        # Track metrics
+        dreadnode.log_metric("accuracy", 0.65, step=0)
+        dreadnode.log_metric("accuracy", 0.85, step=1)
+
+        # Save the current script
+        dreadnode.log_artifact(__file__)
+
+asyncio.run(main())
+```
+
+<Note>
+We'll assume you have installed the `dreadnode` package and have your environment variables set up. Make sure you have `DREADNODE_API_TOKEN=...` set to your Platform API key.
+
+For more information on `dreadnode.configure()`, review the [Configuration](/usage/config) topic.
+
+If you call `dreadnode.configure()` without any token and your environment variables are not set, you'll receive a warning in the console, so keep an eye out! You can still run any of your code without sending data to the Dreadnode Platform.
+</Note>
+
+This code should be very familiar if you've used an ML-experimentation library before, and all the functions you're familiar with work exactly like you would expect.
+
+Under the hood, this code did a few things:
+
+- Created a new "Default" project in the Platform to hold our run.
+- Began a full OpenTelemetry trace for all code under `with dreadnode.run(...)`.
+- Tracked and stored our parameters and metrics alongside the tracing information.
+- Delivered the data to the Platform for visualization.
+
+You can open the [Default project](https://platform.dreadnode.io/strikes/projects/Default) in a web browser to see your new run and the data you logged.
+
+![my-project](/assets/my-project.png)
+
+You're free to call `dreadnode.*` functions anywhere in your code, and you don't have to worry about keeping track of your active run or task. Everything just works. Here is a shortlist of the most common functions you'll use:
+
+- `log_param()`: Track simple key/values to keep track of hyperparameters, target models, or agent configs.
+- `log_metric()`: Report measurements you take anywhere in your code.
+- `log_input()`: Save any runtime object which is the `x` to your `f(x)` like prompts, datasets, samples, or target resources.
+- `log_output()`: Save any runtime object which is the result of your work like findings, commands, reports, or raw model outputs.
+- `log_artifact()`: Upload any local files or directories like your source code, container configs, datasets, or models.
+
+Most of these functions will associate values with their nearest parent, so if you're in a task the value will be associated with that task. If you're just inside a run, the value with be associated directly with the run. You can override this behavior by passing `to=...` to any of these methods.
+
+<Tip>
+Often you find yourself deep inside a function, writing a new `if` statement, and think "I want to track if/when I get here". It's easy to add a `dreadnode.log_metric(...)` right there and see it later in your data.
+</Tip>
+
+## Core Concepts
+
+Strikes is built around three core concepts: **Runs**, **Tasks**, and **Metrics**. Understanding these concepts will help you make the most of Strikes.
+
+### Runs
+
+Runs are the core unit of work in Strikes. They provide the context for all your data collection and represent a complete execution session. Think of runs as the "experiment" or "session" for your code.
+
+```python
+import dreadnode
+
+dreadnode.configure()
+
+with dreadnode.run("my-experiment"):
+    # Everything that happens here is part of the run
+    # All data collected is associated with this run
+```
+
+You can create multiple runs, even in parallel, to organize your work logically:
+
+```python
+async def work(target: str):
+    with dreadnode.run(target):
+        # Run-specific work here
+        pass
+
+await asyncio.gather(*[work(f"target-{i}") for i in range(3)])
+```
+
+See the [Runs](/usage/runs) page for more details on creating, configuring and managing runs.
+
+<Note>
+For most of the documentation, we won't explicitly show executing async code with `asyncio.run(...)`.
+
+Inside Jupyter notebooks, you can use `await` directly in the cells, but if you're using a script, you need to call `asyncio.run(...)` to execute your async code.
+</Note>
+
+### Tasks
+
+Tasks are units of work within runs. They help you structure your code and provide a finer-grained context for data collection. Tasks can be created as function decorators or context managers:
+
+```python
+import dreadnode
+
+dreadnode.configure()
+
+@dreadnode.task()
+async def say_hello(name: str) -> str:
+    return f"Hello, {name}!"
+
+with dreadnode.run():
+    with dreadnode.task_span("manual-task"):
+        # Task work here
+        pass
+
+    # Call the decorated task
+    result = await say_hello("Alice")
+```
+
+Tasks automatically track their inputs, outputs, execution time, and more. They form the foundation for building structured, observable workflows.
+
+See the [Tasks](/usage/tasks) page for more details on task creation, configuration, and advanced patterns.
+
+### Metrics
+
+Metrics are measurements of your system's performance or behavior. They allow you to evaluate the effectiveness of your agents and track important events during execution:
+
+```python
+import dreadnode
+
+@dreadnode.task
+async def take_action(input: str) -> str:
+    # ...
+
+    dreadnode.log_metric("num_valid_actions", 1, mode="count")
+
+with dreadnode.run():
+    # Log a simple metric
+    dreadnode.log_metric("accuracy", 0.87)
+
+    # Log a metric with a step number for timeseries data
+    for step in range(10):
+        dreadnode.log_metric("loss", 0.23, step=step)
+```
+
+Metrics can be associated with tasks, runs, or even specific objects in your system, providing a comprehensive view of performance at different levels.
+
+See the [Metrics](/usage/metrics) page for more information on creating, aggregating, and analyzing metrics.
+
+## Short Examples
+
+### Building an Evaluation Dataset
+
+```python
+with dn.run("create-dataset"):
+    # Load evaluation samples
+    samples = load_samples()
+
+    for i, sample in enumerate(samples):
+        # Log the sample
+        dn.log_input(f"sample_{i}", sample)
+
+        # Generate responses from different models
+        for model_name in ["gpt4", "claude", "llama"]:
+            response = generate_with_model(model_name, sample)
+            dn.log_output(f"response_{model_name}_{i}", response)
+
+            # Link response to its sample
+            dn.link_objects(response, sample)
+
+            # Log evaluation metrics
+            accuracy = evaluate_accuracy(response, sample)
+            dn.log_metric("accuracy", accuracy, origin=response)
+
+            coherence = evaluate_coherence(response)
+            dn.log_metric("coherence", coherence, origin=response)
+```
+
+This creates a comprehensive dataset with:
+- Input samples
+- Model responses
+- Quality metrics
+- Clear relationships between data
+
+### Agent Development Workflow
+
+```python
+@dn.task()
+async def execute_command(command: str) -> str:
+    """Execute a shell command and return the output."""
+    # Command is automatically logged as input
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+
+    # Log additional information
+    dn.log_param("exit_code", process.returncode)
+
+    result = stdout.decode() if process.returncode == 0 else stderr.decode()
+    return result  # Automatically logged as output
+
+with dn.run("agent-experiment"):
+    # Configure the agent
+    dn.log_params(
+        model="gpt-4",
+        temperature=0.2,
+        target="localhost",
+    )
+
+    # Run the agent
+    agent = create_agent()
+
+    for step in range(10):
+        # Get next command
+        command = agent.next_command()
+        dn.log_input(f"command_{step}", command)
+
+        # Execute it
+        output = await execute_command(command)
+
+        # Update agent with result
+        agent.process_result(output)
+
+        # Track progress
+        dn.log_metric("progress", agent.progress_score, step=step)
+```
+
+This tracks:
+- Agent configuration as parameters
+- Each command and its output
+- Execution details
+- Progress metrics over time
+
+## Next Steps
+
+To learn about more advanced usage, explore the rest of our documentation:
+
+- [Working with Runs](/usage/runs): Learn how to create and manage runs
+- [Working with Tasks](/usage/tasks): Discover how to structure your code with tasks
+- [Metrics and Measurement](/usage/metrics): Learn how to track and analyze performance
+- [Projects](/usage/projects): Organize your runs into projects
+- [Data Tracking](/usage/data-tracking): Understand how data flows in Strikes
+
+If you learn best through examples, check out any of the [How To guides](/how-to/write-an-eval) to view walkthroughs of practical use cases and commentary from the team.
+
+You can also check out our [dreadnode/example-agents](https://github.com/dreadnode/example-agents) repository for a collection of example agents and evaluation harnesses.

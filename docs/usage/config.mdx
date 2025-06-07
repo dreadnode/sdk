@@ -1,0 +1,39 @@
+---
+title: "Configuration"
+description: "Set configuration values"
+public: true
+---
+
+The quickest way to configure Strikes is to set the `DREADNODE_API_TOKEN` environment variable and
+let the library handle the rest with `dreadnode.configure()`. However, there are quite a few additional
+options you can set as needed.
+
+## Using `configure()`
+
+Initialize and set up connections with `configure()`.
+
+```python
+dreadnode.configure(
+    server="https://platform.dreadnode.io",  # Platform URL
+    token="your-api-token",                  # API token for authentication
+    local_dir="./runs",                      # Directory for local span storage
+    project="my-project",                    # Default project name
+    console=True,                            # Enable console logging
+
+    # OpenTelemetry options
+    service_name="my-service",               # service name
+    service_version="1.0.0",                 # service version
+    otel_scope="dreadnode"                   # scope
+)
+```
+
+## Using Environment Variables
+
+Set variables to call `.config()` more easily.
+
+```bash
+export DREADNODE_SERVER_URL="https://platform.dreadnode.io"
+export DREADNODE_API_TOKEN="your-api-token"
+export DREADNODE_LOCAL_DIR="./runs"
+export DREADNODE_PROJECT="my-project"
+```

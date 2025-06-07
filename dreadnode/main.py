@@ -999,7 +999,6 @@ class Dreadnode:
 
         Args:
             local_uri: The local path to the file to upload.
-            to: The target object to log the artifact to. Only "run" is supported.
         """
         if (run := current_run_span.get()) is None:
             raise RuntimeError("log_artifact() must be called within a run")

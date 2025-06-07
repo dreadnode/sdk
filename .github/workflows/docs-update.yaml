@@ -1,3 +1,4 @@
+---
 name: Notify Documentation Update
 
 on:
@@ -5,7 +6,8 @@ on:
     branches: [main]
     paths:
       - "docs/**"
-      - "scripts/make_docs.py"
+      - ".hooks/generate_docs.py"
+      - ".github/workflows/docs-update.yaml"
   workflow_dispatch:
 
 jobs:
@@ -28,4 +30,12 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           repository: dreadnode/prod-docs
           event-type: code-update
-          client-payload: '{"repository": "${{ github.repository }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "product": "strikes", "docs_dir": "docs", "module_dir": "dreadnode"}'
+          client-payload: |
+            {
+              "repository": "${{ github.repository }}",
+              "ref": "${{ github.ref }}",
+              "sha": "${{ github.sha }}",
+              "source_dir": "docs",
+              "target_dir": "strikes",
+              "nav_target": "Documentation/Strikes"
+            }

@@ -48,6 +48,9 @@ datasets = "^3.5.0"
 pyarrow = "^19.0.1"
 docstring-parser = "^0.16"
 ipykernel = "^6.29.5"
+markdown = "^3.8"
+markdownify = "^1.1.0"
+mkdocstrings-python = "^1.16.12"
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "setuptools>=42", "wheel"]

@@ -621,11 +621,11 @@ def serialize(obj: t.Any) -> Serialized:
 
     data_hash = EMPTY_HASH
     if serialized is not None:
-        data_hash = hashlib.sha1(serialized_bytes).hexdigest()[:16]  # noqa: S324 (using sha1 for speed)
+        data_hash = hashlib.sha1(serialized_bytes).hexdigest()[:16]  # noqa: S324 # nosec (using sha1 for speed)
 
     schema_hash = EMPTY_HASH
     if schema and schema != EMPTY_SCHEMA:
-        schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324
+        schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324 # nosec
 
     return Serialized(
         data=serialized,
