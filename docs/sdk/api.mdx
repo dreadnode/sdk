@@ -7,13 +7,6 @@ title: dreadnode.api
 ::: dreadnode.api.models
 */}
 
-ModelT
-------
-
-```python
-ModelT = TypeVar('ModelT', bound=BaseModel)
-```
-
 ApiClient
 ---------
 
@@ -81,12 +74,6 @@ def __init__(
 
 
 </Accordion>
-
-### TraceFormat
-
-```python
-TraceFormat = Literal['tree', 'flat']
-```
 
 ### export\_metrics
 
@@ -822,13 +809,6 @@ def request(
 
 
 </Accordion>
-AnyDict
--------
-
-```python
-AnyDict = dict[str, Any]
-```
-
 ExportFormat
 ------------
 
@@ -866,13 +846,6 @@ Object = ObjectVal | ObjectUri
 ```
 
 Represents an object (input/output) in a run or task.
-
-RawObject
----------
-
-```python
-RawObject = RawObjectUri | RawObjectVal
-```
 
 SpanStatus
 ----------
@@ -1132,12 +1105,6 @@ label: str
 
 Label for the object.
 
-### model\_config
-
-```python
-model_config = ConfigDict(arbitrary_types_allowed=True)
-```
-
 ### name
 
 ```python
@@ -1169,27 +1136,6 @@ value: Any
 ```
 
 The actual value of the object, can be any type.
-
-### validate\_value
-
-```python
-validate_value(value: Any) -> t.Any
-```
-
-<Accordion title="Source code in dreadnode/api/models.py" icon="code">
-```python
-@field_validator("value")
-@classmethod
-def validate_value(cls, value: t.Any) -> t.Any:
-    if isinstance(value, str):
-        with contextlib.suppress(ValidationError):
-            return TypeAdapter(t.Any).validate_json(value)
-
-    return value
-```
-
-
-</Accordion>
 
 Project
 -------
@@ -1260,122 +1206,6 @@ updated_at: datetime
 
 Timestamp when the project was last updated.
 
-RawObjectUri
-------------
-
-### hash
-
-```python
-hash: str
-```
-
-### schema\_hash
-
-```python
-schema_hash: str
-```
-
-### size
-
-```python
-size: int
-```
-
-### type
-
-```python
-type: Literal['uri']
-```
-
-### uri
-
-```python
-uri: str
-```
-
-RawObjectVal
-------------
-
-### hash
-
-```python
-hash: str
-```
-
-### schema\_hash
-
-```python
-schema_hash: str
-```
-
-### type
-
-```python
-type: Literal['val']
-```
-
-### value
-
-```python
-value: Any
-```
-
-RawRun
-------
-
-### artifacts
-
-```python
-artifacts: list[ArtifactDir] = Field(repr=False)
-```
-
-### inputs
-
-```python
-inputs: list[ObjectRef] = Field(repr=False)
-```
-
-### object\_schemas
-
-```python
-object_schemas: AnyDict = Field(repr=False)
-```
-
-### objects
-
-```python
-objects: dict[str, RawObject] = Field(repr=False)
-```
-
-### outputs
-
-```python
-outputs: list[ObjectRef] = Field(repr=False)
-```
-
-### schema\_
-
-```python
-schema_: AnyDict = Field(alias='schema', repr=False)
-```
-
-RawTask
--------
-
-### inputs
-
-```python
-inputs: list[ObjectRef] | list[V0Object] = Field(repr=False)
-```
-
-### outputs
-
-```python
-outputs: list[ObjectRef] | list[V0Object] = Field(
-    repr=False
-)
-```
-
 Run
 ---
 
@@ -1404,12 +1234,6 @@ outputs: dict[str, Object] = Field(repr=False)
 ```
 
 Outputs logged for the run with log\_output().
-
-### schema\_
-
-```python
-schema_: AnyDict = Field(alias='schema', repr=False)
-```
 
 RunSummary
 ----------
@@ -1509,69 +1333,15 @@ SpanEvent
 
 OTEL event for a span in a trace.
 
-### attributes
-
-```python
-attributes: AnyDict
-```
-
-### name
-
-```python
-name: str
-```
-
-### timestamp
-
-```python
-timestamp: datetime
-```
-
 SpanException
 -------------
 
 Exception details for a span in a trace.
 
-### message
-
-```python
-message: str
-```
-
-### stacktrace
-
-```python
-stacktrace: str
-```
-
-### type
-
-```python
-type: str
-```
-
 SpanLink
 --------
 
 OTEL link for a span in a trace.
-
-### attributes
-
-```python
-attributes: AnyDict
-```
-
-### span\_id
-
-```python
-span_id: str
-```
-
-### trace\_id
-
-```python
-trace_id: str
-```
 
 Task
 ----
@@ -1744,111 +1514,3 @@ span: Task | TraceSpan
 ```
 
 Span at this node, can be a Task or a TraceSpan.
-
-UserAPIKey
-----------
-
-### key
-
-```python
-key: str
-```
-
-UserDataCredentials
--------------------
-
-### access\_key\_id
-
-```python
-access_key_id: str
-```
-
-### bucket
-
-```python
-bucket: str
-```
-
-### endpoint
-
-```python
-endpoint: str | None
-```
-
-### expiration
-
-```python
-expiration: datetime
-```
-
-### prefix
-
-```python
-prefix: str
-```
-
-### region
-
-```python
-region: str
-```
-
-### secret\_access\_key
-
-```python
-secret_access_key: str
-```
-
-### session\_token
-
-```python
-session_token: str
-```
-
-UserResponse
-------------
-
-### api\_key
-
-```python
-api_key: UserAPIKey
-```
-
-### email\_address
-
-```python
-email_address: str
-```
-
-### id
-
-```python
-id: UUID
-```
-
-### username
-
-```python
-username: str
-```
-
-V0Object
---------
-
-### label
-
-```python
-label: str
-```
-
-### name
-
-```python
-name: str
-```
-
-### value
-
-```python
-value: Any
-```

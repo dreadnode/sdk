@@ -6,44 +6,6 @@ title: dreadnode.metric
 ::: dreadnode.metric
 */}
 
-MetricAggMode
--------------
-
-```python
-MetricAggMode = Literal["avg", "sum", "min", "max", "count"]
-```
-
-MetricDict
-----------
-
-```python
-MetricDict = dict[str, list[Metric]]
-```
-
-ScorerCallable
---------------
-
-```python
-ScorerCallable = (
-    Callable[[T], Awaitable[ScorerResult]]
-    | Callable[[T], ScorerResult]
-)
-```
-
-ScorerResult
-------------
-
-```python
-ScorerResult = float | int | bool | Metric
-```
-
-T
--
-
-```python
-T = TypeVar('T')
-```
-
 Metric
 ------
 
@@ -238,9 +200,6 @@ def from_many(
 
 </Accordion>
 
-MetricWarning
--------------
-
 Scorer
 ------
 
@@ -304,12 +263,6 @@ tags: Sequence[str]
 
 A list of tags to attach to the metric.
 
-### tracer
-
-```python
-tracer: Tracer
-```
-
 ### \_\_call\_\_
 
 ```python
@@ -369,22 +322,6 @@ async def __call__(self, object: T) -> Metric:
         self.step += 1
 
     return metric
-```
-
-
-</Accordion>
-
-### \_\_post\_init\_\_
-
-```python
-__post_init__() -> None
-```
-
-<Accordion title="Source code in dreadnode/metric.py" icon="code">
-```python
-def __post_init__(self) -> None:
-    self.__signature__ = inspect.signature(self.func)
-    self.__name__ = self.name
 ```
 
 

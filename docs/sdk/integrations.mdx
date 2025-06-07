@@ -88,56 +88,6 @@ def __init__(
 
 </Accordion>
 
-### project
-
-```python
-project = project
-```
-
-### run\_name
-
-```python
-run_name = run_name
-```
-
-### tags
-
-```python
-tags = tags or []
-```
-
-### on\_epoch\_begin
-
-```python
-on_epoch_begin(
-    args: TrainingArguments,
-    state: TrainerState,
-    control: TrainerControl,
-    **kwargs: Any,
-) -> None
-```
-
-<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
-```python
-def on_epoch_begin(
-    self,
-    args: TrainingArguments,
-    state: TrainerState,
-    control: TrainerControl,
-    **kwargs: t.Any,
-) -> None:
-    if self._run is None or state.epoch is None:
-        return
-
-    dn.log_metric("epoch", state.epoch, to="run")
-
-    self._epoch_span = dn.task_span(f"Epoch {state.epoch}")
-    self._epoch_span.__enter__()
-```
-
-
-</Accordion>
-
 ### on\_epoch\_end
 
 ```python

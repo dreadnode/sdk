@@ -197,7 +197,7 @@ def main() -> None:
     parser.add_argument(
         "--show-if-no-docstring",
         type=bool,
-        default=True,
+        default=False,
         help="Show module/class/function even if no docstring is present",
     )
     parser.add_argument("--theme", default="material", help="Theme to use for rendering")

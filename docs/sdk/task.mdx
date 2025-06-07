@@ -6,20 +6,6 @@ title: dreadnode.task
 ::: dreadnode.task
 */}
 
-P
--
-
-```python
-P = ParamSpec('P')
-```
-
-R
--
-
-```python
-R = TypeVar('R')
-```
-
 Task
 ----
 
@@ -115,80 +101,6 @@ tags: list[str]
 ```
 
 A list of tags to attach to the task span.
-
-### tracer
-
-```python
-tracer: Tracer
-```
-
-### \_\_call\_\_
-
-```python
-__call__(*args: args, **kwargs: kwargs) -> R
-```
-
-<Accordion title="Source code in dreadnode/task.py" icon="code">
-```python
-async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
-    span = await self.run(*args, **kwargs)
-    return span.output
-```
-
-
-</Accordion>
-
-### \_\_get\_\_
-
-```python
-__get__(obj: Any, objtype: Any) -> Task[P, R]
-```
-
-<Accordion title="Source code in dreadnode/task.py" icon="code">
-```python
-def __get__(self, obj: t.Any, objtype: t.Any) -> "Task[P, R]":
-    if obj is None:
-        return self
-
-    bound_func = self.func.__get__(obj, objtype)
-
-    return Task(
-        tracer=self.tracer,
-        name=self.name,
-        label=self.label,
-        attributes=self.attributes,
-        func=bound_func,
-        scorers=[scorer.clone() for scorer in self.scorers],
-        tags=self.tags.copy(),
-        log_params=self.log_params,
-        log_inputs=self.log_inputs,
-        log_output=self.log_output,
-    )
-```
-
-
-</Accordion>
-
-### \_\_post\_init\_\_
-
-```python
-__post_init__() -> None
-```
-
-<Accordion title="Source code in dreadnode/task.py" icon="code">
-```python
-def __post_init__(self) -> None:
-    self.__signature__ = getattr(
-        self.func,
-        "__signature__",
-        inspect.signature(self.func),
-    )
-    self.__name__ = getattr(self.func, "__name__", self.name)
-    self.__doc__ = getattr(self.func, "__doc__", None)
-```
-
-
-</Accordion>
 
 ### clone
 
@@ -942,12 +854,6 @@ def with_(
 
 
 </Accordion>
-
-TaskFailedWarning
------------------
-
-TaskGeneratorWarning
---------------------
 
 TaskSpanList
 ------------

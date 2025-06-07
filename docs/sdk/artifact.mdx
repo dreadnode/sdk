@@ -240,13 +240,6 @@ def get_merged_trees(self) -> list[DirectoryNode]:
 Artifact storage implementation for fsspec-compatible file systems.
 Provides efficient uploading of files and directories with deduplication.
 
-CHUNK\_SIZE
------------
-
-```python
-CHUNK_SIZE = 8 * 1024 * 1024
-```
-
 ArtifactStorage
 ---------------
 
@@ -508,18 +501,6 @@ ArtifactTreeBuilder(
 Builds a hierarchical tree structure for artifacts while uploading them to storage.
 Preserves directory structure and handles efficient uploads.
 
-### prefix\_path
-
-```python
-prefix_path: str | None = None
-```
-
-### storage
-
-```python
-storage: ArtifactStorage
-```
-
 ### process\_artifact
 
 ```python
@@ -578,62 +559,8 @@ DirectoryNode
 Represents a directory node in the artifact tree.
 Contains metadata about the directory, including its dir\_path, hash, and children nodes.
 
-### children
-
-```python
-children: list[Union[DirectoryNode, FileNode]]
-```
-
-### dir\_path
-
-```python
-dir_path: str
-```
-
-### hash
-
-```python
-hash: str
-```
-
-### type
-
-```python
-type: Literal['dir']
-```
-
 FileNode
 --------
 
 Represents a file node in the artifact tree.
 Contains metadata about the file, including its name, uri, size\_bytes, and final\_real\_path.
-
-### final\_real\_path
-
-```python
-final_real_path: str
-```
-
-### hash
-
-```python
-hash: str
-```
-
-### size\_bytes
-
-```python
-size_bytes: int
-```
-
-### type
-
-```python
-type: Literal['file']
-```
-
-### uri
-
-```python
-uri: str
-```
