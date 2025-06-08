@@ -20,7 +20,7 @@ class CustomMarkdownConverter(MarkdownConverter):  # type: ignore[misc]
         return super().convert_pre(el, text.strip(), parent_tags)
 
     # bold items with doc-section-title in a span class
-    def convert_span(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:
+    def convert_span(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:  # noqa: ARG002
         if "doc-section-title" in el.get("class", []):
             return f"**{text.strip()}**"
         return text
