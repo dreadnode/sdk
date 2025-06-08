@@ -1,0 +1,567 @@
+---
+title: dreadnode.data_types
+---
+
+{/*
+::: dreadnode.data_types
+*/}
+
+Audio
+-----
+
+```python
+Audio(
+    data: AudioDataType,
+    sample_rate: int | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+)
+```
+
+Audio media type for Dreadnode logging.
+
+Supports:
+- Local file paths (str or Path)
+- Numpy arrays with sample rate
+- Raw bytes
+- Pydub AudioSegment object
+
+Initialize an Audio object.
+
+**Parameters:**
+
+* **`data`**
+  (`AudioDataType`)
+  –The audio data, which can be:
+  - A path to a local audio file (str or Path)
+  - A numpy array (requires sample\_rate)
+  - Raw bytes
+  - A pydub AudioSegment
+* **`sample_rate`**
+  (`int | None`, default:
+  `None`
+  )
+  –Required when using numpy arrays
+* **`caption`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional caption for the audio
+* **`format`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional format to use (default is wav for numpy arrays)
+
+<Accordion title="Source code in dreadnode/data_types/audio.py" icon="code">
+```python
+def __init__(
+    self,
+    data: AudioDataType,
+    sample_rate: int | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+):
+    """
+    Initialize an Audio object.
+
+    Args:
+        data: The audio data, which can be:
+            - A path to a local audio file (str or Path)
+            - A numpy array (requires sample_rate)
+            - Raw bytes
+            - A pydub AudioSegment
+        sample_rate: Required when using numpy arrays
+        caption: Optional caption for the audio
+        format: Optional format to use (default is wav for numpy arrays)
+    """
+    self._data = data
+    self._sample_rate = sample_rate
+    self._caption = caption
+    self._format = format
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[t.Any, dict[str, t.Any]]
+```
+
+Serialize the audio data to bytes and return with metadata.
+Returns:
+A tuple of (audio\_bytes, metadata\_dict)
+
+<Accordion title="Source code in dreadnode/data_types/audio.py" icon="code">
+```python
+def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
+    """
+    Serialize the audio data to bytes and return with metadata.
+    Returns:
+        A tuple of (audio_bytes, metadata_dict)
+    """
+    audio_bytes, format_name, sample_rate, duration = self._process_audio_data()
+    metadata = self._generate_metadata(format_name, sample_rate, duration)
+    return audio_bytes, metadata
+```
+
+
+</Accordion>
+
+Image
+-----
+
+```python
+Image(
+    data: ImageDataOrPathType,
+    mode: str | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+)
+```
+
+Image media type for Dreadnode logging.
+
+Supports:
+- Local file paths (str or Path)
+- PIL Image objects
+- Numpy arrays
+- Base64 encoded strings
+
+Initialize an Image object.
+
+**Parameters:**
+
+* **`data`**
+  (`ImageDataOrPathType`)
+  –The image data, which can be:
+  - A path to a local image file (str or Path)
+  - A PIL Image object
+  - A numpy array
+  - Base64 encoded string
+  - Raw bytes
+* **`mode`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional mode for the image (RGB, L, etc.)
+* **`caption`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional caption for the image
+* **`format`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional format to use when saving (png, jpg, etc.)
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+def __init__(
+    self,
+    data: ImageDataOrPathType,
+    mode: str | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+):
+    """
+    Initialize an Image object.
+
+    Args:
+        data: The image data, which can be:
+            - A path to a local image file (str or Path)
+            - A PIL Image object
+            - A numpy array
+            - Base64 encoded string
+            - Raw bytes
+        mode: Optional mode for the image (RGB, L, etc.)
+        caption: Optional caption for the image
+        format: Optional format to use when saving (png, jpg, etc.)
+    """
+    self._data = data
+    self._mode = mode
+    self._caption = caption
+    self._format = format
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[t.Any, dict[str, t.Any]]
+```
+
+Convert the image to bytes and return with metadata.
+Returns:
+A tuple of (image\_bytes, metadata\_dict)
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
+    """
+    Convert the image to bytes and return with metadata.
+    Returns:
+        A tuple of (image_bytes, metadata_dict)
+    """
+    image_bytes, image_format, mode, width, height = self._process_image_data()
+    metadata = self._generate_metadata(image_format, mode, width, height)
+    return image_bytes, metadata
+```
+
+
+</Accordion>
+
+Object3D
+--------
+
+```python
+Object3D(
+    data: Object3DDataType,
+    caption: str | None = None,
+    format: str | None = None,
+)
+```
+
+3D object media type for Dreadnode logging.
+
+Supports:
+- Local file paths to 3D models (.obj, .glb, .gltf, etc.)
+- Raw bytes with metadata
+
+Initialize a 3D Object.
+
+**Parameters:**
+
+* **`data`**
+  (`Object3DDataType`)
+  –The 3D object data, which can be:
+  - A path to a local 3D model file (str or Path)
+  - Raw bytes of a 3D model file
+* **`caption`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional caption for the 3D object
+* **`format`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional format override (obj, glb, etc.)
+
+<Accordion title="Source code in dreadnode/data_types/object_3d.py" icon="code">
+```python
+def __init__(
+    self,
+    data: Object3DDataType,
+    caption: str | None = None,
+    format: str | None = None,
+):
+    """
+    Initialize a 3D Object.
+
+    Args:
+        data: The 3D object data, which can be:
+            - A path to a local 3D model file (str or Path)
+            - Raw bytes of a 3D model file
+        caption: Optional caption for the 3D object
+        format: Optional format override (obj, glb, etc.)
+    """
+    self._data = data
+    self._caption = caption
+    self._format = format
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[bytes, dict[str, t.Any]]
+```
+
+Convert the 3D object to bytes and return with metadata.
+
+**Returns:**
+
+* `tuple[bytes, dict[str, Any]]`
+  –A tuple of (object\_bytes, metadata\_dict)
+
+<Accordion title="Source code in dreadnode/data_types/object_3d.py" icon="code">
+```python
+def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
+    """
+    Convert the 3D object to bytes and return with metadata.
+
+    Returns:
+        A tuple of (object_bytes, metadata_dict)
+    """
+    if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        return self._process_file_path()
+    if isinstance(self._data, bytes):
+        format_name = self._format or "glb"
+        return self._data, self._generate_metadata(format_name)
+    raise TypeError(f"Unsupported 3D object data type: {type(self._data)}")
+```
+
+
+</Accordion>
+
+Table
+-----
+
+```python
+Table(
+    data: TableDataType,
+    caption: str | None = None,
+    format: str | None = None,
+    *,
+    index: bool = False,
+)
+```
+
+Table data type for Dreadnode logging.
+
+Supports:
+- Pandas DataFrames
+- CSV/Parquet/JSON files
+- Dict or list data structures
+- NumPy arrays
+
+Initialize a Table object.
+
+**Parameters:**
+
+* **`data`**
+  (`TableDataType`)
+  –The table data, which can be:
+  - A pandas DataFrame
+  - A path to a CSV/JSON/Parquet file
+  - A dict or list of dicts
+  - A NumPy array
+* **`caption`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional caption for the table
+* **`format`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional format to use when saving (csv, parquet, json)
+* **`index`**
+  (`bool`, default:
+  `False`
+  )
+  –Whether to include index in the output
+
+<Accordion title="Source code in dreadnode/data_types/table.py" icon="code">
+```python
+def __init__(
+    self,
+    data: TableDataType,
+    caption: str | None = None,
+    format: str | None = None,
+    *,
+    index: bool = False,
+):
+    """
+    Initialize a Table object.
+
+    Args:
+        data: The table data, which can be:
+            - A pandas DataFrame
+            - A path to a CSV/JSON/Parquet file
+            - A dict or list of dicts
+            - A NumPy array
+        caption: Optional caption for the table
+        format: Optional format to use when saving (csv, parquet, json)
+        index: Whether to include index in the output
+    """
+    self._data = data
+    self._caption = caption
+    self._format = format or "csv"  # Default to CSV
+    if self._format not in self.SUPPORTED_FORMATS:
+        raise ValueError(
+            f"Unsupported format: {self._format}. "
+            f"Supported formats are: {', '.join(self.SUPPORTED_FORMATS)}"
+        )
+    self._index = index
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[bytes, dict[str, t.Any]]
+```
+
+Convert the table to bytes and return with metadata.
+
+**Returns:**
+
+* `tuple[bytes, dict[str, Any]]`
+  –A tuple of (table\_bytes, metadata\_dict)
+
+<Accordion title="Source code in dreadnode/data_types/table.py" icon="code">
+```python
+def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
+    """
+    Convert the table to bytes and return with metadata.
+
+    Returns:
+        A tuple of (table_bytes, metadata_dict)
+    """
+    data_frame = self._to_dataframe()
+
+    table_bytes = self._dataframe_to_bytes(data_frame)
+    metadata = self._generate_metadata(data_frame)
+
+    return table_bytes, metadata
+```
+
+
+</Accordion>
+
+Video
+-----
+
+```python
+Video(
+    data: VideoDataType,
+    fps: float | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+)
+```
+
+Video media type for Dreadnode logging.
+
+Supports:
+- Local file paths (str or Path)
+- Numpy array sequences with frame rate
+- Raw bytes with metadata
+- MoviePy VideoClip objects (if installed)
+
+Initialize a Video object.
+
+**Parameters:**
+
+* **`data`**
+  (`VideoDataType`)
+  –The video data, which can be:
+  - A path to a local video file (str or Path)
+  - A numpy array of frames (requires fps)
+  - A list of numpy arrays for individual frames (requires fps)
+  - Raw bytes
+  - A MoviePy VideoClip object (if MoviePy is installed)
+* **`fps`**
+  (`float | None`, default:
+  `None`
+  )
+  –Frames per second, required for numpy array input
+  (ignored if data is a file path or raw bytes)
+* **`caption`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional caption for the video
+* **`format`**
+  (`str | None`, default:
+  `None`
+  )
+  –Optional format override (mp4, avi, etc.)
+* **`width`**
+  (`int | None`, default:
+  `None`
+  )
+  –Optional width in pixels
+* **`height`**
+  (`int | None`, default:
+  `None`
+  )
+  –Optional height in pixels
+
+<Accordion title="Source code in dreadnode/data_types/video.py" icon="code">
+```python
+def __init__(
+    self,
+    data: VideoDataType,
+    fps: float | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+):
+    """
+    Initialize a Video object.
+
+    Args:
+        data: The video data, which can be:
+            - A path to a local video file (str or Path)
+            - A numpy array of frames (requires fps)
+            - A list of numpy arrays for individual frames (requires fps)
+            - Raw bytes
+            - A MoviePy VideoClip object (if MoviePy is installed)
+        fps: Frames per second, required for numpy array input
+             (ignored if data is a file path or raw bytes)
+        caption: Optional caption for the video
+        format: Optional format override (mp4, avi, etc.)
+        width: Optional width in pixels
+        height: Optional height in pixels
+    """
+    self._data = data
+    self._fps = fps
+    self._caption = caption
+    self._format = format or "mp4"
+    self._width = width
+    self._height = height
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[bytes, dict[str, t.Any]]
+```
+
+Convert the video to bytes and return with metadata.
+
+**Returns:**
+
+* `tuple[bytes, dict[str, Any]]`
+  –A tuple of (video\_bytes, metadata\_dict)
+
+<Accordion title="Source code in dreadnode/data_types/video.py" icon="code">
+```python
+def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
+    """
+    Convert the video to bytes and return with metadata.
+
+    Returns:
+        A tuple of (video_bytes, metadata_dict)
+    """
+    if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        return self._process_file_path()
+    if isinstance(self._data, bytes):
+        return self._process_bytes()
+    if isinstance(self._data, (np.ndarray, list)):
+        return self._process_numpy_array()
+    if isinstance(self._data, VideoClip):
+        return self._process_moviepy_clip()
+    raise TypeError(f"Unsupported video data type: {type(self._data)}")
+```
+
+
+</Accordion>

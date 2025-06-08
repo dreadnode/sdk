@@ -1,0 +1,76 @@
+---
+title: 'Model Training'
+description: 'Use callbacks to track model training in Strikes'
+public: true
+---
+
+Strikes has early support for integrating with the `transformers` and derived libraries, allowing you to track and visualize model training directly in the platform. This is accomplished via the `DreadnodeCallback`, a drop-in callback for the `Trainer` class.
+
+## Installation
+
+Make sure you have both `dreadnode` and `transformers` installed:
+
+```bash
+pip install -U dreadnode transformers datasets
+```
+
+## Tracking a Transformers Training Run
+
+Below is a minimal example of using the `DreadnodeCallback` with Hugging Face's `Trainer`:
+
+```python
+import dreadnode as dn
+from datasets import load_dataset
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+from dreadnode.integrations.transformers import DreadnodeCallback
+
+# Configure Strikes (replace with your API key)
+dn.configure(token="<YOUR API KEY>")
+
+# Load and preprocess dataset
+dataset = load_dataset("glue", "sst2")
+tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+dataset["train"] = dataset["train"].select(range(1000))
+dataset["validation"] = dataset["validation"].select(range(1000))
+
+def preprocess_function(examples):
+    return tokenizer(examples["sentence"], truncation=True, padding="max_length")
+
+tokenized_datasets = dataset.map(preprocess_function, batched=True)
+
+# Load model
+model = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=2)
+
+# Define training arguments
+training_args = TrainingArguments(
+    output_dir="./results",
+    learning_rate=2e-5,
+    per_device_train_batch_size=6,
+    per_device_eval_batch_size=6,
+    num_train_epochs=5,
+    weight_decay=0.01,
+    eval_strategy="steps",
+    eval_steps=5,
+    load_best_model_at_end=False,
+    push_to_hub=False,
+    run_name="distilbert-sst2-demo",
+)
+
+# Initialize Trainer with DreadnodeCallback
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_datasets["train"],
+    eval_dataset=tokenized_datasets["validation"],
+    tokenizer=tokenizer,
+    callbacks=[DreadnodeCallback(project="training")],
+)
+
+# Train and evaluate
+trainer.train()
+trainer.evaluate()
+```
+
+- The `DreadnodeCallback` automatically logs metrics (loss, accuracy, etc.), hyperparameters, and run metadata to Strikes.
+- You can view your training progress and compare runs in the Strikes UI.
+- All data is associated with your project for easy organization.

@@ -1,0 +1,153 @@
+---
+title: 'Runs'
+description: 'Understand the building blocks of your experiments'
+public: true
+---
+
+Runs are the core unit of your work in Strikes. They provide the context for all your data collection and represent a complete execution session. Think of runs as the "experiment" or "session" for your code.
+
+## Creating Runs
+
+The most common way to create a run is using the context manager syntax:
+
+```python
+import dreadnode as dn
+
+dn.configure()
+
+with dn.run("my-experiment"):
+    # Everything in this block is part of the run
+    pass
+```
+
+The run automatically starts when you enter the `with` block and ends when you exit it. All data logged (inputs, outputs, metrics, artifacts) and tasks executed within the block are associated with this run.
+
+### Run Names
+
+You can provide a name for your run to make it easier to identify:
+
+```python
+with dn.run("training-run-v1"):
+    # Named run
+    pass
+```
+
+If you don't provide a name, Strikes will generate one for you automatically using a combination of random words and numbers:
+
+```python
+with dn.run():
+    # Auto-named run (e.g., "clever-rabbit-492")
+    pass
+```
+
+### Run Tags
+
+Tags help you categorize and filter runs. You can add tags when creating a run:
+
+```python
+with dn.run("my-experiment", tags=["production", "model-v2"]):
+    # Run with tags
+    pass
+```
+
+Tags make it easy to find related runs in the UI and when exporting data.
+
+<Note>
+Tags will soon be available in the UI, but in the meantime it's a good muscle to exercise.
+</Note>
+
+### Setting the Project
+
+Runs are always associated with a project. You can specify which project a run belongs to:
+
+```python
+# Specify a project for a single run
+with dn.run("my-experiment", project="model-training"):
+    pass
+```
+
+If you don't specify a project, the run will use the default project configured in `dn.configure()` or be placed in a project named "Default".
+
+### Run Attributes
+
+You can add arbitrary attributes to a run for additional metadata:
+
+```python
+with dn.run("my-experiment", environment="staging", version="1.2.3"):
+    # Run with custom attributes
+    pass
+```
+
+These attributes are stored with the run and can be used for filtering and organization when you perform [data exports](https://docs.dreadnode.io/strikes/usage/export).
+
+## Execute Runs
+
+You can either execute multiple runs independently from one another or in parallel with each other.
+
+### Multiple Independent Runs
+
+You can create multiple independent runs in sequence:
+
+```python
+# Run experiment with different learning rates
+learning_rates = [0.1, 0.01, 0.001]
+
+for lr in learning_rates:
+    with dn.run(f"training-lr-{lr}"):
+        dn.log_param("learning_rate", lr)
+        result = train_model(lr=lr)
+        dn.log_metric("accuracy", result["accuracy"])
+```
+
+Each run is completely separate with its own data and lifecycle.
+
+### Parallel Runs
+
+For more efficient experimentation, you can run multiple experiments in parallel:
+
+```python
+import asyncio
+
+async def run_experiment(config):
+    with dn.run(f"experiment-{config['id']}"):
+        dn.log_params(**config)
+        result = await async_train_model(**config)
+        dn.log_metrics(**result)
+
+# Define different configurations
+configs = [
+    {"id": 1, "learning_rate": 0.1, "batch_size": 32},
+    {"id": 2, "learning_rate": 0.01, "batch_size": 64},
+    {"id": 3, "learning_rate": 0.001, "batch_size": 128}
+]
+
+# Run experiments in parallel
+await asyncio.gather(*[run_experiment(config) for config in configs])
+```
+
+This pattern is particularly useful for hyperparameter searches or evaluating multiple models.
+
+### Error Handling
+
+Runs automatically capture and log errors, marking the run as failed if an exception is raised, but you can also handle them explicitly:
+
+```python
+try:
+    with dn.run("risky-experiment"):
+        # Run code that might fail
+        result = potentially_failing_function()
+        dn.log_metric("success", 1.0)
+except Exception as e:
+    # The run is automatically marked as failed
+    # You can create a new run to track the error if needed
+    with dn.run("error-analysis"):
+        # ...
+```
+
+## Best Practices
+
+1. **Use meaningful names**: Give your runs descriptive names that indicate their purpose.
+2. **Use parameters**: Parameters are a great way to filter and compare runs later, so use them frequently.
+3. **Create separate runs for separate experiments**: Don't try to jam multiple experiments into a single run—you can create multiple runs inside your code.
+4. **Use projects for organization**: Group related runs into projects.
+5. **Create comparison runs**: When testing different approaches, ensure parameters and metrics are consistent to enable meaningful comparison.

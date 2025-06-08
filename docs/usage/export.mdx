@@ -1,0 +1,333 @@
+---
+title: 'Exporting Data'
+description: 'How to get your data out of Strikes'
+public: true
+---
+
+The UI is a great place to begin analyzing your run data, monitoring execution, and troubleshooting issues. Exporting data is the next step for deeper analysis, dataset creation, and even model training. The SDK makes it easy to export complete projects or individual runs.
+
+The following data items are available to you in the `dreadnode` SDK:
+
+- **Runs**: Collect all runs under a project, or individually by ID
+- **Tasks**: Put all tasks within a run including their arguments, output, and associated scores
+- **Trace**: Get a full OpenTelemetry trace for a specific run including all tasks and associated data
+
+You can also export dataframes for analysis in the following perspectives:
+
+- **Export Runs**: Get all of your runs with their parameters, metrics, and metadata
+- **Export Metrics**: Focus on the metrics data from your runs
+- **Export Parameters**: Analyze how parameters affect your metrics
+- **Export Timeseries**: Get time-based data for your metrics
+
+All exports are available in multiple formats and can be filtered to view the precise data you need.
+
+## Basic Usage
+
+Here's a quick example of using the Dreadnode API to export data from your Strikes projects:
+
+```python
+import dreadnode
+
+api = dreadnode.api()
+
+# List all runs in a project
+runs = api.strikes.list_runs('project-name')
+print(f"Found {len(runs)} runs")
+
+# Get the trace for a specific run
+trace = api.strikes.get_run_trace(runs[0].id)
+
+# Export different types of data as pandas DataFrames
+df_metrics = api.strikes.export_metrics('project-name')
+df_params = api.strikes.export_parameters('project-name')
+df_runs = api.strikes.export_runs('project-name')
+df_timeseries = api.strikes.export_timeseries('project-name')
+```
+
+## Export Types
+
+### Export Runs
+
+Export all run data including parameters, tags, and aggregated metrics.
+
+```python
+df = api.strikes.export_runs(
+    'project-name',
+    filter='tags.contains("production")',  # Optional filter expression
+    status='completed',  # 'all', 'completed', or 'failed'
+    aggregations=['avg', 'min', 'max']  # Metrics aggregations to include
+)
+```
+
+The resulting `DataFrame` contains:
+- Run metadata (ID, name, start time, duration, status)
+- Parameters (prefixed with `param_`)
+- Tags (prefixed with `tag_`)
+- Aggregated metrics (prefixed with `metric_`)
+
+### Export Metrics
+
+Focus on the metrics data with detailed information about each metric point.
+
+```python
+df = api.strikes.export_metrics(
+    'project-name',
+    filter='name.contains("training")',  # Optional filter expression
+    status='completed',  # 'all', 'completed', or 'failed'
+    metrics=['accuracy', 'loss'],  # Optional list of metrics to include
+    aggregations=['avg', 'median', 'min', 'max']  # Aggregation functions
+)
+```
+
+The resulting `DataFrame` contains:
+- Run metadata (ID, start time, duration, status)
+- Metric information (name, step, timestamp, value)
+- Aggregated values (based on selected aggregations)
+- Parameters (prefixed with `param_`)
+
+### Export Parameters
+
+Analyze how different parameter values affect your metrics.
+
+```python
+df = api.strikes.export_parameters(
+    'project-name',
+    filter='metrics.accuracy.max > 0.9',  # Optional filter expression
+    status='completed',  # 'all', 'completed', or 'failed'
+    parameters=['learning_rate', 'batch_size'],  # Optional list of parameters
+    metrics=['accuracy', 'loss'],  # Optional list of metrics
+    aggregations=['avg', 'max']  # Aggregation functions
+)
+```
+
+The resulting `DataFrame` shows how different parameter values influence your metrics, with:
+- Parameter name and value
+- Run count for each parameter value
+- Aggregated metric values
+
+### Export Timeseries
+
+Get time-based data for your metrics, with options for time representation.
+
+```python
+df = api.strikes.export_timeseries(
+    'project-name',
+    filter='params.model == "resnet50"',  # Optional filter expression
+    status='completed',  # 'all', 'completed', or 'failed'
+    metrics=['accuracy', 'loss'],  # Optional list of metrics
+    time_axis='relative',  # 'wall', 'relative', or 'step'
+    aggregations=['max', 'min']  # Aggregation functions
+)
+```
+
+The timeseries export provides metric values over time, with:
+- Run metadata (ID, name)
+- Metric name and value at each point
+- Time representation (based on selected time_axis)
+- Running aggregations (if aggregations are specified)
+- Parameters (prefixed with `param_`)
+
+## Filtering Data
+
+All export functions support filtering to narrow down the results. The filter expression is a string that follows a simple query language:
+
+```python
+# Filter by tags
+df = api.strikes.export_runs('project-name', filter='tags.contains("production")')
+
+# Filter by parameters
+df = api.strikes.export_metrics('project-name', filter='params.learning_rate < 0.01')
+
+# Filter by metrics
+df = api.strikes.export_parameters('project-name', filter='metrics.accuracy.max > 0.9')
+
+# Combine filters
+df = api.strikes.export_timeseries(
+    'project-name',
+    filter='params.model == "resnet50" and metrics.loss.min < 0.1'
+)
+```
+
+## Available Aggregations
+
+The following aggregation functions are available for metrics:
+
+- `avg`: Average value
+- `median`: Median value
+- `min`: Minimum value
+- `max`: Maximum value
+- `sum`: Sum of values
+- `first`: First value
+- `last`: Last value
+- `count`: Number of values
+- `std`: Standard deviation
+- `var`: Variance
+
+For timeseries exports, the following aggregations are available:
+
+- `max`: Running maximum value
+- `min`: Running minimum value
+- `sum`: Running sum of values
+- `count`: Running count of values
+
+## Time Axis Options
+
+When exporting timeseries data, you can specify how time should be represented:
+
+- `wall`: Actual timestamp (datetime)
+- `relative`: Seconds since the run started (float)
+- `step`: Step number (integer)
+
+## Pulling Run, Trace, and Task Information
+
+While exporting DataFrames is powerful for analysis, the Dreadnode SDK also lets you programmatically access detailed information about runs, traces, and tasks as structured objects.
+
+### Listing Runs and Metadata
+
+You can list all runs in a project and inspect their metadata:
+
+```python
+# List all runs in a project
+runs = api.strikes.list_runs('project-name')
+for run in runs:
+    print(run.id, run.name, run.status, run.start_time)
+
+# Get full details for a specific run
+run = api.strikes.get_run(runs[0].id)
+print(run)
+```
+
+### Gathering Run Traces
+
+A trace provides a complete record of all tasks and spans executed during a run, including timing, parent/child relationships, and metadata.
+
+```python
+# Get the full trace for a run (as a flat list or tree)
+trace = api.strikes.get_run_trace(run_id, format="flat")  # or format="tree"
+for span in trace:
+    print(span.name, span.timestamp)
+```
+
+- Each trace span or task includes timing, parent/child relationships, and any associated metrics or errors.
+- Use `format="tree"` to get a nested structure reflecting the execution hierarchy.
+
+You can also pull just the tasks for a run, including their arguments (inputs), outputs, and any metrics or scores.
+
+```python
+# Get all tasks for a run
+tasks = api.strikes.get_run_tasks(run_id, format="flat")
+for task in tasks:
+    print(task.name, task.timestamp, task.inputs, task.output)
+
+# Get tasks as a tree (shows parent/child relationships)
+task_tree = api.strikes.get_run_tasks(run_id, format="tree")
+```
+
+- Each task object contains its input arguments, output, status, and timing.
+- This is useful for reconstructing the full execution flow and understanding how data moves through your system.
+
+### Viewing Historical Data and Task Inputs/Outputs
+
+You can use the above methods to build a complete picture of how your code executed, what data was processed, and what results were produced. For example, to view all inputs and outputs for every task in a run:
+
+```python
+for task in api.strikes.get_run_tasks(run_id):
+    print(f"Task: {task.name}")
+    print(f"  Inputs: {task.inputs}")
+    print(f"  Output: {task.output}")
+```
+
+This is especially useful for debugging, auditing, or building custom visualizations of your workflow.
+
+## Example Workflows
+
+### Compare Performance Across Experiments
+
+```python
+# Get parameters and their impact on metrics
+df = api.strikes.export_parameters(
+    'my-experiment',
+    parameters=['learning_rate', 'batch_size', 'model'],
+    metrics=['accuracy', 'loss'],
+    aggregations=['max', 'min', 'avg']
+)
+
+# Analyze the results
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Create a pivot table to see how learning rate affects accuracy
+pivot = df.pivot(index='param_value', columns='param_name', values='metric_accuracy_max')
+sns.heatmap(pivot, annot=True, cmap='viridis')
+plt.title('Maximum Accuracy by Parameter Values')
+plt.show()
+```
+
+### Analyze Learning Curves
+
+```python
+# Get timeseries data for loss metrics
+df = api.strikes.export_timeseries(
+    'my-experiment',
+    metrics=['train_loss', 'val_loss'],
+    time_axis='step'
+)
+
+# Plot learning curves
+plt.figure(figsize=(10, 6))
+for run_id in df['run_id'].unique():
+    run_data = df[df['run_id'] == run_id]
+
+    # Plot training loss
+    train_loss = run_data[run_data['metric_name'] == 'train_loss']
+    plt.plot(train_loss['step'], train_loss['value'], label=f"Train - {run_id[:8]}")
+
+    # Plot validation loss
+    val_loss = run_data[run_data['metric_name'] == 'val_loss']
+    plt.plot(val_loss['step'], val_loss['value'], '--', label=f"Val - {run_id[:8]}")
+
+plt.xlabel('Step')
+plt.ylabel('Loss')
+plt.title('Training and Validation Loss')
+plt.legend()
+plt.grid(True)
+plt.show()
+```
+
+### Working with Traces
+
+You can export trace information for debugging and performance analysis:
+
+```python
+# Get the trace for a specific run
+trace = api.strikes.get_run_trace(run_id)
+
+# Extract spans and analyze them
+spans = [span for span in trace if hasattr(span, 'duration')]
+spans_df = pd.DataFrame([{
+    'name': span.name,
+    'duration': span.duration,
+    'service': span.service_name,
+    'status': span.status
+} for span in spans])
+
+# Find the slowest spans
+slowest = spans_df.sort_values('duration', ascending=False).head(10)
+print(slowest)
+```
+
+### Custom Exports
+
+For more complex analyses, you can combine different exports:
+
+```python
+# Get runs and parameters
+runs_df = api.strikes.export_runs('project-name')
+params_df = api.strikes.export_parameters('project-name')
+
+# Join them for additional insights
+merged = runs_df.merge(params_df, left_on='run_id', right_on='run_id')
+
+# Create customized view
+custom_view = merged[['run_name', 'param_learning_rate', 'metric_accuracy_max', 'run_duration']]
+```

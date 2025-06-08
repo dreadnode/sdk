@@ -1,0 +1,447 @@
+---
+title: dreadnode.integrations
+---
+
+{/*
+::: dreadnode.integrations.transformers
+*/}
+
+This module provides an integration with the `transformers` library for logging
+metrics and parameters to Dreadnode during training. It includes a custom
+`TrainerCallback` implementation that tracks training progress and logs relevant
+information to Dreadnode.
+
+DreadnodeCallback
+-----------------
+
+```python
+DreadnodeCallback(
+    project: str | None = None,
+    run_name: str | None = None,
+    tags: list[str] | None = None,
+)
+```
+
+An implementation of the `TrainerCallback` interface for Dreadnode.
+
+This callback is used to log metrics and parameters to Dreadnode during training inside
+the `transformers` library or derivations (`trl`, etc.).
+
+**Attributes:**
+
+* **`project`**
+  (`str | None`)
+  –The project name in Dreadnode.
+* **`run_name`**
+  (`str | None`)
+  –The name of the training run.
+* **`tags`**
+  (`list[str]`)
+  –A list of tags associated with the run.
+
+Initializes the DreadnodeCallback.
+
+**Parameters:**
+
+* **`project`**
+  (`str | None`, default:
+  `None`
+  )
+  –The project name in Dreadnode.
+* **`run_name`**
+  (`str | None`, default:
+  `None`
+  )
+  –The name of the training run.
+* **`tags`**
+  (`list[str] | None`, default:
+  `None`
+  )
+  –A list of tags associated with the run.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def __init__(
+    self,
+    project: str | None = None,
+    run_name: str | None = None,
+    tags: list[str] | None = None,
+):
+    """
+    Initializes the DreadnodeCallback.
+
+    Args:
+        project (str | None): The project name in Dreadnode.
+        run_name (str | None): The name of the training run.
+        tags (list[str] | None): A list of tags associated with the run.
+    """
+    self.project = project
+    self.run_name = run_name
+    self.tags = tags or []
+
+    self._initialized = False
+    self._run: RunSpan | None = None
+    self._epoch_span: Span | None = None
+    self._step_span: Span | None = None
+```
+
+
+</Accordion>
+
+### on\_epoch\_end
+
+```python
+on_epoch_end(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
+```
+
+Called at the end of an epoch.
+
+**Parameters:**
+
+* **`args`**
+  (`TrainingArguments`)
+  –The training arguments.
+* **`state`**
+  (`TrainerState`)
+  –The state of the trainer.
+* **`control`**
+  (`TrainerControl`)
+  –The control object for the trainer.
+* **`**kwargs`**
+  (`Any`, default:
+  `{}`
+  )
+  –Additional keyword arguments.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def on_epoch_end(
+    self,
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: t.Any,
+) -> None:
+    """
+    Called at the end of an epoch.
+
+    Args:
+        args (TrainingArguments): The training arguments.
+        state (TrainerState): The state of the trainer.
+        control (TrainerControl): The control object for the trainer.
+        **kwargs (t.Any): Additional keyword arguments.
+    """
+    if self._epoch_span is not None:
+        self._epoch_span.__exit__(None, None, None)
+        self._epoch_span = None
+```
+
+
+</Accordion>
+
+### on\_log
+
+```python
+on_log(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    logs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> None
+```
+
+Called when logs are reported.
+
+**Parameters:**
+
+* **`args`**
+  (`TrainingArguments`)
+  –The training arguments.
+* **`state`**
+  (`TrainerState`)
+  –The state of the trainer.
+* **`control`**
+  (`TrainerControl`)
+  –The control object for the trainer.
+* **`logs`**
+  (`dict[str, Any] | None`, default:
+  `None`
+  )
+  –The logs to process.
+* **`**kwargs`**
+  (`Any`, default:
+  `{}`
+  )
+  –Additional keyword arguments.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def on_log(
+    self,
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    logs: dict[str, t.Any] | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """
+    Called when logs are reported.
+
+    Args:
+        args (TrainingArguments): The training arguments.
+        state (TrainerState): The state of the trainer.
+        control (TrainerControl): The control object for the trainer.
+        logs (dict[str, t.Any] | None): The logs to process.
+        **kwargs (t.Any): Additional keyword arguments.
+    """
+    if self._run is None or logs is None:
+        return
+
+    for key, value in _clean_keys(logs).items():
+        if isinstance(value, float | int):
+            dn.log_metric(key, value, step=state.global_step, to="run")
+
+    dn.push_update()
+```
+
+
+</Accordion>
+
+### on\_step\_begin
+
+```python
+on_step_begin(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
+```
+
+Called at the beginning of a training step.
+
+**Parameters:**
+
+* **`args`**
+  (`TrainingArguments`)
+  –The training arguments.
+* **`state`**
+  (`TrainerState`)
+  –The state of the trainer.
+* **`control`**
+  (`TrainerControl`)
+  –The control object for the trainer.
+* **`**kwargs`**
+  (`Any`, default:
+  `{}`
+  )
+  –Additional keyword arguments.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def on_step_begin(
+    self,
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: t.Any,
+) -> None:
+    """
+    Called at the beginning of a training step.
+
+    Args:
+        args (TrainingArguments): The training arguments.
+        state (TrainerState): The state of the trainer.
+        control (TrainerControl): The control object for the trainer.
+        **kwargs (t.Any): Additional keyword arguments.
+    """
+    if self._run is None:
+        return
+
+    dn.log_metric("step", state.global_step, to="run")
+
+    self._step_span = dn.span(f"Step {state.global_step}")
+    self._step_span.__enter__()
+```
+
+
+</Accordion>
+
+### on\_step\_end
+
+```python
+on_step_end(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
+```
+
+Called at the end of a training step.
+
+**Parameters:**
+
+* **`args`**
+  (`TrainingArguments`)
+  –The training arguments.
+* **`state`**
+  (`TrainerState`)
+  –The state of the trainer.
+* **`control`**
+  (`TrainerControl`)
+  –The control object for the trainer.
+* **`**kwargs`**
+  (`Any`, default:
+  `{}`
+  )
+  –Additional keyword arguments.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def on_step_end(
+    self,
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: t.Any,
+) -> None:
+    """
+    Called at the end of a training step.
+
+    Args:
+        args (TrainingArguments): The training arguments.
+        state (TrainerState): The state of the trainer.
+        control (TrainerControl): The control object for the trainer.
+        **kwargs (t.Any): Additional keyword arguments.
+    """
+    if self._step_span is not None:
+        self._step_span.__exit__(None, None, None)
+        self._step_span = None
+```
+
+
+</Accordion>
+
+### on\_train\_begin
+
+```python
+on_train_begin(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    model: Any | None = None,
+    **kwargs: Any,
+) -> None
+```
+
+Called at the beginning of training.
+
+**Parameters:**
+
+* **`args`**
+  (`TrainingArguments`)
+  –The training arguments.
+* **`state`**
+  (`TrainerState`)
+  –The state of the trainer.
+* **`control`**
+  (`TrainerControl`)
+  –The control object for the trainer.
+* **`model`**
+  (`Any | None`, default:
+  `None`
+  )
+  –The model being trained.
+* **`**kwargs`**
+  (`Any`, default:
+  `{}`
+  )
+  –Additional keyword arguments.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def on_train_begin(
+    self,
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    model: t.Any | None = None,
+    **kwargs: t.Any,
+) -> None:
+    """
+    Called at the beginning of training.
+
+    Args:
+        args (TrainingArguments): The training arguments.
+        state (TrainerState): The state of the trainer.
+        control (TrainerControl): The control object for the trainer.
+        model (t.Any | None): The model being trained.
+        **kwargs (t.Any): Additional keyword arguments.
+    """
+    if not self._initialized:
+        self._setup(args, state, model)
+```
+
+
+</Accordion>
+
+### on\_train\_end
+
+```python
+on_train_end(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
+```
+
+Called at the end of training.
+
+**Parameters:**
+
+* **`args`**
+  (`TrainingArguments`)
+  –The training arguments.
+* **`state`**
+  (`TrainerState`)
+  –The state of the trainer.
+* **`control`**
+  (`TrainerControl`)
+  –The control object for the trainer.
+* **`**kwargs`**
+  (`Any`, default:
+  `{}`
+  )
+  –Additional keyword arguments.
+
+<Accordion title="Source code in dreadnode/integrations/transformers.py" icon="code">
+```python
+def on_train_end(
+    self,
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: t.Any,
+) -> None:
+    """
+    Called at the end of training.
+
+    Args:
+        args (TrainingArguments): The training arguments.
+        state (TrainerState): The state of the trainer.
+        control (TrainerControl): The control object for the trainer.
+        **kwargs (t.Any): Additional keyword arguments.
+    """
+    self._shutdown()
+```
+
+
+</Accordion>
