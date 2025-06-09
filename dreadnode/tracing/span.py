@@ -30,7 +30,7 @@ from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
-from dreadnode.metric import Metric, MetricAggMode, MetricDict
+from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
 from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
@@ -242,7 +242,7 @@ class RunUpdateSpan(Span):
         tracer: Tracer,
         project: str,
         *,
-        metrics: MetricDict | None = None,
+        metrics: MetricsDict | None = None,
         params: JsonDict | None = None,
         inputs: list[ObjectRef] | None = None,
         outputs: list[ObjectRef] | None = None,
@@ -283,7 +283,7 @@ class RunSpan(Span):
         prefix_path: str,
         *,
         params: AnyDict | None = None,
-        metrics: MetricDict | None = None,
+        metrics: MetricsDict | None = None,
         tags: t.Sequence[str] | None = None,
         autolog: bool = True,
         update_frequency: int = 5,
@@ -625,13 +625,13 @@ class RunSpan(Span):
         self._artifacts = self._artifact_merger.get_merged_trees()
 
     @property
-    def metrics(self) -> MetricDict:
+    def metrics(self) -> MetricsDict:
         return self._metrics
 
     @t.overload
     def log_metric(
         self,
-        key: str,
+        name: str,
         value: float | bool,
         *,
         step: int = 0,
@@ -645,7 +645,7 @@ class RunSpan(Span):
     @t.overload
     def log_metric(
         self,
-        key: str,
+        name: str,
         value: Metric,
         *,
         origin: t.Any | None = None,
@@ -655,7 +655,7 @@ class RunSpan(Span):
 
     def log_metric(
         self,
-        key: str,
+        name: str,
         value: float | bool | Metric,
         *,
         step: int = 0,
@@ -673,7 +673,7 @@ class RunSpan(Span):
             )
         )
 
-        key = clean_str(key)
+        key = clean_str(name)
         if prefix is not None:
             key = f"{prefix}.{key}"
 
@@ -726,7 +726,7 @@ class TaskSpan(Span, t.Generic[R]):
         *,
         label: str | None = None,
         params: AnyDict | None = None,
-        metrics: MetricDict | None = None,
+        metrics: MetricsDict | None = None,
         tags: t.Sequence[str] | None = None,
     ) -> None:
         self._params = params or {}
@@ -857,7 +857,7 @@ class TaskSpan(Span, t.Generic[R]):
     @t.overload
     def log_metric(
         self,
-        key: str,
+        name: str,
         value: float | bool,
         *,
         step: int = 0,
@@ -870,7 +870,7 @@ class TaskSpan(Span, t.Generic[R]):
     @t.overload
     def log_metric(
         self,
-        key: str,
+        name: str,
         value: Metric,
         *,
         origin: t.Any | None = None,
@@ -879,7 +879,7 @@ class TaskSpan(Span, t.Generic[R]):
 
     def log_metric(
         self,
-        key: str,
+        name: str,
         value: float | bool | Metric,
         *,
         step: int = 0,
@@ -896,7 +896,7 @@ class TaskSpan(Span, t.Generic[R]):
             )
         )
 
-        key = clean_str(key)
+        key = clean_str(name)
 
         # For every metric we log, also log it to the run
         # with our `label` as a prefix.

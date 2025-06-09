@@ -15,18 +15,18 @@ task = DEFAULT_INSTANCE.task
 task_span = DEFAULT_INSTANCE.task_span
 run = DEFAULT_INSTANCE.run
 scorer = DEFAULT_INSTANCE.scorer
-task_span = DEFAULT_INSTANCE.task_span
 push_update = DEFAULT_INSTANCE.push_update
 tag = DEFAULT_INSTANCE.tag
 get_run_context = DEFAULT_INSTANCE.get_run_context
 continue_run = DEFAULT_INSTANCE.continue_run
-
 log_metric = DEFAULT_INSTANCE.log_metric
+log_metrics = DEFAULT_INSTANCE.log_metrics
 log_param = DEFAULT_INSTANCE.log_param
 log_params = DEFAULT_INSTANCE.log_params
 log_input = DEFAULT_INSTANCE.log_input
 log_inputs = DEFAULT_INSTANCE.log_inputs
 log_output = DEFAULT_INSTANCE.log_output
+log_outputs = DEFAULT_INSTANCE.log_outputs
 link_objects = DEFAULT_INSTANCE.link_objects
 log_artifact = DEFAULT_INSTANCE.log_artifact
 

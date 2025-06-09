@@ -761,6 +761,405 @@ def log_inputs(
 
 </Accordion>
 
+### log\_metric
+
+```python
+log_metric(
+    name: str,
+    value: float | bool,
+    *,
+    step: int = 0,
+    origin: Any | None = None,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> Metric
+```
+
+```python
+log_metric(
+    name: str,
+    value: Metric,
+    *,
+    origin: Any | None = None,
+    mode: MetricAggMode | None = None,
+    to: ToObject = "task-or-run",
+) -> Metric
+```
+
+```python
+log_metric(
+    name: str,
+    value: float | bool | Metric,
+    *,
+    step: int = 0,
+    origin: Any | None = None,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> Metric
+```
+
+Log a single metric to the current task or run.
+
+Metrics are some measurement or recorded value related to the task or run.
+They can be used to track performance, resource usage, or other quantitative data.
+
+**Examples:**
+
+With a raw value:
+
+```python
+with dreadnode.run("my_run") as run:
+    run.log_metric("accuracy", 0.95, step=10)
+    run.log_metric("loss", 0.05, step=10, mode="min")
+```
+
+With a Metric object:
+
+```python
+with dreadnode.run("my_run") as run:
+    metric = Metric(0.95, step=10, timestamp=datetime.now(timezone.utc))
+    run.log_metric("accuracy", metric)
+```
+
+**Parameters:**
+
+* **`name`**
+  (`str`)
+  –The name of the metric.
+* **`value`**
+  (`float | bool | Metric`)
+  –The value of the metric, either as a raw float/bool or a Metric object.
+* **`step`**
+  (`int`, default:
+  `0`
+  )
+  –The step of the metric.
+* **`origin`**
+  (`Any | None`, default:
+  `None`
+  )
+  –The origin of the metric - can be provided any object which was logged
+  as an input or output anywhere in the run.
+* **`timestamp`**
+  (`datetime | None`, default:
+  `None`
+  )
+  –The timestamp of the metric - defaults to the current time.
+* **`mode`**
+  (`MetricAggMode | None`, default:
+  `None`
+  )
+  –The aggregation mode to use for the metric. Helpful when you want to let
+  the library take care of translating your raw values into better representations.
+  - direct: do not modify the value at all (default)
+  - min: the lowest observed value reported for this metric
+  - max: the highest observed value reported for this metric
+  - avg: the average of all reported values for this metric
+  - sum: the cumulative sum of all reported values for this metric
+  - count: increment every time this metric is logged - disregard value
+* **`attributes`**
+  (`JsonDict | None`, default:
+  `None`
+  )
+  –A dictionary of additional attributes to attach to the metric.
+* **`to`**
+  (`ToObject`, default:
+  `'task-or-run'`
+  )
+  –The target object to log the metric to. Can be "task-or-run" or "run".
+  Defaults to "task-or-run". If "task-or-run", the metric will be logged
+  to the current task or run, whichever is the nearest ancestor.
+
+**Returns:**
+
+* `Metric`
+  –The logged metric object.
+
+<Accordion title="Source code in dreadnode/main.py" icon="code">
+```python
+@handle_internal_errors()
+def log_metric(
+    self,
+    name: str,
+    value: float | bool | Metric,
+    *,
+    step: int = 0,
+    origin: t.Any | None = None,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> Metric:
+    """
+    Log a single metric to the current task or run.
+
+    Metrics are some measurement or recorded value related to the task or run.
+    They can be used to track performance, resource usage, or other quantitative data.
+
+    Examples:
+        With a raw value:
+        ~~~
+        with dreadnode.run("my_run") as run:
+            run.log_metric("accuracy", 0.95, step=10)
+            run.log_metric("loss", 0.05, step=10, mode="min")
+        ~~~
+
+        With a Metric object:
+        ~~~
+        with dreadnode.run("my_run") as run:
+            metric = Metric(0.95, step=10, timestamp=datetime.now(timezone.utc))
+            run.log_metric("accuracy", metric)
+        ~~~
+
+    Args:
+        name: The name of the metric.
+        value: The value of the metric, either as a raw float/bool or a Metric object.
+        step: The step of the metric.
+        origin: The origin of the metric - can be provided any object which was logged
+            as an input or output anywhere in the run.
+        timestamp: The timestamp of the metric - defaults to the current time.
+        mode: The aggregation mode to use for the metric. Helpful when you want to let
+            the library take care of translating your raw values into better representations.
+            - direct: do not modify the value at all (default)
+            - min: the lowest observed value reported for this metric
+            - max: the highest observed value reported for this metric
+            - avg: the average of all reported values for this metric
+            - sum: the cumulative sum of all reported values for this metric
+            - count: increment every time this metric is logged - disregard value
+        attributes: A dictionary of additional attributes to attach to the metric.
+        to: The target object to log the metric to. Can be "task-or-run" or "run".
+            Defaults to "task-or-run". If "task-or-run", the metric will be logged
+            to the current task or run, whichever is the nearest ancestor.
+
+    Returns:
+        The logged metric object.
+    """
+    task = current_task_span.get()
+    run = current_run_span.get()
+
+    target = (task or run) if to == "task-or-run" else run
+    if target is None:
+        raise RuntimeError("log_metric() must be called within a run")
+
+    metric = (
+        value
+        if isinstance(value, Metric)
+        else Metric(
+            float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+        )
+    )
+    return target.log_metric(name, metric, origin=origin, mode=mode)
+```
+
+
+</Accordion>
+
+### log\_metrics
+
+```python
+log_metrics(
+    metrics: dict[str, float | bool],
+    *,
+    step: int = 0,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> list[Metric]
+```
+
+```python
+log_metrics(
+    metrics: list[MetricDict],
+    *,
+    step: int = 0,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> list[Metric]
+```
+
+```python
+log_metrics(
+    metrics: dict[str, float | bool] | list[MetricDict],
+    *,
+    step: int = 0,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> list[Metric]
+```
+
+Log multiple metrics to the current task or run.
+
+**Examples:**
+
+Log metrics from a dictionary:
+
+```python
+dreadnode.log_metrics(
+    {
+        "accuracy": 0.95,
+        "loss": 0.05,
+        "f1_score": 0.92
+    },
+    step=10
+)
+```
+
+Log metrics from a list of MetricDicts:
+
+```python
+dreadnode.log_metrics(
+    [
+        {"name": "accuracy", "value": 0.95},
+        {"name": "loss", "value": 0.05, "mode": "min"}
+    ],
+    step=10
+)
+```
+
+**Parameters:**
+
+* **`metrics`**
+  (`dict[str, float | bool] | list[MetricDict]`)
+  –Either a dictionary of name/value pairs or a list of MetricDicts to log.
+* **`step`**
+  (`int`, default:
+  `0`
+  )
+  –Default step value for metrics if not supplied.
+* **`timestamp`**
+  (`datetime | None`, default:
+  `None`
+  )
+  –Default timestamp for metrics if not supplied.
+* **`mode`**
+  (`MetricAggMode | None`, default:
+  `None`
+  )
+  –Default aggregation mode for metrics if not supplied.
+* **`attributes`**
+  (`JsonDict | None`, default:
+  `None`
+  )
+  –Default attributes for metrics if not supplied.
+* **`to`**
+  (`ToObject`, default:
+  `'task-or-run'`
+  )
+  –The target object to log metrics to. Can be "task-or-run" or "run".
+  Defaults to "task-or-run". If "task-or-run", the metrics will be logged
+  to the current task or run, whichever is the nearest ancestor.
+
+**Returns:**
+
+* `list[Metric]`
+  –List of logged Metric objects.
+
+<Accordion title="Source code in dreadnode/main.py" icon="code">
+```python
+@handle_internal_errors()
+def log_metrics(
+    self,
+    metrics: dict[str, float | bool] | list[MetricDict],
+    *,
+    step: int = 0,
+    timestamp: datetime | None = None,
+    mode: MetricAggMode | None = None,
+    attributes: JsonDict | None = None,
+    to: ToObject = "task-or-run",
+) -> list[Metric]:
+    """
+    Log multiple metrics to the current task or run.
+
+    Examples:
+        Log metrics from a dictionary:
+        ~~~
+        dreadnode.log_metrics(
+            {
+                "accuracy": 0.95,
+                "loss": 0.05,
+                "f1_score": 0.92
+            },
+            step=10
+        )
+        ~~~
+
+        Log metrics from a list of MetricDicts:
+        ~~~
+        dreadnode.log_metrics(
+            [
+                {"name": "accuracy", "value": 0.95},
+                {"name": "loss", "value": 0.05, "mode": "min"}
+            ],
+            step=10
+        )
+        ~~~
+
+    Args:
+        metrics: Either a dictionary of name/value pairs or a list of MetricDicts to log.
+        step: Default step value for metrics if not supplied.
+        timestamp: Default timestamp for metrics if not supplied.
+        mode: Default aggregation mode for metrics if not supplied.
+        attributes: Default attributes for metrics if not supplied.
+        to: The target object to log metrics to. Can be "task-or-run" or "run".
+            Defaults to "task-or-run". If "task-or-run", the metrics will be logged
+            to the current task or run, whichever is the nearest ancestor.
+
+    Returns:
+        List of logged Metric objects.
+    """
+
+    task = current_task_span.get()
+    run = current_run_span.get()
+
+    target = (task or run) if to == "task-or-run" else run
+    if target is None:
+        raise RuntimeError("log_metrics() must be called within a run")
+
+    logged_metrics: list[Metric] = []
+
+    # Dictionary of name/value pairs
+    if isinstance(metrics, dict):
+        logged_metrics = [
+            target.log_metric(
+                name,
+                value,
+                step=step,
+                timestamp=timestamp,
+                mode=mode,
+                attributes=attributes,
+            )
+            for name, value in metrics.items()
+        ]
+
+    # List of MetricDicts
+    else:
+        logged_metrics = [
+            target.log_metric(
+                metric["name"],
+                metric["value"],
+                step=metric.get("step", step),
+                timestamp=metric.get("timestamp", timestamp),
+                mode=metric.get("mode", mode),
+                attributes=metric.get("attributes", attributes) or {},
+            )
+            for metric in metrics
+        ]
+
+    return logged_metrics
+```
+
+
+</Accordion>
+
 ### log\_output
 
 ```python

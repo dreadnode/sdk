@@ -58,7 +58,11 @@ with dn.run("my-experiment"):
     dn.log_metric("loss", 0.19, step=2)
     dn.log_metric("loss", 0.15, step=3)
 
-    dn.log_metric("success", True)
+    # Log multiple metrics at once
+    dn.log_metrics({
+        "success": True,
+        "execution_time": 0.45,
+    })
 ```
 
 Metrics can be logged for your run as a whole (run-level) or for individual tasks within a run (task-level). Run-level metrics are generally used to track the broad performance of the system, and task-level metrics monitor more nuanced behaviors inside your flows. To make things easy, any task-level metrics will also be mirrored to the run level using the label (name) of the originating task as a prefix. This means that you can still use the same metric name in different tasks, and they will be reported separately in the UI.
@@ -96,6 +100,10 @@ dn.log_metric("processing_time", 1.23, origin=document)
 
 The `origin` parameter creates a reference to the object that was measured, allowing you to track which specific inputs led to particular performance outcomes.
 
+<Tip>
+When you associate scorers with tasks, the metrics they generate will automatically include the task's output objects as their origin. This makes it easy to trace back the results of your evaluations to the specific data that was processed.
+</Tip>
+
 ### Aggregation Modes
 
 When working with metrics, it's important to provide context—such as averages, sums, or counts. You can always do this manually by keeping separate variables or lists of previous values. But Strikes provides a way to do this automatically for you:
@@ -117,11 +125,15 @@ dn.log_metric("total_processed", 10, mode="sum")
 dn.log_metric("total_processed", 15, mode="sum")  # Will be 25
 
 # Count mode: count the number of times a metric is logged
-dn.log_metric("failures", 1, mode="count")
-dn.log_metric("failures", 1, mode="count")  # Will be 2
+dn.log_metric("failures", 3, mode="count")
+dn.log_metric("failures", 5, mode="count")  # Will be 2 (note the values are ignored)
 ```
 
-These modes help create meaningful aggregate metrics without requiring you to manually track previous values.
+These modes help create meaningful aggregate metrics without requiring you to manually track previous values and perform calculations like averages or sums.
+
+<Tip>
+The original values you log are still stored in the metric attributes, so you can always retrieve the raw data if needed.
+</Tip>
 
 ## Metrics in Tasks
 
