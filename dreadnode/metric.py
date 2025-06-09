@@ -3,6 +3,7 @@ import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+import typing_extensions as te
 from logfire._internal.stack_info import warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
@@ -16,6 +17,18 @@ MetricAggMode = t.Literal["avg", "sum", "min", "max", "count"]
 
 class MetricWarning(UserWarning):
     pass
+
+
+class MetricDict(te.TypedDict, total=False):
+    """Dictionary representation of a metric for easier APIs"""
+
+    name: str
+    value: float | bool
+    step: int
+    timestamp: datetime | None
+    mode: MetricAggMode | None
+    attributes: JsonDict | None
+    origin: t.Any | None
 
 
 @dataclass
@@ -102,9 +115,10 @@ class Metric:
         return self
 
 
-MetricDict = dict[str, list[Metric]]
-
+MetricsDict = dict[str, list[Metric]]
+"""A dictionary of metrics, where the key is the metric name and the value is a list of metrics with that name."""
 ScorerResult = float | int | bool | Metric
+"""The result of a scorer function, which can be a numeric value or a Metric object."""
 ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], ScorerResult]
 
 

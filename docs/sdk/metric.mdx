@@ -6,6 +6,24 @@ title: dreadnode.metric
 ::: dreadnode.metric
 */}
 
+MetricsDict
+-----------
+
+```python
+MetricsDict = dict[str, list[Metric]]
+```
+
+A dictionary of metrics, where the key is the metric name and the value is a list of metrics with that name.
+
+ScorerResult
+------------
+
+```python
+ScorerResult = float | int | bool | Metric
+```
+
+The result of a scorer function, which can be a numeric value or a Metric object.
+
 Metric
 ------
 
@@ -199,6 +217,11 @@ def from_many(
 
 
 </Accordion>
+
+MetricDict
+----------
+
+Dictionary representation of a metric for easier APIs
 
 Scorer
 ------
