@@ -7,7 +7,7 @@ import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import ParseResult, urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -137,7 +137,7 @@ class Dreadnode:
         self._initialized = False
 
     @staticmethod
-    def _resolve_endpoint(endpoint):
+    def _resolve_endpoint(endpoint: str | None) -> str | None:
         """Automatically resolve endpoints based on environment
 
         Args:
@@ -145,10 +145,18 @@ class Dreadnode:
 
         Returns:
             str: The resolved endpoint URL.
+
+        Raises:
+            ValueError: If the endpoint URL is invalid.
         """
+        if not endpoint:
+            return None
         parsed = urlparse(endpoint)
 
         # If it's a real domain (has dots), use as-is
+        if not parsed.hostname:
+            raise ValueError(f"Invalid endpoint URL: {endpoint}")
+
         if "." in parsed.hostname:
             return endpoint
 
@@ -159,7 +167,7 @@ class Dreadnode:
         return endpoint
 
     @staticmethod
-    def _is_docker_service_name(hostname):
+    def _is_docker_service_name(hostname: str) -> bool:
         """Check if this looks like a Docker service name
 
         Args:
@@ -168,10 +176,10 @@ class Dreadnode:
         Returns:
             bool: True if the hostname looks like a Docker service name, False otherwise.
         """
-        return hostname and "." not in hostname and hostname != "localhost"
+        return bool(hostname and "." not in hostname and hostname != "localhost")
 
     @staticmethod
-    def _resolve_docker_service(original_endpoint, parsed):
+    def _resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
         """Try different resolution strategies for Docker services
 
         Args:
@@ -196,15 +204,13 @@ class Dreadnode:
                 logger.warning(
                     f"Resolved Docker service for s3 connection '{parsed.hostname}' to '{endpoint}'."
                 )
-                return endpoint
+                return str(endpoint)
 
         # If nothing works, return original and let it fail with a helpful error
-        raise RuntimeError(
-            f"Failed to connect to the Dreadnode Artifact storage at {endpoint}."
-        )
+        raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")
 
     @staticmethod
-    def _test_connection(endpoint):
+    def _test_connection(endpoint: str) -> bool:
         """Quick connectivity test
 
         Args:
@@ -215,7 +221,7 @@ class Dreadnode:
         """
         try:
             parsed = urlparse(endpoint)
-            socket.create_connection((parsed.hostname, parsed.port), timeout=1)
+            socket.create_connection((parsed.hostname, parsed.port or 443), timeout=1)
         except Exception:  # noqa: BLE001
             return False
 
@@ -259,12 +265,8 @@ class Dreadnode:
 
         self._initialized = False
 
-        self.server = (
-            server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-        )
-        self.token = (
-            token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
-        )
+        self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+        self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
 
         if local_dir is False and ENV_LOCAL_DIR in os.environ:
             env_local_dir = os.environ.get(ENV_LOCAL_DIR)

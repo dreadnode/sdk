@@ -122,4 +122,5 @@ skip-magic-trailing-comma = false
 "tests/**/*.py" = [
     "INP001", # namespace not required for pytest
     "S101",   # asserts allowed in tests...
+    "SLF001", # allow access to private members
 ]
