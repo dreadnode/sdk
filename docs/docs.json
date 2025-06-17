@@ -28,6 +28,7 @@
           "usage/tasks",
           "usage/metrics",
           "usage/data-tracking",
+          "usage/rich-objects",
           "usage/model-training",
           "usage/export"
         ]

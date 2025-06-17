@@ -22,7 +22,9 @@ with dn.run("my-experiment"):
 
 The run automatically starts when you enter the `with` block and ends when you exit it. All data logged (inputs, outputs, metrics, artifacts) and tasks executed within the block are associated with this run.
 
-### Run Names
+You can also manually enter and exit runs by using `__enter__` and `__exit__` methods, but the context manager syntax is more pythonic.
+
+## Run Names
 
 You can provide a name for your run to make it easier to identify:
 
@@ -40,23 +42,28 @@ with dn.run():
     pass
 ```
 
-### Run Tags
+## Run Tags
 
-Tags help you categorize and filter runs. You can add tags when creating a run:
+Tags help you categorize and filter runs. You can add tags when creating a run or dynamically during execution:
 
 ```python
+# Add tags when creating a run
 with dn.run("my-experiment", tags=["production", "model-v2"]):
-    # Run with tags
-    pass
+
+    # Add additional tags on the fly
+    dn.tag("gpu-training", "checkpoint-enabled")
+
+    # Tags can be conditional
+    if use_advanced_config:
+        dn.tag("advanced-config")
 ```
 
-Tags make it easy to find related runs in the UI and when exporting data.
+Tags make it easy to:
+- Find related runs in the UI and when exporting data
+- Group runs by experiment type, environment, or configuration
+- Filter and analyze results across multiple runs
 
-<Note>
-Tags will soon be available in the UI, but in the meantime it's a good muscle to exercise.
-</Note>
-
-### Setting the Project
+## Setting the Project
 
 Runs are always associated with a project. You can specify which project a run belongs to:
 
@@ -68,7 +75,7 @@ with dn.run("my-experiment", project="model-training"):
 
 If you don't specify a project, the run will use the default project configured in `dn.configure()` or be placed in a project named "Default".
 
-### Run Attributes
+## Run Attributes
 
 You can add arbitrary attributes to a run for additional metadata:
 
@@ -127,21 +134,133 @@ await asyncio.gather(*[run_experiment(config) for config in configs])
 
 This pattern is particularly useful for hyperparameter searches or evaluating multiple models.
 
-### Error Handling
+### Distributed Execution
 
-Runs automatically capture and log errors, marking the run as failed if an exception is raised, but you can also handle them explicitly:
+For complex workflows that span multiple processes, hosts, or containers, you can capture and transfer run context to continue runs across distributed environments:
 
 ```python
-try:
-    with dn.run("risky-experiment"):
+import dreadnode as dn
+
+# On the main process/host
+with dn.run("distributed-training") as run:
+    dn.log_params(model="transformer", dataset="large-corpus")
+
+    # Capture the run context for transfer
+    context = dn.get_run_context()
+
+    # Send context to worker processes/hosts
+    # (via message queue, HTTP headers, file, etc.)
+    send_to_workers(context)
+
+# On worker processes/hosts
+def worker_task(run_context):
+    # Continue the same run in distributed environment
+    with dn.continue_run(run_context):
+        # All logging is associated with the original run
+        dn.log_metric("worker_progress", 0.8)
+        dn.log_output("worker_result", process_batch())
+```
+
+The `get_run_context()` function captures the necessary state for continuation, including::
+- Run ID and metadata
+- OpenTelemetry trace context for distributed tracing
+- Project name
+
+This enables patterns like:
+- **Distributed training**: Continue runs across multiple GPU workers
+- **Containerized workflows**: Transfer runs between container steps
+- **Cloud computing**: Move runs between different cloud instances
+- **Multi-process evaluation**: Parallel evaluation across worker processes
+- **Server-side processing**: Continue runs in a web server context for world models or supporting system
+
+```python
+# Example: Distributed hyperparameter search
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
+
+def worker_experiment(run_context, hyperparams):
+    """Worker function that continues a run"""
+    with dn.continue_run(run_context):
+        # Train model with these hyperparams
+        model = train_model(**hyperparams)
+        accuracy = evaluate_model(model)
+
+        dn.log_params(**hyperparams)
+        dn.log_metric("accuracy", accuracy)
+        return accuracy
+
+async def distributed_search():
+    with dn.run("hyperparameter-search") as run:
+        context = dn.get_run_context()
+
+        # Define search space
+        param_combinations = [
+            {"lr": 0.1, "batch_size": 32},
+            {"lr": 0.01, "batch_size": 64},
+            {"lr": 0.001, "batch_size": 128}
+        ]
+
+        # Run experiments in parallel across processes
+        with ProcessPoolExecutor() as executor:
+            futures = [
+                executor.submit(worker_experiment, context, params)
+                for params in param_combinations
+            ]
+
+            results = [future.result() for future in futures]
+
+        # All worker results are automatically part of the main run
+        dn.log_metric("best_accuracy", max(results))
+
+await distributed_search()
+```
+
+### Live Monitoring
+
+Strikes automatically provides live monitoring for your runs. As you log metrics, parameters, and other data, updates are batched and sent to the server periodically, allowing you to watch your experiments progress in real-time through the UI.
+
+```python
+with dn.run("training-experiment"):
+    for epoch in range(100):
+        # Training step
+        loss = train_step()
+        accuracy = evaluate_step()
+
+        # Data appears in UI automatically - no extra work needed
+        dn.log_metric("loss", loss, step=epoch)
+        dn.log_metric("accuracy", accuracy, step=epoch)
+
+        # Continue training - updates happen in the background
+```
+
+The default settings provide a good default balance between real-time visibility and data efficiency.
+
+#### Manual Updates (Advanced)
+
+For cases where you need immediate visibility of specific data points, you can force an update:
+
+```python
+with dn.run("critical-experiment"):
+    for checkpoint in critical_checkpoints:
+        result = process_checkpoint(checkpoint)
+        dn.log_metric("checkpoint_score", result.score)
+
+        # Force immediate update be delivered.
+        dn.push_update()
+```
+
+### Error Handling
+
+Runs automatically capture and log errors, marking the run as failed if an exception is raised. If you want to handle errors gracefully and continue logging, you can use a try-except block within the run context:
+
+```python
+with dn.run("risky-experiment"):
+    try:
         # Run code that might fail
         result = potentially_failing_function()
         dn.log_metric("success", 1.0)
-except Exception as e:
-    # The run is automatically marked as failed
-    # You can create a new run to track the error if needed
-    with dn.run("error-analysis"):
-        # ...
+    except Exception as e:
+        dn.log_metric("error", 1.0)
 ```
 
 ## Best Practices

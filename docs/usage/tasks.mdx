@@ -11,10 +11,18 @@ We'll cover some advanced use cases, but using tasks works just like functions, 
 ## What is a Task?
 
 In Strikes, a task is a unit of work with:
-- A well-defined input/output contract
 - Tracing with execution time and relationships to other tasks
 - The ability to scope and report metrics
 - Storage for input and output objects
+
+Depending on your use case, tasks can represent different concepts:
+- **Rich Functions**: Instrumented functions with execution time information, input/output tracking, and rich debugging information.
+- **Agents**: (Semi-)autonomous workers with their own execution flow like a reactive LLM agent.
+- **Graph Nodes**: Like nodes in a DAG, where edges represent dependencies and execution order.
+- **Workflow Steps**: Like parts in a larger workflow, describing intermediate steps in a data processing pipeline or training loop.
+- **Sub-Runs**: Like smaller runs within a larger run, where each task can have its own inputs, outputs, and metrics.
+
+At their core, tasks are just scopes for data, and you are free to use them in whatever way makes sense for your work.
 
 ## Creating Tasks
 
@@ -53,7 +61,7 @@ with dn.run("my-experiment"):
         task.log_output("processed_data", result)
 ```
 
-This approach gives you more control over when the task starts and ends, and lets you manually log inputs and outputs.
+This approach gives you more control over when the task starts and ends, but you lose some convenience of automatic input/output tracking.
 
 ## Task Configuration
 
@@ -145,6 +153,23 @@ async def process_document(doc_id: str) -> dict:
 
 Data logged within a task is automatically associated with that task's span, making it easy to track the flow of data through your system.
 
+## Tagging Tasks
+
+Just like runs, tasks can be tagged to categorize and filter them in the UI. By default when you call `dn.tag()` within a task, it applies to the task itself. You can override this behavior to apply tags to the run instead:
+
+```python
+@dn.task(tags=["data-processing"])
+def process_batch(data):
+    dn.tag("batch-processing")  # Default: applies to task
+    dn.tag("production", to="run")  # Always applies to run
+
+    return processed_data
+
+with dn.run("data-pipeline"):
+    for batch in data_batches:
+        process_batch(batch)  # Each task gets its own tags
+```
+
 ## Task Execution Patterns
 
 Tasks support several execution patterns to handle different workflows:
@@ -169,7 +194,40 @@ results = await task.map(10)  # Run the task 10 times with no arguments
 
 ### Error Handling
 
-Any task that raises an exception will be marked as failed in the UI. You can handle errors using the `try_()` and `try_map()` methods:
+Any task that raises an exception will be marked as failed in the UI. This is true even if you have wrap a task in a `try/catch` block:
+
+```python
+@dn.task()
+async def risky_task(data: str) -> str:
+    if not data:
+        raise ValueError("Data cannot be empty")
+    return f"Processed {data}"
+
+# Run the task, it will fail if data is empty
+result = await risky_task("some data")  # Success
+
+try:
+    result = await risky_task("")  # Task will still be marked as failed
+except ValueError as e:
+    print(f"Task failed: {e}")
+```
+
+If you want to prevent tasks from being marked as failed, place your `try/catch` logic inside the task itself:
+
+```python
+@dn.task()
+async def safe_task(data: str) -> str:
+    try:
+        if not data:
+            raise ValueError("Data cannot be empty")
+        return f"Processed {data}"
+    except Exception as e:
+        # Handle the error gracefully
+        dn.log_metric("task_error", 1, attributes={"error": str(e)})
+        return None  # Return None or some default value
+```
+
+For convenience, tasks provide some helper methods to gracefully handle errors (`try_()`) or skip failures during multiple calls `try_map()`:
 
 ```python
 # Try to run a task, return None if it fails

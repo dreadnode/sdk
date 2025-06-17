@@ -456,12 +456,13 @@ def initialize(self) -> None:
         # )
 
         credentials = self._api.get_user_data_credentials()
+        resolved_endpoint = self._resolve_endpoint(credentials.endpoint)
         self._fs = S3FileSystem(
             key=credentials.access_key_id,
             secret=credentials.secret_access_key,
             token=credentials.session_token,
             client_kwargs={
-                "endpoint_url": credentials.endpoint,
+                "endpoint_url": resolved_endpoint,
                 "region_name": credentials.region,
             },
         )
@@ -949,7 +950,10 @@ def log_metric(
         value
         if isinstance(value, Metric)
         else Metric(
-            float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+            float(value),
+            step,
+            timestamp or datetime.now(timezone.utc),
+            attributes or {},
         )
     )
     return target.log_metric(name, metric, origin=origin, mode=mode)

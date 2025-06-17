@@ -106,7 +106,7 @@ When you associate scorers with tasks, the metrics they generate will automatica
 
 ### Aggregation Modes
 
-When working with metrics, it's important to provide context—such as averages, sums, or counts. You can always do this manually by keeping separate variables or lists of previous values. But Strikes provides a way to do this automatically for you:
+When working with metrics, you often want to interpret raw values as a higher concept like averages, sums, or counts. You can always do this manually by keeping separate variables or lists of previous values in your code. Strikes provides a way to do this automatically for you:
 
 ```python
 # Simple value (no aggregation)
@@ -195,6 +195,7 @@ When the task runs, the scorer will automatically:
 1. Receive the task's output
 2. Evaluate it according to your logic
 3. Log a metric with the scoring function's name and returned value
+4. Associate the metric with the task's output object
 
 ### Composite Scoring
 

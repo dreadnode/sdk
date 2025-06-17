@@ -17,8 +17,7 @@ import dreadnode as dn
 
 @dreadnode.task(log_params=["learning_rate", "batch_size"])
 async def train_model(learning_rate: float, batch_size: int) -> None:
-    # Training logic here
-    pass
+    # ...
 
 with dn.run("my-experiment"):
     # Log individual parameters
@@ -31,7 +30,6 @@ with dn.run("my-experiment"):
         model="transformer"
     )
 
-    # Call the task with parameters
     await train_model(learning_rate=0.01, batch_size=32)
 ```
 
@@ -43,22 +41,18 @@ Parameters are ideal for:
 
 Parameters are stored efficiently, making it easy to filter and compare runs quickly. They're primarily intended for scalar values (strings, numbers, booleans) that define your experiment's setup.
 
-<Warning>
+<Note>
 Parameters do not store multiple values over time. If you need to track changes to a parameter over the lifetime of a run, consider using the parameter inside a task and call it multiple times.
-</Warning>
+</Note>
 
 ## Inputs and Outputs
 
-For rich data that you have available during execution, Strikes provides input and output storage:
+Often times the interesting data for runs is not the execution graph, but the data that flows through the system. For rich data that you have available during execution, arguments to tasks, or results of calling functions, Strikes provides input and output storage:
 
 ```python
 with dn.run("text-generation"):
     # Log a complex input object
-    prompt = {
-        "text": "Write a story about a robot learning to paint.",
-        "temperature": 0.7,
-        "max_tokens": 1024
-    }
+    prompt = "Write a story about a robot learning to paint."
     dn.log_input("prompt", prompt)
 
     # Generate response and log the output
@@ -139,7 +133,7 @@ When you log an artifact, Strikes:
 
 ## Content-Based Storage
 
-Strikes uses content-based storage for objects and artifacts:
+Strikes uses content-based storage for objects and artifacts - every serialized object is hashed and stored only once based on its content:
 
 ```python
 # These log the same content only once in storage
@@ -169,13 +163,6 @@ with dn.run():
 
     # Link the response back to the prompt that generated it
     dn.link_objects(response, prompt)
-
-    # Evaluate the response
-    score = evaluate_response(response)
-    dn.log_output("evaluation", score)
-
-    # Link the evaluation to the response it's evaluating
-    dn.link_objects(score, response)
 ```
 
 This creates a graph of relationships between your data, enabling powerful analyses such as:
@@ -199,6 +186,24 @@ with dn.run():
         # Evaluate and log metric with the response as origin
         quality_score = evaluate_quality(response)
         dn.log_metric("quality", quality_score, origin=response)
+```
+
+This process happens automatically when you associate a scorer with a task:
+
+```python
+@dn.scorer
+async def evaluate_response(response: str) -> float:
+    # quality = ... some evaluation logic ...
+    return quality
+
+# The metric provided by evaluate_response will be
+# associated with the generation output
+@dn.task(scorers=[evaluate_response])
+async def generate_and_evaluate(prompt: str) -> str:
+    return generate_text(prompt)
+
+with dn.run("response-evaluation"):
+    await generate_and_evaluate("Write a poem about the sea")
 ```
 
 This allows you to:
