@@ -4596,4 +4596,4 @@ training = ["transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "ee564c848e1bd2ceef5ee42ff7a6354985dde456bc9a1056f1926cc9ca32b595"
+content-hash = "712ef7d913cf9c4877eb34100161b9327f40ffd68d6d2a51741f507c65c45106"
