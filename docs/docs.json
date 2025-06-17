@@ -37,6 +37,7 @@
         "pages": [
           "how-to/write-an-eval",
           "how-to/write-a-ctf-agent",
+          "how-to/airtbench-agent",
           "how-to/write-a-dotnet-reversing-agent"
         ]
       },
