@@ -268,7 +268,7 @@ class ArtifactDir(BaseModel):
 class RunSummary(BaseModel):
     """Summary of a run, containing metadata and basic information."""
 
-    id: ULID
+    id: ULID | str
     """Unique identifier for the run."""
     name: str
     """Name of the run."""
