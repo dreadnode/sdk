@@ -1780,14 +1780,14 @@ proxy = ["PyJWT (>=2.8.0,<3.0.0)", "apscheduler (>=3.10.4,<4.0.0)", "backoff", "
 
 [[package]]
 name = "logfire"
-version = "3.18.0"
+version = "3.21.0"
 description = "The best Python observability tool! 🪵🔥"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "logfire-3.18.0-py3-none-any.whl", hash = "sha256:da1a4d15679c19391f423ed76c9a7b730a00bdc639cfdc09ef5b4c05b7cb6b6d"},
-    {file = "logfire-3.18.0.tar.gz", hash = "sha256:86efe521e8d7161edb66c8f4839efcd46e3ef4b17f641b96bf05111807df4bd5"},
+    {file = "logfire-3.21.0-py3-none-any.whl", hash = "sha256:57194d6951e3c3ff49735496a3d2ef24ec09ce91ff37e51771692bef79af2faa"},
+    {file = "logfire-3.21.0.tar.gz", hash = "sha256:bd216e10a0215990009ad7f956b6853e9f89fc52c2a2059817a11a90084f1c9a"},
 ]
 
 [package.dependencies]
@@ -1802,6 +1802,8 @@ typing-extensions = ">=4.1.0"
 
 [package.extras]
 aiohttp = ["opentelemetry-instrumentation-aiohttp-client (>=0.42b0)"]
+aiohttp-client = ["opentelemetry-instrumentation-aiohttp-client (>=0.42b0)"]
+aiohttp-server = ["opentelemetry-instrumentation-aiohttp-server (>=0.55b0)"]
 asgi = ["opentelemetry-instrumentation-asgi (>=0.42b0)"]
 asyncpg = ["opentelemetry-instrumentation-asyncpg (>=0.42b0)"]
 aws-lambda = ["opentelemetry-instrumentation-aws-lambda (>=0.42b0)"]
@@ -4596,4 +4598,4 @@ training = ["transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "712ef7d913cf9c4877eb34100161b9327f40ffd68d6d2a51741f507c65c45106"
+content-hash = "fbcc8cef467467475f7068bfa7f348c78930d5601962e6d2a57b408ef8faaaa3"
