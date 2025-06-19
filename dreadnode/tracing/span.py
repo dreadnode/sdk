@@ -23,6 +23,7 @@ from opentelemetry import propagate
 from opentelemetry import trace as trace_api
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import Tracer
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
@@ -358,8 +359,23 @@ class RunSpan(Span):
             raise RuntimeError("You cannot start a run span within another run")
 
         if self._remote_context is not None:
-            otel_context = propagate.extract(carrier=self._remote_context)
-            self._remote_token = context_api.attach(otel_context)
+            # If the global propagator is a NoExtract instance, we can't continue
+            # a trace, so we'll bypass it and use the W3C propagator directly.
+            global_propagator = propagate.get_global_textmap()
+            if "NoExtract" in type(global_propagator).__name__:
+                w3c_propagator = TraceContextTextMapPropagator()
+                otel_context = w3c_propagator.extract(carrier=self._remote_context)
+            else:
+                otel_context = propagate.extract(carrier=self._remote_context)
+
+            span_context = trace_api.get_current_span(otel_context).get_span_context()
+
+            # If we have a valid trace_id, we can attach the context and continue the trace.
+            if span_context.trace_id != 0:
+                self._remote_token = context_api.attach(otel_context)
+            else:
+                # Fall back to creating a new span if the context is invalid.
+                super().__enter__()
         else:
             super().__enter__()
 
