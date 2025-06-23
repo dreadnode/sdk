@@ -122,7 +122,7 @@ class TraceSpan(BaseModel):
 class Metric(BaseModel):
     """Metric data for a span in a trace."""
 
-    value: float
+    value: float | None
     """Value of the metric."""
     step: int
     """Step or iteration number for the metric."""
