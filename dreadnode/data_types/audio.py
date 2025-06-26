@@ -3,12 +3,15 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf  # type: ignore  # noqa: PGH003
-from pydub import AudioSegment  # type: ignore  # noqa: PGH003
+
+try:
+    import soundfile as sf  # type: ignore  # noqa: PGH003
+except ImportError:
+    sf = None
 
 from dreadnode.data_types.base_data_type import BaseDataType
 
-AudioDataType: t.TypeAlias = str | Path | np.ndarray[t.Any, t.Any] | bytes | AudioSegment
+AudioDataType: t.TypeAlias = str | Path | np.ndarray[t.Any, t.Any] | bytes
 
 
 class Audio(BaseDataType):
@@ -19,7 +22,6 @@ class Audio(BaseDataType):
     - Local file paths (str or Path)
     - Numpy arrays with sample rate
     - Raw bytes
-    - Pydub AudioSegment object
     """
 
     def __init__(
@@ -37,11 +39,15 @@ class Audio(BaseDataType):
                 - A path to a local audio file (str or Path)
                 - A numpy array (requires sample_rate)
                 - Raw bytes
-                - A pydub AudioSegment
             sample_rate: Required when using numpy arrays
             caption: Optional caption for the audio
             format: Optional format to use (default is wav for numpy arrays)
         """
+        if sf is None:
+            raise ImportError(
+                "Audio processing requires optional dependencies. "
+                "Install with: pip install dreadnode[multimodal]"
+            )
         self._data = data
         self._sample_rate = sample_rate
         self._caption = caption
@@ -69,8 +75,6 @@ class Audio(BaseDataType):
             return self._process_numpy_array()
         if isinstance(self._data, bytes):
             return self._process_raw_bytes()
-        if isinstance(self._data, AudioSegment):
-            return self._process_pydub_audio_segment()
         raise TypeError(f"Unsupported audio data type: {type(self._data)}")
 
     def _process_file_path(self) -> tuple[bytes, str, int | None, float | None]:
@@ -123,29 +127,6 @@ class Audio(BaseDataType):
             raise TypeError("Raw bytes are expected for this processing method.")
         return self._data, format_name, self._sample_rate, None
 
-    def _process_pydub_audio_segment(self) -> tuple[bytes, str, int | None, float | None]:
-        """
-        Process pydub AudioSegment to bytes.
-        Returns:
-            A tuple of (audio_bytes, format_name, sample_rate, duration)
-        """
-
-        if not isinstance(self._data, AudioSegment):
-            raise TypeError("AudioSegment is expected for this processing method.")
-
-        sample_rate = self._data.frame_rate
-
-        buffer = io.BytesIO()
-        format_name = self._format or "wav"
-        self._data.export(buffer, format=format_name)
-        buffer.seek(0)
-        audio_bytes = buffer.read()
-
-        # PyDUB provides duration in milliseconds, convert to seconds for consistency
-        duration = len(self._data) / 1000.0
-
-        return audio_bytes, format_name, sample_rate, duration
-
     def _generate_metadata(
         self, format_name: str, sample_rate: int | None, duration: float | None
     ) -> dict[str, str | int | float | None]:
@@ -166,19 +147,12 @@ class Audio(BaseDataType):
             metadata["source-type"] = "numpy.ndarray"
         elif isinstance(self._data, bytes):
             metadata["source-type"] = "bytes"
-        elif isinstance(self._data, AudioSegment):
-            metadata["source-type"] = "pydub.AudioSegment"
 
         if sample_rate is not None:
             metadata["sample-rate"] = sample_rate
 
         if duration is not None:
             metadata["duration"] = duration
-
-        # Add pydub-specific metadata if available
-        if isinstance(self._data, AudioSegment):
-            metadata["channels"] = self._data.channels
-            metadata["sample-width"] = self._data.sample_width
 
         if self._caption:
             metadata["caption"] = self._caption

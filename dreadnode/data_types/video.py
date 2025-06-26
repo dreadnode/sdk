@@ -4,13 +4,19 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore  # noqa: PGH003
-from moviepy.video.VideoClip import VideoClip  # type: ignore  # noqa: PGH003
 from numpy.typing import NDArray
 
 from dreadnode.data_types.base_data_type import BaseDataType
 
-VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | VideoClip
+try:
+    from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore  # noqa: PGH003
+    from moviepy.video.VideoClip import VideoClip  # type: ignore  # noqa: PGH003
+except ImportError:
+    ImageSequenceClip = None
+    VideoClip = None
+
+
+VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any
 
 
 class Video(BaseDataType):
@@ -70,8 +76,13 @@ class Video(BaseDataType):
             return self._process_bytes()
         if isinstance(self._data, (np.ndarray, list)):
             return self._process_numpy_array()
-        if isinstance(self._data, VideoClip):
+        if VideoClip is not None and isinstance(self._data, VideoClip):
             return self._process_moviepy_clip()
+        if VideoClip is None and hasattr(self._data, "write_videofile"):
+            raise ImportError(
+                "MoviePy VideoClip detected but moviepy not installed. "
+                "Install with: pip install dreadnode[multimodal]"
+            )
         raise TypeError(f"Unsupported video data type: {type(self._data)}")
 
     def _process_file_path(self) -> tuple[bytes, dict[str, t.Any]]:
@@ -110,6 +121,11 @@ class Video(BaseDataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
+        if ImageSequenceClip is None:
+            raise ImportError(
+                "Video processing from numpy arrays requires moviepy. "
+                "Install with: pip install dreadnode[multimodal]"
+            )
         if not self._fps:
             raise ValueError("fps is required for numpy array video frames")
         if not isinstance(self._data, (np.ndarray, list)):

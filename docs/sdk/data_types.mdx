@@ -24,7 +24,6 @@ Supports:
 - Local file paths (str or Path)
 - Numpy arrays with sample rate
 - Raw bytes
-- Pydub AudioSegment object
 
 Initialize an Audio object.
 
@@ -36,7 +35,6 @@ Initialize an Audio object.
   - A path to a local audio file (str or Path)
   - A numpy array (requires sample\_rate)
   - Raw bytes
-  - A pydub AudioSegment
 * **`sample_rate`**
   (`int | None`, default:
   `None`
@@ -70,7 +68,6 @@ def __init__(
             - A path to a local audio file (str or Path)
             - A numpy array (requires sample_rate)
             - Raw bytes
-            - A pydub AudioSegment
         sample_rate: Required when using numpy arrays
         caption: Optional caption for the audio
         format: Optional format to use (default is wav for numpy arrays)
