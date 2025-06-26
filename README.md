@@ -85,16 +85,21 @@ pip install -U dreadnode
 ```
 
 If you want to build from source:
+
 ```bash
+
 poetry install
 # Install with multimodal extras
 poetry install --extras multimodal
 
 # Install with training extras
 poetry install --extras training
+
+# Install with all extras
+poetry install --all-extras
 ```
 
-## Installation with Extras
+## Installation from PyPI with Optional Features
 
 For advanced media processing capabilities (audio, video, images), install the multimodal extras:
 
