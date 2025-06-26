@@ -8,7 +8,7 @@ import numpy as np
 from dreadnode.data_types.base_data_type import BaseDataType
 
 try:
-    from PIL import Image as PILImage  # type: ignore  # noqa: PGH003
+    from PIL import Image as PILImage  # type: ignore[import-not-found]
 except ImportError:
     PILImage = None
 
