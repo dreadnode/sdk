@@ -87,6 +87,11 @@ pip install -U dreadnode
 If you want to build from source:
 ```bash
 poetry install
+# Install with multimodal extras
+poetry install --extras multimodal
+
+# Install with training extras
+poetry install --extras training
 ```
 
 ## Installation with Extras
@@ -94,14 +99,14 @@ poetry install
 For advanced media processing capabilities (audio, video, images), install the multimodal extras:
 
 ```bash
-# Multimodal support (audio, video, image processing)
-pip install -U "dreadnode[multimodal]"
+# Multimodal support (audio, video processing)
+pip install -U dreadnode[multimodal]
 
 # Training support (ML model integration)
-pip install -U "dreadnode[training]"
+pip install -U dreadnode[training]
 
 # All optional features
-pip install -U "dreadnode[multimodal,training]"
+pip install -U dreadnode[multimodal,training]
 ```
 
 See our **[installation guide](https://docs.dreadnode.io/strikes/install)** for more options.

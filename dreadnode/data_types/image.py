@@ -4,11 +4,15 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-from PIL import Image as PILImage
 
 from dreadnode.data_types.base_data_type import BaseDataType
 
-ImageDataType = PILImage.Image | np.ndarray[t.Any, t.Any]
+try:
+    from PIL import Image as PILImage
+except ImportError:
+    PILImage = None
+
+ImageDataType = t.Any | np.ndarray[t.Any, t.Any]
 ImageDataOrPathType = str | Path | bytes | ImageDataType
 
 
@@ -44,6 +48,10 @@ class Image(BaseDataType):
             caption: Optional caption for the image
             format: Optional format to use when saving (png, jpg, etc.)
         """
+        if PILImage is None:
+            raise ImportError(
+                "Image processing requires PIL (Pillow). Install with: pip install dreadnode[multimodal]"
+            )
         self._data = data
         self._mode = mode
         self._caption = caption
