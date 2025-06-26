@@ -105,13 +105,13 @@ For advanced media processing capabilities (audio, video, images), install the m
 
 ```bash
 # Multimodal support (audio, video processing)
-pip install -U dreadnode[multimodal]
+pip install -U "dreadnode[multimodal]"
 
 # Training support (ML model integration)
-pip install -U dreadnode[training]
+pip install -U "dreadnode[training]"
 
 # All optional features
-pip install -U dreadnode[all]
+pip install -U "dreadnode[all]"
 ```
 
 See our **[installation guide](https://docs.dreadnode.io/strikes/install)** for more options.
