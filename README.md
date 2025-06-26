@@ -111,7 +111,7 @@ pip install -U dreadnode[multimodal]
 pip install -U dreadnode[training]
 
 # All optional features
-pip install -U dreadnode[multimodal,training]
+pip install -U dreadnode[all]
 ```
 
 See our **[installation guide](https://docs.dreadnode.io/strikes/install)** for more options.

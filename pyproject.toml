@@ -32,6 +32,7 @@ pillow = { version = "^11.2.1", optional = true }
 [tool.poetry.extras]
 training = ["transformers"]
 multimodal = ["pillow", "soundfile", "moviepy"]
+all = ["multimodal", "training"]
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"

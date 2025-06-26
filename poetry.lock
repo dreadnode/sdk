@@ -4592,10 +4592,11 @@ test = ["big-O", "importlib-resources ; python_version < \"3.9\"", "jaraco.funct
 type = ["pytest-mypy"]
 
 [extras]
+all = []
 multimodal = ["moviepy", "pillow", "soundfile"]
 training = ["transformers"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "86f8613045c32364155789822eea402d78c7994c8ed79e00bb1d3525f2545e4d"
+content-hash = "21fe5cf29eefa6f77e8bb811529fa19adff4f32d8e64f13432402631c4d3808f"
