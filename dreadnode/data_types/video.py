@@ -4,13 +4,19 @@ import typing as t
 from pathlib import Path
 
 import numpy as np
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore  # noqa: PGH003
-from moviepy.video.VideoClip import VideoClip  # type: ignore  # noqa: PGH003
 from numpy.typing import NDArray
 
 from dreadnode.data_types.base_data_type import BaseDataType
 
-VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | VideoClip
+try:
+    from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore  # noqa: PGH003
+    from moviepy.video.VideoClip import VideoClip  # type: ignore  # noqa: PGH003
+except ImportError:
+    ImageSequenceClip = None
+    VideoClip = None
+
+
+VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any
 
 
 class Video(BaseDataType):
@@ -70,8 +76,13 @@ class Video(BaseDataType):
             return self._process_bytes()
         if isinstance(self._data, (np.ndarray, list)):
             return self._process_numpy_array()
-        if isinstance(self._data, VideoClip):
+        if VideoClip is not None and isinstance(self._data, VideoClip):
             return self._process_moviepy_clip()
+        if VideoClip is None and hasattr(self._data, "write_videofile"):
+            raise ImportError(
+                "MoviePy VideoClip detected but moviepy not installed. "
+                "Install with: pip install dreadnode[multimodal]"
+            )
         raise TypeError(f"Unsupported video data type: {type(self._data)}")
 
     def _process_file_path(self) -> tuple[bytes, dict[str, t.Any]]:
@@ -110,13 +121,31 @@ class Video(BaseDataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
+        if ImageSequenceClip is None:
+            raise ImportError(
+                "Video processing from numpy arrays requires moviepy. "
+                "Install with: pip install dreadnode[multimodal]"
+            )
         if not self._fps:
             raise ValueError("fps is required for numpy array video frames")
         if not isinstance(self._data, (np.ndarray, list)):
             raise TypeError("data must be a numpy array or list of numpy arrays")
+
+        # Type guard for mypy
+        assert ImageSequenceClip is not None  # noqa: S101
+
+        frames = self._extract_frames_from_data()
+        if not frames:
+            raise ValueError("No frames found in input data")
+
+        return self._create_video_from_frames_data(frames)
+
+    def _extract_frames_from_data(self) -> list[NDArray[t.Any]]:
+        """Extract frames from numpy array or list data."""
         frames = []
         rgb_dim = 3
         rgba_dim = 4
+
         if isinstance(self._data, np.ndarray):
             if self._data.ndim == rgb_dim:  # Single frame
                 frames = [self._data]
@@ -127,23 +156,23 @@ class Video(BaseDataType):
         elif isinstance(self._data, list):
             frames = self._data
 
-        if not frames:
-            raise ValueError("No frames found in input data")
+        return frames
 
+    def _create_video_from_frames_data(
+        self, frames: list[NDArray[t.Any]]
+    ) -> tuple[bytes, dict[str, t.Any]]:
+        """Create video file from frames."""
         frame_height, frame_width = frames[0].shape[:2]
-
         temp_fd, temp_path = tempfile.mkstemp(suffix=f".{self._format}")
         os.close(temp_fd)
 
         try:
             # Create clip and write to file
             clip = ImageSequenceClip(frames, fps=self._fps)
-
             clip.write_videofile(
                 temp_path,
                 fps=self._fps,
             )
-
             video_bytes = Path(temp_path).read_bytes()
 
             metadata = self._generate_metadata(self._format)

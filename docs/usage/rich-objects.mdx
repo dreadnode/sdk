@@ -76,17 +76,6 @@ with dn.run("audio-example-numpy"):
     dn.log_input("my-audio", dn.Audio(audio_data, sample_rate=sample_rate))
 ```
 
-```python AudioSegment
-import dreadnode as dn
-from pydub import AudioSegment
-
-# Load audio with pydub
-audio_segment = AudioSegment.from_file("path/to/audio.mp3")
-
-with dn.run("audio-example-segment"):
-    dn.log_input("my-audio", dn.Audio(audio_segment))
-```
-
 ```python Raw Bytes
 import dreadnode as dn
 
