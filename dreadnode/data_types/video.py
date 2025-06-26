@@ -130,9 +130,22 @@ class Video(BaseDataType):
             raise ValueError("fps is required for numpy array video frames")
         if not isinstance(self._data, (np.ndarray, list)):
             raise TypeError("data must be a numpy array or list of numpy arrays")
+
+        # Type guard for mypy
+        assert ImageSequenceClip is not None  # noqa: S101
+
+        frames = self._extract_frames_from_data()
+        if not frames:
+            raise ValueError("No frames found in input data")
+
+        return self._create_video_from_frames_data(frames)
+
+    def _extract_frames_from_data(self) -> list[NDArray[t.Any]]:
+        """Extract frames from numpy array or list data."""
         frames = []
         rgb_dim = 3
         rgba_dim = 4
+
         if isinstance(self._data, np.ndarray):
             if self._data.ndim == rgb_dim:  # Single frame
                 frames = [self._data]
@@ -143,23 +156,23 @@ class Video(BaseDataType):
         elif isinstance(self._data, list):
             frames = self._data
 
-        if not frames:
-            raise ValueError("No frames found in input data")
+        return frames
 
+    def _create_video_from_frames_data(
+        self, frames: list[NDArray[t.Any]]
+    ) -> tuple[bytes, dict[str, t.Any]]:
+        """Create video file from frames."""
         frame_height, frame_width = frames[0].shape[:2]
-
         temp_fd, temp_path = tempfile.mkstemp(suffix=f".{self._format}")
         os.close(temp_fd)
 
         try:
             # Create clip and write to file
             clip = ImageSequenceClip(frames, fps=self._fps)
-
             clip.write_videofile(
                 temp_path,
                 fps=self._fps,
             )
-
             video_bytes = Path(temp_path).read_bytes()
 
             metadata = self._generate_metadata(self._format)
