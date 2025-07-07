@@ -741,11 +741,9 @@ class TaskSpan(Span, t.Generic[R]):
         tracer: Tracer,
         *,
         label: str | None = None,
-        params: AnyDict | None = None,
         metrics: MetricsDict | None = None,
         tags: t.Sequence[str] | None = None,
     ) -> None:
-        self._params = params or {}
         self._metrics = metrics or {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
@@ -756,7 +754,6 @@ class TaskSpan(Span, t.Generic[R]):
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
-            SPAN_ATTRIBUTE_PARAMS: self._params,
             SPAN_ATTRIBUTE_INPUTS: self._inputs,
             SPAN_ATTRIBUTE_METRICS: self._metrics,
             SPAN_ATTRIBUTE_OUTPUTS: self._outputs,
@@ -782,7 +779,6 @@ class TaskSpan(Span, t.Generic[R]):
         exc_value: BaseException | None,
         traceback: types.TracebackType | None,
     ) -> None:
-        self.set_attribute(SPAN_ATTRIBUTE_PARAMS, self._params)
         self.set_attribute(SPAN_ATTRIBUTE_INPUTS, self._inputs, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_METRICS, self._metrics, schema=False)
         self.set_attribute(SPAN_ATTRIBUTE_OUTPUTS, self._outputs, schema=False)
@@ -834,16 +830,6 @@ class TaskSpan(Span, t.Generic[R]):
         )
         self._outputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
         return hash_
-
-    @property
-    def params(self) -> AnyDict:
-        return self._params
-
-    def log_param(self, key: str, value: t.Any) -> None:
-        self.log_params(**{key: value})
-
-    def log_params(self, **params: t.Any) -> None:
-        self._params.update(params)
 
     @property
     def inputs(self) -> AnyDict:
