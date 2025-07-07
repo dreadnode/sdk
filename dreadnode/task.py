@@ -8,7 +8,7 @@ from logfire._internal.stack_info import warn_at_user_stacklevel
 from opentelemetry.trace import Tracer
 
 from dreadnode.metric import Scorer, ScorerCallable
-from dreadnode.tracing.span import TaskSpan, current_run_span
+from dreadnode.tracing.span import Span, TaskSpan, current_run_span
 from dreadnode.types import INHERITED, Inherited
 
 P = t.ParamSpec("P")
@@ -326,6 +326,19 @@ class Task(t.Generic[P, R]):
         return span
 
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        if not current_run_span.get():
+            with Span(
+                self.name,
+                self.attributes,
+                self.tracer,
+                label=self.label,
+                tags=self.tags,
+            ):
+                result = self.func(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+                return result
+
         span = await self.run(*args, **kwargs)
         return span.output
 
