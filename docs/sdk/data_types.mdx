@@ -72,6 +72,11 @@ def __init__(
         caption: Optional caption for the audio
         format: Optional format to use (default is wav for numpy arrays)
     """
+    if sf is None:
+        raise ImportError(
+            "Audio processing requires optional dependencies. "
+            "Install with: pip install dreadnode[multimodal]"
+        )
     self._data = data
     self._sample_rate = sample_rate
     self._caption = caption
@@ -178,6 +183,10 @@ def __init__(
         caption: Optional caption for the image
         format: Optional format to use when saving (png, jpg, etc.)
     """
+    if PILImage is None:
+        raise ImportError(
+            "Image processing requires PIL (Pillow). Install with: pip install dreadnode[multimodal]"
+        )
     self._data = data
     self._mode = mode
     self._caption = caption
@@ -555,8 +564,13 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
         return self._process_bytes()
     if isinstance(self._data, (np.ndarray, list)):
         return self._process_numpy_array()
-    if isinstance(self._data, VideoClip):
+    if VideoClip is not None and isinstance(self._data, VideoClip):
         return self._process_moviepy_clip()
+    if VideoClip is None and hasattr(self._data, "write_videofile"):
+        raise ImportError(
+            "MoviePy VideoClip detected but moviepy not installed. "
+            "Install with: pip install dreadnode[multimodal]"
+        )
     raise TypeError(f"Unsupported video data type: {type(self._data)}")
 ```
 
