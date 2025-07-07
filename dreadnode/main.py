@@ -835,8 +835,8 @@ class Dreadnode:
 
         Example:
             ```
-            with dreadnode.run("my_run") as run:
-                run.tag("my_tag")
+            with dreadnode.run("my_run"):
+                dreadnode.tag("my_tag")
             ```
 
         Args:
@@ -892,8 +892,8 @@ class Dreadnode:
 
         Example:
             ```
-            with dreadnode.run("my_run") as run:
-                run.log_param("param_name", "param_value")
+            with dreadnode.run("my_run"):
+                dreadnode.log_param("param_name", "param_value")
             ```
 
         Args:
@@ -913,8 +913,8 @@ class Dreadnode:
 
         Example:
             ```
-            with dreadnode.run("my_run") as run:
-                run.log_params(
+            with dreadnode.run("my_run"):
+                dreadnode.log_params(
                     param1="value1",
                     param2="value2"
                 )
@@ -948,8 +948,8 @@ class Dreadnode:
 
         Example:
             ```
-            with dreadnode.run("my_run") as run:
-                run.log_metric("metric_name", 42.0)
+            with dreadnode.run("my_run"):
+                dreadnode.log_metric("metric_name", 42.0)
             ```
 
         Args:
@@ -994,8 +994,8 @@ class Dreadnode:
 
         Example:
             ```
-            with dreadnode.run("my_run") as run:
-                run.log_metric("metric_name", 42.0)
+            with dreadnode.run("my_run"):
+                dreadnode.log_metric("metric_name", 42.0)
             ```
 
         Args:
@@ -1040,16 +1040,16 @@ class Dreadnode:
         Examples:
             With a raw value:
             ```
-            with dreadnode.run("my_run") as run:
-                run.log_metric("accuracy", 0.95, step=10)
-                run.log_metric("loss", 0.05, step=10, mode="min")
+            with dreadnode.run("my_run"):
+                dreadnode.log_metric("accuracy", 0.95, step=10)
+                dreadnode.log_metric("loss", 0.05, step=10, mode="min")
             ```
 
             With a Metric object:
             ```
-            with dreadnode.run("my_run") as run:
+            with dreadnode.run("my_run"):
                 metric = Metric(0.95, step=10, timestamp=datetime.now(timezone.utc))
-                run.log_metric("accuracy", metric)
+                dreadnode.log_metric("accuracy", metric)
             ```
 
         Args:
@@ -1277,25 +1277,25 @@ class Dreadnode:
         Examples:
             Log a single file:
             ```
-            with dreadnode.run("my_run") as run:
+            with dreadnode.run("my_run"):
                 # Save a file
                 with open("results.json", "w") as f:
                     json.dump(results, f)
 
                 # Log it as an artifact
-                run.log_artifact("results.json")
+                dreadnode.log_artifact("results.json")
             ```
 
             Log a directory:
             ```
-            with dreadnode.run("my_run") as run:
+            with dreadnode.run("my_run"):
                 # Create a directory with model files
                 os.makedirs("model_output", exist_ok=True)
                 save_model("model_output/model.pkl")
                 save_config("model_output/config.yaml")
 
                 # Log the entire directory as an artifact
-                run.log_artifact("model_output")
+                dreadnode.log_artifact("model_output")
             ```
 
         Args:
@@ -1424,11 +1424,11 @@ class Dreadnode:
 
         Example:
             ```
-            with dreadnode.run("my_run") as run:
+            with dreadnode.run("my_run"):
                 model = SomeModel()
                 data = SomeData()
 
-                run.link_objects(model, data)
+                dreadnode.link_objects(model, data)
             ```
 
         Args:

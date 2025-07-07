@@ -30,9 +30,9 @@ add_non_user_code_prefix(Path(dreadnode.__file__).parent)
 
 def clean_str(s: str) -> str:
     """
-    Clean a string by replacing all non-alphanumeric characters with underscores.
+    Clean a string by replacing all non-alphanumeric characters (except `/` and `@`) with underscores.
     """
-    return re.sub(r"[^\w/]+", "_", s.lower())
+    return re.sub(r"[^\w/@]+", "_", s.lower())
 
 
 def safe_repr(obj: t.Any) -> str:

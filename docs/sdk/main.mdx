@@ -505,11 +505,11 @@ prompt and the resulting output.
 Example
 
 ```python
-with dreadnode.run("my_run") as run:
+with dreadnode.run("my_run"):
     model = SomeModel()
     data = SomeData()
 
-    run.link_objects(model, data)
+    dreadnode.link_objects(model, data)
 ```
 
 **Parameters:**
@@ -539,11 +539,11 @@ def link_objects(self, origin: t.Any, link: t.Any, **attributes: JsonValue) -> N
 
     Example:
         ~~~
-        with dreadnode.run("my_run") as run:
+        with dreadnode.run("my_run"):
             model = SomeModel()
             data = SomeData()
 
-            run.link_objects(model, data)
+            dreadnode.link_objects(model, data)
         ~~~
 
     Args:
@@ -577,26 +577,26 @@ This method uploads a local file or directory to the artifact storage associated
 Log a single file:
 
 ```python
-with dreadnode.run("my_run") as run:
+with dreadnode.run("my_run"):
     # Save a file
     with open("results.json", "w") as f:
         json.dump(results, f)
 
     # Log it as an artifact
-    run.log_artifact("results.json")
+    dreadnode.log_artifact("results.json")
 ```
 
 Log a directory:
 
 ```python
-with dreadnode.run("my_run") as run:
+with dreadnode.run("my_run"):
     # Create a directory with model files
     os.makedirs("model_output", exist_ok=True)
     save_model("model_output/model.pkl")
     save_config("model_output/config.yaml")
 
     # Log the entire directory as an artifact
-    run.log_artifact("model_output")
+    dreadnode.log_artifact("model_output")
 ```
 
 **Parameters:**
@@ -620,25 +620,25 @@ def log_artifact(
     Examples:
         Log a single file:
         ~~~
-        with dreadnode.run("my_run") as run:
+        with dreadnode.run("my_run"):
             # Save a file
             with open("results.json", "w") as f:
                 json.dump(results, f)
 
             # Log it as an artifact
-            run.log_artifact("results.json")
+            dreadnode.log_artifact("results.json")
         ~~~
 
         Log a directory:
         ~~~
-        with dreadnode.run("my_run") as run:
+        with dreadnode.run("my_run"):
             # Create a directory with model files
             os.makedirs("model_output", exist_ok=True)
             save_model("model_output/model.pkl")
             save_config("model_output/config.yaml")
 
             # Log the entire directory as an artifact
-            run.log_artifact("model_output")
+            dreadnode.log_artifact("model_output")
         ~~~
 
     Args:
@@ -813,17 +813,17 @@ They can be used to track performance, resource usage, or other quantitative dat
 With a raw value:
 
 ```python
-with dreadnode.run("my_run") as run:
-    run.log_metric("accuracy", 0.95, step=10)
-    run.log_metric("loss", 0.05, step=10, mode="min")
+with dreadnode.run("my_run"):
+    dreadnode.log_metric("accuracy", 0.95, step=10)
+    dreadnode.log_metric("loss", 0.05, step=10, mode="min")
 ```
 
 With a Metric object:
 
 ```python
-with dreadnode.run("my_run") as run:
+with dreadnode.run("my_run"):
     metric = Metric(0.95, step=10, timestamp=datetime.now(timezone.utc))
-    run.log_metric("accuracy", metric)
+    dreadnode.log_metric("accuracy", metric)
 ```
 
 **Parameters:**
@@ -904,16 +904,16 @@ def log_metric(
     Examples:
         With a raw value:
         ~~~
-        with dreadnode.run("my_run") as run:
-            run.log_metric("accuracy", 0.95, step=10)
-            run.log_metric("loss", 0.05, step=10, mode="min")
+        with dreadnode.run("my_run"):
+            dreadnode.log_metric("accuracy", 0.95, step=10)
+            dreadnode.log_metric("loss", 0.05, step=10, mode="min")
         ~~~
 
         With a Metric object:
         ~~~
-        with dreadnode.run("my_run") as run:
+        with dreadnode.run("my_run"):
             metric = Metric(0.95, step=10, timestamp=datetime.now(timezone.utc))
-            run.log_metric("accuracy", metric)
+            dreadnode.log_metric("accuracy", metric)
         ~~~
 
     Args:
@@ -1292,8 +1292,8 @@ metadata.
 Example
 
 ```python
-with dreadnode.run("my_run") as run:
-    run.log_param("param_name", "param_value")
+with dreadnode.run("my_run"):
+    dreadnode.log_param("param_name", "param_value")
 ```
 
 **Parameters:**
@@ -1322,8 +1322,8 @@ def log_param(
 
     Example:
         ~~~
-        with dreadnode.run("my_run") as run:
-            run.log_param("param_name", "param_value")
+        with dreadnode.run("my_run"):
+            dreadnode.log_param("param_name", "param_value")
         ~~~
 
     Args:
@@ -1351,8 +1351,8 @@ metadata.
 Example
 
 ```python
-with dreadnode.run("my_run") as run:
-    run.log_params(
+with dreadnode.run("my_run"):
+    dreadnode.log_params(
         param1="value1",
         param2="value2"
     )
@@ -1379,8 +1379,8 @@ def log_params(self, **params: JsonValue) -> None:
 
     Example:
         ~~~
-        with dreadnode.run("my_run") as run:
-            run.log_params(
+        with dreadnode.run("my_run"):
+            dreadnode.log_params(
                 param1="value1",
                 param2="value2"
             )
@@ -1827,8 +1827,8 @@ Add one or many tags to the current task or run.
 Example
 
 ```python
-with dreadnode.run("my_run") as run:
-    run.tag("my_tag")
+with dreadnode.run("my_run"):
+    dreadnode.tag("my_tag")
 ```
 
 **Parameters:**
@@ -1854,8 +1854,8 @@ def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
 
     Example:
         ~~~
-        with dreadnode.run("my_run") as run:
-            run.tag("my_tag")
+        with dreadnode.run("my_run"):
+            dreadnode.tag("my_tag")
         ~~~
 
     Args:
