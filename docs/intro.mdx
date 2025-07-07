@@ -237,7 +237,7 @@ async def execute_command(command: str) -> str:
     stdout, stderr = await process.communicate()
 
     # Log additional information
-    dn.log_param("exit_code", process.returncode)
+    dn.log_output("exit_code", process.returncode)
 
     result = stdout.decode() if process.returncode == 0 else stderr.decode()
     return result  # Automatically logged as output
