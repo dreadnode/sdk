@@ -304,7 +304,9 @@ class Task(t.Generic[P, R]):
                 )
             span.output = output
 
-            if log_output and (output is not None or not isinstance(self.log_inputs, Inherited)):
+            if log_output and (
+                not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
+            ):
                 output_object_hash = span.log_output(
                     "output", output, label=f"{self.label}.output", auto=True
                 )
