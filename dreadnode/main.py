@@ -207,7 +207,9 @@ class Dreadnode:
                 return str(endpoint)
 
         # If nothing works, return original and let it fail with a helpful error
-        raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")
+        raise RuntimeError(
+            f"Failed to connect to the Dreadnode Artifact storage at {endpoint}."
+        )
 
     @staticmethod
     def _test_connection(endpoint: str) -> bool:
@@ -265,8 +267,12 @@ class Dreadnode:
 
         self._initialized = False
 
-        self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-        self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+        self.server = (
+            server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+        )
+        self.token = (
+            token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+        )
 
         if local_dir is False and ENV_LOCAL_DIR in os.environ:
             env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -668,17 +674,16 @@ class Dreadnode:
         Returns:
             A TaskSpan object.
         """
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Task spans must be created within a run")
-
+        run = current_run_span.get()
         label = label or clean_str(name)
+
         return TaskSpan(
             name=name,
             label=label,
             attributes=attributes,
             params=params,
             tags=tags,
-            run_id=run.run_id,
+            run_id=run.run_id if run else "",
             tracer=self._get_tracer(),
         )
 

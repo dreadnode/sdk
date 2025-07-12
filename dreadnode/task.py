@@ -8,7 +8,8 @@ from logfire._internal.stack_info import warn_at_user_stacklevel
 from opentelemetry.trace import Tracer
 
 from dreadnode.metric import Scorer, ScorerCallable
-from dreadnode.tracing.span import Span, TaskSpan, current_run_span
+from dreadnode.serialization import seems_useful_to_serialize
+from dreadnode.tracing.span import TaskSpan, current_run_span
 from dreadnode.types import INHERITED, Inherited
 
 P = t.ParamSpec("P")
@@ -237,11 +238,14 @@ class Task(t.Generic[P, R]):
             The span associated with task execution.
         """
 
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Tasks must be executed within a run")
+        run = current_run_span.get()
 
-        log_inputs = run.autolog if isinstance(self.log_inputs, Inherited) else self.log_inputs
-        log_output = run.autolog if isinstance(self.log_output, Inherited) else self.log_output
+        log_inputs = (
+            run.autolog if run and isinstance(self.log_inputs, Inherited) else self.log_inputs
+        )
+        log_output = (
+            run.autolog if run and isinstance(self.log_output, Inherited) else self.log_output
+        )
 
         bound_args = self._bind_args(*args, **kwargs)
 
@@ -260,18 +264,27 @@ class Task(t.Generic[P, R]):
             else {}
         )
 
+        # If log_inputs is inherited, filter out items that don't seem useful
+        # to serialize like `None` or repr fallbacks.
+        if isinstance(self.log_inputs, Inherited):
+            inputs_to_log = {k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)}
+
         with TaskSpan[R](
             name=self.name,
             label=self.label,
             attributes=self.attributes,
             params=params_to_log,
             tags=self.tags,
-            run_id=run.run_id,
+            run_id=run.run_id if run else "",
             tracer=self.tracer,
         ) as span:
-            if run.autolog:
-                span.run.log_metric(
-                    "count", 1, prefix=f"{self.label}.exec", mode="count", attributes={"auto": True}
+            if self.log_execution_metrics:
+                run.log_metric(
+                    "count",
+                    1,
+                    prefix=f"{self.label}.exec",
+                    mode="count",
+                    attributes={"auto": True},
                 )
 
             for name, value in params_to_log.items():
@@ -287,8 +300,8 @@ class Task(t.Generic[P, R]):
                 if inspect.isawaitable(output):
                     output = await output
             except Exception:
-                if run.autolog:
-                    span.run.log_metric(
+                if run and self.log_execution_metrics:
+                    run.log_metric(
                         "success_rate",
                         0,
                         prefix=f"{self.label}.exec",
@@ -297,8 +310,8 @@ class Task(t.Generic[P, R]):
                     )
                 raise
 
-            if run.autolog:
-                span.run.log_metric(
+            if run and self.log_execution_metrics:
+                run.log_metric(
                     "success_rate",
                     1,
                     prefix=f"{self.label}.exec",
@@ -307,38 +320,32 @@ class Task(t.Generic[P, R]):
                 )
             span.output = output
 
-            if log_output:
+            if (
+                run
+                and log_output
+                and (
+                    not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
+                )
+            ):
                 output_object_hash = span.log_output(
                     "output", output, label=f"{self.label}.output", auto=True
                 )
 
                 # Link the output to the inputs
                 for input_object_hash in input_object_hashes:
-                    span.run.link_objects(output_object_hash, input_object_hash)
+                    run.link_objects(output_object_hash, input_object_hash)
 
             for scorer in self.scorers:
                 metric = await scorer(output)
                 span.log_metric(scorer.name, metric, origin=output)
 
         # Trigger a run update whenever a task completes
-        run.push_update()
+        if run is not None:
+            run.push_update()
 
         return span
 
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
-        if not current_run_span.get():
-            with Span(
-                self.name,
-                self.attributes,
-                self.tracer,
-                label=self.label,
-                tags=self.tags,
-            ):
-                result = self.func(*args, **kwargs)
-                if inspect.isawaitable(result):
-                    result = await result
-                return result
-
         span = await self.run(*args, **kwargs)
         return span.output
 

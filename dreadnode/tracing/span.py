@@ -198,7 +198,9 @@ class Span(ReadableSpan):
         self._added_attributes = True
         if schema and raw is False:
             self._schema[key] = create_json_schema(value, set())
-        otel_value = self._pre_attributes[key] = value if raw else prepare_otlp_attribute(value)
+        otel_value = self._pre_attributes[key] = (
+            value if raw else prepare_otlp_attribute(value)
+        )
         if self._span is not None:
             self._span.set_attribute(key, otel_value)
         self._pre_attributes[key] = otel_value
@@ -258,7 +260,11 @@ class RunUpdateSpan(Span):
             **({SPAN_ATTRIBUTE_INPUTS: inputs} if inputs else {}),
             **({SPAN_ATTRIBUTE_OUTPUTS: outputs} if outputs else {}),
             **({SPAN_ATTRIBUTE_OBJECTS: objects} if objects else {}),
-            **({SPAN_ATTRIBUTE_OBJECT_SCHEMAS: object_schemas} if object_schemas else {}),
+            **(
+                {SPAN_ATTRIBUTE_OBJECT_SCHEMAS: object_schemas}
+                if object_schemas
+                else {}
+            ),
         }
 
         # Mark objects and schemas as large attributes if present
@@ -428,7 +434,9 @@ class RunSpan(Span):
             return
 
         current_time = time.time()
-        force_update = force or (current_time - self._last_update_time >= self._update_frequency)
+        force_update = force or (
+            current_time - self._last_update_time >= self._update_frequency
+        )
         should_update = force_update and (
             self._pending_params
             or self._pending_inputs
@@ -450,7 +458,9 @@ class RunSpan(Span):
             inputs=self._pending_inputs if self._pending_inputs else None,
             outputs=self._pending_outputs if self._pending_outputs else None,
             objects=self._pending_objects if self._pending_objects else None,
-            object_schemas=self._pending_object_schemas if self._pending_object_schemas else None,
+            object_schemas=self._pending_object_schemas
+            if self._pending_object_schemas
+            else None,
         ):
             pass
 
@@ -531,7 +541,9 @@ class RunSpan(Span):
 
         return str(self._file_system.unstrip_protocol(full_path))
 
-    def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
+    def _create_object_by_hash(
+        self, serialized: Serialized, object_hash: str
+    ) -> Object:
         """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
         data = serialized.data
         data_bytes = serialized.data_bytes
@@ -685,7 +697,10 @@ class RunSpan(Span):
             value
             if isinstance(value, Metric)
             else Metric(
-                float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+                float(value),
+                step,
+                timestamp or datetime.now(timezone.utc),
+                attributes or {},
             )
         )
 
@@ -752,7 +767,9 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._output: R | Unset = UNSET  # For the python output
 
-        self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
+        self._context_token: Token[TaskSpan[t.Any] | None] | None = (
+            None  # contextvars context
+        )
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
@@ -770,9 +787,6 @@ class TaskSpan(Span, t.Generic[R]):
             self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
 
         self._run = current_run_span.get()
-        if self._run is None:
-            raise RuntimeError("You cannot start a task span without a run")
-
         self._context_token = current_task_span.set(self)
         return super().__enter__()
 
@@ -799,14 +813,10 @@ class TaskSpan(Span, t.Generic[R]):
         return str(self.get_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, ""))
 
     @property
-    def run(self) -> RunSpan:
-        if self._run is None:
-            raise ValueError("Task span is not in an active run")
-        return self._run
-
-    @property
     def outputs(self) -> AnyDict:
-        return {ref.name: self.run.get_object(ref.hash) for ref in self._outputs}
+        if self._run is None:
+            return {}
+        return {ref.name: self._run.get_object(ref.hash) for ref in self._outputs}
 
     @property
     def output(self) -> R:
@@ -827,12 +837,20 @@ class TaskSpan(Span, t.Generic[R]):
         **attributes: JsonValue,
     ) -> str:
         label = label or clean_str(name)
-        hash_ = self.run.log_object(
+
+        if self._run is None:
+            serialized = serialize(value)
+            self.set_attribute(label, serialized.data, schema=False)
+            return serialized.data_hash
+
+        hash_ = self._run.log_object(
             value,
             label=label,
             event_name=EVENT_NAME_OBJECT_OUTPUT,
         )
-        self._outputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
+        self._outputs.append(
+            ObjectRef(name, label=label, hash=hash_, attributes=attributes)
+        )
         return hash_
 
     @property
@@ -847,7 +865,9 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def inputs(self) -> AnyDict:
-        return {ref.name: self.run.get_object(ref.hash) for ref in self._inputs}
+        if self._run is None:
+            return {}
+        return {ref.name: self._run.get_object(ref.hash) for ref in self._inputs}
 
     def log_input(
         self,
@@ -858,12 +878,20 @@ class TaskSpan(Span, t.Generic[R]):
         **attributes: JsonValue,
     ) -> str:
         label = label or clean_str(name)
-        hash_ = self.run.log_object(
+
+        if self._run is None:
+            serialized = serialize(value)
+            self.set_attribute(label, serialized.data, schema=False)
+            return serialized.data_hash
+
+        hash_ = self._run.log_object(
             value,
             label=label,
             event_name=EVENT_NAME_OBJECT_INPUT,
         )
-        self._inputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
+        self._inputs.append(
+            ObjectRef(name, label=label, hash=hash_, attributes=attributes)
+        )
         return hash_
 
     @property
@@ -908,7 +936,10 @@ class TaskSpan(Span, t.Generic[R]):
             value
             if isinstance(value, Metric)
             else Metric(
-                float(value), step, timestamp or datetime.now(timezone.utc), attributes or {}
+                float(value),
+                step,
+                timestamp or datetime.now(timezone.utc),
+                attributes or {},
             )
         )
 
@@ -922,7 +953,9 @@ class TaskSpan(Span, t.Generic[R]):
         # this task-metric was logged here.
 
         if (run := current_run_span.get()) is not None:
-            metric = run.log_metric(key, metric, prefix=self._label, origin=origin, mode=mode)
+            metric = run.log_metric(
+                key, metric, prefix=self._label, origin=origin, mode=mode
+            )
 
         self._metrics.setdefault(key, []).append(metric)
 
