@@ -15,7 +15,7 @@ Parameters are lightweight key-value pairs typically used for configuration valu
 ```python
 import dreadnode as dn
 
-@dreadnode.task(log_params=["learning_rate", "batch_size"])
+@dreadnode.task(log_inputs=["learning_rate", "batch_size"])
 async def train_model(learning_rate: float, batch_size: int) -> None:
     # ...
 
@@ -44,6 +44,10 @@ Parameters are stored efficiently, making it easy to filter and compare runs qui
 <Note>
 Parameters do not store multiple values over time. If you need to track changes to a parameter over the lifetime of a run, consider using the parameter inside a task and call it multiple times.
 </Note>
+
+<Warning>
+In previous versions, parameters could be associated with both runs and tasks. This has been simplified to only allow parameters at the run level. For task-specific configurations, we recommend using task inputs.
+</Warning>
 
 ## Inputs and Outputs
 

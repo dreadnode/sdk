@@ -585,6 +585,27 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
     }
 
 
+def seems_useful_to_serialize(obj: t.Any) -> bool:
+    """
+    Checks if the object is likely useful to serialize by attempting to
+    serialize it and checking if the resulting schema indicates a known type.
+
+    Args:
+        obj: The Python object to check.
+
+    Returns:
+        bool: True if the object is likely useful to serialize, False otherwise.
+    """
+    if obj is None:
+        return False
+
+    with contextlib.suppress(Exception):
+        _, schema = _serialize(obj)
+        return schema.get("x-python-datatype") != "unknown"
+
+    return False
+
+
 @dataclasses.dataclass
 class Serialized:
     data: JsonValue | None

@@ -18,11 +18,11 @@ Task(
     func: Callable[P, R],
     scorers: list[Scorer[R]],
     tags: list[str],
-    log_params: Sequence[str] | bool = False,
     log_inputs: Sequence[str]
     | bool
     | Inherited = INHERITED,
     log_output: bool | Inherited = INHERITED,
+    log_execution_metrics: bool = False,
 )
 ```
 
@@ -54,13 +54,21 @@ label: str
 
 The label of the task - used to group associated metrics and data together.
 
+### log\_execution\_metrics
+
+```python
+log_execution_metrics: bool = False
+```
+
+Track execution metrics such as success rate and run count.
+
 ### log\_inputs
 
 ```python
 log_inputs: Sequence[str] | bool | Inherited = INHERITED
 ```
 
-Whether to log all, or specific, incoming arguments to the function as inputs.
+Log all, or specific, incoming arguments to the function as inputs.
 
 ### log\_output
 
@@ -68,15 +76,7 @@ Whether to log all, or specific, incoming arguments to the function as inputs.
 log_output: bool | Inherited = INHERITED
 ```
 
-Whether to automatically log the result of the function as an output.
-
-### log\_params
-
-```python
-log_params: Sequence[str] | bool = False
-```
-
-Whether to log all, or specific, incoming arguments to the function as parameters.
+Log the result of the function as an output.
 
 ### name
 
@@ -132,7 +132,6 @@ def clone(self) -> "Task[P, R]":
         func=self.func,
         scorers=[scorer.clone() for scorer in self.scorers],
         tags=self.tags.copy(),
-        log_params=self.log_params,
         log_inputs=self.log_inputs,
         log_output=self.log_output,
     )
@@ -299,13 +298,6 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
 
     bound_args = self._bind_args(*args, **kwargs)
 
-    params_to_log = (
-        bound_args
-        if self.log_params is True
-        else {k: v for k, v in bound_args.items() if k in self.log_params}
-        if self.log_params is not False
-        else {}
-    )
     inputs_to_log = (
         bound_args
         if log_inputs is True
@@ -323,7 +315,6 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         name=self.name,
         label=self.label,
         attributes=self.attributes,
-        params=params_to_log,
         tags=self.tags,
         run_id=run.run_id if run else "",
         tracer=self.tracer,
@@ -336,9 +327,6 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
                 mode="count",
                 attributes={"auto": True},
             )
-
-        for name, value in params_to_log.items():
-            span.log_param(name, value)
 
         input_object_hashes: list[str] = [
             span.log_input(name, value, label=f"{self.label}.input.{name}", auto=True)
@@ -754,9 +742,9 @@ with_(
     name: str | None = None,
     tags: Sequence[str] | None = None,
     label: str | None = None,
-    log_params: Sequence[str] | bool | None = None,
     log_inputs: Sequence[str] | bool | None = None,
     log_output: bool | None = None,
+    log_execution_metrics: bool | None = None,
     append: bool = False,
     **attributes: Any,
 ) -> Task[P, R]
@@ -786,21 +774,21 @@ Clone a task and modify its attributes.
   `None`
   )
   –The new label for the task.
-* **`log_params`**
-  (`Sequence[str] | bool | None`, default:
-  `None`
-  )
-  –Whether to log all, or specific, incoming arguments to the function as parameters.
 * **`log_inputs`**
   (`Sequence[str] | bool | None`, default:
   `None`
   )
-  –Whether to log all, or specific, incoming arguments to the function as inputs.
+  –Log all, or specific, incoming arguments to the function as inputs.
 * **`log_output`**
   (`bool | None`, default:
   `None`
   )
-  –Whether to automatically log the result of the function as an output.
+  –Log the result of the function as an output.
+* **`log_execution_metrics`**
+  (`bool | None`, default:
+  `None`
+  )
+  –Log execution metrics such as success rate and run count.
 * **`append`**
   (`bool`, default:
   `False`
@@ -826,9 +814,9 @@ def with_(
     name: str | None = None,
     tags: t.Sequence[str] | None = None,
     label: str | None = None,
-    log_params: t.Sequence[str] | bool | None = None,
     log_inputs: t.Sequence[str] | bool | None = None,
     log_output: bool | None = None,
+    log_execution_metrics: bool | None = None,
     append: bool = False,
     **attributes: t.Any,
 ) -> "Task[P, R]":
@@ -840,9 +828,9 @@ def with_(
         name: The new name for the task.
         tags: A list of new tags to set or append to the task.
         label: The new label for the task.
-        log_params: Whether to log all, or specific, incoming arguments to the function as parameters.
-        log_inputs: Whether to log all, or specific, incoming arguments to the function as inputs.
-        log_output: Whether to automatically log the result of the function as an output.
+        log_inputs: Log all, or specific, incoming arguments to the function as inputs.
+        log_output: Log the result of the function as an output.
+        log_execution_metrics: Log execution metrics such as success rate and run count.
         append: If True, appends the new scorers and tags to the existing ones. If False, replaces them.
         **attributes: Additional attributes to set or update in the task.
 
@@ -852,9 +840,13 @@ def with_(
     task = self.clone()
     task.name = name or task.name
     task.label = label or task.label
-    task.log_params = log_params if log_params is not None else task.log_params
     task.log_inputs = log_inputs if log_inputs is not None else task.log_inputs
     task.log_output = log_output if log_output is not None else task.log_output
+    task.log_execution_metrics = (
+        log_execution_metrics
+        if log_execution_metrics is not None
+        else task.log_execution_metrics
+    )
 
     new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
     new_tags = list(tags or [])

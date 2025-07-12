@@ -73,9 +73,9 @@ import dreadnode as dn
 @dn.task(
     name="File Analysis",          # Human-readable name (default: function name)
     label="file_analysis",         # Machine-readable label for grouping (default: function name)
-    log_params=False,              # Do not log any arguments as parameters
     log_inputs=["path"],           # Log specific arguments as inputs (True for all, False for none)
     log_output=True,               # Log the return value as an output
+    log_execution_metrics=False,   # Log success rate and execution count as metrics
     tags=["security", "static"],   # Tags to categorize this task later
     scorers=[score_vuln]           # Functions to score the output
 )
@@ -132,9 +132,6 @@ Within tasks, you can explicitly log data using several methods:
 ```python
 @dn.task()
 async def process_document(doc_id: str) -> dict:
-    # Log parameters (key-value pairs for configuration)
-    dn.log_param("batch_size", 32)
-
     # Log input objects (structured data used by the task)
     document = fetch_document(doc_id)
     dn.log_input("document", document)

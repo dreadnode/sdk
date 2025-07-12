@@ -6,6 +6,53 @@ title: dreadnode.serialization
 ::: dreadnode.serialization
 */}
 
+seems\_useful\_to\_serialize
+----------------------------
+
+```python
+seems_useful_to_serialize(obj: Any) -> bool
+```
+
+Checks if the object is likely useful to serialize by attempting to
+serialize it and checking if the resulting schema indicates a known type.
+
+**Parameters:**
+
+* **`obj`**
+  (`Any`)
+  –The Python object to check.
+
+**Returns:**
+
+* **`bool`** ( `bool`
+  ) –True if the object is likely useful to serialize, False otherwise.
+
+<Accordion title="Source code in dreadnode/serialization.py" icon="code">
+```python
+def seems_useful_to_serialize(obj: t.Any) -> bool:
+    """
+    Checks if the object is likely useful to serialize by attempting to
+    serialize it and checking if the resulting schema indicates a known type.
+
+    Args:
+        obj: The Python object to check.
+
+    Returns:
+        bool: True if the object is likely useful to serialize, False otherwise.
+    """
+    if obj is None:
+        return False
+
+    with contextlib.suppress(Exception):
+        _, schema = _serialize(obj)
+        return schema.get("x-python-datatype") != "unknown"
+
+    return False
+```
+
+
+</Accordion>
+
 serialize
 ---------
 

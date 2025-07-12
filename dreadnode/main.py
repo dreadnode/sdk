@@ -530,9 +530,9 @@ class Dreadnode:
         scorers: None = None,
         name: str | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | bool = False,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
         log_output: bool | Inherited = INHERITED,
+        log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator: ...
@@ -544,9 +544,9 @@ class Dreadnode:
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
         name: str | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | bool = False,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
         log_output: bool | Inherited = INHERITED,
+        log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> ScoredTaskDecorator[R]: ...
@@ -557,9 +557,9 @@ class Dreadnode:
         scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[t.Any]] | None = None,
         name: str | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | bool = False,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
         log_output: bool | Inherited = INHERITED,
+        log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskDecorator:
@@ -580,9 +580,9 @@ class Dreadnode:
                 of the task and will be passed the task's output.
             name: The name of the task.
             label: The label of the task - useful for filtering in the UI.
-            log_params: Whether to log all, or specific, incoming arguments to the function as parameters.
-            log_inputs: Whether to log all, or specific, incoming arguments to the function as inputs.
-            log_output: Whether to log the result of the function as an output.
+            log_inputs: Log all, or specific, incoming arguments to the function as inputs.
+            log_output: Log the result of the function as an output.
+            log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
             tags: A list of tags to attach to the task span.
             **attributes: A dictionary of attributes to attach to the task span.
 
@@ -635,9 +635,9 @@ class Dreadnode:
                     for scorer in scorers or []
                 ],
                 tags=list(tags or []),
-                log_params=log_params,
                 log_inputs=log_inputs,
                 log_output=log_output,
+                log_execution_metrics=log_execution_metrics,
                 label=_label,
             )
 
@@ -648,7 +648,6 @@ class Dreadnode:
         name: str,
         *,
         label: str | None = None,
-        params: AnyDict | None = None,
         tags: t.Sequence[str] | None = None,
         **attributes: t.Any,
     ) -> TaskSpan[t.Any]:
@@ -667,7 +666,6 @@ class Dreadnode:
         Args:
             name: The name of the task.
             label: The label of the task - useful for filtering in the UI.
-            params: A dictionary of parameters to attach to the task span.
             tags: A list of tags to attach to the task span.
             **attributes: A dictionary of attributes to attach to the task span.
 
@@ -681,7 +679,6 @@ class Dreadnode:
             name=name,
             label=label,
             attributes=attributes,
-            params=params,
             tags=tags,
             run_id=run.run_id if run else "",
             tracer=self._get_tracer(),
@@ -766,7 +763,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
-            autolog: Whether to automatically log task inputs, outputs, and execution metrics if unspecified.
+            autolog: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
             **attributes: Additional attributes to attach to the run span.
 
         Returns:
@@ -890,8 +887,6 @@ class Dreadnode:
         self,
         key: str,
         value: JsonValue,
-        *,
-        to: ToObject = "task-or-run",
     ) -> None:
         """
         Log a single parameter to the current task or run.
@@ -909,14 +904,11 @@ class Dreadnode:
         Args:
             key: The name of the parameter.
             value: The value of the parameter.
-            to: The target object to log the parameter to. Can be "task-or-run" or "run".
-                Defaults to "task-or-run". If "task-or-run", the parameter will be logged
-                to the current task or run, whichever is the nearest ancestor.
         """
-        self.log_params(to=to, **{key: value})
+        self.log_params(**{key: value})
 
     @handle_internal_errors()
-    def log_params(self, to: ToObject = "run", **params: JsonValue) -> None:
+    def log_params(self, **params: JsonValue) -> None:
         """
         Log multiple parameters to the current task or run.
 
@@ -934,19 +926,11 @@ class Dreadnode:
             ```
 
         Args:
-            to: The target object to log the parameters to. Can be "task-or-run" or "run".
-                Defaults to "task-or-run". If "task-or-run", the parameters will be logged
-                to the current task or run, whichever is the nearest ancestor.
             **params: The parameters to log. Each parameter is a key-value pair.
         """
-        task = current_task_span.get()
-        run = current_run_span.get()
-
-        target = (task or run) if to == "task-or-run" else run
-        if target is None:
-            raise RuntimeError("log_params() must be called within a run")
-
-        target.log_params(**params)
+        if (run := current_run_span.get()) is None:
+            raise RuntimeError("Parameters must be logged within a run")
+        run.log_params(**params)
 
     @t.overload
     def log_metric(

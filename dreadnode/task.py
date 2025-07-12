@@ -114,12 +114,12 @@ class Task(t.Generic[P, R]):
     tags: list[str]
     "A list of tags to attach to the task span."
 
-    log_params: t.Sequence[str] | bool = False
-    "Whether to log all, or specific, incoming arguments to the function as parameters."
     log_inputs: t.Sequence[str] | bool | Inherited = INHERITED
-    "Whether to log all, or specific, incoming arguments to the function as inputs."
+    "Log all, or specific, incoming arguments to the function as inputs."
     log_output: bool | Inherited = INHERITED
-    "Whether to automatically log the result of the function as an output."
+    "Log the result of the function as an output."
+    log_execution_metrics: bool = False
+    "Track execution metrics such as success rate and run count."
 
     def __post_init__(self) -> None:
         self.__signature__ = getattr(
@@ -144,7 +144,6 @@ class Task(t.Generic[P, R]):
             func=bound_func,
             scorers=[scorer.clone() for scorer in self.scorers],
             tags=self.tags.copy(),
-            log_params=self.log_params,
             log_inputs=self.log_inputs,
             log_output=self.log_output,
         )
@@ -170,7 +169,6 @@ class Task(t.Generic[P, R]):
             func=self.func,
             scorers=[scorer.clone() for scorer in self.scorers],
             tags=self.tags.copy(),
-            log_params=self.log_params,
             log_inputs=self.log_inputs,
             log_output=self.log_output,
         )
@@ -182,9 +180,9 @@ class Task(t.Generic[P, R]):
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         label: str | None = None,
-        log_params: t.Sequence[str] | bool | None = None,
         log_inputs: t.Sequence[str] | bool | None = None,
         log_output: bool | None = None,
+        log_execution_metrics: bool | None = None,
         append: bool = False,
         **attributes: t.Any,
     ) -> "Task[P, R]":
@@ -196,9 +194,9 @@ class Task(t.Generic[P, R]):
             name: The new name for the task.
             tags: A list of new tags to set or append to the task.
             label: The new label for the task.
-            log_params: Whether to log all, or specific, incoming arguments to the function as parameters.
-            log_inputs: Whether to log all, or specific, incoming arguments to the function as inputs.
-            log_output: Whether to automatically log the result of the function as an output.
+            log_inputs: Log all, or specific, incoming arguments to the function as inputs.
+            log_output: Log the result of the function as an output.
+            log_execution_metrics: Log execution metrics such as success rate and run count.
             append: If True, appends the new scorers and tags to the existing ones. If False, replaces them.
             **attributes: Additional attributes to set or update in the task.
 
@@ -208,9 +206,13 @@ class Task(t.Generic[P, R]):
         task = self.clone()
         task.name = name or task.name
         task.label = label or task.label
-        task.log_params = log_params if log_params is not None else task.log_params
         task.log_inputs = log_inputs if log_inputs is not None else task.log_inputs
         task.log_output = log_output if log_output is not None else task.log_output
+        task.log_execution_metrics = (
+            log_execution_metrics
+            if log_execution_metrics is not None
+            else task.log_execution_metrics
+        )
 
         new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
@@ -249,13 +251,6 @@ class Task(t.Generic[P, R]):
 
         bound_args = self._bind_args(*args, **kwargs)
 
-        params_to_log = (
-            bound_args
-            if self.log_params is True
-            else {k: v for k, v in bound_args.items() if k in self.log_params}
-            if self.log_params is not False
-            else {}
-        )
         inputs_to_log = (
             bound_args
             if log_inputs is True
@@ -273,7 +268,6 @@ class Task(t.Generic[P, R]):
             name=self.name,
             label=self.label,
             attributes=self.attributes,
-            params=params_to_log,
             tags=self.tags,
             run_id=run.run_id if run else "",
             tracer=self.tracer,
@@ -286,9 +280,6 @@ class Task(t.Generic[P, R]):
                     mode="count",
                     attributes={"auto": True},
                 )
-
-            for name, value in params_to_log.items():
-                span.log_param(name, value)
 
             input_object_hashes: list[str] = [
                 span.log_input(name, value, label=f"{self.label}.input.{name}", auto=True)
