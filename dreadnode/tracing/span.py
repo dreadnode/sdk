@@ -242,16 +242,6 @@ class Span(ReadableSpan):
             )
 
     def __repr__(self) -> str:
-        span_id = getattr(self, "_span_id_cache", None)
-        if span_id is None and self._span is not None:
-            try:
-                span_id = self.span_id
-                self._span_id_cache = span_id
-            except ValueError:
-                span_id = "unset"
-        else:
-            span_id = span_id or "unset"
-
         return (
             f"{self.__class__.__name__}(name='{self._span_name}', id={self.span_id},"
             f"label='{self._label}', status={_format_status(self.status)}, active={self.is_recording})"
