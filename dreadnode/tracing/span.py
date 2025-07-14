@@ -32,6 +32,7 @@ from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
+from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
@@ -68,6 +69,9 @@ from .constants import (
     SPAN_ATTRIBUTE_VERSION,
     SpanType,
 )
+
+if t.TYPE_CHECKING:
+    import networkx as nx  # type: ignore [import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -183,15 +187,34 @@ class Span(ReadableSpan):
         return trace_api.format_trace_id(self._span.get_span_context().trace_id)
 
     @property
+    def label(self) -> str:
+        """Get the label of the span."""
+        return self._label
+
+    @property
     def is_recording(self) -> bool:
+        """Check if the span is currently recording."""
         if self._span is None:
             return False
         return self._span.is_recording()
 
     @property
+    def active(self) -> bool:
+        """Check if the span is currently active (recording)."""
+        return self._span is not None and self._span.is_recording()
+
+    @property
     def failed(self) -> bool:
         """Check if the span has failed."""
         return self.status.status_code == StatusCode.ERROR
+
+    @property
+    def duration(self) -> float:
+        """Get the duration of the span in seconds."""
+        if self._span is None:
+            return 0.0
+        end_time = self.end_time or time.time()
+        return (end_time - self.start_time) if self.start_time else 0.0
 
     def set_tags(self, tags: t.Sequence[str]) -> None:
         tags = [tags] if isinstance(tags, str) else list(tags)
@@ -780,21 +803,24 @@ class RunSpan(Span):
         self._outputs.append(object_ref)
         self._pending_outputs.append(object_ref)
 
+    def to_graph(self) -> "nx.DiGraph":
+        return run_span_to_graph(self)
+
     def __repr__(self) -> str:
         run_id = self.run_id
         project = self.project
         num_tasks = len(self._tasks)
         num_objects = len(self._objects)
         return (
-            f"RunSpan(name='{self._span_name}', id='{run_id}', "
+            f"RunSpan(name='{self.name}', id='{run_id}', "
             f"project='{project}', status={_format_status(self.status)}, active={self.is_recording}, "
             f"tasks={num_tasks}, objects={num_objects})"
         )
 
     def __str__(self) -> str:
         if self._label:
-            return f"{self._span_name} ({self._label}) - {self.run_id}"
-        return f"{self._span_name} - {self.run_id}"
+            return f"{self.name} ({self._label}) - {self.run_id}"
+        return f"{self.name} - {self.run_id}"
 
 
 class TaskSpan(Span, t.Generic[R]):
@@ -1026,15 +1052,15 @@ class TaskSpan(Span, t.Generic[R]):
 
         parent_info = f", parent_task='{parent_task_id}'" if parent_task_id else ""
         return (
-            f"TaskSpan(name='{self._span_name}', label='{self._label}', "
+            f"TaskSpan(name='{self.name}', label='{self._label}', "
             f"run='{run_id}'{parent_info}, status={_format_status(self.status)}, active={self.is_recording}, "
             f"tasks={num_subtasks}, inputs={num_inputs}, outputs={num_outputs})"
         )
 
     def __str__(self) -> str:
-        if self._label and self._label != self._span_name:
-            return f"{self._span_name} ({self._label})"
-        return self._span_name
+        if self._label and self._label != self.name:
+            return f"{self.name} ({self._label})"
+        return self.name
 
 
 def prepare_otlp_attributes(
