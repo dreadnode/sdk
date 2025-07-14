@@ -1,5 +1,5 @@
 ---
-title: "Write a .NET Reversing Agent"
+title: "Write a Dotnet Reversing Agent"
 description: "Automate managed reversing engineering"
 public: true
 ---
@@ -10,13 +10,107 @@ This documentation complements the **"Dotnet Reversing"** example in [`dreadnode
 We'll assume you have the `dreadnode` package installed and are familiar with the basics of Strikes. If you haven't already, check out the [installation](../install) and [introduction](../intro) guides.
 </Note>
 
-In this guide, we'll walk through building an agent for analyzing .NET binaries to identify security vulnerabilities and report them to the user. Unlike a more structured evaluation, this agent demonstrates an open-ended analysis task without known answers and specialized tools. We'll see how Strikes helps track agent use on real-world resources for tasks where success may not be as clearly defined as finding a flag.
+In this guide, we'll walk through building an agent for analyzing Dotnet binaries to identify security vulnerabilities and report them to the user. Unlike a more structured evaluation, this agent demonstrates an open-ended analysis task without known answers and specialized tools. We'll see how Strikes helps track agent use on real-world resources for tasks where success may not be as clearly defined as finding a flag.
 
-## Architecture Overview
+<Tip>
+Our agent use [Rigging](https://docs.dreadnode.io/rigging) to interact with the LLMs, provide tools, and track inference data. If you aren't already familiar, we recommend checking out the following resources:
 
-Our .NET binary analysis agent is a simple case of "give an LLM tools and let it go". It uses a similar architecture to the CTF agent, but without any containerization and a more open-ended task.
+- [Introduction](https://docs.dreadnode.io/open-source/rigging/intro)
+- [Generators](https://docs.dreadnode.io/open-source/rigging/topics/generators)
+- [Tools](https://docs.dreadnode.io/open-source/rigging/topics/tools)
 
-1. **Tooling**: Providing .NET-specific analysis capabilities through Cecil and ILSpy
+The first point of confusing is usually what to pass to the `--model` argument, which is treated as an [identifier](https://docs.dreadnode.io/open-source/rigging/topics/generators#identifiers) to Rigging. Usually, the model name works as expected, but sometimes you need to supply a prefix like `gemini/` or `ollama/`:
+
+```
+gpt-4.1
+claude-4-sonnet-latest
+ollama/llama3-70b
+gemini/gemini-2.5-pro
+```
+</Tip>
+
+## Running the Agent
+
+Before we dive into the implementation, let's get started running the agent to see it in action.
+
+<Steps>
+<Step title="Clone the `dreadnode/example-agents` repository">
+```bash
+git clone https://github.com/dreadnode/example-agents.git
+cd example-agents
+```
+
+or if you already have it cloned, make sure it's up to date:
+
+```bash
+git pull origin main
+```
+</Step>
+
+<Step title="Ensure Dotnet is installed">
+For our reversing, we need the Dotnet runtime installed on your system. You can check if it's installed by running:
+
+```bash
+dotnet --info
+```
+
+Check out the [Microsoft Dotnet Installation Guide](https://dotnet.microsoft.com/en-us/download) for instructions on how to install the Dotnet runtime on your system.
+</Step>
+
+<Step title="Set your environment variables">
+The `dreadnode` package can use environment variables to configure the target server and token for sending run data.
+
+```bash
+export DREADNODE_SERVER="https://platform.dreadnode.io" # default - otherwise use your self-hosted instance
+export DREADNODE_API_KEY="your_api_key" # your platform API key
+```
+
+If you don't want to use environment variables, you can pass `--server` and `--token` arguments on the CLI.
+</Step>
+
+<Step title="Run the agent">
+We'll use `gpt-4.1` as our model (requires a valid `OPENAI_API_KEY`) and decompile the `flag_protocol` binary from the example binaries provided in the repository.
+
+```bash
+uv run -m dotnet_reversing --model <model> --path dotnet_reversing/example_binaries/flag_protocol
+```
+</Step>
+</Steps>
+
+The agent will proceed to use tools like ILSpy and Cecil to analyze the provided binary, and report any findings related to vulnerabilities. You should see output similar to:
+
+```text
+| Analyzing the following binaries with the goal: 'Find only critical vulnerabilities':
+|   |- FlagProtocol.dll
+| list_methods(FlagProtocol.dll)
+| decompile_methods(FlagProtocol.dll, [
+    'FlagProtocol.FlagPacket::FromBytes(System.Byte[])',
+    'FlagProtocol.FlagPacket::ToBytes()',
+    'System.Boolean FlagProtocol.Program::_TheFlagCanBeCapturedWithoutReversing()',
+    'FlagProtocol.Program::Main(System.String[])'
+])
+| search_for_references(FlagProtocol.dll, password)
+| search_for_references(FlagProtocol.dll, crypto)
+| search_for_references(FlagProtocol.dll, decrypt)
+| search_for_references(FlagProtocol.dll, flag)
+| decompile_module(FlagProtocol.dll)
+| Reporting finding for FlagProtocol.dll (FlagProtocol.Program::Main(System.String[])) [critical]:
+| The Main method broadcasts the full flag to anyone listening on the local network over UDP in cleartext,
+with no authentication or encryption, as soon as the program executes. This exposes secret information to potential
+attackers on the same network with no safeguards.
+| ---
+| Agent finished the task (success=True): ## Critical Vulnerability Found in `FlagProtocol.dll`
+
+### Summary
+The following critical vulnerability has been identified in the provided binary:
+...
+```
+
+## Agent Design
+
+Our Dotnet binary analysis agent is a simple case of "give an LLM tools and let it go". It uses a similar architecture to the CTF agent, but without any containerization and a more open-ended task.
+
+1. **Tooling**: Providing Dotnet-specific analysis capabilities through Cecil and ILSpy
 2. **Agent**: Exposing these tools to the LLM with Rigging
 3. **Reporting**: Recording findings and metrics through Dreadnode
 
@@ -38,7 +132,7 @@ sequenceDiagram
 
     loop Until complete or max steps
         A->>A: LLM decides next analysis step
-        A->>T: Call a .NET analysis tool
+        A->>T: Call a Dotnet analysis tool
         T->>A: Return decompiled code or analysis results
         A->>A: Analyze results for vulnerabilities
         alt Vulnerability found
@@ -53,20 +147,20 @@ sequenceDiagram
     H->>H: Analyze results
 ```
 
-## Setting Up .NET Interop
+### Setting Up Dotnet Interop
 
-We'll be using the following .NET libraries to orchestrate our reversing process:
+We'll be using the following Dotnet libraries to orchestrate our reversing process:
 
-- [Cecil](https://github.com/jbevain/cecil) for general processing of .NET assemblies
-- [ILSpy](https://github.com/icsharpcode/ILSpy) for decompiling code in .NET assemblies
+- [Cecil](https://github.com/jbevain/cecil) for general processing of Dotnet assemblies
+- [ILSpy](https://github.com/icsharpcode/ILSpy) for decompiling code in Dotnet assemblies
 
 <Note>
-The interop layer between Python and .NET is a great mechanism for building tools, but comes with some caveats. It requires the .NET runtime to be available on the system and can be particular about import order and assembly use. We have provided compiled binaries for the Dotnet core of the libraries we'll need in the `lib` folder.
+The interop layer between Python and Dotnet is a great mechanism for building tools, but comes with some caveats. It requires the Dotnet runtime to be available on the system and can be particular about import order and assembly use. We have provided compiled binaries for the Dotnet core of the libraries we'll need in the `lib` folder.
 
-Check out the [Microsoft .NET Installation Guide](https://dotnet.microsoft.com/en-us/download) for instructions on how to install the .NET runtime on your system.
+Check out the [Microsoft Dotnet Installation Guide](https://dotnet.microsoft.com/en-us/download) for instructions on how to install the Dotnet runtime on your system.
 </Note>
 
-To run these in Python, we use [pythonnet](https://pythonnet.github.io/pythonnet/python.html) to load the .NET runtime and access these libraries. This allows us to decompile and analyze .NET binaries directly in our agent.
+To run these in Python, we use [pythonnet](https://pythonnet.github.io/pythonnet/python.html) to load the Dotnet runtime and access these libraries. This allows us to decompile and analyze Dotnet binaries directly in our agent.
 
 ```python
 import sys
@@ -88,9 +182,9 @@ from ICSharpCode.Decompiler.Metadata import MetadataTokenHelpers
 from Mono.Cecil import AssemblyDefinition
 ```
 
-## Analysis Tools
+### Analysis Tools
 
-With the .NET libraries loaded, we can create helper functions for binary analysis:
+With the Dotnet libraries loaded, we can create helper functions for binary analysis:
 
 ```python
 def _decompile_token(path: Path | str, token: int) -> str:
@@ -187,7 +281,7 @@ def get_call_flows_to_method(
     self,
     paths: t.Annotated[
         list[str],
-        "Paths of all .NET assemblies to consider as part of the search",
+        "Paths of all Dotnet assemblies to consider as part of the search",
     ],
     method_name: t.Annotated[str, "Target method name"],
     *,
@@ -244,7 +338,7 @@ def func():
 This prevents a little code duplication and let's us make easy changes to our tool and task configs for all methods.
 </Note>
 
-## Lifecycle Tools
+### Lifecycle Tools
 
 In addition to our analysis tools, we want to add some additional tools to let the agent report findings and manage it's lifecycle. Reporting findings is particularly important here as it's the target output from our Agent. A strong agent would yield rich findings for a human to review, but we can also use this to track the agent's performance and success rate if we have reference data to compare against.
 
@@ -281,7 +375,7 @@ These reporting tools let the agent:
 2. Indicate when its analysis is complete
 3. Give up if it can't make progress
 
-## Agent Implementation
+### Agent Implementation
 
 With our tools defined, the last step is to tie everything together with a [Rigging](https://github.com/dreadnode/rigging) pipeline inside a Strikes run and task.
 
@@ -351,7 +445,7 @@ This function:
 
 The only real item we control in this prompt is the specific vulnerability type we want the agent to focus on. Because the agent has the capability to search for references to particular strings inside binaries, it's a quick process for the agent to begin identifying functions of interest inside the binaries and start decompilation from there.
 
-## Metrics
+### Metrics
 
 Unlike CTF challenges with clear "flag found" success criteria, evaluating binary analysis is more nuanced. We track several metrics to help us understand the agents behavior, but you'll note a specific lack of any "success" metric. Instead, we focus on the following:
 
@@ -367,27 +461,13 @@ These metrics help us understand:
 2. How often agents get stuck or reach max steps
 3. How the vulnerability type affects analysis performance
 
-## Running the Agent
-
-You can run the agent with:
-
-```bash
-python -m dotnet_reversing --model gpt-4 --path ~/vulnerable-app
-```
-
-The agent will:
-1. Discover all .NET binaries in `~/vulnerable-app`
-2. Analyze them for the specified vulnerability type (default is "Code Execution")
-3. Report any findings it discovers
-4. Log metrics and traces into Strikes
-
 ## Next Steps
 
 To extend this binary analysis agent, consider:
 
 1. Adding more specialized tools for other vulnerability types
 2. Implementing automatic exploitation verification
-3. Expanding to other languages and runtimes beyond .NET
+3. Expanding to other languages and runtimes beyond Dotnet
 4. Integrating with existing security scanning tools
 
 The architecture is flexible enough to accommodate these extensions while maintaining the same core workflow.
