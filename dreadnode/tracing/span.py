@@ -24,6 +24,7 @@ from opentelemetry import trace as trace_api
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import Tracer
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
@@ -81,6 +82,15 @@ current_run_span: ContextVar["RunSpan | None"] = ContextVar(
     "current_run_span",
     default=None,
 )
+
+
+def _format_status(status: Status) -> str:
+    """Format the status for display."""
+    if status.status_code == StatusCode.ERROR:
+        if status.description is None:
+            return "'error'"
+        return f"'error - {status.description}'"
+    return "'ok'"
 
 
 class Span(ReadableSpan):
@@ -178,6 +188,11 @@ class Span(ReadableSpan):
             return False
         return self._span.is_recording()
 
+    @property
+    def failed(self) -> bool:
+        """Check if the span has failed."""
+        return self.status.status_code == StatusCode.ERROR
+
     def set_tags(self, tags: t.Sequence[str]) -> None:
         tags = [tags] if isinstance(tags, str) else list(tags)
         tags = [clean_str(t) for t in tags]
@@ -226,6 +241,25 @@ class Span(ReadableSpan):
                 attributes=prepare_otlp_attributes(attributes or {}),
             )
 
+    def __repr__(self) -> str:
+        span_id = getattr(self, "_span_id_cache", None)
+        if span_id is None and self._span is not None:
+            try:
+                span_id = self.span_id
+                self._span_id_cache = span_id
+            except ValueError:
+                span_id = "unset"
+        else:
+            span_id = span_id or "unset"
+
+        return (
+            f"{self.__class__.__name__}(name='{self._span_name}', id={self.span_id},"
+            f"label='{self._label}', status={_format_status(self.status)}, active={self.is_recording})"
+        )
+
+    def __str__(self) -> str:
+        return f"{self._span_name} ({self._label})" if self._label else self._span_name
+
 
 class RunContext(te.TypedDict):
     """Context for transferring and continuing runs in other places."""
@@ -271,6 +305,16 @@ class RunUpdateSpan(Span):
             attributes[SPAN_ATTRIBUTE_LARGE_ATTRIBUTES] = large_attrs
 
         super().__init__(f"run.{run_id}.update", attributes, tracer, type="run_update")
+
+    def __repr__(self) -> str:
+        status = "active" if self.is_recording else "inactive"
+        run_id = self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, "unknown")
+        project = self.get_attribute(SPAN_ATTRIBUTE_PROJECT, "unknown")
+        return f"RunUpdateSpan(run_id='{run_id}', project='{project}', status={status})"
+
+    def __str__(self) -> str:
+        run_id = self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, "unknown")
+        return f"run.{run_id}.update"
 
 
 class RunSpan(Span):
@@ -323,6 +367,8 @@ class RunSpan(Span):
         self._remote_token: object | None = None
         self._file_system = file_system
         self._prefix_path = prefix_path
+
+        self._tasks: list[TaskSpan[t.Any]] = []
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id or ULID()),
@@ -466,6 +512,19 @@ class RunSpan(Span):
     @property
     def run_id(self) -> str:
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, ""))
+
+    @property
+    def tasks(self) -> "list[TaskSpan[t.Any]]":
+        return self._tasks
+
+    @property
+    def all_tasks(self) -> "list[TaskSpan[t.Any]]":
+        """Get all tasks, including subtasks."""
+        all_tasks = []
+        for task in self._tasks:
+            all_tasks.append(task)
+            all_tasks.extend(task.all_tasks)
+        return all_tasks
 
     def log_object(
         self,
@@ -731,6 +790,22 @@ class RunSpan(Span):
         self._outputs.append(object_ref)
         self._pending_outputs.append(object_ref)
 
+    def __repr__(self) -> str:
+        run_id = self.run_id
+        project = self.project
+        num_tasks = len(self._tasks)
+        num_objects = len(self._objects)
+        return (
+            f"RunSpan(name='{self._span_name}', id='{run_id}', "
+            f"project='{project}', status={_format_status(self.status)}, active={self.is_recording}, "
+            f"tasks={num_tasks}, objects={num_objects})"
+        )
+
+    def __str__(self) -> str:
+        if self._label:
+            return f"{self._span_name} ({self._label}) - {self.run_id}"
+        return f"{self._span_name} - {self.run_id}"
+
 
 class TaskSpan(Span, t.Generic[R]):
     def __init__(
@@ -752,6 +827,9 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
 
+        self._tasks: list[TaskSpan[t.Any]] = []
+        self._parent_task: TaskSpan[t.Any] | None = None
+
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
             SPAN_ATTRIBUTE_INPUTS: self._inputs,
@@ -762,13 +840,16 @@ class TaskSpan(Span, t.Generic[R]):
         super().__init__(name, attributes, tracer, type="task", label=label, tags=tags)
 
     def __enter__(self) -> te.Self:
-        self._parent_task = current_task_span.get()
-        if self._parent_task is not None:
-            self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
-
         self._run = current_run_span.get()
         if self._run is None:
             raise RuntimeError("You cannot start a task span without a run")
+
+        self._parent_task = current_task_span.get()
+        if self._parent_task is not None:
+            self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
+            self._parent_task._tasks.append(self)  # noqa: SLF001
+        else:
+            self._run._tasks.append(self)  # noqa: SLF001
 
         self._context_token = current_task_span.set(self)
         return super().__enter__()
@@ -788,14 +869,36 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def run_id(self) -> str:
+        """Get the run id this task is associated with (may be empty)."""
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, ""))
 
     @property
     def parent_task_id(self) -> str:
+        """Get the parent task ID if it exists (may be empty)."""
         return str(self.get_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, ""))
 
     @property
+    def parent_task(self) -> "TaskSpan[t.Any] | None":
+        """Get the parent task if it exists."""
+        return self._parent_task
+
+    @property
+    def tasks(self) -> list["TaskSpan[t.Any]"]:
+        """Get the list of children tasks."""
+        return self._tasks
+
+    @property
+    def all_tasks(self) -> list["TaskSpan[t.Any]"]:
+        """Get all tasks, including subtasks."""
+        all_tasks = []
+        for task in self._tasks:
+            all_tasks.append(task)
+            all_tasks.extend(task.all_tasks)
+        return all_tasks
+
+    @property
     def run(self) -> RunSpan:
+        """Get the run this task is associated with."""
         if self._run is None:
             raise ValueError("Task span is not in an active run")
         return self._run
@@ -923,6 +1026,25 @@ class TaskSpan(Span, t.Generic[R]):
         return sum(metric.value for metric in metrics) / len(
             metrics,
         )
+
+    def __repr__(self) -> str:
+        run_id = self.run_id
+        parent_task_id = self.parent_task_id
+        num_subtasks = len(self._tasks)
+        num_inputs = len(self._inputs)
+        num_outputs = len(self._outputs)
+
+        parent_info = f", parent_task='{parent_task_id}'" if parent_task_id else ""
+        return (
+            f"TaskSpan(name='{self._span_name}', label='{self._label}', "
+            f"run='{run_id}'{parent_info}, status={_format_status(self.status)}, active={self.is_recording}, "
+            f"tasks={num_subtasks}, inputs={num_inputs}, outputs={num_outputs})"
+        )
+
+    def __str__(self) -> str:
+        if self._label and self._label != self._span_name:
+            return f"{self._span_name} ({self._label})"
+        return self._span_name
 
 
 def prepare_otlp_attributes(

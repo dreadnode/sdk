@@ -329,6 +329,47 @@ When this task logs a metric named `token_count`, that metric is:
 1. Stored with the task span as `token_count`
 2. Mirrored at the run level with the prefix `tokenize.token_count`
 
+## Task Hierarchy and Relationships
+
+Every task maintains relationships with its parent task (if any) and subtasks (if any). These relationships are automatically established when tasks are called within other tasks:
+
+```python
+import dreadnode as dn
+
+@dn.task()
+async def process(data: str) -> str:
+    return f"processed: {data}"
+
+@dn.task()
+async def finalize(data: str) -> str:
+    return f"finalized: {data}"
+
+@dn.task()
+async def parent_task(data: str) -> str:
+    processed = await process(data)
+    finalized = await finalize(processed)
+    return finalized
+
+with dn.run("workflow-example"):
+    parent = await parent_task.run("input_data")
+
+    print(len(parent.tasks)) # 2
+
+    # Iterate through child tasks
+    for task in parent.tasks:
+        print(f"{task!r}")
+
+# TaskSpan(name='process', label='process', run_id='...', parent_task='...', ...)
+# TaskSpan(name='finalize', label='finalize', run_id='...', parent_task='...', ...)
+```
+
+The available hierarchy properties include:
+
+- **`task_span.tasks`**: List of child `TaskSpan` objects
+- **`task_span.all_tasks`**: Flat list of all tasks under this task, including subtasks
+- **`task_span.parent_task`**: Reference to parent `TaskSpan` (or `None` for top-level tasks)
+- **`task_span.run`**: Reference to the `RunSpan` containing this task
+
 ## Best Practices
 
 1. **Keep tasks focused**: Each task should do one thing well, making it easier to trace and debug.
@@ -336,4 +377,5 @@ When this task logs a metric named `token_count`, that metric is:
 3. **Log relevant data**: Be intentional about what you log as inputs, outputs, and metrics.
 4. **Handle errors appropriately**: Use `try_run()` and similar methods to handle task failures gracefully.
 5. **Use tasks to structure your code**: Tasks help create natural boundaries in your application.
-6. **Combine with [Rigging tools](/open-source/rigging/topics/tools)**: Tasks work seamlessly with Rigging tools for LLM agents.
+6. **Leverage task hierarchy**: Use parent-child relationships to organize complex workflows and enable detailed analysis.
+7. **Combine with [Rigging tools](/open-source/rigging/topics/tools)**: Tasks work seamlessly with Rigging tools for LLM agents.

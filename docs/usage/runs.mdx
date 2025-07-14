@@ -263,6 +263,41 @@ with dn.run("risky-experiment"):
         dn.log_metric("error", 1.0)
 ```
 
+## Task Hierarchy and Relationships
+
+Every run maintains a list of its top-level tasks (tasks that are called directly within the run context, not as children of other tasks):
+
+```python
+with dn.run("data-processing") as run:
+    # These tasks are added to the run's task list
+    cleaning_result = await clean_data.run(raw_data)
+    analysis_result = await analyze_data.run(cleaned_data)
+
+# Access all top-level tasks in the run
+print(f"Run has {len(run.tasks)} top-level tasks")
+
+for task in run.tasks:
+    print(f"Task: {task}")
+    print(f"Run: {task.run}")
+    print(f"Child tasks: {len(task.tasks)}")
+```
+
+You can recursively gather all tasks within a run using `.all_tasks` and perform analysis on them:
+
+```python
+with dn.run("comprehensive-analysis") as run:
+    await complex_workflow(data)
+
+    all_tasks = run.all_tasks
+    print(f"Run '{run.run_id}' executed {len(all_tasks)} total tasks")
+
+    # Analyze execution times, success rates, etc.
+    successful_tasks = [t for t in all_tasks if not t.failed]
+    success_rate = len(successful_tasks) / len(all_tasks) if all_tasks else 0.0
+    print(f"Success rate: {success_rate * 100:.1f}%")
+    dn.log_metric("success_rate", success_rate)
+```
+
 ## Best Practices
 
 1. **Use meaningful names**: Give your runs descriptive names that indicate their purpose.
@@ -270,3 +305,4 @@ with dn.run("risky-experiment"):
 3. **Create separate runs for separate experiments**: Don't try to jam multiple experiments into a single run—you can create multiple runs inside your code.
 4. **Use projects for organization**: Group related runs into projects.
 5. **Create comparison runs**: When testing different approaches, ensure parameters and metrics are consistent to enable meaningful comparison.
+6. **Leverage task hierarchy**: Organize complex workflows using hierarchical tasks within runs to maintain clear execution structure.
