@@ -1784,21 +1784,21 @@ proxy = ["PyJWT (>=2.8.0,<3.0.0)", "apscheduler (>=3.10.4,<4.0.0)", "backoff", "
 
 [[package]]
 name = "logfire"
-version = "3.18.0"
+version = "3.24.2"
 description = "The best Python observability tool! 🪵🔥"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "logfire-3.18.0-py3-none-any.whl", hash = "sha256:da1a4d15679c19391f423ed76c9a7b730a00bdc639cfdc09ef5b4c05b7cb6b6d"},
-    {file = "logfire-3.18.0.tar.gz", hash = "sha256:86efe521e8d7161edb66c8f4839efcd46e3ef4b17f641b96bf05111807df4bd5"},
+    {file = "logfire-3.24.2-py3-none-any.whl", hash = "sha256:c3a119769f8f5f1fabb6f23722125b26f987d7adeecfa9c6a90265161e6f5597"},
+    {file = "logfire-3.24.2.tar.gz", hash = "sha256:814533697890ac94b0669360e974e75f491bf5b2d9be7a1a5bbf5e1d66989d20"},
 ]
 
 [package.dependencies]
 executing = ">=2.0.1"
-opentelemetry-exporter-otlp-proto-http = ">=1.21.0,<1.35.0"
+opentelemetry-exporter-otlp-proto-http = ">=1.21.0,<1.36.0"
 opentelemetry-instrumentation = ">=0.41b0"
-opentelemetry-sdk = ">=1.21.0,<1.35.0"
+opentelemetry-sdk = ">=1.21.0,<1.36.0"
 protobuf = ">=4.23.4"
 rich = ">=13.4.2"
 tomli = {version = ">=2.0.1", markers = "python_version < \"3.11\""}
@@ -1806,6 +1806,8 @@ typing-extensions = ">=4.1.0"
 
 [package.extras]
 aiohttp = ["opentelemetry-instrumentation-aiohttp-client (>=0.42b0)"]
+aiohttp-client = ["opentelemetry-instrumentation-aiohttp-client (>=0.42b0)"]
+aiohttp-server = ["opentelemetry-instrumentation-aiohttp-server (>=0.55b0)"]
 asgi = ["opentelemetry-instrumentation-asgi (>=0.42b0)"]
 asyncpg = ["opentelemetry-instrumentation-asyncpg (>=0.42b0)"]
 aws-lambda = ["opentelemetry-instrumentation-aws-lambda (>=0.42b0)"]
@@ -4624,4 +4626,4 @@ training = ["transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "21fe5cf29eefa6f77e8bb811529fa19adff4f32d8e64f13432402631c4d3808f"
+content-hash = "999c4f648b89a716f7f9d77ca7747cb72ae23ad7d53b4dabc4e6b855a27c00d7"
