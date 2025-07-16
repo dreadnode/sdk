@@ -45,7 +45,7 @@ pandas-stubs = "^2.2.3.250308"
 types-requests = "^2.32.0.20250306"
 rigging = "^2.3.0"
 typer = "^0.15.2"
-datasets = "^3.5.0"
+datasets = "^4.0.0"
 pyarrow = "^19.0.1"
 
 [build-system]
