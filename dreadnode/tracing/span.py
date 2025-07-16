@@ -24,6 +24,7 @@ from opentelemetry import trace as trace_api
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.trace import Tracer
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
@@ -31,6 +32,7 @@ from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
+from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
@@ -68,6 +70,9 @@ from .constants import (
     SpanType,
 )
 
+if t.TYPE_CHECKING:
+    import networkx as nx  # type: ignore [import-untyped]
+
 logger = logging.getLogger(__name__)
 
 R = t.TypeVar("R")
@@ -81,6 +86,15 @@ current_run_span: ContextVar["RunSpan | None"] = ContextVar(
     "current_run_span",
     default=None,
 )
+
+
+def _format_status(status: Status) -> str:
+    """Format the status for display."""
+    if status.status_code == StatusCode.ERROR:
+        if status.description is None:
+            return "'error'"
+        return f"'error - {status.description}'"
+    return "'ok'"
 
 
 class Span(ReadableSpan):
@@ -173,10 +187,34 @@ class Span(ReadableSpan):
         return trace_api.format_trace_id(self._span.get_span_context().trace_id)
 
     @property
+    def label(self) -> str:
+        """Get the label of the span."""
+        return self._label
+
+    @property
     def is_recording(self) -> bool:
+        """Check if the span is currently recording."""
         if self._span is None:
             return False
         return self._span.is_recording()
+
+    @property
+    def active(self) -> bool:
+        """Check if the span is currently active (recording)."""
+        return self._span is not None and self._span.is_recording()
+
+    @property
+    def failed(self) -> bool:
+        """Check if the span has failed."""
+        return self.status.status_code == StatusCode.ERROR
+
+    @property
+    def duration(self) -> float:
+        """Get the duration of the span in seconds."""
+        if self._span is None:
+            return 0.0
+        end_time = self.end_time or time.time()
+        return (end_time - self.start_time) if self.start_time else 0.0
 
     def set_tags(self, tags: t.Sequence[str]) -> None:
         tags = [tags] if isinstance(tags, str) else list(tags)
@@ -226,6 +264,15 @@ class Span(ReadableSpan):
                 attributes=prepare_otlp_attributes(attributes or {}),
             )
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(name='{self._span_name}', id={self.span_id},"
+            f"label='{self._label}', status={_format_status(self.status)}, active={self.is_recording})"
+        )
+
+    def __str__(self) -> str:
+        return f"{self._span_name} ({self._label})" if self._label else self._span_name
+
 
 class RunContext(te.TypedDict):
     """Context for transferring and continuing runs in other places."""
@@ -271,6 +318,16 @@ class RunUpdateSpan(Span):
             attributes[SPAN_ATTRIBUTE_LARGE_ATTRIBUTES] = large_attrs
 
         super().__init__(f"run.{run_id}.update", attributes, tracer, type="run_update")
+
+    def __repr__(self) -> str:
+        status = "active" if self.is_recording else "inactive"
+        run_id = self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, "unknown")
+        project = self.get_attribute(SPAN_ATTRIBUTE_PROJECT, "unknown")
+        return f"RunUpdateSpan(run_id='{run_id}', project='{project}', status={status})"
+
+    def __str__(self) -> str:
+        run_id = self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, "unknown")
+        return f"run.{run_id}.update"
 
 
 class RunSpan(Span):
@@ -323,6 +380,8 @@ class RunSpan(Span):
         self._remote_token: object | None = None
         self._file_system = file_system
         self._prefix_path = prefix_path
+
+        self._tasks: list[TaskSpan[t.Any]] = []
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id or ULID()),
@@ -466,6 +525,19 @@ class RunSpan(Span):
     @property
     def run_id(self) -> str:
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, ""))
+
+    @property
+    def tasks(self) -> "list[TaskSpan[t.Any]]":
+        return self._tasks
+
+    @property
+    def all_tasks(self) -> "list[TaskSpan[t.Any]]":
+        """Get all tasks, including subtasks."""
+        all_tasks = []
+        for task in self._tasks:
+            all_tasks.append(task)
+            all_tasks.extend(task.all_tasks)
+        return all_tasks
 
     def log_object(
         self,
@@ -731,6 +803,25 @@ class RunSpan(Span):
         self._outputs.append(object_ref)
         self._pending_outputs.append(object_ref)
 
+    def to_graph(self) -> "nx.DiGraph":
+        return run_span_to_graph(self)
+
+    def __repr__(self) -> str:
+        run_id = self.run_id
+        project = self.project
+        num_tasks = len(self._tasks)
+        num_objects = len(self._objects)
+        return (
+            f"RunSpan(name='{self.name}', id='{run_id}', "
+            f"project='{project}', status={_format_status(self.status)}, active={self.is_recording}, "
+            f"tasks={num_tasks}, objects={num_objects})"
+        )
+
+    def __str__(self) -> str:
+        if self._label:
+            return f"{self.name} ({self._label}) - {self.run_id}"
+        return f"{self.name} - {self.run_id}"
+
 
 class TaskSpan(Span, t.Generic[R]):
     def __init__(
@@ -752,6 +843,9 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
 
+        self._tasks: list[TaskSpan[t.Any]] = []
+        self._parent_task: TaskSpan[t.Any] | None = None
+
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
             SPAN_ATTRIBUTE_INPUTS: self._inputs,
@@ -762,13 +856,16 @@ class TaskSpan(Span, t.Generic[R]):
         super().__init__(name, attributes, tracer, type="task", label=label, tags=tags)
 
     def __enter__(self) -> te.Self:
-        self._parent_task = current_task_span.get()
-        if self._parent_task is not None:
-            self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
-
         self._run = current_run_span.get()
         if self._run is None:
             raise RuntimeError("You cannot start a task span without a run")
+
+        self._parent_task = current_task_span.get()
+        if self._parent_task is not None:
+            self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
+            self._parent_task._tasks.append(self)  # noqa: SLF001
+        else:
+            self._run._tasks.append(self)  # noqa: SLF001
 
         self._context_token = current_task_span.set(self)
         return super().__enter__()
@@ -788,14 +885,36 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def run_id(self) -> str:
+        """Get the run id this task is associated with (may be empty)."""
         return str(self.get_attribute(SPAN_ATTRIBUTE_RUN_ID, ""))
 
     @property
     def parent_task_id(self) -> str:
+        """Get the parent task ID if it exists (may be empty)."""
         return str(self.get_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, ""))
 
     @property
+    def parent_task(self) -> "TaskSpan[t.Any] | None":
+        """Get the parent task if it exists."""
+        return self._parent_task
+
+    @property
+    def tasks(self) -> list["TaskSpan[t.Any]"]:
+        """Get the list of children tasks."""
+        return self._tasks
+
+    @property
+    def all_tasks(self) -> list["TaskSpan[t.Any]"]:
+        """Get all tasks, including subtasks."""
+        all_tasks = []
+        for task in self._tasks:
+            all_tasks.append(task)
+            all_tasks.extend(task.all_tasks)
+        return all_tasks
+
+    @property
     def run(self) -> RunSpan:
+        """Get the run this task is associated with."""
         if self._run is None:
             raise ValueError("Task span is not in an active run")
         return self._run
@@ -923,6 +1042,25 @@ class TaskSpan(Span, t.Generic[R]):
         return sum(metric.value for metric in metrics) / len(
             metrics,
         )
+
+    def __repr__(self) -> str:
+        run_id = self.run_id
+        parent_task_id = self.parent_task_id
+        num_subtasks = len(self._tasks)
+        num_inputs = len(self._inputs)
+        num_outputs = len(self._outputs)
+
+        parent_info = f", parent_task='{parent_task_id}'" if parent_task_id else ""
+        return (
+            f"TaskSpan(name='{self.name}', label='{self._label}', "
+            f"run='{run_id}'{parent_info}, status={_format_status(self.status)}, active={self.is_recording}, "
+            f"tasks={num_subtasks}, inputs={num_inputs}, outputs={num_outputs})"
+        )
+
+    def __str__(self) -> str:
+        if self._label and self._label != self.name:
+            return f"{self.name} ({self._label})"
+        return self.name
 
 
 def prepare_otlp_attributes(

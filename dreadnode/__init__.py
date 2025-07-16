@@ -1,3 +1,4 @@
+from dreadnode import convert, data_types
 from dreadnode.data_types import Audio, Image, Object3D, Table, Video
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
@@ -33,6 +34,7 @@ log_artifact = DEFAULT_INSTANCE.log_artifact
 __version__ = VERSION
 
 __all__ = [
+    "DEFAULT_INSTANCE",
     "Audio",
     "Dreadnode",
     "Image",
@@ -51,6 +53,10 @@ __all__ = [
     "__version__",
     "api",
     "configure",
+    "continue_run",
+    "convert",
+    "data_types",
+    "get_run_context",
     "link_objects",
     "log_artifact",
     "log_input",
