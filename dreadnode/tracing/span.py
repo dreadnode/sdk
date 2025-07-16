@@ -34,7 +34,7 @@ from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
-from dreadnode.types import UNSET, AnyDict, JsonDict, JsonValue, Unset
+from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
 from dreadnode.util import clean_str
 from dreadnode.version import VERSION
 
@@ -566,12 +566,12 @@ class RunSpan(Span):
         self,
         object_hash: str,
         link_hash: str,
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> None:
         self.log_event(
             name=EVENT_NAME_OBJECT_LINK,
             attributes={
-                **attributes,
+                **(attributes or {}),
                 EVENT_ATTRIBUTE_OBJECT_HASH: object_hash,
                 EVENT_ATTRIBUTE_LINK_HASH: link_hash,
                 EVENT_ATTRIBUTE_ORIGIN_SPAN_ID: (
@@ -607,7 +607,7 @@ class RunSpan(Span):
         value: t.Any,
         *,
         label: str | None = None,
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> None:
         label = clean_str(label or name)
         hash_ = self.log_object(
@@ -722,7 +722,7 @@ class RunSpan(Span):
         value: t.Any,
         *,
         label: str | None = None,
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> None:
         label = clean_str(label or name)
         hash_ = self.log_object(
@@ -816,7 +816,7 @@ class TaskSpan(Span, t.Generic[R]):
         value: t.Any,
         *,
         label: str | None = None,
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> str:
         label = clean_str(label or name)
 
@@ -845,7 +845,7 @@ class TaskSpan(Span, t.Generic[R]):
         value: t.Any,
         *,
         label: str | None = None,
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> str:
         label = clean_str(label or name)
 
