@@ -248,12 +248,8 @@ def configure(
 
     self._initialized = False
 
-    self.server = (
-        server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-    )
-    self.token = (
-        token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
-    )
+    self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+    self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
 
     if local_dir is False and ENV_LOCAL_DIR in os.environ:
         env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -496,7 +492,9 @@ def initialize(self) -> None:
 
 ```python
 link_objects(
-    origin: Any, link: Any, **attributes: JsonValue
+    origin: Any,
+    link: Any,
+    attributes: AnyDict | None = None,
 ) -> None
 ```
 
@@ -524,16 +522,21 @@ with dreadnode.run("my_run"):
 * **`link`**
   (`Any`)
   –The linked object to link to.
-* **`**attributes`**
-  (`JsonValue`, default:
-  `{}`
+* **`attributes`**
+  (`AnyDict | None`, default:
+  `None`
   )
   –Additional attributes to attach to the link.
 
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
 @handle_internal_errors()
-def link_objects(self, origin: t.Any, link: t.Any, **attributes: JsonValue) -> None:
+def link_objects(
+    self,
+    origin: t.Any,
+    link: t.Any,
+    attributes: AnyDict | None = None,
+) -> None:
     """
     Associate two runtime objects with each other.
 
@@ -553,14 +556,14 @@ def link_objects(self, origin: t.Any, link: t.Any, **attributes: JsonValue) -> N
     Args:
         origin: The origin object to link from.
         link: The linked object to link to.
-        **attributes: Additional attributes to attach to the link.
+        attributes: Additional attributes to attach to the link.
     """
     if (run := current_run_span.get()) is None:
         raise RuntimeError("link() must be called within a run")
 
     origin_hash = run.log_object(origin)
     link_hash = run.log_object(link)
-    run.link_objects(origin_hash, link_hash, **attributes)
+    run.link_objects(origin_hash, link_hash, attributes=attributes)
 ```
 
 
@@ -666,7 +669,7 @@ log_input(
     *,
     label: str | None = None,
     to: ToObject = "task-or-run",
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> None
 ```
 
@@ -700,7 +703,7 @@ def log_input(
     *,
     label: str | None = None,
     to: ToObject = "task-or-run",
-    **attributes: t.Any,
+    attributes: AnyDict | None = None,
 ) -> None:
     """
     Log a single input to the current task or run.
@@ -728,7 +731,7 @@ def log_input(
     if target is None:
         raise RuntimeError("log_inputs() must be called within a run")
 
-    target.log_input(name, value, label=label, **attributes)
+    target.log_input(name, value, label=label, attributes=attributes)
 ```
 
 
@@ -738,7 +741,7 @@ def log_input(
 
 ```python
 log_inputs(
-    to: ToObject = "task-or-run", **inputs: JsonValue
+    to: ToObject = "task-or-run", **inputs: Any
 ) -> None
 ```
 
@@ -752,7 +755,7 @@ See `log_input()` for more details.
 def log_inputs(
     self,
     to: ToObject = "task-or-run",
-    **inputs: JsonValue,
+    **inputs: t.Any,
 ) -> None:
     """
     Log multiple inputs to the current task or run.
@@ -777,7 +780,7 @@ log_metric(
     origin: Any | None = None,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> Metric
 ```
@@ -802,7 +805,7 @@ log_metric(
     origin: Any | None = None,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> Metric
 ```
@@ -867,7 +870,7 @@ with dreadnode.run("my_run"):
   - sum: the cumulative sum of all reported values for this metric
   - count: increment every time this metric is logged - disregard value
 * **`attributes`**
-  (`JsonDict | None`, default:
+  (`AnyDict | None`, default:
   `None`
   )
   –A dictionary of additional attributes to attach to the metric.
@@ -896,7 +899,7 @@ def log_metric(
     origin: t.Any | None = None,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> Metric:
     """
@@ -975,7 +978,7 @@ log_metrics(
     step: int = 0,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> list[Metric]
 ```
@@ -987,7 +990,7 @@ log_metrics(
     step: int = 0,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> list[Metric]
 ```
@@ -999,7 +1002,7 @@ log_metrics(
     step: int = 0,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> list[Metric]
 ```
@@ -1054,7 +1057,7 @@ dreadnode.log_metrics(
   )
   –Default aggregation mode for metrics if not supplied.
 * **`attributes`**
-  (`JsonDict | None`, default:
+  (`AnyDict | None`, default:
   `None`
   )
   –Default attributes for metrics if not supplied.
@@ -1081,7 +1084,7 @@ def log_metrics(
     step: int = 0,
     timestamp: datetime | None = None,
     mode: MetricAggMode | None = None,
-    attributes: JsonDict | None = None,
+    attributes: AnyDict | None = None,
     to: ToObject = "task-or-run",
 ) -> list[Metric]:
     """
@@ -1177,7 +1180,7 @@ log_output(
     *,
     label: str | None = None,
     to: ToObject = "task-or-run",
-    **attributes: JsonValue,
+    attributes: AnyDict | None = None,
 ) -> None
 ```
 
@@ -1201,6 +1204,31 @@ with dreadnode.run("my_run"):
     dreadnode.log_output("other", 123)
 ```
 
+**Parameters:**
+
+* **`name`**
+  (`str`)
+  –The name of the output.
+* **`value`**
+  (`Any`)
+  –The value of the output.
+* **`label`**
+  (`str | None`, default:
+  `None`
+  )
+  –An optional label for the output, useful for filtering in the UI.
+* **`to`**
+  (`ToObject`, default:
+  `'task-or-run'`
+  )
+  –The target object to log the output to. Can be "task-or-run" or "run".
+  Defaults to "task-or-run". If "task-or-run", the output will be logged
+  to the current task or run, whichever is the nearest ancestor.
+* **`attributes`**
+  (`AnyDict | None`, default:
+  `None`
+  )
+  –Additional attributes to attach to the output.
 
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
@@ -1212,7 +1240,7 @@ def log_output(
     *,
     label: str | None = None,
     to: ToObject = "task-or-run",
-    **attributes: JsonValue,
+    attributes: AnyDict | None = None,
 ) -> None:
     """
     Log a single output to the current task or run.
@@ -1233,6 +1261,15 @@ def log_output(
 
             dreadnode.log_output("other", 123)
         ~~~
+
+    Args:
+        name: The name of the output.
+        value: The value of the output.
+        label: An optional label for the output, useful for filtering in the UI.
+        to: The target object to log the output to. Can be "task-or-run" or "run".
+            Defaults to "task-or-run". If "task-or-run", the output will be logged
+            to the current task or run, whichever is the nearest ancestor.
+        attributes: Additional attributes to attach to the output.
     """
     task = current_task_span.get()
     run = current_run_span.get()
@@ -1243,7 +1280,7 @@ def log_output(
             "log_output() must be called within a run or a task",
         )
 
-    target.log_output(name, value, label=label, **attributes)
+    target.log_output(name, value, label=label, attributes=attributes)
 ```
 
 
@@ -1465,7 +1502,7 @@ run(
     params: AnyDict | None = None,
     project: str | None = None,
     autolog: bool = True,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> RunSpan
 ```
 
@@ -1514,9 +1551,9 @@ with dreadnode.run("my_run"):
   `True`
   )
   –Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
-* **`**attributes`**
-  (`Any`, default:
-  `{}`
+* **`attributes`**
+  (`AnyDict | None`, default:
+  `None`
   )
   –Additional attributes to attach to the run span.
 
@@ -1537,7 +1574,7 @@ def run(
     params: AnyDict | None = None,
     project: str | None = None,
     autolog: bool = True,
-    **attributes: t.Any,
+    attributes: AnyDict | None = None,
 ) -> RunSpan:
     """
     Create a new run.
@@ -1563,7 +1600,7 @@ def run(
             the project passed to `configure()` will be used, or the
             run will be associated with a default project.
         autolog: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
-        **attributes: Additional attributes to attach to the run span.
+        attributes: Additional attributes to attach to the run span.
 
     Returns:
         A RunSpan object that can be used as a context manager.
@@ -1598,7 +1635,7 @@ scorer(
     *,
     name: str | None = None,
     tags: Sequence[str] | None = None,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]
 ```
 
@@ -1633,9 +1670,9 @@ await my_task(2)
   `None`
   )
   –A list of tags to attach to the scorer.
-* **`**attributes`**
-  (`Any`, default:
-  `{}`
+* **`attributes`**
+  (`AnyDict | None`, default:
+  `None`
   )
   –A dictionary of attributes to attach to the scorer.
 
@@ -1651,7 +1688,7 @@ def scorer(
     *,
     name: str | None = None,
     tags: t.Sequence[str] | None = None,
-    **attributes: t.Any,
+    attributes: AnyDict | None = None,
 ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
     """
     Make a scorer from a callable function.
@@ -1675,7 +1712,7 @@ def scorer(
     Args:
         name: The name of the scorer.
         tags: A list of tags to attach to the scorer.
-        **attributes: A dictionary of attributes to attach to the scorer.
+        attributes: A dictionary of attributes to attach to the scorer.
 
     Returns:
         A new Scorer object.
@@ -1739,7 +1776,7 @@ span(
     name: str,
     *,
     tags: Sequence[str] | None = None,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> Span
 ```
 
@@ -1767,9 +1804,9 @@ with dreadnode.span("my_span") as span:
   `None`
   )
   –A list of tags to attach to the span.
-* **`**attributes`**
-  (`Any`, default:
-  `{}`
+* **`attributes`**
+  (`AnyDict | None`, default:
+  `None`
   )
   –A dictionary of attributes to attach to the span.
 
@@ -1785,7 +1822,7 @@ def span(
     name: str,
     *,
     tags: t.Sequence[str] | None = None,
-    **attributes: t.Any,
+    attributes: AnyDict | None = None,
 ) -> Span:
     """
     Create a new OpenTelemety span.
@@ -1804,7 +1841,7 @@ def span(
     Args:
         name: The name of the span.
         tags: A list of tags to attach to the span.
-        **attributes: A dictionary of attributes to attach to the span.
+        attributes: A dictionary of attributes to attach to the span.
 
     Returns:
         A Span object.
@@ -1895,7 +1932,7 @@ task(
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> TaskDecorator
 ```
 
@@ -1911,7 +1948,7 @@ task(
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> ScoredTaskDecorator[R]
 ```
 
@@ -1928,7 +1965,7 @@ task(
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> TaskDecorator
 ```
 
@@ -1982,9 +2019,9 @@ await my_task(2)
   `None`
   )
   –A list of tags to attach to the task span.
-* **`**attributes`**
-  (`Any`, default:
-  `{}`
+* **`attributes`**
+  (`AnyDict | None`, default:
+  `None`
   )
   –A dictionary of attributes to attach to the task span.
 
@@ -2005,7 +2042,7 @@ def task(
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
     tags: t.Sequence[str] | None = None,
-    **attributes: t.Any,
+    attributes: AnyDict | None = None,
 ) -> TaskDecorator:
     """
     Create a new task from a function.
@@ -2028,7 +2065,7 @@ def task(
         log_output: Log the result of the function as an output.
         log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
         tags: A list of tags to attach to the task span.
-        **attributes: A dictionary of attributes to attach to the task span.
+        attributes: A dictionary of attributes to attach to the task span.
 
     Returns:
         A new Task object.
@@ -2099,7 +2136,7 @@ task_span(
     *,
     label: str | None = None,
     tags: Sequence[str] | None = None,
-    **attributes: Any,
+    attributes: AnyDict | None = None,
 ) -> TaskSpan[t.Any]
 ```
 
@@ -2120,7 +2157,7 @@ Args:
 name: The name of the task.
 label: The label of the task - useful for filtering in the UI.
 tags: A list of tags to attach to the task span.
-\*\*attributes: A dictionary of attributes to attach to the task span.
+attributes: A dictionary of attributes to attach to the task span.
 
 **Returns:**
 
@@ -2135,7 +2172,7 @@ def task_span(
     *,
     label: str | None = None,
     tags: t.Sequence[str] | None = None,
-    **attributes: t.Any,
+    attributes: AnyDict | None = None,
 ) -> TaskSpan[t.Any]:
     """
     Create a task span without an explicit associated function.
@@ -2153,13 +2190,13 @@ def task_span(
         name: The name of the task.
         label: The label of the task - useful for filtering in the UI.
         tags: A list of tags to attach to the task span.
-        **attributes: A dictionary of attributes to attach to the task span.
+        attributes: A dictionary of attributes to attach to the task span.
 
     Returns:
         A TaskSpan object.
     """
     run = current_run_span.get()
-    label = label or clean_str(name)
+    label = clean_str(label or name)
 
     return TaskSpan(
         name=name,

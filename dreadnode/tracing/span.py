@@ -87,9 +87,9 @@ class Span(ReadableSpan):
     def __init__(
         self,
         name: str,
-        attributes: AnyDict,
         tracer: Tracer,
         *,
+        attributes: AnyDict | None = None,
         label: str | None = None,
         type: SpanType = "span",
         tags: t.Sequence[str] | None = None,
@@ -106,7 +106,7 @@ class Span(ReadableSpan):
             SPAN_ATTRIBUTE_TYPE: type,
             SPAN_ATTRIBUTE_LABEL: self._label,
             SPAN_ATTRIBUTE_TAGS_: self.tags,
-            **attributes,
+            **(attributes or {}),
         }
         self._tracer = tracer
 
@@ -198,9 +198,7 @@ class Span(ReadableSpan):
         self._added_attributes = True
         if schema and raw is False:
             self._schema[key] = create_json_schema(value, set())
-        otel_value = self._pre_attributes[key] = (
-            value if raw else prepare_otlp_attribute(value)
-        )
+        otel_value = self._pre_attributes[key] = value if raw else prepare_otlp_attribute(value)
         if self._span is not None:
             self._span.set_attribute(key, otel_value)
         self._pre_attributes[key] = otel_value
@@ -260,11 +258,7 @@ class RunUpdateSpan(Span):
             **({SPAN_ATTRIBUTE_INPUTS: inputs} if inputs else {}),
             **({SPAN_ATTRIBUTE_OUTPUTS: outputs} if outputs else {}),
             **({SPAN_ATTRIBUTE_OBJECTS: objects} if objects else {}),
-            **(
-                {SPAN_ATTRIBUTE_OBJECT_SCHEMAS: object_schemas}
-                if object_schemas
-                else {}
-            ),
+            **({SPAN_ATTRIBUTE_OBJECT_SCHEMAS: object_schemas} if object_schemas else {}),
         }
 
         # Mark objects and schemas as large attributes if present
@@ -276,7 +270,7 @@ class RunUpdateSpan(Span):
                 large_attrs.append(SPAN_ATTRIBUTE_OBJECT_SCHEMAS)
             attributes[SPAN_ATTRIBUTE_LARGE_ATTRIBUTES] = large_attrs
 
-        super().__init__(f"run.{run_id}.update", attributes, tracer, type="run_update")
+        super().__init__(f"run.{run_id}.update", tracer, type="run_update", attributes=attributes)
 
 
 class RunSpan(Span):
@@ -284,11 +278,11 @@ class RunSpan(Span):
         self,
         name: str,
         project: str,
-        attributes: AnyDict,
         tracer: Tracer,
         file_system: AbstractFileSystem,
         prefix_path: str,
         *,
+        attributes: AnyDict | None = None,
         params: AnyDict | None = None,
         metrics: MetricsDict | None = None,
         tags: t.Sequence[str] | None = None,
@@ -333,9 +327,9 @@ class RunSpan(Span):
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id or ULID()),
             SPAN_ATTRIBUTE_PROJECT: project,
-            **attributes,
+            **(attributes or {}),
         }
-        super().__init__(name, attributes, tracer, type=type, tags=tags)
+        super().__init__(name, tracer, attributes=attributes, type=type, tags=tags)
 
     @classmethod
     def from_context(
@@ -434,9 +428,7 @@ class RunSpan(Span):
             return
 
         current_time = time.time()
-        force_update = force or (
-            current_time - self._last_update_time >= self._update_frequency
-        )
+        force_update = force or (current_time - self._last_update_time >= self._update_frequency)
         should_update = force_update and (
             self._pending_params
             or self._pending_inputs
@@ -458,9 +450,7 @@ class RunSpan(Span):
             inputs=self._pending_inputs if self._pending_inputs else None,
             outputs=self._pending_outputs if self._pending_outputs else None,
             objects=self._pending_objects if self._pending_objects else None,
-            object_schemas=self._pending_object_schemas
-            if self._pending_object_schemas
-            else None,
+            object_schemas=self._pending_object_schemas if self._pending_object_schemas else None,
         ):
             pass
 
@@ -483,7 +473,7 @@ class RunSpan(Span):
         *,
         label: str | None = None,
         event_name: str = EVENT_NAME_OBJECT,
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> str:
         serialized = serialize(value)
         data_hash = serialized.data_hash
@@ -509,7 +499,7 @@ class RunSpan(Span):
 
         # Build event attributes, use composite hash in events
         event_attributes = {
-            **attributes,
+            **(attributes or {}),
             EVENT_ATTRIBUTE_OBJECT_HASH: composite_hash,
             EVENT_ATTRIBUTE_ORIGIN_SPAN_ID: trace_api.format_span_id(
                 trace_api.get_current_span().get_span_context().span_id,
@@ -541,9 +531,7 @@ class RunSpan(Span):
 
         return str(self._file_system.unstrip_protocol(full_path))
 
-    def _create_object_by_hash(
-        self, serialized: Serialized, object_hash: str
-    ) -> Object:
+    def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
         """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
         data = serialized.data
         data_bytes = serialized.data_bytes
@@ -621,7 +609,7 @@ class RunSpan(Span):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> None:
-        label = label or clean_str(name)
+        label = clean_str(label or name)
         hash_ = self.log_object(
             value,
             label=label,
@@ -736,7 +724,7 @@ class RunSpan(Span):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> None:
-        label = label or clean_str(name)
+        label = clean_str(label or name)
         hash_ = self.log_object(
             value,
             label=label,
@@ -751,10 +739,10 @@ class TaskSpan(Span, t.Generic[R]):
     def __init__(
         self,
         name: str,
-        attributes: AnyDict,
         run_id: str,
         tracer: Tracer,
         *,
+        attributes: AnyDict | None = None,
         label: str | None = None,
         metrics: MetricsDict | None = None,
         tags: t.Sequence[str] | None = None,
@@ -765,18 +753,16 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._output: R | Unset = UNSET  # For the python output
 
-        self._context_token: Token[TaskSpan[t.Any] | None] | None = (
-            None  # contextvars context
-        )
+        self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
 
         attributes = {
             SPAN_ATTRIBUTE_RUN_ID: str(run_id),
             SPAN_ATTRIBUTE_INPUTS: self._inputs,
             SPAN_ATTRIBUTE_METRICS: self._metrics,
             SPAN_ATTRIBUTE_OUTPUTS: self._outputs,
-            **attributes,
+            **(attributes or {}),
         }
-        super().__init__(name, attributes, tracer, type="task", label=label, tags=tags)
+        super().__init__(name, tracer, type="task", attributes=attributes, label=label, tags=tags)
 
     def __enter__(self) -> te.Self:
         self._parent_task = current_task_span.get()
@@ -832,7 +818,7 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> str:
-        label = label or clean_str(name)
+        label = clean_str(label or name)
 
         if self._run is None:
             serialized = serialize(value)
@@ -844,9 +830,7 @@ class TaskSpan(Span, t.Generic[R]):
             label=label,
             event_name=EVENT_NAME_OBJECT_OUTPUT,
         )
-        self._outputs.append(
-            ObjectRef(name, label=label, hash=hash_, attributes=attributes)
-        )
+        self._outputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
         return hash_
 
     @property
@@ -863,7 +847,7 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         **attributes: JsonValue,
     ) -> str:
-        label = label or clean_str(name)
+        label = clean_str(label or name)
 
         if self._run is None:
             serialized = serialize(value)
@@ -875,9 +859,7 @@ class TaskSpan(Span, t.Generic[R]):
             label=label,
             event_name=EVENT_NAME_OBJECT_INPUT,
         )
-        self._inputs.append(
-            ObjectRef(name, label=label, hash=hash_, attributes=attributes)
-        )
+        self._inputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
         return hash_
 
     @property
@@ -939,9 +921,7 @@ class TaskSpan(Span, t.Generic[R]):
         # this task-metric was logged here.
 
         if (run := current_run_span.get()) is not None:
-            metric = run.log_metric(
-                key, metric, prefix=self._label, origin=origin, mode=mode
-            )
+            metric = run.log_metric(key, metric, prefix=self._label, origin=origin, mode=mode)
 
         self._metrics.setdefault(key, []).append(metric)
 
