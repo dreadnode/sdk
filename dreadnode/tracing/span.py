@@ -879,14 +879,12 @@ class TaskSpan(Span, t.Generic[R]):
 
     def __enter__(self) -> te.Self:
         self._run = current_run_span.get()
-        if self._run is None:
-            raise RuntimeError("You cannot start a task span without a run")
 
         self._parent_task = current_task_span.get()
         if self._parent_task is not None:
             self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
             self._parent_task._tasks.append(self)  # noqa: SLF001
-        else:
+        elif self._run:
             self._run._tasks.append(self)  # noqa: SLF001
 
         self._context_token = current_task_span.set(self)
