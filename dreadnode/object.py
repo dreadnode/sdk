@@ -1,7 +1,7 @@
 import typing as t
 from dataclasses import dataclass
 
-from dreadnode.types import JsonDict
+from dreadnode.types import AnyDict
 
 
 @dataclass
@@ -9,7 +9,7 @@ class ObjectRef:
     name: str
     label: str
     hash: str
-    attributes: JsonDict
+    attributes: AnyDict | None
 
 
 @dataclass

@@ -59,7 +59,6 @@ from dreadnode.types import (
     INHERITED,
     AnyDict,
     Inherited,
-    JsonDict,
     JsonValue,
 )
 from dreadnode.util import clean_str, handle_internal_errors, logger
@@ -445,7 +444,7 @@ class Dreadnode:
         name: str,
         *,
         tags: t.Sequence[str] | None = None,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> Span:
         """
         Create a new OpenTelemety span.
@@ -464,7 +463,7 @@ class Dreadnode:
         Args:
             name: The name of the span.
             tags: A list of tags to attach to the span.
-            **attributes: A dictionary of attributes to attach to the span.
+            attributes: A dictionary of attributes to attach to the span.
 
         Returns:
             A Span object.
@@ -528,7 +527,7 @@ class Dreadnode:
         log_output: bool | Inherited = INHERITED,
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> TaskDecorator: ...
 
     @t.overload
@@ -542,7 +541,7 @@ class Dreadnode:
         log_output: bool | Inherited = INHERITED,
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> ScoredTaskDecorator[R]: ...
 
     def task(
@@ -555,7 +554,7 @@ class Dreadnode:
         log_output: bool | Inherited = INHERITED,
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> TaskDecorator:
         """
         Create a new task from a function.
@@ -578,7 +577,7 @@ class Dreadnode:
             log_output: Log the result of the function as an output.
             log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
             tags: A list of tags to attach to the task span.
-            **attributes: A dictionary of attributes to attach to the task span.
+            attributes: A dictionary of attributes to attach to the task span.
 
         Returns:
             A new Task object.
@@ -587,6 +586,18 @@ class Dreadnode:
         def make_task(
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
         ) -> Task[P, R]:
+            if isinstance(func, Task):
+                return func.with_(
+                    name=name,
+                    label=label,
+                    log_inputs=log_inputs,
+                    log_output=log_output,
+                    log_execution_metrics=log_execution_metrics,
+                    tags=tags,
+                    attributes=attributes,
+                    append=True,
+                )
+
             unwrapped = inspect.unwrap(func)
 
             if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
@@ -643,7 +654,7 @@ class Dreadnode:
         *,
         label: str | None = None,
         tags: t.Sequence[str] | None = None,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> TaskSpan[t.Any]:
         """
         Create a task span without an explicit associated function.
@@ -661,21 +672,20 @@ class Dreadnode:
             name: The name of the task.
             label: The label of the task - useful for filtering in the UI.
             tags: A list of tags to attach to the task span.
-            **attributes: A dictionary of attributes to attach to the task span.
+            attributes: A dictionary of attributes to attach to the task span.
 
         Returns:
             A TaskSpan object.
         """
-        if (run := current_run_span.get()) is None:
-            raise RuntimeError("Task spans must be created within a run")
+        run = current_run_span.get()
+        label = clean_str(label or name)
 
-        label = label or clean_str(name)
         return TaskSpan(
             name=name,
             label=label,
             attributes=attributes,
             tags=tags,
-            run_id=run.run_id,
+            run_id=run.run_id if run else "",
             tracer=self._get_tracer(),
         )
 
@@ -684,7 +694,7 @@ class Dreadnode:
         *,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
         """
         Make a scorer from a callable function.
@@ -708,7 +718,7 @@ class Dreadnode:
         Args:
             name: The name of the scorer.
             tags: A list of tags to attach to the scorer.
-            **attributes: A dictionary of attributes to attach to the scorer.
+            attributes: A dictionary of attributes to attach to the scorer.
 
         Returns:
             A new Scorer object.
@@ -733,7 +743,7 @@ class Dreadnode:
         params: AnyDict | None = None,
         project: str | None = None,
         autolog: bool = True,
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> RunSpan:
         """
         Create a new run.
@@ -759,7 +769,7 @@ class Dreadnode:
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
             autolog: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
-            **attributes: Additional attributes to attach to the run span.
+            attributes: Additional attributes to attach to the run span.
 
         Returns:
             A RunSpan object that can be used as a context manager.
@@ -937,7 +947,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
-        attributes: JsonDict | None = None,
+        attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> Metric:
         """
@@ -1028,7 +1038,7 @@ class Dreadnode:
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
-        attributes: JsonDict | None = None,
+        attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> Metric:
         """
@@ -1102,7 +1112,7 @@ class Dreadnode:
         step: int = 0,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
-        attributes: JsonDict | None = None,
+        attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1142,7 +1152,7 @@ class Dreadnode:
         step: int = 0,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
-        attributes: JsonDict | None = None,
+        attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1181,7 +1191,7 @@ class Dreadnode:
         step: int = 0,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
-        attributes: JsonDict | None = None,
+        attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1314,7 +1324,7 @@ class Dreadnode:
         *,
         label: str | None = None,
         to: ToObject = "task-or-run",
-        **attributes: t.Any,
+        attributes: AnyDict | None = None,
     ) -> None:
         """
         Log a single input to the current task or run.
@@ -1342,13 +1352,13 @@ class Dreadnode:
         if target is None:
             raise RuntimeError("log_inputs() must be called within a run")
 
-        target.log_input(name, value, label=label, **attributes)
+        target.log_input(name, value, label=label, attributes=attributes)
 
     @handle_internal_errors()
     def log_inputs(
         self,
         to: ToObject = "task-or-run",
-        **inputs: JsonValue,
+        **inputs: t.Any,
     ) -> None:
         """
         Log multiple inputs to the current task or run.
@@ -1366,7 +1376,7 @@ class Dreadnode:
         *,
         label: str | None = None,
         to: ToObject = "task-or-run",
-        **attributes: JsonValue,
+        attributes: AnyDict | None = None,
     ) -> None:
         """
         Log a single output to the current task or run.
@@ -1387,6 +1397,15 @@ class Dreadnode:
 
                 dreadnode.log_output("other", 123)
             ```
+
+        Args:
+            name: The name of the output.
+            value: The value of the output.
+            label: An optional label for the output, useful for filtering in the UI.
+            to: The target object to log the output to. Can be "task-or-run" or "run".
+                Defaults to "task-or-run". If "task-or-run", the output will be logged
+                to the current task or run, whichever is the nearest ancestor.
+            attributes: Additional attributes to attach to the output.
         """
         task = current_task_span.get()
         run = current_run_span.get()
@@ -1397,7 +1416,7 @@ class Dreadnode:
                 "log_output() must be called within a run or a task",
             )
 
-        target.log_output(name, value, label=label, **attributes)
+        target.log_output(name, value, label=label, attributes=attributes)
 
     @handle_internal_errors()
     def log_outputs(
@@ -1414,7 +1433,12 @@ class Dreadnode:
             self.log_output(name, value, to=to)
 
     @handle_internal_errors()
-    def link_objects(self, origin: t.Any, link: t.Any, **attributes: JsonValue) -> None:
+    def link_objects(
+        self,
+        origin: t.Any,
+        link: t.Any,
+        attributes: AnyDict | None = None,
+    ) -> None:
         """
         Associate two runtime objects with each other.
 
@@ -1434,14 +1458,14 @@ class Dreadnode:
         Args:
             origin: The origin object to link from.
             link: The linked object to link to.
-            **attributes: Additional attributes to attach to the link.
+            attributes: Additional attributes to attach to the link.
         """
         if (run := current_run_span.get()) is None:
             raise RuntimeError("link() must be called within a run")
 
         origin_hash = run.log_object(origin)
         link_hash = run.log_object(link)
-        run.link_objects(origin_hash, link_hash, **attributes)
+        run.link_objects(origin_hash, link_hash, attributes=attributes)
 
 
 DEFAULT_INSTANCE = Dreadnode()

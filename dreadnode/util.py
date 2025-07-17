@@ -32,7 +32,7 @@ def clean_str(s: str) -> str:
     """
     Clean a string by replacing all non-alphanumeric characters (except `/` and `@`) with underscores.
     """
-    return re.sub(r"[^\w/@]+", "_", s.lower())
+    return re.sub(r"[^\w/@]+", "_", s.lower()).strip("_")
 
 
 def safe_repr(obj: t.Any) -> str:
