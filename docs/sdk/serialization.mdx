@@ -57,7 +57,9 @@ serialize
 ---------
 
 ```python
-serialize(obj: Any) -> Serialized
+serialize(
+    obj: Any, *, schema_extras: JsonDict | None = None
+) -> Serialized
 ```
 
 Serializes a Python object into a JSON-compatible structure and
@@ -69,6 +71,11 @@ the serialization format and the schema.
 * **`obj`**
   (`Any`)
   –The Python object to process.
+* **`schema_extras`**
+  (`JsonDict | None`, default:
+  `None`
+  )
+  –Additional JSON Schema properties to include.
 
 **Returns:**
 
@@ -77,7 +84,7 @@ the serialization format and the schema.
 
 <Accordion title="Source code in dreadnode/serialization.py" icon="code">
 ```python
-def serialize(obj: t.Any) -> Serialized:
+def serialize(obj: t.Any, *, schema_extras: JsonDict | None = None) -> Serialized:
     """
     Serializes a Python object into a JSON-compatible structure and
     generates a corresponding JSON Schema, ensuring consistency between
@@ -85,6 +92,7 @@ def serialize(obj: t.Any) -> Serialized:
 
     Args:
         obj: The Python object to process.
+        schema_extras: Additional JSON Schema properties to include.
 
     Returns:
         An object containing the serialized data, schema, and their hashes.
@@ -95,6 +103,9 @@ def serialize(obj: t.Any) -> Serialized:
         serialized_bytes = str(serialized).encode()
     else:
         serialized_bytes = json.dumps(serialized, separators=(",", ":")).encode()
+
+    if schema_extras:
+        schema = {**schema, **schema_extras}
 
     schema_str = json.dumps(schema, separators=(",", ":"))
 

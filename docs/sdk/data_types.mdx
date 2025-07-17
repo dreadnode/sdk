@@ -112,6 +112,34 @@ def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
 
 </Accordion>
 
+Code
+----
+
+```python
+Code(text: str, language: str = '')
+```
+
+Hint type for code-formatted text.
+
+This is a subclass of Text with format set to "code".
+
+Example
+
+```python
+log_output("code_snippet", Code("print('Hello, World!')", language="python"))
+```
+
+
+<Accordion title="Source code in dreadnode/data_types/text.py" icon="code">
+```python
+def __init__(self, text: str, language: str = ""):
+    super().__init__(text, format="code")
+    self._language = language
+```
+
+
+</Accordion>
+
 Image
 -----
 
@@ -217,6 +245,33 @@ def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
     image_bytes, image_format, mode, width, height = self._process_image_data()
     metadata = self._generate_metadata(image_format, mode, width, height)
     return image_bytes, metadata
+```
+
+
+</Accordion>
+
+Markdown
+--------
+
+```python
+Markdown(text: str)
+```
+
+Hint type for markdown-formatted text.
+
+This is a subclass of Text with format set to "markdown".
+
+Example
+
+```python
+log_output("report", Markdown("..."))
+```
+
+
+<Accordion title="Source code in dreadnode/data_types/text.py" icon="code">
+```python
+def __init__(self, text: str):
+    super().__init__(text, format="markdown")
 ```
 
 
@@ -436,6 +491,43 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
 
 </Accordion>
 
+Text
+----
+
+```python
+Text(text: str, format: str)
+```
+
+Text data type for Dreadnode logging.
+
+Initialize a Text object.
+
+**Parameters:**
+
+* **`text`**
+  (`str`)
+  –The text content to log
+* **`format`**
+  (`str`)
+  –The format hint of the text
+
+<Accordion title="Source code in dreadnode/data_types/text.py" icon="code">
+```python
+def __init__(self, text: str, format: str):
+    """
+    Initialize a Text object.
+
+    Args:
+        text: The text content to log
+        format: The format hint of the text
+    """
+    self._text = text
+    self._format = format
+```
+
+
+</Accordion>
+
 Video
 -----
 
@@ -572,6 +664,77 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
             "Install with: pip install dreadnode[multimodal]"
         )
     raise TypeError(f"Unsupported video data type: {type(self._data)}")
+```
+
+
+</Accordion>
+
+WithMeta
+--------
+
+```python
+WithMeta(obj: Any, metadata: dict[str, Any])
+```
+
+Helper data type to add additional metadata to the schema for logged data.
+
+Example
+
+```python
+log_output("my_data", WithMeta(data, {"format": "custom-data"}))
+```
+
+Initialize a data type with associated metadata.
+
+**Parameters:**
+
+* **`metadata`**
+  (`dict[str, Any]`)
+  –The metadata for this data type
+
+<Accordion title="Source code in dreadnode/data_types/base.py" icon="code">
+```python
+def __init__(self, obj: t.Any, metadata: dict[str, t.Any]):
+    """
+    Initialize a data type with associated metadata.
+
+    Args:
+        metadata: The metadata for this data type
+    """
+    self._obj = obj
+    self._metadata = metadata
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[t.Any, dict[str, t.Any]]
+```
+
+Convert the media type to a serializable format.
+
+**Returns:**
+
+* `tuple[Any, dict[str, Any]]`
+  –Tuple of (data, metadata) where:
+  - data: The serialized data
+  - metadata: Additional metadata for this data type
+
+<Accordion title="Source code in dreadnode/data_types/base.py" icon="code">
+```python
+def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
+    """
+    Convert the media type to a serializable format.
+
+    Returns:
+        Tuple of (data, metadata) where:
+            - data: The serialized data
+            - metadata: Additional metadata for this data type
+    """
+    return self._obj, self._metadata
 ```
 
 

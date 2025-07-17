@@ -1,10 +1,10 @@
 ---
 title: 'Rich Objects'
-description: 'Store data types like images, audio, video, and 3D objects in your runs.'
+description: 'Store data types like images, audio, video, text with formatting, and 3D objects in your runs.'
 public: true
 ---
 
-Strikes extends its data tracking capabilities to handle complex, non-JSON serializable data types. This allows you to store rich media and other complex objects directly within your runs, making it easy to track and analyze all aspects of your data-driven workflows.
+Strikes extends its data tracking capabilities to handle complex, non-JSON serializable data types. This allows you to store rich media, formatted text, and other complex objects directly within your runs, making it easy to track and analyze all aspects of your data-driven workflows.
 
 ## Images
 
@@ -170,6 +170,57 @@ with dn.run("3d-formats-example"):
     dn.log_input("gltf-model", dn.Object3D("model.gltf"))
     dn.log_input("glb-model", dn.Object3D("model.glb"))
     dn.log_input("stl-model", dn.Object3D("model.stl"))
+```
+</CodeGroup>
+
+## Text with Formatting Hints
+
+For text data that needs special rendering in the UI, you can use text hint types. These provide better visualization and formatting for different types of text content.
+
+<CodeGroup>
+```python Markdown Text
+import dreadnode as dn
+
+markdown_content = """
+# Results Summary
+
+## Model Performance
+- **Accuracy**: 94.2%
+- **Loss**: 0.156
+
+### Key Findings
+The model shows excellent performance on validation data.
+"""
+
+with dn.run("markdown-example"):
+    dn.log_output("report", dn.Markdown(markdown_content))
+```
+
+```python Code Snippets
+import dreadnode as dn
+
+python_code = """
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+result = fibonacci(10)
+print(f"Fibonacci(10) = {result}")
+"""
+
+with dn.run("code-example"):
+    dn.log_output("generated_code", dn.Code(python_code, language="python"))
+```
+
+```python Generic Text with Format
+import dreadnode as dn
+
+# For custom text formatting
+formatted_text = "This is custom formatted text"
+
+with dn.run("text-example"):
+    dn.log_output("custom", dn.Text(formatted_text, format="custom"))
 ```
 </CodeGroup>
 

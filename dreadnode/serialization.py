@@ -23,7 +23,7 @@ from pathlib import PosixPath
 from re import Pattern
 from uuid import UUID
 
-from dreadnode.data_types.base_data_type import BaseDataType
+from dreadnode.data_types.base import DataType
 from dreadnode.types import JsonDict, JsonValue
 from dreadnode.util import safe_repr
 
@@ -408,16 +408,12 @@ def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
     )
 
 
-def _handle_custom_data_type(obj: BaseDataType, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
+def _handle_custom_data_type(obj: DataType, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
     """Handler for Dreadnode custom data types."""
-    if not isinstance(obj, BaseDataType):
+    if not isinstance(obj, DataType):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
-    # Get the serialized data and metadata from the media type
     data, metadata = obj.to_serializable()
-
-    if isinstance(data, bytes):
-        return _handle_bytes(data, _seen, metadata)
     serialized, schema = _serialize(data, _seen)
     schema.update(metadata)
 
@@ -511,7 +507,7 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[datasets.Dataset] = _handle_dataset
 
     with contextlib.suppress(Exception):
-        handlers[BaseDataType] = _handle_custom_data_type
+        handlers[DataType] = _handle_custom_data_type
 
     return handlers
 
@@ -619,7 +615,7 @@ class Serialized:
 EMPTY_HASH = "0" * 16
 
 
-def serialize(obj: t.Any) -> Serialized:
+def serialize(obj: t.Any, *, schema_extras: JsonDict | None = None) -> Serialized:
     """
     Serializes a Python object into a JSON-compatible structure and
     generates a corresponding JSON Schema, ensuring consistency between
@@ -627,6 +623,7 @@ def serialize(obj: t.Any) -> Serialized:
 
     Args:
         obj: The Python object to process.
+        schema_extras: Additional JSON Schema properties to include.
 
     Returns:
         An object containing the serialized data, schema, and their hashes.
@@ -637,6 +634,9 @@ def serialize(obj: t.Any) -> Serialized:
         serialized_bytes = str(serialized).encode()
     else:
         serialized_bytes = json.dumps(serialized, separators=(",", ":")).encode()
+
+    if schema_extras:
+        schema = {**schema, **schema_extras}
 
     schema_str = json.dumps(schema, separators=(",", ":"))
 

@@ -6,14 +6,14 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from dreadnode.data_types.base_data_type import BaseDataType
+from dreadnode.data_types.base import DataType
 
 TableDataType = (
     pd.DataFrame | dict[t.Any, t.Any] | list[t.Any] | str | Path | np.ndarray[t.Any, t.Any]
 )
 
 
-class Table(BaseDataType):
+class Table(DataType):
     """
     Table data type for Dreadnode logging.
 
