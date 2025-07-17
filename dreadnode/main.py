@@ -860,7 +860,11 @@ class Dreadnode:
 
         target = (task or run) if to == "task-or-run" else run
         if target is None:
-            raise RuntimeError("Tagging must be done within a run")
+            warn_at_user_stacklevel(
+                "tag() was called outside of a task or run.",
+                category=DreadnodeUsageWarning,
+            )
+            return
 
         target.add_tags(tag)
 
@@ -883,7 +887,11 @@ class Dreadnode:
                 # do more work
         """
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("Run updates must be pushed within a run")
+            warn_at_user_stacklevel(
+                "push_update() was called outside of a run.",
+                category=DreadnodeUsageWarning,
+            )
+            return
 
         run.push_update(force=True)
 
@@ -934,7 +942,12 @@ class Dreadnode:
             **params: The parameters to log. Each parameter is a key-value pair.
         """
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("Parameters must be logged within a run")
+            warn_at_user_stacklevel(
+                "log_params() was called outside of a run.",
+                category=DreadnodeUsageWarning,
+            )
+            return
+
         run.log_params(**params)
 
     @t.overload
@@ -1085,13 +1098,6 @@ class Dreadnode:
         Returns:
             The logged metric object.
         """
-        task = current_task_span.get()
-        run = current_run_span.get()
-
-        target = (task or run) if to == "task-or-run" else run
-        if target is None:
-            raise RuntimeError("log_metric() must be called within a run")
-
         metric = (
             value
             if isinstance(value, Metric)
@@ -1102,6 +1108,18 @@ class Dreadnode:
                 attributes or {},
             )
         )
+
+        task = current_task_span.get()
+        run = current_run_span.get()
+
+        target = (task or run) if to == "task-or-run" else run
+        if target is None:
+            warn_at_user_stacklevel(
+                "log_metric() was called outside of a task or run.",
+                category=DreadnodeUsageWarning,
+            )
+            return metric
+
         return target.log_metric(name, metric, origin=origin, mode=mode)
 
     @t.overload
@@ -1240,7 +1258,11 @@ class Dreadnode:
 
         target = (task or run) if to == "task-or-run" else run
         if target is None:
-            raise RuntimeError("log_metrics() must be called within a run")
+            warn_at_user_stacklevel(
+                "log_metrics() was called outside of a task or run.",
+                category=DreadnodeUsageWarning,
+            )
+            return []
 
         logged_metrics: list[Metric] = []
 
@@ -1312,7 +1334,11 @@ class Dreadnode:
             local_uri: The local path to the file to upload.
         """
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("log_artifact() must be called within a run")
+            warn_at_user_stacklevel(
+                "log_artifact() was called outside of a run.",
+                category=DreadnodeUsageWarning,
+            )
+            return
 
         run.log_artifact(local_uri=local_uri)
 
@@ -1350,7 +1376,11 @@ class Dreadnode:
 
         target = (task or run) if to == "task-or-run" else run
         if target is None:
-            raise RuntimeError("log_inputs() must be called within a run")
+            warn_at_user_stacklevel(
+                "log_input() was called outside of a task or run.",
+                category=DreadnodeUsageWarning,
+            )
+            return
 
         target.log_input(name, value, label=label, attributes=attributes)
 
@@ -1412,9 +1442,11 @@ class Dreadnode:
 
         target = (task or run) if to == "task-or-run" else run
         if target is None:
-            raise RuntimeError(
-                "log_output() must be called within a run or a task",
+            warn_at_user_stacklevel(
+                "log_output() was called outside of a task or run.",
+                category=DreadnodeUsageWarning,
             )
+            return
 
         target.log_output(name, value, label=label, attributes=attributes)
 
@@ -1461,7 +1493,11 @@ class Dreadnode:
             attributes: Additional attributes to attach to the link.
         """
         if (run := current_run_span.get()) is None:
-            raise RuntimeError("link() must be called within a run")
+            warn_at_user_stacklevel(
+                "link_objects() was called outside of a run.",
+                category=DreadnodeUsageWarning,
+            )
+            return
 
         origin_hash = run.log_object(origin)
         link_hash = run.log_object(link)
