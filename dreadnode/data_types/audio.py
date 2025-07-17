@@ -9,12 +9,12 @@ try:
 except ImportError:
     sf = None
 
-from dreadnode.data_types.base_data_type import BaseDataType
+from dreadnode.data_types.base import DataType
 
 AudioDataType: t.TypeAlias = str | Path | np.ndarray[t.Any, t.Any] | bytes
 
 
-class Audio(BaseDataType):
+class Audio(DataType):
     """
     Audio media type for Dreadnode logging.
 

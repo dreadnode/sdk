@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from dreadnode.data_types.base_data_type import BaseDataType
+from dreadnode.data_types.base import DataType
 
 try:
     from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore  # noqa: PGH003
@@ -19,7 +19,7 @@ except ImportError:
 VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any
 
 
-class Video(BaseDataType):
+class Video(DataType):
     """
     Video media type for Dreadnode logging.
 

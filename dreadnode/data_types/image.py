@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from dreadnode.data_types.base_data_type import BaseDataType
+from dreadnode.data_types.base import DataType
 
 try:
     from PIL import Image as PILImage
@@ -16,7 +16,7 @@ ImageDataType = t.Any | np.ndarray[t.Any, t.Any]
 ImageDataOrPathType = str | Path | bytes | ImageDataType
 
 
-class Image(BaseDataType):
+class Image(DataType):
     """
     Image media type for Dreadnode logging.
 

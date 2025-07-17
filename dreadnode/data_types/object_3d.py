@@ -2,12 +2,12 @@ import typing as t
 from pathlib import Path
 from typing import ClassVar
 
-from dreadnode.data_types.base_data_type import BaseDataType
+from dreadnode.data_types.base import DataType
 
 Object3DDataType = str | Path | bytes
 
 
-class Object3D(BaseDataType):
+class Object3D(DataType):
     """
     3D object media type for Dreadnode logging.
 
