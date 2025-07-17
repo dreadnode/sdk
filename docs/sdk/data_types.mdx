@@ -277,77 +277,6 @@ def __init__(self, text: str):
 
 </Accordion>
 
-Meta
-----
-
-```python
-Meta(obj: Any, metadata: dict[str, Any])
-```
-
-Helper data type to add additional metadata to the schema for logged data.
-
-Example
-
-```python
-log_output("my_data", Meta(data, {"format": "custom-data"}))
-```
-
-Initialize a data type with associated metadata.
-
-**Parameters:**
-
-* **`metadata`**
-  (`dict[str, Any]`)
-  –The metadata for this data type
-
-<Accordion title="Source code in dreadnode/data_types/base.py" icon="code">
-```python
-def __init__(self, obj: t.Any, metadata: dict[str, t.Any]):
-    """
-    Initialize a data type with associated metadata.
-
-    Args:
-        metadata: The metadata for this data type
-    """
-    self._obj = obj
-    self._metadata = metadata
-```
-
-
-</Accordion>
-
-### to\_serializable
-
-```python
-to_serializable() -> tuple[t.Any, dict[str, t.Any]]
-```
-
-Convert the media type to a serializable format.
-
-**Returns:**
-
-* `tuple[Any, dict[str, Any]]`
-  –Tuple of (data, metadata) where:
-  - data: The serialized data
-  - metadata: Additional metadata for this data type
-
-<Accordion title="Source code in dreadnode/data_types/base.py" icon="code">
-```python
-def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
-    """
-    Convert the media type to a serializable format.
-
-    Returns:
-        Tuple of (data, metadata) where:
-            - data: The serialized data
-            - metadata: Additional metadata for this data type
-    """
-    return self._obj, self._metadata
-```
-
-
-</Accordion>
-
 Object3D
 --------
 
@@ -735,6 +664,77 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
             "Install with: pip install dreadnode[multimodal]"
         )
     raise TypeError(f"Unsupported video data type: {type(self._data)}")
+```
+
+
+</Accordion>
+
+WithMeta
+--------
+
+```python
+WithMeta(obj: Any, metadata: dict[str, Any])
+```
+
+Helper data type to add additional metadata to the schema for logged data.
+
+Example
+
+```python
+log_output("my_data", WithMeta(data, {"format": "custom-data"}))
+```
+
+Initialize a data type with associated metadata.
+
+**Parameters:**
+
+* **`metadata`**
+  (`dict[str, Any]`)
+  –The metadata for this data type
+
+<Accordion title="Source code in dreadnode/data_types/base.py" icon="code">
+```python
+def __init__(self, obj: t.Any, metadata: dict[str, t.Any]):
+    """
+    Initialize a data type with associated metadata.
+
+    Args:
+        metadata: The metadata for this data type
+    """
+    self._obj = obj
+    self._metadata = metadata
+```
+
+
+</Accordion>
+
+### to\_serializable
+
+```python
+to_serializable() -> tuple[t.Any, dict[str, t.Any]]
+```
+
+Convert the media type to a serializable format.
+
+**Returns:**
+
+* `tuple[Any, dict[str, Any]]`
+  –Tuple of (data, metadata) where:
+  - data: The serialized data
+  - metadata: Additional metadata for this data type
+
+<Accordion title="Source code in dreadnode/data_types/base.py" icon="code">
+```python
+def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
+    """
+    Convert the media type to a serializable format.
+
+    Returns:
+        Tuple of (data, metadata) where:
+            - data: The serialized data
+            - metadata: Additional metadata for this data type
+    """
+    return self._obj, self._metadata
 ```
 
 

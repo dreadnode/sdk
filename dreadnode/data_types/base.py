@@ -17,13 +17,13 @@ class DataType(ABC):
         """
 
 
-class Meta(DataType):
+class WithMeta(DataType):
     """
     Helper data type to add additional metadata to the schema for logged data.
 
     Example:
         ```
-        log_output("my_data", Meta(data, {"format": "custom-data"}))
+        log_output("my_data", WithMeta(data, {"format": "custom-data"}))
         ```
     """
 
