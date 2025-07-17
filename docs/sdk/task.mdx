@@ -748,8 +748,11 @@ with_(
     name: str | None = None,
     tags: Sequence[str] | None = None,
     label: str | None = None,
-    log_inputs: Sequence[str] | bool | None = None,
-    log_output: bool | None = None,
+    log_inputs: Sequence[str]
+    | bool
+    | Inherited
+    | None = None,
+    log_output: bool | Inherited | None = None,
     log_execution_metrics: bool | None = None,
     append: bool = False,
     attributes: AnyDict | None = None,
@@ -781,12 +784,12 @@ Clone a task and modify its attributes.
   )
   –The new label for the task.
 * **`log_inputs`**
-  (`Sequence[str] | bool | None`, default:
+  (`Sequence[str] | bool | Inherited | None`, default:
   `None`
   )
   –Log all, or specific, incoming arguments to the function as inputs.
 * **`log_output`**
-  (`bool | None`, default:
+  (`bool | Inherited | None`, default:
   `None`
   )
   –Log the result of the function as an output.
@@ -820,8 +823,8 @@ def with_(
     name: str | None = None,
     tags: t.Sequence[str] | None = None,
     label: str | None = None,
-    log_inputs: t.Sequence[str] | bool | None = None,
-    log_output: bool | None = None,
+    log_inputs: t.Sequence[str] | bool | Inherited | None = None,
+    log_output: bool | Inherited | None = None,
     log_execution_metrics: bool | None = None,
     append: bool = False,
     attributes: AnyDict | None = None,

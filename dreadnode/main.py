@@ -586,6 +586,18 @@ class Dreadnode:
         def make_task(
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
         ) -> Task[P, R]:
+            if isinstance(func, Task):
+                return func.with_(
+                    name=name,
+                    label=label,
+                    log_inputs=log_inputs,
+                    log_output=log_output,
+                    log_execution_metrics=log_execution_metrics,
+                    tags=tags,
+                    attributes=attributes,
+                    append=True,
+                )
+
             unwrapped = inspect.unwrap(func)
 
             if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(

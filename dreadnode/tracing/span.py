@@ -264,6 +264,25 @@ class Span(ReadableSpan):
                 attributes=prepare_otlp_attributes(attributes or {}),
             )
 
+    def set_exception(
+        self,
+        exception: BaseException,
+        *,
+        attributes: AnyDict | None = None,
+        status: Status | None = None,
+    ) -> None:
+        if self._span is None:
+            raise ValueError("Span is not active")
+
+        if status is None:
+            status = Status(StatusCode.ERROR, str(exception))
+
+        self._span.set_status(status)
+        self._span.record_exception(
+            exception,
+            attributes=prepare_otlp_attributes(attributes or {}),
+        )
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(name='{self._span_name}', id={self.span_id},"
