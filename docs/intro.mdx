@@ -64,12 +64,17 @@ asyncio.run(main())
 ```
 
 <Note>
-We'll assume you have installed the `dreadnode` package and have your environment variables set up. Make sure you have `DREADNODE_API_TOKEN=...` set to your Platform API key.
+We'll assume you have installed the `dreadnode` package and have your environment variables set up. Make sure you have `DREADNODE_API_KEY=...` set to your Platform API key.
 
 For more information on `dreadnode.configure()`, review the [Configuration](/usage/config) topic.
 
 If you call `dreadnode.configure()` without any token and your environment variables are not set, you'll receive a warning in the console, so keep an eye out! You can still run any of your code without sending data to the Dreadnode Platform.
 </Note>
+
+<Tip>
+**Server Configuration**
+By default, the SDK connects to the hosted Dreadnode platform at `https://platform.dreadnode.io`. If you're using a self-hosted instance, you must configure the server URL explicitly in your `dreadnode.configure()` call or via the `DREADNODE_SERVER` environment variable. See the [Configuration](/usage/config) guide for details.
+</Tip>
 
 This code should be very familiar if you've used an ML-experimentation library before, and all the functions you're familiar with work exactly like you would expect.
 

@@ -6,11 +6,6 @@ public: true
 
 The `dreadnode` package is the python SDK that backs Strikes functionality. You'll use it to configure your experiments, track data, and send it to the Dreadnode Platform.
 
-<Warning>
-In order to use this package with the Dreadnode Platform, you will need [access to Strikes](https://platform.dreadnode.io/waitlist/strikes) and an [API key](https://platform.dreadnode.io/account).
-While this isn't required for local development, it is necessary to use the Dreadnode Platform.
-</Warning>
-
 Installation may depend on your python package management, but we've included some common examples:
 
 <CodeGroup>
@@ -30,3 +25,13 @@ uv add dreadnode
 poetry self add dreadnode
 ```
 </CodeGroup>
+
+<Warning>
+In order to use this package with the public Dreadnode Platform, you will need [access to Strikes](https://platform.dreadnode.io/waitlist/strikes) and an [API key](https://platform.dreadnode.io/account).
+While this isn't required for local development, it is necessary to use the Dreadnode Platform.
+
+If you're using a **self-hosted platform**, you'll need to:
+1. Obtain an API key from your self-hosted instance
+2. Configure the SDK to point to your server URL (see [Configuration](/usage/config))
+3. Ensure your self-hosted instance is accessible from your development environment
+</Warning>

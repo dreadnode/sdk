@@ -4,7 +4,25 @@ description: "Set configuration values"
 public: true
 ---
 
-The quickest way to configure Strikes is to set the `DREADNODE_API_TOKEN` environment variable and let the library handle the rest with `dreadnode.configure()`. However, there are quite a few additional options you can set as needed.
+The quickest way to configure Strikes is to set the `DREADNODE_API_KEY` environment variable and let the library handle the rest with `dreadnode.configure()`. However, there are quite a few additional options you can set as needed.
+
+## Self-Hosted Platform
+
+If you're using a **self-hosted Dreadnode platform**, you must always specify your server URL explicitly. The SDK defaults to `https://platform.dreadnode.io` otherwise.
+
+<CodeGroup>
+```python in code
+dreadnode.configure(
+    server="https://hosted-server",  # Your self-hosted server URL
+    token="your-api-token",
+)
+```
+
+```bash environment variables
+export DREADNODE_SERVER="https://hosted-server"
+export DREADNODE_API_KEY="your-api-token"
+```
+</CodeGroup>
 
 ## Using `configure()`
 
@@ -30,8 +48,8 @@ dreadnode.configure(
 Set variables to call `.config()` more easily.
 
 ```bash
-export DREADNODE_SERVER_URL="https://platform.dreadnode.io"
-export DREADNODE_API_TOKEN="your-api-token"
+export DREADNODE_SERVER="https://platform.dreadnode.io" # or DREADNODE_SERVER_URL
+export DREADNODE_API_KEY="your-api-token" # or DREADNODE_API_TOKEN
 export DREADNODE_LOCAL_DIR="./runs"
 export DREADNODE_PROJECT="my-project"
 ```
