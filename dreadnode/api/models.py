@@ -32,6 +32,35 @@ class UserResponse(BaseModel):
     api_key: UserAPIKey
 
 
+class UserDataCredentials(BaseModel):
+    access_key_id: str
+    secret_access_key: str
+    session_token: str
+    expiration: datetime
+    region: str
+    bucket: str
+    prefix: str
+    endpoint: str | None
+
+
+# Auth
+
+
+class DeviceCodeResponse(BaseModel):
+    id: UUID
+    completed: bool
+    device_code: str
+    expires_at: datetime
+    expires_in: int
+    user_code: str
+    verification_url: str
+
+
+class AccessRefreshTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+
+
 # Strikes
 
 SpanStatus = t.Literal[
@@ -404,17 +433,3 @@ class TraceTree(BaseModel):
     """Span at this node, can be a Task or a TraceSpan."""
     children: list["TraceTree"] = []
     """Children of this span, representing nested spans or tasks."""
-
-
-# User data credentials
-
-
-class UserDataCredentials(BaseModel):
-    access_key_id: str
-    secret_access_key: str
-    session_token: str
-    expiration: datetime
-    region: str
-    bucket: str
-    prefix: str
-    endpoint: str | None

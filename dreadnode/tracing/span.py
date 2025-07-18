@@ -31,16 +31,12 @@ from ulid import ULID
 from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
-from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
+from dreadnode.constants import DEFAULT_MAX_INLINE_OBJECT_BYTES
 from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
-from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
-from dreadnode.util import clean_str
-from dreadnode.version import VERSION
-
-from .constants import (
+from dreadnode.tracing.constants import (
     EVENT_ATTRIBUTE_LINK_HASH,
     EVENT_ATTRIBUTE_OBJECT_HASH,
     EVENT_ATTRIBUTE_OBJECT_LABEL,
@@ -69,6 +65,9 @@ from .constants import (
     SPAN_ATTRIBUTE_VERSION,
     SpanType,
 )
+from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
+from dreadnode.util import clean_str
+from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     import networkx as nx  # type: ignore [import-untyped]
@@ -630,7 +629,7 @@ class RunSpan(Span):
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        if data is None or data_bytes is None or data_len <= MAX_INLINE_OBJECT_BYTES:
+        if data is None or data_bytes is None or data_len <= DEFAULT_MAX_INLINE_OBJECT_BYTES:
             return ObjectVal(
                 hash=object_hash,
                 value=data,

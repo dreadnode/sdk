@@ -8,6 +8,7 @@ import re
 import sys
 import typing as t
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 
@@ -52,6 +53,29 @@ def safe_repr(obj: t.Any) -> str:
         return f"<{type(obj).__name__} object>"
     except Exception:  # noqa: BLE001
         return "<unknown (repr failed)>"
+
+
+def time_to(future_datetime: datetime) -> str:
+    """Get a string describing the time difference between a future datetime and now."""
+
+    now = datetime.now(tz=future_datetime.tzinfo)
+    time_difference = future_datetime - now
+
+    days = time_difference.days
+    seconds = time_difference.seconds
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+
+    result = []
+    if days > 0:
+        result.append(f"{days}d")
+    if hours > 0:
+        result.append(f"{hours}hr")
+    if minutes > 0:
+        result.append(f"{minutes}m")
+
+    return ", ".join(result) if result else "Just now"
 
 
 def log_internal_error() -> None:
