@@ -16,8 +16,8 @@ _PRESIDIO_ERROR_MSG = (
 
 try:
     from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found,unused-ignore]
-    from presidio_analyzer.nlp_engine import (
-        NlpEngineProvider,  # type: ignore[import-not-found,unused-ignore]
+    from presidio_analyzer.nlp_engine import (  # type: ignore[import-not-found,unused-ignore]
+        NlpEngineProvider,
     )
 
     _PRESIDIO_AVAILABLE = True
