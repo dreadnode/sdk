@@ -20,10 +20,6 @@ class TaskFailedWarning(UserWarning):
     pass
 
 
-class TaskGeneratorWarning(UserWarning):
-    pass
-
-
 class TaskSpanList(list[TaskSpan[R]]):
     """
     Lightweight wrapper around a list of TaskSpans to provide some convenience methods.
@@ -214,7 +210,7 @@ class Task(t.Generic[P, R]):
             else task.log_execution_metrics
         )
 
-        new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
+        new_scorers = [Scorer.from_callable(scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
 
         if append:
@@ -503,3 +499,65 @@ class Task(t.Generic[P, R]):
         """
         spans = await self.try_map_run(count, *args, **kwargs)
         return [span.output for span in spans if span]
+
+
+class TaskInputWarning(UserWarning):
+    pass
+
+
+class TaskInput:
+    """
+    A placeholder to dynamically retrieve an input from the active TaskSpan.
+    """
+
+    def __init__(self, name: str, *, process: t.Callable[[t.Any], t.Any] | None = None) -> None:
+        """
+        Args:
+            name: The name of the input to retrieve, as logged via `task.log_input(name=...)`.
+            process: An optional function to process the input value before returning it.
+                This can be used to transform or extract from
+        """
+        self.name = name
+        self.process = process
+
+    def __repr__(self) -> str:
+        return f"TaskInput(name='{self.name}')"
+
+    def resolve(self) -> t.Any:
+        """
+        Resolve the input from the current TaskSpan.
+
+        Returns:
+            The value of the input from the current TaskSpan.
+        """
+        from dreadnode.tracing.span import current_task_span
+
+        if (task := current_task_span.get()) is None:
+            warn_at_user_stacklevel(
+                "TaskInput.resolve() called outside of an active TaskSpan context. "
+                "This will raise an error in future versions.",
+                TaskInputWarning,
+            )
+            return None
+
+        try:
+            task_input = task.inputs[self.name]
+        except KeyError:
+            warn_at_user_stacklevel(
+                f"Input '{self.name}' not found in the active TaskSpan. "
+                f"Available inputs are: {list(task.inputs.keys())}",
+                TaskInputWarning,
+            )
+            return None
+
+        try:
+            if self.process is not None:
+                return self.process(task_input)
+        except Exception as e:  # noqa: BLE001
+            warn_at_user_stacklevel(
+                f"Error processing TaskInput '{self.name}': {e}",
+                TaskInputWarning,
+            )
+            return None
+
+        return task_input

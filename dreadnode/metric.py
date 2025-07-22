@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import typing_extensions as te
 from logfire._internal.stack_info import warn_at_user_stacklevel
 from logfire._internal.utils import safe_repr
-from opentelemetry.trace import Tracer
 
 from dreadnode.types import JsonDict, JsonValue
 
@@ -73,7 +72,11 @@ class Metric:
         total = sum(value * weight for _, value, weight in values)
         weight = sum(weight for _, _, weight in values)
         score_attributes = {name: value for name, value, _ in values}
-        return cls(value=total / weight, step=step, attributes={**attributes, **score_attributes})
+        return cls(
+            value=total / weight,
+            step=step,
+            attributes={**attributes, **score_attributes},
+        )
 
     def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
         """
@@ -124,8 +127,6 @@ ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], Sc
 
 @dataclass
 class Scorer(t.Generic[T]):
-    tracer: Tracer
-
     name: str
     "The name of the scorer, used for reporting metrics."
     tags: t.Sequence[str]
@@ -138,25 +139,27 @@ class Scorer(t.Generic[T]):
     "The step value to attach to metrics produced by this Scorer."
     auto_increment_step: bool = False
     "Whether to automatically increment the step for each time this scorer is called."
+    catch: bool = False
+    "Whether to catch exceptions in the scorer function and return a 0 Metric with error information."
 
     @classmethod
     def from_callable(
         cls,
-        tracer: Tracer,
         func: "ScorerCallable[T] | Scorer[T]",
         *,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
+        catch: bool = False,
         **attributes: t.Any,
     ) -> "Scorer[T]":
         """
         Create a scorer from a callable function.
 
         Args:
-            tracer: The tracer to use for reporting metrics.
             func: The function to call to get the metric.
             name: The name of the scorer, used for reporting metrics.
             tags: A list of tags to attach to the metric.
+            catch: Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
             **attributes: A dictionary of attributes to attach to the metric.
 
         Returns:
@@ -177,11 +180,11 @@ class Scorer(t.Generic[T]):
         )
         name = name or func_name
         return cls(
-            tracer=tracer,
             name=name,
             tags=tags or [],
             attributes=attributes or {},
             func=func,
+            catch=catch,
         )
 
     def __post_init__(self) -> None:
@@ -196,13 +199,13 @@ class Scorer(t.Generic[T]):
             A new Scorer.
         """
         return Scorer(
-            tracer=self.tracer,
             name=self.name,
             tags=self.tags,
             attributes=self.attributes,
             func=self.func,
             step=self.step,
             auto_increment_step=self.auto_increment_step,
+            catch=self.catch,
         )
 
     async def __call__(self, object: T) -> Metric:
@@ -217,17 +220,19 @@ class Scorer(t.Generic[T]):
         Returns:
             A Metric object.
         """
-        from dreadnode.tracing.span import Span
-
-        with Span(
-            name=self.name,
-            tags=self.tags,
-            attributes=self.attributes,
-            tracer=self.tracer,
-        ):
+        try:
             metric = self.func(object)
             if inspect.isawaitable(metric):
                 metric = await metric
+        except Exception as exc:
+            if not self.catch:
+                raise
+
+            warn_at_user_stacklevel(
+                f"Error executing scorer {self.name!r} for object {object!r}: {exc}",
+                MetricWarning,
+            )
+            metric = Metric(value=0.0, step=self.step, attributes={"error": str(exc)})
 
         if not isinstance(metric, Metric):
             metric = Metric(

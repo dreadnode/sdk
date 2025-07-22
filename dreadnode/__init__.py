@@ -1,4 +1,4 @@
-from dreadnode import convert, data_types
+from dreadnode import convert, data_types, scorers
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
@@ -71,6 +71,7 @@ __all__ = [
     "push_update",
     "run",
     "scorer",
+    "scorers",
     "shutdown",
     "span",
     "tag",

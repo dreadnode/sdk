@@ -857,7 +857,7 @@ def with_(
         else task.log_execution_metrics
     )
 
-    new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
+    new_scorers = [Scorer.from_callable(scorer) for scorer in (scorers or [])]
     new_tags = list(tags or [])
 
     if append:
@@ -870,6 +870,105 @@ def with_(
         task.attributes = attributes or {}
 
     return task
+```
+
+
+</Accordion>
+
+TaskInput
+---------
+
+```python
+TaskInput(
+    name: str,
+    *,
+    process: Callable[[Any], Any] | None = None,
+)
+```
+
+A placeholder to dynamically retrieve an input from the active TaskSpan.
+
+**Parameters:**
+
+* **`name`**
+  (`str`)
+  –The name of the input to retrieve, as logged via `task.log_input(name=...)`.
+* **`process`**
+  (`Callable[[Any], Any] | None`, default:
+  `None`
+  )
+  –An optional function to process the input value before returning it.
+  This can be used to transform or extract from
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+def __init__(self, name: str, *, process: t.Callable[[t.Any], t.Any] | None = None) -> None:
+    """
+    Args:
+        name: The name of the input to retrieve, as logged via `task.log_input(name=...)`.
+        process: An optional function to process the input value before returning it.
+            This can be used to transform or extract from
+    """
+    self.name = name
+    self.process = process
+```
+
+
+</Accordion>
+
+### resolve
+
+```python
+resolve() -> t.Any
+```
+
+Resolve the input from the current TaskSpan.
+
+**Returns:**
+
+* `Any`
+  –The value of the input from the current TaskSpan.
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+def resolve(self) -> t.Any:
+    """
+    Resolve the input from the current TaskSpan.
+
+    Returns:
+        The value of the input from the current TaskSpan.
+    """
+    from dreadnode.tracing.span import current_task_span
+
+    if (task := current_task_span.get()) is None:
+        warn_at_user_stacklevel(
+            "TaskInput.resolve() called outside of an active TaskSpan context. "
+            "This will raise an error in future versions.",
+            TaskInputWarning,
+        )
+        return None
+
+    try:
+        task_input = task.inputs[self.name]
+    except KeyError:
+        warn_at_user_stacklevel(
+            f"Input '{self.name}' not found in the active TaskSpan. "
+            f"Available inputs are: {list(task.inputs.keys())}",
+            TaskInputWarning,
+        )
+        return None
+
+    try:
+        if self.process is not None:
+            return self.process(task_input)
+    except Exception as e:  # noqa: BLE001
+        warn_at_user_stacklevel(
+            f"Error processing TaskInput '{self.name}': {e}",
+            TaskInputWarning,
+        )
+        return None
+
+    return task_input
 ```
 
 
