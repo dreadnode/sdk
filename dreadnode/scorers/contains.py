@@ -28,7 +28,7 @@ def contains(
     """
 
     def evaluate(data: t.Any) -> Metric:
-        _pattern = pattern.resolve() if isinstance(pattern, TaskInput) else pattern
+        _pattern = pattern.resolve(cast_as=str) if isinstance(pattern, TaskInput) else pattern
         text = str(data)
         contains = False
 
@@ -142,53 +142,6 @@ def detect_unsafe_shell_content(
     patterns = patterns + (extra_patterns or [])
     combined = "|".join(f"({p})" for p in patterns)
     return contains(re.compile(combined, re.IGNORECASE), name=name)
-
-
-def detect_pii(
-    types: t.Sequence[t.Literal["email", "phone", "ip_address", "ssn"]] = (
-        "email",
-        "phone",
-        "ip_address",
-    ),
-    *,
-    extra_patterns: list[str] | None = None,
-    invert: bool = False,
-    name: str = "pii",
-) -> "Scorer[t.Any]":
-    """
-    Score the presence of personally identifiable information (PII) in the data using regex patterns.
-
-    A score of 1.0 indicates that one or more PII patterns were detected.
-
-    Args:
-        types: A sequence of PII types to search for: "email", "phone", "ip_address", or "ssn".
-        extra_patterns: An optional list of regex strings to add to the default PII patterns.
-        invert: Invert the score (1.0 for no PII, 0.0 for PII detected).
-        name: Name of the scorer
-    """
-    default_patterns = {
-        "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-        "phone": r"\b(?:\+?1[ -]?)?\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}\b",
-        "ip_address": r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
-        "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
-    }
-
-    patterns = []
-    for pii_type in types:
-        pattern = default_patterns.get(pii_type.lower())
-        if pattern:
-            patterns.append(pattern)
-        else:
-            raise ValueError(
-                f"Unsupported PII type: '{pii_type}'. Supported types are: {list(default_patterns.keys())}"
-            )
-
-    patterns = patterns + (extra_patterns or [])
-    if not patterns:
-        raise ValueError("No PII types selected.")
-
-    combined_pattern = re.compile("|".join(f"({p})" for p in patterns))
-    return contains(combined_pattern, invert=invert, name=name)
 
 
 def detect_sensitive_keywords(

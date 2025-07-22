@@ -925,10 +925,26 @@ def __init__(self, name: str, *, process: t.Callable[[t.Any], t.Any] | None = No
 ### resolve
 
 ```python
-resolve() -> t.Any
+resolve(*, cast_as: None = None) -> t.Any
+```
+
+```python
+resolve(*, cast_as: type[CastT]) -> CastT
+```
+
+```python
+resolve(*, cast_as: type[CastT] | None = None) -> t.Any
 ```
 
 Resolve the input from the current TaskSpan.
+
+**Parameters:**
+
+* **`cast_as`**
+  (`type[CastT] | None`, default:
+  `None`
+  )
+  –Optionally cast the resolved value to a specific type.
 
 **Returns:**
 
@@ -937,9 +953,12 @@ Resolve the input from the current TaskSpan.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-def resolve(self) -> t.Any:
+def resolve(self, *, cast_as: type[CastT] | None = None) -> t.Any:  # noqa: PLR0911
     """
     Resolve the input from the current TaskSpan.
+
+    Args:
+        cast_as: Optionally cast the resolved value to a specific type.
 
     Returns:
         The value of the input from the current TaskSpan.
@@ -972,7 +991,17 @@ def resolve(self) -> t.Any:
             f"Error processing TaskInput '{self.name}': {e}",
             TaskInputWarning,
         )
-        return None
+        return task_input
+
+    if cast_as is not None:
+        try:
+            return cast_as(task_input)  # type: ignore [call-arg]
+        except Exception as e:  # noqa: BLE001
+            warn_at_user_stacklevel(
+                f"Error casting TaskInput '{self.name}' to {cast_as.__name__}: {e}",
+                TaskInputWarning,
+            )
+            return task_input
 
     return task_input
 ```

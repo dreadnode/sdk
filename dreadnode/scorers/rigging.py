@@ -27,8 +27,15 @@ def wrap_chat(
 
     Args:
         inner_scorer: The text-based Scorer instance to wrap (e.g., one from `contains` or `similarity_to`).
-        filter: The strategy for filtering which messages to include.
-                Defaults to 'last_assistant', which is common for scoring a model's final response.
+        filter: The strategy for filtering which messages to include:
+            - "all": Use all messages in the chat.
+            - "last": Use only the last message.
+            - "first": Use only the first message.
+            - "user": Use only user messages.
+            - "assistant": Use only assistant messages.
+            - "last_user": Use only the last user message.
+            - "last_assistant": Use only the last assistant message.
+            - A callable that takes a list of `Message` objects and returns a filtered list.
         name: An optional name for the new, wrapped scorer. If None, a descriptive name is generated.
 
     Returns:

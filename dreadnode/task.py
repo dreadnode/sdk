@@ -511,6 +511,9 @@ class TaskInputWarning(UserWarning):
     pass
 
 
+CastT = t.TypeVar("CastT")
+
+
 class TaskInput:
     """
     A placeholder to dynamically retrieve an input from the active TaskSpan.
@@ -529,9 +532,18 @@ class TaskInput:
     def __repr__(self) -> str:
         return f"TaskInput(name='{self.name}')"
 
-    def resolve(self) -> t.Any:
+    @t.overload
+    def resolve(self, *, cast_as: None = None) -> t.Any: ...
+
+    @t.overload
+    def resolve(self, *, cast_as: type[CastT]) -> CastT: ...
+
+    def resolve(self, *, cast_as: type[CastT] | None = None) -> t.Any:  # noqa: PLR0911
         """
         Resolve the input from the current TaskSpan.
+
+        Args:
+            cast_as: Optionally cast the resolved value to a specific type.
 
         Returns:
             The value of the input from the current TaskSpan.
@@ -564,6 +576,16 @@ class TaskInput:
                 f"Error processing TaskInput '{self.name}': {e}",
                 TaskInputWarning,
             )
-            return None
+            return task_input
+
+        if cast_as is not None:
+            try:
+                return cast_as(task_input)  # type: ignore [call-arg]
+            except Exception as e:  # noqa: BLE001
+                warn_at_user_stacklevel(
+                    f"Error casting TaskInput '{self.name}' to {cast_as.__name__}: {e}",
+                    TaskInputWarning,
+                )
+                return task_input
 
         return task_input

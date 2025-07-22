@@ -68,8 +68,9 @@ def similarity(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        if isinstance(reference, TaskInput):
-            reference_text = str(reference.resolve())
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
 
         if not case_sensitive:
             candidate_text = candidate_text.lower()
@@ -119,7 +120,9 @@ def semantic_similarity(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference_text])
         sim = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
@@ -157,7 +160,9 @@ def bleu(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
 
         if not reference_text or not candidate_text:
             return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})

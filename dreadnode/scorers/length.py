@@ -29,7 +29,9 @@ def length_ratio(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
 
         if not reference_text:
             raise ValueError("Reference text must not be empty.")

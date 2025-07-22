@@ -66,7 +66,9 @@ def bleu(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
 
         if not reference_text or not candidate_text:
             return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})
@@ -803,7 +805,9 @@ def length_ratio(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
 
         if not reference_text:
             raise ValueError("Reference text must not be empty.")
@@ -951,7 +955,9 @@ def semantic_similarity(
 
     def evaluate(data: t.Any) -> Metric:
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference_text = (
+            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
+        )
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference_text])
         sim = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
@@ -1078,8 +1084,15 @@ string to the `inner_scorer` for evaluation.
   (`ChatFilterMode | ChatFilterFunction`, default:
   `'last'`
   )
-  –The strategy for filtering which messages to include.
-  Defaults to 'last\_assistant', which is common for scoring a model's final response.
+  –The strategy for filtering which messages to include:
+  - "all": Use all messages in the chat.
+  - "last": Use only the last message.
+  - "first": Use only the first message.
+  - "user": Use only user messages.
+  - "assistant": Use only assistant messages.
+  - "last\_user": Use only the last user message.
+  - "last\_assistant": Use only the last assistant message.
+  - A callable that takes a list of `Message` objects and returns a filtered list.
 * **`name`**
   (`str | None`, default:
   `None`
@@ -1108,8 +1121,15 @@ def wrap_chat(
 
     Args:
         inner_scorer: The text-based Scorer instance to wrap (e.g., one from `contains` or `similarity_to`).
-        filter: The strategy for filtering which messages to include.
-                Defaults to 'last_assistant', which is common for scoring a model's final response.
+        filter: The strategy for filtering which messages to include:
+            - "all": Use all messages in the chat.
+            - "last": Use only the last message.
+            - "first": Use only the first message.
+            - "user": Use only user messages.
+            - "assistant": Use only assistant messages.
+            - "last_user": Use only the last user message.
+            - "last_assistant": Use only the last assistant message.
+            - A callable that takes a list of `Message` objects and returns a filtered list.
         name: An optional name for the new, wrapped scorer. If None, a descriptive name is generated.
 
     Returns:

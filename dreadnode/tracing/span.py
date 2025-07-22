@@ -583,6 +583,7 @@ class RunSpan(Span):
         if composite_hash not in self._objects:
             # Create a new object, but use the data_hash for deduplication of storage
             obj = self._create_object_by_hash(serialized, composite_hash)
+            obj.runtime_value = value  # Store the original value for runtime access
 
             # Store with composite hash so we can look it up by the combination
             self._objects[composite_hash] = obj
