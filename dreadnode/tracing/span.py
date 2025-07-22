@@ -650,7 +650,7 @@ class RunSpan(Span):
             size=data_len,
         )
 
-    def get_object(self, hash_: str) -> t.Any:
+    def get_object(self, hash_: str) -> Object:
         return self._objects[hash_]
 
     def link_objects(
@@ -979,7 +979,7 @@ class TaskSpan(Span, t.Generic[R]):
         return hash_
 
     @property
-    def inputs(self) -> AnyDict:
+    def inputs(self) -> dict[str, Object]:
         if self._run is None:
             return {}
         return {ref.name: self._run.get_object(ref.hash) for ref in self._inputs}

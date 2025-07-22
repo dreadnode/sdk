@@ -283,7 +283,10 @@ class Task(t.Generic[P, R]):
 
             input_object_hashes: list[str] = [
                 span.log_input(
-                    name, value, label=f"{self.label}.input.{name}", attributes={"auto": True}
+                    name,
+                    value,
+                    label=f"{self.label}.input.{name}",
+                    attributes={"auto": True},
                 )
                 for name, value in inputs_to_log.items()
             ]
@@ -321,7 +324,10 @@ class Task(t.Generic[P, R]):
                 )
             ):
                 output_object_hash = span.log_output(
-                    "output", output, label=f"{self.label}.output", attributes={"auto": True}
+                    "output",
+                    output,
+                    label=f"{self.label}.output",
+                    attributes={"auto": True},
                 )
 
                 # Link the output to the inputs
@@ -515,7 +521,7 @@ class TaskInput:
         Args:
             name: The name of the input to retrieve, as logged via `task.log_input(name=...)`.
             process: An optional function to process the input value before returning it.
-                This can be used to transform or extract from
+                This can be used to transform or extract from the raw input value.
         """
         self.name = name
         self.process = process
@@ -541,7 +547,7 @@ class TaskInput:
             return None
 
         try:
-            task_input = task.inputs[self.name]
+            task_input = task.inputs[self.name].value
         except KeyError:
             warn_at_user_stacklevel(
                 f"Input '{self.name}' not found in the active TaskSpan. "

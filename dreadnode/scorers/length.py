@@ -53,8 +53,9 @@ def length_ratio(
 
 
 def length_in_range(
-    min: int = 0,
-    max: float = float("inf"),
+    min_length: int = 0,
+    max_length: float = float("inf"),
+    *,
     name: str = "length_in_range",
 ) -> "Scorer[t.Any]":
     """
@@ -64,31 +65,35 @@ def length_in_range(
     the score degrades towards 0.0. A score of 0.0 is returned for empty text.
 
     Args:
-        min: The minimum acceptable character length.
-        max: The maximum acceptable character length.
+        min_length: The minimum acceptable character length.
+        max_length: The maximum acceptable character length.
         name: Name of the scorer.
     """
-    if min < 0 or max < min:
+    if min_length < 0 or max_length < min_length:
         raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
 
     def evaluate(data: t.Any) -> Metric:
         text = str(data)
         text_len = len(text)
 
-        if text_len == 0 and min > 0:
-            return Metric(value=0.0, attributes={"length": 0})
-
         score = 0.0
-        if min <= text_len <= max:
+        if min_length <= text_len <= max_length:
             score = 1.0
-        elif text_len < min:
-            # Degrade score linearly from min down to 0 length
-            score = text_len / min
-        else:
-            # Inverse relationship for text_len > max
-            score = max / text_len if text_len > 0 else 0.0
+        elif text_len < min_length:
+            # Linear ramp-up from 0 to min. Avoids division by zero if min is 0.
+            score = text_len / min_length if min_length > 0 else 0.0
+        else:  # text_len > max
+            # Linear degradation. Score hits 0 when length is 2*max.
+            # This is more predictable than an inverse curve.
+            # We define the "penalty zone" as the range from max to 2*max.
+            penalty_range = max_length
+            overage = text_len - max_length
+            score = 1.0 - (overage / penalty_range) if penalty_range > 0 else 0.0
 
-        return Metric(value=score, attributes={"length": text_len, "min": min, "max": max})
+        return Metric(
+            value=max(0.0, score),
+            attributes={"length": text_len, "min": min_length, "max": max_length},
+        )
 
     return Scorer.from_callable(evaluate, name=name)
 
@@ -115,10 +120,19 @@ def length_target(
         text = str(data)
         text_len = len(text)
 
-        if text_len == 0:
-            return Metric(value=0.0, attributes={"length": 0, "target": target_length})
+        # Handle the perfect match case first, especially for target=0
+        if text_len == target_length:
+            score = 1.0
+        elif target_length == 0:
+            # If target is 0, any non-zero length is a total miss.
+            score = 0.0
+        else:
+            # Linear degradation based on distance from target.
+            diff = abs(text_len - target_length)
+            score = 1.0 - (diff / target_length)
 
-        score = 1.0 - abs(text_len - target_length) / target_length if target_length > 0 else 0.0
-        return Metric(value=score, attributes={"length": text_len, "target": target_length})
+        final_score = max(0.0, score)
+
+        return Metric(value=final_score, attributes={"length": text_len, "target": target_length})
 
     return Scorer.from_callable(evaluate, name=name)

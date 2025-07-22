@@ -3,7 +3,7 @@ from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, 
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
 from dreadnode.object import Object
-from dreadnode.task import Task
+from dreadnode.task import Task, TaskInput
 from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
@@ -50,6 +50,7 @@ __all__ = [
     "Span",
     "Table",
     "Task",
+    "TaskInput",
     "TaskSpan",
     "Text",
     "Video",
