@@ -7,6 +7,7 @@ from dreadnode.scorers.contains import (
     detect_unsafe_shell_content,
 )
 from dreadnode.scorers.length import length_in_range, length_ratio, length_target
+from dreadnode.scorers.llm_judge import llm_judge
 from dreadnode.scorers.pii import detect_pii, detect_pii_with_presidio
 from dreadnode.scorers.readability import readability
 from dreadnode.scorers.rigging import wrap_chat
@@ -26,6 +27,7 @@ __all__ = [
     "length_in_range",
     "length_ratio",
     "length_target",
+    "llm_judge",
     "readability",
     "semantic_similarity",
     "sentiment",
