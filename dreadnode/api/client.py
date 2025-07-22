@@ -87,7 +87,7 @@ class ApiClient:
         }
 
         if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+            headers["X-API-Key"] = api_key
 
         self._client = httpx.Client(
             headers=headers,

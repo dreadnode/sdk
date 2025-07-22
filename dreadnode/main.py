@@ -15,8 +15,6 @@ from fsspec.implementations.local import (  # type: ignore [import-untyped]
     LocalFileSystem,
 )
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
-from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
-from logfire._internal.utils import safe_repr
 from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -61,7 +59,14 @@ from dreadnode.types import (
     Inherited,
     JsonValue,
 )
-from dreadnode.util import clean_str, handle_internal_errors, logger
+from dreadnode.util import (
+    clean_str,
+    get_filepath_attribute,
+    handle_internal_errors,
+    logger,
+    safe_repr,
+    warn_at_user_stacklevel,
+)
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -325,7 +330,7 @@ class Dreadnode:
                     )
                     self.server = urlunparse(parsed_new)
 
-                self._api = ApiClient(self.server, self.token)
+                self._api = ApiClient(self.server, api_key=self.token)
 
                 self._api.list_projects()
             except Exception as e:
@@ -406,7 +411,7 @@ class Dreadnode:
             An ApiClient instance.
         """
         if server is not None and token is not None:
-            return ApiClient(server, token)
+            return ApiClient(server, api_key=token)
 
         if not self._initialized:
             raise RuntimeError("Call .configure() before accessing the API")

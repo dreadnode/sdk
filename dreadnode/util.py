@@ -13,7 +13,27 @@ from pathlib import Path
 from types import TracebackType
 
 from logfire import suppress_instrumentation
-from logfire._internal.stack_info import add_non_user_code_prefix, is_user_code
+from logfire._internal.stack_info import (
+    add_non_user_code_prefix,
+)
+from logfire._internal.stack_info import (
+    get_filepath_attribute as _get_filepath_attribute,
+)
+from logfire._internal.stack_info import (
+    get_user_frame_and_stacklevel as _get_user_frame_and_stacklevel,
+)
+from logfire._internal.stack_info import (
+    is_user_code as _is_user_code,
+)
+from logfire._internal.stack_info import (
+    warn_at_user_stacklevel as _warn_at_user_stacklevel,
+)
+
+get_user_frame_and_stacklevel = _get_user_frame_and_stacklevel
+warn_at_user_stacklevel = _warn_at_user_stacklevel
+get_filepath_attribute = _get_filepath_attribute
+is_user_code = _is_user_code
+
 
 import dreadnode
 

@@ -118,7 +118,7 @@ def api(self, *, server: str | None = None, token: str | None = None) -> ApiClie
         An ApiClient instance.
     """
     if server is not None and token is not None:
-        return ApiClient(server, token)
+        return ApiClient(server, api_key=token)
 
     if not self._initialized:
         raise RuntimeError("Call .configure() before accessing the API")
@@ -422,7 +422,7 @@ def initialize(self) -> None:
                 )
                 self.server = urlunparse(parsed_new)
 
-            self._api = ApiClient(self.server, self.token)
+            self._api = ApiClient(self.server, api_key=self.token)
 
             self._api.list_projects()
         except Exception as e:

@@ -4,11 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import typing_extensions as te
-from logfire._internal.stack_info import warn_at_user_stacklevel
-from logfire._internal.utils import safe_repr
 from opentelemetry.trace import Tracer
 
 from dreadnode.types import JsonDict, JsonValue
+from dreadnode.util import safe_repr, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
 
