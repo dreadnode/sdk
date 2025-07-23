@@ -1,6 +1,7 @@
 import typing as t
 from dataclasses import dataclass
 
+from litellm import ConfigDict
 from pydantic import BaseModel, Field
 
 from dreadnode.types import AnyDict
@@ -31,6 +32,8 @@ class ObjectUri(BaseModel):
 
 
 class ObjectVal(BaseModel):
+    model_config = ConfigDict(serialize_by_alias=True)
+
     hash: str
     schema_hash: str
     value_: t.Any = Field(alias="value")
