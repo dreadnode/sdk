@@ -20,10 +20,6 @@ class TaskFailedWarning(UserWarning):
     pass
 
 
-class TaskGeneratorWarning(UserWarning):
-    pass
-
-
 class TaskSpanList(list[TaskSpan[R]]):
     """
     Lightweight wrapper around a list of TaskSpans to provide some convenience methods.
@@ -214,7 +210,7 @@ class Task(t.Generic[P, R]):
             else task.log_execution_metrics
         )
 
-        new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
+        new_scorers = [Scorer.from_callable(scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
 
         if append:
@@ -287,7 +283,10 @@ class Task(t.Generic[P, R]):
 
             input_object_hashes: list[str] = [
                 span.log_input(
-                    name, value, label=f"{self.label}.input.{name}", attributes={"auto": True}
+                    name,
+                    value,
+                    label=f"{self.label}.input.{name}",
+                    attributes={"auto": True},
                 )
                 for name, value in inputs_to_log.items()
             ]
@@ -325,7 +324,10 @@ class Task(t.Generic[P, R]):
                 )
             ):
                 output_object_hash = span.log_output(
-                    "output", output, label=f"{self.label}.output", attributes={"auto": True}
+                    "output",
+                    output,
+                    label=f"{self.label}.output",
+                    attributes={"auto": True},
                 )
 
                 # Link the output to the inputs
@@ -503,3 +505,87 @@ class Task(t.Generic[P, R]):
         """
         spans = await self.try_map_run(count, *args, **kwargs)
         return [span.output for span in spans if span]
+
+
+class TaskInputWarning(UserWarning):
+    pass
+
+
+CastT = t.TypeVar("CastT")
+
+
+class TaskInput:
+    """
+    A placeholder to dynamically retrieve an input from the active TaskSpan.
+    """
+
+    def __init__(self, name: str, *, process: t.Callable[[t.Any], t.Any] | None = None) -> None:
+        """
+        Args:
+            name: The name of the input to retrieve, as logged via `task.log_input(name=...)`.
+            process: An optional function to process the input value before returning it.
+                This can be used to transform or extract from the raw input value.
+        """
+        self.name = name
+        self.process = process
+
+    def __repr__(self) -> str:
+        return f"TaskInput(name='{self.name}')"
+
+    @t.overload
+    def resolve(self, *, cast_as: None = None) -> t.Any: ...
+
+    @t.overload
+    def resolve(self, *, cast_as: type[CastT]) -> CastT: ...
+
+    def resolve(self, *, cast_as: type[CastT] | None = None) -> t.Any:  # noqa: PLR0911
+        """
+        Resolve the input from the current TaskSpan.
+
+        Args:
+            cast_as: Optionally cast the resolved value to a specific type.
+
+        Returns:
+            The value of the input from the current TaskSpan.
+        """
+        from dreadnode.tracing.span import current_task_span
+
+        if (task := current_task_span.get()) is None:
+            warn_at_user_stacklevel(
+                "TaskInput.resolve() called outside of an active TaskSpan context. "
+                "This will raise an error in future versions.",
+                TaskInputWarning,
+            )
+            return None
+
+        try:
+            task_input = task.inputs[self.name].value
+        except KeyError:
+            warn_at_user_stacklevel(
+                f"Input '{self.name}' not found in the active TaskSpan. "
+                f"Available inputs are: {list(task.inputs.keys())}",
+                TaskInputWarning,
+            )
+            return None
+
+        try:
+            if self.process is not None:
+                return self.process(task_input)
+        except Exception as e:  # noqa: BLE001
+            warn_at_user_stacklevel(
+                f"Error processing TaskInput '{self.name}': {e}",
+                TaskInputWarning,
+            )
+            return task_input
+
+        if cast_as is not None:
+            try:
+                return cast_as(task_input)  # type: ignore [call-arg]
+            except Exception as e:  # noqa: BLE001
+                warn_at_user_stacklevel(
+                    f"Error casting TaskInput '{self.name}' to {cast_as.__name__}: {e}",
+                    TaskInputWarning,
+                )
+                return task_input
+
+        return task_input

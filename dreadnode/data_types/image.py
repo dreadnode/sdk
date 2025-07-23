@@ -8,9 +8,9 @@ import numpy as np
 from dreadnode.data_types.base import DataType
 
 try:
-    from PIL import Image as PILImage
+    from PIL import Image as PILImage  # type: ignore[import-not-found,unused-ignore]
 except ImportError:
-    PILImage = None  # type: ignore[assignment]
+    PILImage = None  # type: ignore[assignment,unused-ignore]
 
 ImageDataType = t.Any | np.ndarray[t.Any, t.Any]
 ImageDataOrPathType = str | Path | bytes | ImageDataType

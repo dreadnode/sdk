@@ -634,9 +634,7 @@ class Dreadnode:
                 attributes=_attributes,
                 func=t.cast("t.Callable[P, R]", func),
                 scorers=[
-                    scorer
-                    if isinstance(scorer, Scorer)
-                    else Scorer.from_callable(self._get_tracer(), scorer)
+                    scorer if isinstance(scorer, Scorer) else Scorer.from_callable(scorer)
                     for scorer in scorers or []
                 ],
                 tags=list(tags or []),
@@ -726,7 +724,6 @@ class Dreadnode:
 
         def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
             return Scorer.from_callable(
-                self._get_tracer(),
                 func,
                 name=name,
                 tags=tags,
