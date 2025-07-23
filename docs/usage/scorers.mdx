@@ -372,12 +372,10 @@ The best practice, used by all of Strikes' built-in scorers, is to create a **fa
 A "scorer factory" is a function that takes configuration (like a reference text), and returns the actual scorer function (the one that will perform the evaluation). This allows you to create pre-configured, reusable scorer instances.
 </Tip>
 
-Here is a complete example of a configurable custom scorer that handles `Lookup`s:
-
 ```python
 import typing as t
 from difflib import SequenceMatcher
-from dreadnode import Scorer, Lookup, resolve, lookup_input
+from dreadnode import Scorer
 
 def custom_similarity(reference: str) -> Scorer[t.Any]:
     """A factory that creates our configurable similarity scorer."""
@@ -385,7 +383,7 @@ def custom_similarity(reference: str) -> Scorer[t.Any]:
     # The actual evaluation logic is inside this inner function.
     # It will receive the task's output as its only argument.
     async def evaluate(data_to_score: t.Any) -> float:
-        return SequenceMatcher(a=reference, b=text(data_to_score)).ratio()
+        return SequenceMatcher(a=reference, b=str(data_to_score)).ratio()
 
     # 3. Return a Scorer instance from the `evaluate` callable.
     return Scorer.from_callable(evaluate)
@@ -415,12 +413,12 @@ async def naive_starts_with(reference: str) -> Scorer[str]:
     return Scorer.from_callable(evaluate)
 ```
 
-The solution is the `dreadnode.resolve()` utility function. It safely resolves a value that might be a `Lookup`:
+The solution is the `dreadnode.resolve_lookup()` utility function. It safely resolves a value that might be a `Lookup`:
 
-- If the value is a `Lookup`, `resolve()` fetches the actual value from the run/task context.
-- If the value is already a direct value (like a string or number), `resolve()` simply returns it unchanged.
+- If the value is a `Lookup`, `resolve_lookup()` fetches the actual value from the run/task context.
+- If the value is already a direct value (like a string or number), `resolve_lookup()` simply returns it unchanged.
 
-By wrapping your scorer's parameters with `resolve()`, you can transparently handle both static values and dynamic `Lookup`s.
+By wrapping your scorer's parameters with `resolve_lookup()`, you can transparently handle both static values and dynamic `Lookup`s.
 
 ```python
 from dreadnode import resolve_lookup, Lookup

@@ -1,10 +1,9 @@
 import typing as t
 from difflib import SequenceMatcher
 
-import litellm
-
 from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
+from dreadnode.scorers.util import cosine_similarity
 from dreadnode.util import warn_at_user_stacklevel
 
 _NLTK_AVAILABLE = False
@@ -40,7 +39,7 @@ try:
         TfidfVectorizer,
     )
     from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,unused-ignore]
-        cosine_similarity,
+        cosine_similarity as sklearn_cosine_similarity,
     )
 
     _SKLEARN_AVAILABLE = True
@@ -129,7 +128,7 @@ def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity")
         reference = str(resolve_lookup(reference))
 
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference])
-        sim = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+        sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
 
     return Scorer.from_callable(evaluate, name=name, catch=True)
@@ -218,6 +217,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
+    import litellm
 
     async def evaluate(data: t.Any) -> Metric:
         nonlocal reference, model

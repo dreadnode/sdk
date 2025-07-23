@@ -48,7 +48,6 @@ __all__ = [
     "llm_judge",
     "readability",
     "scale",
-    "semantic_similarity",
     "sentiment",
     "sentiment_with_perspective",
     "similarity",

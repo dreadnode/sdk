@@ -1,9 +1,7 @@
 import re
 import typing as t
 
-from importlib_metadata import Lookup
-
-from dreadnode.lookup import resolve_lookup
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
 
 

@@ -2,9 +2,8 @@ import os
 import typing as t
 
 import httpx
-from importlib_metadata import Lookup
 
-from dreadnode.lookup import resolve_lookup
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
 from dreadnode.util import warn_at_user_stacklevel
 
