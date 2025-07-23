@@ -1,19 +1,26 @@
 import re
 import typing as t
 
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
-from dreadnode.task import TaskInput
-from dreadnode.util import clean_str
 
 if t.TYPE_CHECKING:
     from dreadnode.types import JsonDict
 
 
+def _analyze_text(text: str) -> dict[str, int]:
+    return {
+        "letters": len(re.findall(r"[a-zA-Z]", text)),
+        "numbers": len(re.findall(r"\d", text)),
+        "symbols": len(re.findall(r"[^\w\s]", text)),
+    }
+
+
 def character_consistency(
-    reference: str | TaskInput,
+    reference: str | Lookup,
     *,
     max_ratio_diff: float = 2.0,
-    name: str | None = None,
+    name: str = "char_consistency",
 ) -> "Scorer[t.Any]":
     """
     Scores character type consistency between the data and a reference text.
@@ -22,24 +29,19 @@ def character_consistency(
     A score of 1.0 indicates identical distributions.
 
     Args:
-        reference: The reference text (e.g., the prompt) or a TaskInput.
+        reference: The reference text (e.g., the prompt) or a Lookup.
         max_ratio_diff: The denominator for normalizing ratio differences.
         name: Name of the scorer.
     """
 
-    def _analyze_text(text: str) -> dict[str, int]:
-        return {
-            "letters": len(re.findall(r"[a-zA-Z]", text)),
-            "numbers": len(re.findall(r"\d", text)),
-            "symbols": len(re.findall(r"[^\w\s]", text)),
-        }
-
     def evaluate(data: t.Any) -> Metric:
+        nonlocal reference
+
         candidate_text = str(data)
-        reference_text = str(reference.resolve()) if isinstance(reference, TaskInput) else reference
+        reference = str(resolve_lookup(reference))
 
         candidate_chars = _analyze_text(candidate_text)
-        reference_chars = _analyze_text(reference_text)
+        reference_chars = _analyze_text(reference)
 
         candidate_total = sum(candidate_chars.values())
         reference_total = sum(reference_chars.values())
@@ -58,9 +60,5 @@ def character_consistency(
             metadata[f"{char_type}_ratio_diff"] = round(diff, 4)
 
         return Metric.from_many([(name, score, 1.0) for name, score in scores.items()])
-
-    if name is None:
-        ref_name = reference.name if isinstance(reference, TaskInput) else "static_text"
-        name = f"char_consistency_{clean_str(ref_name)}"
 
     return Scorer.from_callable(evaluate, name=name)

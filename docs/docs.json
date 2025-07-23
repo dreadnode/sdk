@@ -27,6 +27,7 @@
           "usage/runs",
           "usage/tasks",
           "usage/metrics",
+          "usage/scorers",
           "usage/data-tracking",
           "usage/rich-objects",
           "usage/model-training",
