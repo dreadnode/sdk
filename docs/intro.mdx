@@ -16,14 +16,25 @@ Which means, in order to evaluate Offensive Security agents, we need to develop 
 
 ## Basic Example
 
+Before you start, ensure you have the `dreadnode` package installed (see [installation](/install)). You can authenticate to a platform using the CLI, which is the recommended way to get started.
+
+```bash
+# Authenticate to platform.dreadnode.io
+dreadnode login
+
+# For self-hosted platforms, specify the server URL
+dreadnode login --server http://self-hosted
+```
+
+<Note>
+For complete authentication and configuration guidance, see the [Configuration](/usage/config) documentation.
+</Note>
+
 The most basic use of Strikes is a run with some logged data:
 
 ```python
 import asyncio
 import dreadnode
-
-# Initialize with default settings
-dreadnode.configure()
 
 NAMES = ["Nick", "Will", "Brad", "Brian"]
 
@@ -42,7 +53,7 @@ async def main() -> None:
         )
 
         # Log inputs
-        dn.log_input("names", NAMES)
+        dreadnode.log_input("names", NAMES)
 
         # Run your tasks
         greetings = [
@@ -51,7 +62,7 @@ async def main() -> None:
         ]
 
         # Save outputs
-        dn.log_output("greetings", greetings)
+        dreadnode.log_output("greetings", greetings)
 
         # Track metrics
         dreadnode.log_metric("accuracy", 0.65, step=0)
@@ -62,19 +73,6 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
-
-<Note>
-We'll assume you have installed the `dreadnode` package and have your environment variables set up. Make sure you have `DREADNODE_API_KEY=...` set to your Platform API key.
-
-For more information on `dreadnode.configure()`, review the [Configuration](/usage/config) topic.
-
-If you call `dreadnode.configure()` without any token and your environment variables are not set, you'll receive a warning in the console, so keep an eye out! You can still run any of your code without sending data to the Dreadnode Platform.
-</Note>
-
-<Tip>
-**Server Configuration**
-By default, the SDK connects to the hosted Dreadnode platform at `https://platform.dreadnode.io`. If you're using a self-hosted instance, you must configure the server URL explicitly in your `dreadnode.configure()` call or via the `DREADNODE_SERVER` environment variable. See the [Configuration](/usage/config) guide for details.
-</Tip>
 
 This code should be very familiar if you've used an ML-experimentation library before, and all the functions you're familiar with work exactly like you would expect.
 
@@ -114,8 +112,6 @@ Runs are the core unit of work in Strikes. They provide the context for all your
 ```python
 import dreadnode
 
-dreadnode.configure()
-
 with dreadnode.run("my-experiment"):
     # Everything that happens here is part of the run
     # All data collected is associated with this run
@@ -146,8 +142,6 @@ Tasks are units of work within runs. They help you structure your code and provi
 
 ```python
 import dreadnode
-
-dreadnode.configure()
 
 @dreadnode.task()
 async def say_hello(name: str) -> str:

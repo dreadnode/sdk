@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from .models import (
+from dreadnode.api.models import (
     Object,
     ObjectUri,
     ObjectVal,

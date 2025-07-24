@@ -1,8 +1,7 @@
 import typing as t
 from dataclasses import dataclass
 
-from litellm import ConfigDict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from dreadnode.types import AnyDict
 

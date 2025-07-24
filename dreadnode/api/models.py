@@ -32,6 +32,35 @@ class UserResponse(BaseModel):
     api_key: UserAPIKey
 
 
+class UserDataCredentials(BaseModel):
+    access_key_id: str
+    secret_access_key: str
+    session_token: str
+    expiration: datetime
+    region: str
+    bucket: str
+    prefix: str
+    endpoint: str | None
+
+
+# Auth
+
+
+class DeviceCodeResponse(BaseModel):
+    id: UUID
+    completed: bool
+    device_code: str
+    expires_at: datetime
+    expires_in: int
+    user_code: str
+    verification_url: str
+
+
+class AccessRefreshTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+
+
 # Strikes
 
 SpanStatus = t.Literal[
@@ -406,15 +435,10 @@ class TraceTree(BaseModel):
     """Children of this span, representing nested spans or tasks."""
 
 
-# User data credentials
+# Github
 
 
-class UserDataCredentials(BaseModel):
-    access_key_id: str
-    secret_access_key: str
-    session_token: str
-    expiration: datetime
-    region: str
-    bucket: str
-    prefix: str
-    endpoint: str | None
+class GithubTokenResponse(BaseModel):
+    token: str
+    expires_at: datetime
+    repos: list[str]
