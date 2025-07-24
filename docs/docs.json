@@ -33,6 +33,7 @@
       {
         "group": "Usage",
         "pages": [
+          "usage/cli",
           "usage/config",
           "usage/projects",
           "usage/runs",
