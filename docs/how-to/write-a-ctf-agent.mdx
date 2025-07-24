@@ -18,13 +18,13 @@ In this guide, we'll walkthrough running, then building an agent to solve networ
 - Patterns for scaling evaluations across multiple challenges and models
 
 <Tip>
-Our agent use [Rigging](https://docs.dreadnode.io/rigging) to interact with the LLMs, provide tools, and track inference data. If you aren't already familiar, we recommend checking out the following resources:
+Our agent use [Rigging](https://github.com/dreadnode/rigging) to interact with the LLMs, provide tools, and track inference data. If you aren't already familiar, we recommend checking out the following resources:
 
-- [Introduction](https://docs.dreadnode.io/open-source/rigging/intro)
-- [Generators](https://docs.dreadnode.io/open-source/rigging/topics/generators)
-- [Tools](https://docs.dreadnode.io/open-source/rigging/topics/tools)
+- [Introduction](/open-source/rigging/intro)
+- [Generators](/open-source/rigging/topics/generators)
+- [Tools](/open-source/rigging/topics/tools)
 
-The first point of confusing is usually what to pass to the `--model` argument, which is treated as an [identifier](https://docs.dreadnode.io/open-source/rigging/topics/generators#identifiers) to Rigging. Usually, the model name works as expected, but sometimes you need to supply a prefix like `gemini/` or `ollama/`:
+The first point of confusing is usually what to pass to the `--model` argument, which is treated as an [identifier](/open-source/rigging/topics/generators#identifiers) to Rigging. Usually, the model name works as expected, but sometimes you need to supply a prefix like `gemini/` or `ollama/`:
 
 ```
 gpt-4.1

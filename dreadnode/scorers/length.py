@@ -1,16 +1,15 @@
 import typing as t
 
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
-from dreadnode.task import TaskInput
-from dreadnode.util import clean_str
 
 
 def length_ratio(
-    reference: str | TaskInput,
+    reference: str | Lookup,
     *,
     min_ratio: float = 0.1,
     max_ratio: float = 5.0,
-    name: str | None = None,
+    name: str = "length_ratio",
 ) -> "Scorer[t.Any]":
     """
     Score the length of the data against a reference text.
@@ -19,7 +18,7 @@ def length_ratio(
     [min_ratio, max_ratio] bounds and degrades towards 0.0 outside them.
 
     Args:
-        reference: The reference text (static string) or a `TaskInput` to resolve dynamically.
+        reference: The reference text (static string).
         min_ratio: The minimum acceptable length ratio. Must be > 0.
         max_ratio: The maximum acceptable length ratio.
         name: Name of the scorer.
@@ -28,15 +27,15 @@ def length_ratio(
         raise ValueError("min_ratio must be greater than 0.")
 
     def evaluate(data: t.Any) -> Metric:
-        candidate_text = str(data)
-        reference_text = (
-            reference.resolve(cast_as=str) if isinstance(reference, TaskInput) else reference
-        )
+        nonlocal reference
 
-        if not reference_text:
+        candidate_text = str(data)
+        reference = str(resolve_lookup(reference))
+
+        if not reference:
             raise ValueError("Reference text must not be empty.")
 
-        ratio = len(candidate_text) / len(reference_text)
+        ratio = len(candidate_text) / len(reference)
 
         if ratio < min_ratio:
             score = ratio / min_ratio
@@ -47,16 +46,12 @@ def length_ratio(
 
         return Metric(value=score, attributes={"ratio": round(ratio, 4)})
 
-    if name is None:
-        ref_name = reference.name if isinstance(reference, TaskInput) else reference
-        name = f"length_ratio_vs_{clean_str(ref_name, max_length=20)}"
-
     return Scorer.from_callable(evaluate, name=name, catch=True)
 
 
 def length_in_range(
-    min_length: int = 0,
-    max_length: float = float("inf"),
+    min_length: int | Lookup = 0,
+    max_length: float | Lookup = float("inf"),
     *,
     name: str = "length_in_range",
 ) -> "Scorer[t.Any]":
@@ -71,10 +66,16 @@ def length_in_range(
         max_length: The maximum acceptable character length.
         name: Name of the scorer.
     """
-    if min_length < 0 or max_length < min_length:
-        raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
 
     def evaluate(data: t.Any) -> Metric:
+        nonlocal min_length, max_length
+
+        min_length = int(resolve_lookup(min_length))
+        max_length = int(resolve_lookup(max_length))
+
+        if min_length < 0 or max_length < min_length:
+            raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
+
         text = str(data)
         text_len = len(text)
 
@@ -97,11 +98,11 @@ def length_in_range(
             attributes={"length": text_len, "min": min_length, "max": max_length},
         )
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer.from_callable(evaluate, name=name, catch=True)
 
 
 def length_target(
-    target_length: int,
+    target_length: int | Lookup,
     *,
     name: str = "length_target",
 ) -> "Scorer[t.Any]":
@@ -115,10 +116,14 @@ def length_target(
         target_length: The target character length to score against.
         name: Name of the scorer.
     """
-    if target_length < 0:
-        raise ValueError("Target length must be non-negative.")
 
     def evaluate(data: t.Any) -> Metric:
+        nonlocal target_length
+
+        target_length = int(resolve_lookup(target_length))
+        if target_length < 0:
+            raise ValueError("Target length must be non-negative.")
+
         text = str(data)
         text_len = len(text)
 
@@ -137,4 +142,4 @@ def length_target(
 
         return Metric(value=final_score, attributes={"length": text_len, "target": target_length})
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer.from_callable(evaluate, name=name, catch=True)

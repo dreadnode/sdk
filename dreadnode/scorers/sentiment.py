@@ -3,6 +3,7 @@ import typing as t
 
 import httpx
 
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
 from dreadnode.util import warn_at_user_stacklevel
 
@@ -16,9 +17,11 @@ try:
 except ImportError:
     pass
 
+Sentiment = t.Literal["positive", "negative", "neutral"]
+
 
 def sentiment(
-    target: t.Literal["positive", "negative", "neutral"] = "neutral",
+    target: Sentiment | Lookup = "neutral",
     name: str = "score_sentiment",
 ) -> "Scorer[t.Any]":
     """
@@ -42,6 +45,15 @@ def sentiment(
         return Scorer.from_callable(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
+        nonlocal target
+
+        target = t.cast("Sentiment", str(resolve_lookup(target)).lower())
+        if target not in {"positive", "negative", "neutral"}:
+            target = "neutral"  # Default to neutral if invalid
+            warn_at_user_stacklevel(
+                f"Invalid target sentiment '{target}', defaulting to 'neutral'.", UserWarning
+            )
+
         text = str(data)
         if not text.strip():
             return Metric(value=0.0, attributes={"error": "Input text is empty."})
@@ -63,7 +75,7 @@ def sentiment(
 
         return Metric(value=score, attributes={"polarity": polarity, "target": target})
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer.from_callable(evaluate, name=name, catch=True)
 
 
 PerspectiveAttribute = t.Literal[

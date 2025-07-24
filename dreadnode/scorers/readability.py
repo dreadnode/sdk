@@ -1,5 +1,6 @@
 import typing as t
 
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
 from dreadnode.util import warn_at_user_stacklevel
 
@@ -17,7 +18,7 @@ except ImportError:
 
 
 def readability(
-    target_grade: float = 8.0,
+    target_grade: float | Lookup = 8.0,
     name: str = "readability",
 ) -> "Scorer[t.Any]":
     """
@@ -28,7 +29,6 @@ def readability(
 
     Args:
         target_grade: The ideal reading grade level (e.g., 8.0 for 8th grade).
-        metric: The readability metric to use. Currently only 'flesch_kincaid' is supported.
         name: Name of the scorer.
     """
     if not _TEXTSTAT_AVAILABLE:
@@ -40,6 +40,10 @@ def readability(
         return Scorer.from_callable(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
+        nonlocal target_grade
+
+        target_grade = float(resolve_lookup(target_grade))
+
         text = str(data)
         if not text.strip():
             return Metric(value=0.0, attributes={"error": "Input text is empty."})

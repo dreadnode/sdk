@@ -33,7 +33,6 @@ def detect_pii(
     ),
     *,
     extra_patterns: list[str] | None = None,
-    invert: bool = False,
     name: str = "pii",
 ) -> "Scorer[t.Any]":
     """
@@ -69,7 +68,7 @@ def detect_pii(
         raise ValueError("No PII types selected.")
 
     combined_pattern = re.compile("|".join(f"({p})" for p in patterns))
-    return contains(combined_pattern, invert=invert, name=name)
+    return contains(combined_pattern, name=name)
 
 
 # A global analyzer instance to avoid reloading the model on every call

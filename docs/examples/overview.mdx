@@ -4,8 +4,8 @@ description: 'Explore a collection of specialized AI agents'
 public: true
 ---
 
-We've created a collection of specialized, autonomous AI agents designed for various complex tasks. 
-Each agent leverages Large Language Models (LLMs) combined with a specific set of tools to achieve its goals in a structured and observable manner. 
+We've created a collection of specialized, autonomous AI agents designed for various complex tasks.
+Each agent leverages Large Language Models (LLMs) combined with a specific set of tools to achieve its goals in a structured and observable manner.
 The agents are built using the [Rigging](https://github.com/dreadnode/rigging) and [Dreadnode](https://github.com/dreadnode/dreadnode-python) libraries for robust interaction and observability.
 
 View the [GitHub repository](https://github.com/dreadnode/example-agents) for more details.
@@ -56,7 +56,7 @@ This agent is a specialized framework for evaluating the security analysis capab
 
 An autonomous agent that explores and analyzes file systems to find and report sensitive data like credentials, API keys, and personal information. Leveraging `fsspec`, it can operate on local files, cloud storage (AWS S3, GCS), and remote repositories (GitHub).
 
-&gt; **[More Details](/examples/sensitive-data-extraction)**
+&gt; **[More Details](/examples/sensitive-data)**
 
 ## General Usage
 
@@ -64,7 +64,7 @@ While each agent has its own specific command-line arguments, they share a commo
 
 1.  **Installation**: Each agent is a Python application. Dependencies can be installed via `pip`.
 2.  **LLM Configuration**: The agents use `litellm` to connect to various LLMs. You must configure the appropriate environment variables for the model you intend to use (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
-3.  **Observability**: To enable detailed logging, tracing, and metrics, you can configure the agents to connect to a [Dreadnode](https://docs.dreadnode.io/strikes/usage/config) server by providing a server URL and token.
+3.  **Observability**: To enable detailed logging, tracing, and metrics, you can configure the agents to connect to a [Dreadnode](/usage/config) server by providing a server URL and token.
 
 ### Setup
 
@@ -77,7 +77,7 @@ uv sync
 ### Passing Models
 
 For all agents, LLMs are usually specified with a `--model` argument, which is passed directly to our [Rigging](https://github.com/dreadnode/rigging) library.
-You can read details about different ways to connect to providers, self-hosted servers, or even in-process local models [in the docs](https://docs.dreadnode.io/open-source/rigging/topics/generators)
+You can read details about different ways to connect to providers, self-hosted servers, or even in-process local models [in the docs](/open-source/rigging/topics/generators)
 
 Usually, the obvious identifier works out of the box:
 
@@ -103,7 +103,7 @@ uv run -m python_agent --help
 
 - Provided a task (`--task`), begin a generation loop with access to the Jupyter kernel
 - The work directory (`--work-dir`) is mounted into the container, along with any other docker-style volumes (`--volumes`)
-- When finished, the agent markes the task as complete with a status and summary
+- When finished, the agent marks the task as complete with a status and summary
 - The work directory is logged as an artifact for the run
 
 ## Dangerous Capabilities
@@ -126,7 +126,7 @@ as needed to ensure they are network-isolated from each other. The process is ge
 5. If the flag is ever observed in the output, exit
 6. Otherwise run until an error, give up, or max-steps is reached
 
-Check out [./dangerous_capabilities/challenges/challenges.json](./dangerous_capabilities/challenges/challenges.json)
+Check out [challenges.json](https://github.com/dreadnode/example-agents/blob/main/dangerous_capabilities/challenges/challenges.json)
 to see all the environments and prompts.
 
 ## Dotnet Reversing
@@ -162,7 +162,7 @@ uv run -m dotnet_reversing --model <model> --path <nuget-package-id> --nuget
 
 ## Sensitive Data Extraction
 
-This agent is provided access to a filsystem tool based on [fsspec](https://filesystem-spec.readthedocs.io/en/latest/)
+This agent is provided access to a filesystem tool based on [fsspec](https://filesystem-spec.readthedocs.io/en/latest/)
 for use in extracting sensitive data stored in files.
 
 ```bash

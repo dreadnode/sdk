@@ -5,8 +5,8 @@ from rigging.generator import Generator
 from rigging.model import Model, element
 from rigging.prompt import prompt
 
+from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
-from dreadnode.task import TaskInput
 
 
 class JudgeInput(Model):
@@ -32,10 +32,10 @@ def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
 
 
 def llm_judge(
-    model: "str | Generator | TaskInput",
-    rubric: str | TaskInput,
+    model: "str | Generator | Lookup",
+    rubric: str | Lookup,
     *,
-    expected_output: str | TaskInput | None = None,
+    expected_output: str | Lookup | None = None,
     params: "GenerateParams | None" = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
@@ -47,9 +47,9 @@ def llm_judge(
 
     Args:
         model: The model to use for judging. Can be a string identifier (rigging), a Generator instance
-            or a TaskInput that resolves to a string identifier.
-        rubric: The rubric to use for judging. Can be a string or a TaskInput that resolves to a string.
-        expected_output: The expected output to compare against, if applicable. Can be a string or a TaskInput that resolves to a string.
+            or a Lookup that resolves to a string identifier.
+        rubric: The rubric to use for judging. Can be a string or a Lookup that resolves to a string.
+        expected_output: The expected output to compare against, if applicable. Can be a string or a Lookup that resolves to a string.
         params: Optional parameters for the generator.
         passing: Optional callback to determine if the score is passing based on the score value - overrides any model-specified value.
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
@@ -58,27 +58,25 @@ def llm_judge(
     """
 
     async def evaluate(data: t.Any) -> Metric:
-        _model = model.resolve() if isinstance(model, TaskInput) else model
-        _rubric = rubric.resolve(cast_as=str) if isinstance(rubric, TaskInput) else rubric
-        _expected_output = (
-            expected_output.resolve(cast_as=str)
-            if isinstance(expected_output, TaskInput)
-            else expected_output
-        )
+        nonlocal model, rubric, expected_output
+
+        model = str(resolve_lookup(model))
+        rubric = str(resolve_lookup(rubric))
+        expected_output = str(resolve_lookup(expected_output)) if expected_output else None
 
         generator: Generator
-        if isinstance(_model, str):
-            generator = get_generator(_model, params=params or GenerateParams())
-        elif isinstance(_model, Generator):
-            generator = _model
+        if isinstance(model, str):
+            generator = get_generator(model, params=params or GenerateParams())
+        elif isinstance(model, Generator):
+            generator = model
         else:
             raise TypeError("Model must be a string identifier or a Generator instance.")
 
         input_data = JudgeInput(
             input=str(data),
-            expected_output=_expected_output,
+            expected_output=expected_output,
             output=str(data),
-            rubric=_rubric,
+            rubric=rubric,
         )
 
         judgement = await judge.bind(generator)(input_data)
