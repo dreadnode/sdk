@@ -92,3 +92,17 @@ class UserConfig(BaseModel):
         profile = profile or self.active or DEFAULT_PROFILE_NAME
         self.servers[profile] = config
         return self
+
+
+def is_dreadnode_saas_server(url: str) -> bool:
+    """Check if the server URL is a Dreadnode SaaS server (ends with dreadnode.io)."""
+    return url.rstrip("/").endswith(".dreadnode.io")
+
+
+def find_dreadnode_saas_profiles(user_config: UserConfig) -> list[str]:
+    """Find all profiles that point to Dreadnode SaaS servers."""
+    saas_profiles = []
+    for profile_name, server_config in user_config.servers.items():
+        if is_dreadnode_saas_server(server_config.url):
+            saas_profiles.append(profile_name)
+    return saas_profiles

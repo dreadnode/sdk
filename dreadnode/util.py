@@ -5,12 +5,14 @@ import inspect
 import logging
 import os
 import re
+import socket
 import sys
 import typing as t
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from types import TracebackType
+from urllib.parse import ParseResult, urlparse
 
 from logfire import suppress_instrumentation
 from logfire._internal.stack_info import add_non_user_code_prefix, is_user_code
@@ -180,3 +182,96 @@ def handle_internal_errors() -> t.Iterator[None]:
 
 
 _HANDLE_INTERNAL_ERRORS_CODE = inspect.unwrap(handle_internal_errors).__code__
+
+
+def is_docker_service_name(hostname: str) -> bool:
+    """Check if this looks like a Docker service name
+
+    Args:
+        hostname: The hostname to check.
+
+    Returns:
+        bool: True if the hostname looks like a Docker service name, False otherwise.
+    """
+    return bool(hostname and "." not in hostname and hostname != "localhost")
+
+
+def resolve_endpoint(endpoint: str | None) -> str | None:
+    """Automatically resolve endpoints based on environment
+
+    Args:
+        endpoint: The endpoint URL to resolve.
+
+    Returns:
+        str: The resolved endpoint URL.
+
+    Raises:
+        ValueError: If the endpoint URL is invalid.
+    """
+    if not endpoint:
+        return None
+    parsed = urlparse(endpoint)
+
+    # If it's a real domain (has dots), use as-is
+    if not parsed.hostname:
+        raise ValueError(f"Invalid endpoint URL: {endpoint}")
+
+    if "." in parsed.hostname:
+        return endpoint
+
+    # If it's a service name, try to resolve it
+    if is_docker_service_name(parsed.hostname):
+        return resolve_docker_service(endpoint, parsed)
+
+    return endpoint
+
+
+def test_connection(endpoint: str) -> bool:
+    """
+    Simple test to check if the endpoint is reachable.
+
+    Args:
+        endpoint: The endpoint URL to test.
+
+    Returns:
+        bool: True if the endpoint is reachable, False otherwise.
+    """
+    try:
+        parsed = urlparse(endpoint)
+        socket.create_connection((parsed.hostname, parsed.port or 443), timeout=1)
+    except Exception:  # noqa: BLE001
+        return False
+
+    return True
+
+
+def resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
+    """
+    Try different resolution strategies for Docker services
+
+    Args:
+        original_endpoint: The original endpoint URL.
+        parsed: The parsed URL object.
+
+    Returns:
+        str: The resolved endpoint URL.
+
+    Raises:
+        RuntimeError: If no valid endpoint is found.
+    """
+    strategies = [
+        original_endpoint,  # Try original first (works if running in same network)
+        f"{parsed.scheme}://localhost:{parsed.port}",  # Try localhost
+        f"{parsed.scheme}://host.docker.internal:{parsed.port}",  # Docker Desktop
+        f"{parsed.scheme}://172.17.0.1:{parsed.port}",  # Docker bridge IP
+    ]
+
+    for endpoint in strategies:
+        if test_connection(endpoint):
+            logger.warning(
+                f"Resolved Docker service for s3 connection '{parsed.hostname}' to '{endpoint}'."
+            )
+            return str(endpoint)
+
+    # If nothing works, return original and let it fail with a helpful error
+    raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")

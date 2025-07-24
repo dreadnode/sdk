@@ -12,9 +12,9 @@ from rich.prompt import Prompt
 
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.api import create_api_client
-from dreadnode.cli.config import ServerConfig, UserConfig
-from dreadnode.cli.github import GithubRepo, download_and_unzip_archive
+from dreadnode.cli.github import GithubRepo, download_and_unzip_archive, validate_server_for_clone
 from dreadnode.cli.profile import cli as profile_cli
+from dreadnode.config import ServerConfig, UserConfig
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 
 cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
@@ -86,8 +86,6 @@ Then enter the code: [bold]{codes.user_code}[/]
     # poll for the access token after user verification
     tokens = client.poll_for_token(codes.device_code)
 
-    print(tokens)
-
     client = ApiClient(
         server, cookies={"refresh_token": tokens.refresh_token, "access_token": tokens.access_token}
     )
@@ -127,7 +125,7 @@ def refresh() -> None:
     )
 
 
-@cli.command(help="Clone a github repository.")
+@cli.command(help="Clone a github repository, typically privately shared dreadnode repositories.")
 def clone(
     repo: t.Annotated[str, cyclopts.Parameter(help="Repository name or URL")],
     target: t.Annotated[
@@ -155,7 +153,16 @@ def clone(
     # This could be a private repo that the user can access
     # by getting an access token from our API
     elif github_repo.namespace == "dreadnode":
-        github_access_token = create_api_client().get_github_access_token([github_repo.repo])
+        # Validate server configuration for private repository access
+        user_config = UserConfig.read()
+        profile_to_use = validate_server_for_clone(user_config, None)
+
+        if profile_to_use is None:
+            return  # User cancelled
+
+        github_access_token = create_api_client(profile=profile_to_use).get_github_access_token(
+            [github_repo.repo]
+        )
         rich.print(":key: Accessed private repository")
         temp_dir = download_and_unzip_archive(
             github_repo.api_zip_url,

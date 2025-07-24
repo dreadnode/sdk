@@ -82,7 +82,7 @@ def __init__(
     }
 
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers["X-Api-Key"] = api_key
 
     self._client = httpx.Client(
         headers=headers,

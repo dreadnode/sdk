@@ -1,0 +1,195 @@
+---
+title: "CLI"
+description: "Use the native command-line interface"
+public: true
+---
+
+The Dreadnode CLI provides a command-line interface for authenticating with Dreadnode platforms, managing profiles, and cloning repositories. It's installed automatically with the `dreadnode` package.
+
+## Quick Start
+
+After installing the package, authenticate with your platform:
+
+```bash
+dreadnode login
+```
+
+This opens your browser to authenticate and stores your credentials locally.
+
+## Commands
+
+### Authentication
+
+#### `login`
+
+Authenticate to a Dreadnode platform server.
+
+```bash
+dreadnode login [--server URL] [--profile NAME]
+```
+
+**Options:**
+- `--server`, `-s`: URL of the server (defaults to hosted platform)
+- `--profile`, `-p`: Profile alias to assign or update
+
+**Examples:**
+```bash
+# Login to hosted platform
+dreadnode login
+
+# Login to self-hosted server
+dreadnode login --server https://my-server.com
+
+# Login with a specific profile name
+dreadnode login --profile production
+```
+
+#### `refresh`
+
+Refresh data for the active server profile.
+
+```bash
+dreadnode refresh
+```
+
+Updates your local profile with the latest user information from the server.
+
+### Profile Management
+
+#### `profile show`
+
+List all configured server profiles.
+
+```bash
+dreadnode profile show
+```
+
+Shows a table with profile names, URLs, emails, usernames, and token expiration times. The active profile is marked with an asterisk.
+
+#### `profile switch`
+
+Set the active server profile.
+
+```bash
+dreadnode profile switch PROFILE
+```
+
+**Arguments:**
+- `PROFILE`: Name of the profile to switch to
+
+#### `profile forget`
+
+Remove a server profile.
+
+```bash
+dreadnode profile forget PROFILE
+```
+
+**Arguments:**
+- `PROFILE`: Name of the profile to remove
+
+### Repository Management
+
+#### `clone`
+
+Clone a GitHub repository.
+
+```bash
+dreadnode clone REPO [TARGET]
+```
+
+**Arguments:**
+- `REPO`: Repository name (e.g., `dreadnode/example-agents`) or full GitHub URL
+- `TARGET`: Optional target directory (defaults to repository name)
+
+**Examples:**
+```bash
+# Clone a public repository
+dreadnode clone dreadnode/example-agents
+
+# Clone to a specific directory
+dreadnode clone dreadnode/example-agents ./my-agents
+
+# Clone a private dreadnode repository (requires authentication)
+dreadnode clone dreadnode/private-repo
+```
+
+<Note>
+The `clone` command can access privately shared `dreadnode/*` repositories using your authentication token.
+
+**Server Validation:** Private `dreadnode/*` repositories require authentication via a Dreadnode SaaS server (ending with `.dreadnode.io`). If your current profile points to a self-hosted server, the CLI will:
+
+1. Warn you about the server mismatch
+2. Offer to switch to an available SaaS profile if one exists
+3. Allow you to continue with a warning if you choose
+
+For other private repositories, use standard Git authentication.
+</Note>
+
+### Meta Commands
+
+#### `version`
+
+Show version information.
+
+```bash
+dreadnode version
+```
+
+Displays platform, Python version, and Dreadnode package version.
+
+#### `--help`
+
+Show help information for any command.
+
+```bash
+dreadnode --help
+dreadnode login --help
+dreadnode profile --help
+```
+
+## Profile Configuration
+
+The CLI stores authentication data in `~/.dreadnode/config`. Each profile contains:
+
+- Server URL
+- User credentials (access/refresh tokens, API key)
+- User information (email, username)
+
+You can have multiple profiles for different servers or accounts:
+
+```bash
+# Add different server profiles
+dreadnode login --profile public
+dreadnode login --server https://self-hosted --profile self-hosted
+
+# Switch between them
+dreadnode profile switch self-hosted
+dreadnode profile switch public
+```
+
+### Environment Variable Profile Selection
+
+You can override the active profile using the `DREADNODE_PROFILE` environment variable:
+
+```bash
+# Temporarily use a different profile
+export DREADNODE_PROFILE=production
+dreadnode clone dreadnode/private-repo  # Uses production profile
+
+# Or for a single command
+DREADNODE_PROFILE=staging dreadnode clone dreadnode/test-repo
+```
+
+This affects both CLI commands and SDK configuration when using `dreadnode.configure()` without explicit server/token parameters.
+
+### Which Profile Gets Used?
+
+The CLI picks a profile in this order:
+
+1. **`--profile` flag** (if provided)
+2. **`DREADNODE_PROFILE` environment variable**
+3. **Active profile** (set via `dreadnode profile switch`)
+4. **"main" profile** (default)
+
+The CLI will remember your server URL for future commands within that profile.

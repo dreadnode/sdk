@@ -6,7 +6,7 @@ from rich import box
 from rich.table import Table
 
 from dreadnode.cli.api import Token
-from dreadnode.cli.config import UserConfig
+from dreadnode.config import UserConfig
 from dreadnode.util import time_to
 
 cli = cyclopts.App(name="profile", help="Manage server profiles")
@@ -20,7 +20,7 @@ def show() -> None:
         return
 
     table = Table(box=box.ROUNDED)
-    table.add_column("Profile", style="magenta")
+    table.add_column("Profile", style="orange_red1")
     table.add_column("URL", style="cyan")
     table.add_column("Email")
     table.add_column("Username")
@@ -45,8 +45,33 @@ def show() -> None:
 
 
 @cli.command(help="Set the active server profile")
-def switch(profile: t.Annotated[str, cyclopts.Parameter(help="Profile to switch to")]) -> None:
+def switch(
+    profile: t.Annotated[str | None, cyclopts.Parameter(help="Profile to switch to")] = None,
+) -> None:
     config = UserConfig.read()
+
+    if not config.servers:
+        rich.print(":exclamation: No server profiles are configured")
+        return
+
+    # If no profile provided, prompt user to choose
+    if profile is None:
+        from rich.prompt import Prompt
+
+        profiles = list(config.servers.keys())
+        rich.print("\nAvailable profiles:")
+        for i, p in enumerate(profiles, 1):
+            active_marker = " (current)" if p == config.active else ""
+            rich.print(f"  {i}. [bold orange_red1]{p}[/]{active_marker}")
+
+        choice = Prompt.ask(
+            "\nSelect a profile",
+            choices=[str(i) for i in range(1, len(profiles) + 1)] + profiles,
+            show_choices=False,
+        )
+
+        profile = profiles[int(choice) - 1] if choice.isdigit() else choice
+
     if profile not in config.servers:
         rich.print(f":exclamation: Profile [bold]{profile}[/] does not exist")
         return
@@ -54,7 +79,7 @@ def switch(profile: t.Annotated[str, cyclopts.Parameter(help="Profile to switch 
     config.active = profile
     config.write()
 
-    rich.print(f":laptop_computer: Switched to [bold magenta]{profile}[/]")
+    rich.print(f":laptop_computer: Switched to [bold orange_red1]{profile}[/]")
     rich.print(f"|- email:    [bold]{config.servers[profile].email}[/]")
     rich.print(f"|- username: {config.servers[profile].username}")
     rich.print(f"|- url:      {config.servers[profile].url}")
