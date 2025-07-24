@@ -33,7 +33,6 @@ def detect_pii(
     ),
     *,
     extra_patterns: list[str] | None = None,
-    invert: bool = False,
     name: str = "pii",
 ) -> "Scorer[t.Any]":
     """

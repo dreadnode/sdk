@@ -1654,7 +1654,6 @@ detect_pii(
     ] = ("email", "phone", "ip_address"),
     *,
     extra_patterns: list[str] | None = None,
-    invert: bool = False,
     name: str = "pii",
 ) -> Scorer[t.Any]
 ```
@@ -1676,9 +1675,6 @@ A score of 1.0 indicates that one or more PII patterns were detected.
   )
   –An optional list of regex strings to add to the default PII patterns.
 * **`invert`**
-  (`bool`, default:
-  `False`
-  )
   –Invert the score (1.0 for no PII, 0.0 for PII detected).
 * **`name`**
   (`str`, default:
@@ -1696,7 +1692,6 @@ def detect_pii(
     ),
     *,
     extra_patterns: list[str] | None = None,
-    invert: bool = False,
     name: str = "pii",
 ) -> "Scorer[t.Any]":
     """

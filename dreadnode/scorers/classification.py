@@ -11,7 +11,7 @@ _TRANSFORMERS_ERROR_MSG = (
 )
 
 try:
-    from transformers import pipeline  # type: ignore[import-not-found,unused-ignore]
+    from transformers import pipeline  # type: ignore [attr-defined,import-not-found,unused-ignore]
 
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
