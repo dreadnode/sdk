@@ -1,9 +1,9 @@
-from dreadnode import convert, data_types
-from dreadnode.data_types import Audio, Image, Object3D, Table, Video
+from dreadnode import convert, data_types, scorers
+from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
 from dreadnode.object import Object
-from dreadnode.task import Task
+from dreadnode.task import Task, TaskInput
 from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
@@ -36,8 +36,10 @@ __version__ = VERSION
 __all__ = [
     "DEFAULT_INSTANCE",
     "Audio",
+    "Code",
     "Dreadnode",
     "Image",
+    "Markdown",
     "Metric",
     "MetricDict",
     "Object",
@@ -48,7 +50,9 @@ __all__ = [
     "Span",
     "Table",
     "Task",
+    "TaskInput",
     "TaskSpan",
+    "Text",
     "Video",
     "__version__",
     "api",
@@ -68,6 +72,7 @@ __all__ = [
     "push_update",
     "run",
     "scorer",
+    "scorers",
     "shutdown",
     "span",
     "tag",

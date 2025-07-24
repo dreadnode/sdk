@@ -582,6 +582,7 @@ class RunSpan(Span):
         if composite_hash not in self._objects:
             # Create a new object, but use the data_hash for deduplication of storage
             obj = self._create_object_by_hash(serialized, composite_hash)
+            obj.runtime_value = value  # Store the original value for runtime access
 
             # Store with composite hash so we can look it up by the combination
             self._objects[composite_hash] = obj
@@ -649,7 +650,7 @@ class RunSpan(Span):
             size=data_len,
         )
 
-    def get_object(self, hash_: str) -> t.Any:
+    def get_object(self, hash_: str) -> Object:
         return self._objects[hash_]
 
     def link_objects(
@@ -978,7 +979,7 @@ class TaskSpan(Span, t.Generic[R]):
         return hash_
 
     @property
-    def inputs(self) -> AnyDict:
+    def inputs(self) -> dict[str, Object]:
         if self._run is None:
             return {}
         return {ref.name: self._run.get_object(ref.hash) for ref in self._inputs}

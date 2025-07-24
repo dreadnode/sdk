@@ -52,6 +52,7 @@
           "sdk/api",
           "sdk/artifact",
           "sdk/data_types",
+          "sdk/scorers",
           "sdk/integrations",
           "sdk/main",
           "sdk/metric",

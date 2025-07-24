@@ -16,8 +16,11 @@ from urllib.parse import ParseResult, urlparse
 
 from logfire import suppress_instrumentation
 from logfire._internal.stack_info import add_non_user_code_prefix, is_user_code
+from logfire._internal.stack_info import warn_at_user_stacklevel as _warn_at_user_stacklevel
 
 import dreadnode
+
+warn_at_user_stacklevel = _warn_at_user_stacklevel
 
 SysExcInfo = (
     tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None]
@@ -31,11 +34,14 @@ logger = logging.getLogger("dreadnode")
 add_non_user_code_prefix(Path(dreadnode.__file__).parent)
 
 
-def clean_str(s: str) -> str:
+def clean_str(string: str, *, max_length: int | None = None) -> str:
     """
     Clean a string by replacing all non-alphanumeric characters (except `/` and `@`) with underscores.
     """
-    return re.sub(r"[^\w/@]+", "_", s.lower()).strip("_")
+    result = re.sub(r"[^\w/@]+", "_", string.lower()).strip("_")
+    if max_length is not None:
+        result = result[:max_length]
+    return result
 
 
 def safe_repr(obj: t.Any) -> str:
