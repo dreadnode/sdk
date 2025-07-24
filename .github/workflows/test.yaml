@@ -50,7 +50,9 @@ jobs:
       run: poetry run ruff check --output-format=github .
 
     - name: Typecheck
+      if: always()
       run: poetry run mypy .
 
     - name: Test
+      if: always()
       run: poetry run pytest
