@@ -191,7 +191,7 @@ def download_and_unzip_archive(url: str, *, headers: dict[str, str] | None = Non
                 if file_path.startswith(os.path.realpath(temp_dir)):
                     zf.extract(member, temp_dir)
                 else:
-                    raise RuntimeError("Attempted Path Traversal Attack Detected")
+                    raise RuntimeError("Invalid file path detected in archive")
 
     finally:
         # always remove the zip file

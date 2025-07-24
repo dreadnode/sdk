@@ -269,7 +269,7 @@ def resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
     for endpoint in strategies:
         if test_connection(endpoint):
             logger.warning(
-                f"Resolved Docker service for s3 connection '{parsed.hostname}' to '{endpoint}'."
+                f"Resolved Docker service endpoint '{parsed.hostname}' to '{endpoint}'."  # noqa: G004
             )
             return str(endpoint)
 
