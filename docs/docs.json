@@ -17,8 +17,23 @@
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["intro", "install", "examples"]
+        "pages": [
+          "intro",
+          "install",
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/agent-examples",
+              "examples/dangerous-capabilities",
+              "examples/dotnet-reversing",
+              "examples/python-agent",
+              "examples/saas-scanning",
+              "examples/sensitive-data"
+            ]
+          }
+        ]
       },
+
       {
         "group": "Usage",
         "pages": [
