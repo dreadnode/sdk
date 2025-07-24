@@ -86,6 +86,7 @@ def __init__(
 
     self._client = httpx.Client(
         headers=headers,
+        cookies=_cookies,
         base_url=self._base_url,
         timeout=30,
     )
@@ -471,6 +472,27 @@ def get_device_codes(self) -> DeviceCodeResponse:
 
     response = self.request("POST", "/auth/device/code")
     return DeviceCodeResponse(**response.json())
+```
+
+
+</Accordion>
+
+### get\_github\_access\_token
+
+```python
+get_github_access_token(
+    repos: list[str],
+) -> GithubTokenResponse
+```
+
+Try to get a GitHub access token for the given repositories.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
+    """Try to get a GitHub access token for the given repositories."""
+    response = self.request("POST", "/github/token", json_data={"repos": repos})
+    return GithubTokenResponse(**response.json())
 ```
 
 

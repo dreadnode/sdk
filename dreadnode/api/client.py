@@ -13,6 +13,7 @@ from ulid import ULID
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
     DeviceCodeResponse,
+    GithubTokenResponse,
     MetricAggregationType,
     Project,
     RawRun,
@@ -91,6 +92,7 @@ class ApiClient:
 
         self._client = httpx.Client(
             headers=headers,
+            cookies=_cookies,
             base_url=self._base_url,
             timeout=30,
         )
@@ -241,6 +243,13 @@ class ApiClient:
 
         response = self.request("GET", "/user")
         return UserResponse(**response.json())
+
+    # Github
+
+    def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
+        """Try to get a GitHub access token for the given repositories."""
+        response = self.request("POST", "/github/token", json_data={"repos": repos})
+        return GithubTokenResponse(**response.json())
 
     # Strikes
 
