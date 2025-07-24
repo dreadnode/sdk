@@ -174,25 +174,6 @@ Sometimes, the best way to evaluate an LLM's output is with another, more powerf
 async def tell_a_joke(topic: str) -> str:
     # ... logic to generate a joke from a weaker model ...
 ```
-
-### Scoring Chat-based Outputs
-
-If your task output is a `rigging.Chat` object, you can use `scorers.wrap_chat` to apply any text-based scorer to its messages. This adapter lets you filter which messages to evaluate.
-
-```python
-from dreadnode.scorers.rigging import wrap_chat
-
-# Create a scorer that only checks the last assistant message for refusals
-check_last_response = wrap_chat(
-    scorers.detect_refusal(),
-    filter="last_assistant"
-)
-
-@dn.task(scorers=[check_last_response])
-async def chat_with_agent(prompt: str) -> "Chat":
-    # ... chat logic that returns a Chat object ...
-```
-
 ## Calling Scorers Directly
 
 While attaching scorers to a `@dn.task` decorator is the most common pattern, it's not the only way to use them. **Scorers are simply callable objects.** You can invoke them at any point in your code to perform an evaluation and then log the result manually.
@@ -316,6 +297,176 @@ with dn.run("length-experiment"):
 <Tip>
 Using Lookups is a best practice. It allows you to define a generic evaluation harness (a task with scorers) and apply it to different inputs and configurations without changing the scorer code.
 </Tip>
+
+## Composing Behavior with Operators
+
+Operators are higher-order functions that wrap or modify existing scorers. They let you adapt and reuse scorers without rewriting them.
+
+### Inverting with `invert()`
+
+Flips a score (`value` becomes `1.0 - value`). This is useful for turning a "detection" scorer into a "passes if not detected" scorer.
+
+```python
+# Create a scorer that passes if NO sensitive keywords are found
+no_sensitive_keywords = scorers.invert(
+    scorers.detect_sensitive_keywords(),
+    name="no_sensitive_keywords"
+)
+
+@dn.task(scorers=[no_sensitive_keywords])
+async def process_user_data(data: dict) -> str:
+    # ...
+```
+
+### Thresholding with `threshold()`
+
+Converts a continuous score (e.g., 0.0 to 1.0) into a binary pass/fail result.
+
+```python
+# Create a scorer that passes only if similarity is above 80%
+is_similar_enough = scorers.threshold(
+    scorers.similarity(reference="expected answer"),
+    gt=0.8, # greater than 0.8
+    name="is_similar_enough"
+)
+
+@dn.task(scorers=[is_similar_enough])
+async def answer_question(question: str) -> str:
+    # ...
+```
+
+### Scaling with `scale()`
+
+Remaps a score from its original range to a new one (e.g., 0-1 to 1-5 for a star rating).
+
+```python
+# Create a scorer that rates readability on a 1-5 scale
+# The readability scorer's value is 0-1, so we scale it.
+readability_rating = scorers.scale(
+    scorers.readability(target_grade=8),
+    new_min=1,
+    new_max=5,
+    name="readability_rating"
+)
+
+@dn.task(scorers=[readability_rating])
+async def write_public_announcement(details: dict) -> str:
+    # ...
+```
+
+<Tip>
+When using operators, always provide a new `name`. This ensures the resulting metric is clearly identified in the UI and avoids confusion with the original, unwrapped scorer's metric.
+</Tip>
+
+## Using Scorers with Rigging
+
+Strikes integrates seamlessly with [Rigging](/open-source/rigging/intro), allowing you to score LLM outputs at every stage of your chat pipeline. This integration supports both traditional task-based scoring and inline pipeline scoring.
+
+### Scoring Chat Objects with `wrap_chat`
+
+If your task output is a `rigging.Chat` object, you can use `scorers.wrap_chat` to apply any text-based scorer to its messages. This adapter lets you filter which messages to evaluate.
+
+```python
+from dreadnode.scorers.rigging import wrap_chat
+
+# Create a scorer that only checks the last assistant message for refusals
+check_last_response = wrap_chat(
+    scorers.detect_refusal(),
+    filter="last_assistant"
+)
+
+@dn.task(scorers=[check_last_response])
+async def chat_with_agent(prompt: str) -> "Chat":
+    # ... chat logic that returns a Chat object ...
+```
+
+### Pipeline-Level Scoring with `.score()`
+
+The most powerful way to use scorers with Rigging is through the ChatPipeline's `.score()` method. This allows you to attach scorers directly to your pipeline, which will automatically evaluate the generated chat upon completion.
+
+```python
+import rigging as rg
+import dreadnode as dn
+
+# Create a pipeline with multiple scorers
+pipeline = (
+    rg.get_generator("gpt-4o-mini")
+    .chat("Summarize this text in 2-3 sentences: " + text)
+    .score(
+        dn.scorers.llm_judge(
+            "gpt-4o",
+            "Rate the summary between 0 and 5 based on clarity and completeness.",
+            passing=lambda score: score >= 3
+        ),
+        dn.scorers.contains("key_concept"),  # Ensure key concepts are preserved
+        dn.scorers.length_target(100),       # Target around 100 characters
+        filter="last_assistant"              # Only score the final response
+    )
+)
+
+# Run the pipeline with automatic scoring
+chat = await pipeline.run()
+```
+
+### Message Filtering Options
+
+The `filter` parameter in `.score()` controls which messages are evaluated:
+
+- **`"all"`**: Use all messages in the chat
+- **`"last"`**: Use only the last message (default)
+- **`"first"`**: Use only the first message
+- **`"user"`**: Use only user messages
+- **`"assistant"`**: Use only assistant messages
+- **`"last_user"`**: Use only the last user message
+- **`"last_assistant"`**: Use only the last assistant message
+- **Custom function**: A callable that takes `list[Message]` and returns filtered `list[Message]`
+
+```python
+# Custom filter example: score only messages longer than 50 characters
+def long_messages_only(messages):
+    return [msg for msg in messages if len(str(msg.content)) > 50]
+
+pipeline = (
+    rg.get_generator("gpt-4o")
+    .chat("Write a detailed explanation...")
+    .score(
+        dn.scorers.readability(target_grade=8),
+        filter=long_messages_only
+    )
+)
+```
+
+### Using Lookups with Rigging
+
+Lookups work seamlessly with Rigging pipelines, allowing dynamic scoring based on pipeline context:
+
+```python
+# Score based on the original user input
+pipeline = (
+    rg.get_generator("gpt-4o")
+    .chat("Rephrase this more professionally: " + user_input)
+    .score(
+        # Compare similarity to original input
+        dn.scorers.similarity(
+            reference=dn.lookup_input("messages",
+                                    process=lambda m: m[-1].content)
+        ),
+        # Ensure the rephrasing maintains key concepts
+        dn.scorers.llm_judge(
+            "gpt-4o-mini",
+            "Does this maintain the core meaning of the original?",
+            name="meaning_preservation"
+        ),
+        filter="last_assistant"
+    )
+)
+```
+
+Available inputs on pipelines include:
+
+- **`"messages"`**: The full list of messages in the chat
+- **`"generator_id"`**: The model identifier used
+- **`"params"`**: The generator parameters
 
 ## Writing Your Own Scorers
 
@@ -444,64 +595,3 @@ async def my_task(prompt: str) -> str:
 ```
 
 Generally, it's good practice to consider any scoring constructor arguments that might benefit from being `Lookup`s. This allows users to pass dynamic values when attaching the scorer to a task.
-
-## Composing Behavior with Operators
-
-Operators are higher-order functions that wrap or modify existing scorers. They let you adapt and reuse scorers without rewriting them.
-
-### `invert()`
-
-Flips a score (`value` becomes `1.0 - value`). This is useful for turning a "detection" scorer into a "passes if not detected" scorer.
-
-```python
-# Create a scorer that passes if NO sensitive keywords are found
-no_sensitive_keywords = scorers.invert(
-    scorers.detect_sensitive_keywords(),
-    name="no_sensitive_keywords"
-)
-
-@dn.task(scorers=[no_sensitive_keywords])
-async def process_user_data(data: dict) -> str:
-    # ...
-```
-
-### `threshold()`
-
-Converts a continuous score (e.g., 0.0 to 1.0) into a binary pass/fail result.
-
-```python
-# Create a scorer that passes only if similarity is above 80%
-is_similar_enough = scorers.threshold(
-    scorers.similarity(reference="expected answer"),
-    gt=0.8, # greater than 0.8
-    name="is_similar_enough"
-)
-
-@dn.task(scorers=[is_similar_enough])
-async def answer_question(question: str) -> str:
-    # ...
-```
-
-### `scale()`
-
-Remaps a score from its original range to a new one (e.g., 0-1 to 1-5 for a star rating).
-
-```python
-# Create a scorer that rates readability on a 1-5 scale
-# The readability scorer's value is 0-1, so we scale it.
-readability_rating = scorers.scale(
-    scorers.readability(target_grade=8),
-    new_min=1,
-    new_max=5,
-    name="readability_rating"
-)
-
-@dn.task(scorers=[readability_rating])
-async def write_public_announcement(details: dict) -> str:
-    # ...
-```
-
-<Tip>
-When using operators, always provide a new `name`. This ensures the resulting metric is clearly identified in the UI and avoids confusion with the original, unwrapped scorer's metric.
-</Tip>
-```
