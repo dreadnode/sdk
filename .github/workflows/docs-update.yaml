@@ -1,5 +1,5 @@
 ---
-name: Notify Documentation Update
+name: Trigger Docs Update
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
           client-payload: |
             {
               "repository": "${{ github.repository }}",
-              "ref": "${{ github.ref }}",
+              "ref": "${{ github.ref_name }}",
               "sha": "${{ github.sha }}",
               "source_dir": "docs",
               "target_dir": "strikes",
