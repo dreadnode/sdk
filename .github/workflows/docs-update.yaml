@@ -21,7 +21,7 @@ jobs:
           private-key: ${{ secrets.UPDATE_DOCS_PRIVATE_KEY }}
           owner: "${{ github.repository_owner }}"
           repositories: |
-            prod-docs
+            docs
 
       - name: Trigger docs repository workflow
         uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
