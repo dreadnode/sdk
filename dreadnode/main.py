@@ -29,6 +29,7 @@ from dreadnode.constants import (
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
     ENV_API_TOKEN,
+    ENV_CONSOLE,
     ENV_LOCAL_DIR,
     ENV_PROFILE,
     ENV_PROJECT,
@@ -100,7 +101,7 @@ class Dreadnode:
     project: str | None
     service_name: str | None
     service_version: str | None
-    console: logfire.ConsoleOptions | t.Literal[False, True]
+    console: logfire.ConsoleOptions | bool
     send_to_logfire: bool | t.Literal["if-token-present"]
     otel_scope: str
 
@@ -113,7 +114,7 @@ class Dreadnode:
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
-        console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+        console: logfire.ConsoleOptions | bool = True,
         send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
@@ -167,7 +168,7 @@ class Dreadnode:
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
-        console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+        console: logfire.ConsoleOptions | bool | None = None,
         send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
@@ -195,7 +196,7 @@ class Dreadnode:
             project: The default project name to associate all runs with.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
-            console: Whether to log span information to the console.
+            console: Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
             send_to_logfire: Whether to send data to Logfire.
             otel_scope: The OpenTelemetry scope name.
         """
@@ -252,7 +253,11 @@ class Dreadnode:
         self.project = project or os.environ.get(ENV_PROJECT)
         self.service_name = service_name
         self.service_version = service_version
-        self.console = console
+        self.console = console or os.environ.get(ENV_CONSOLE, "true").lower() in [
+            "true",
+            "1",
+            "yes",
+        ]
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
 

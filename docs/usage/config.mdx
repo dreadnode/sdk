@@ -133,20 +133,17 @@ Environment variables are a great alternative for automated deployments and CI/C
 ### Complete Reference
 
 ```bash
-# Authentication (choose one)
-export DREADNODE_API_KEY="your-api-token"        # Recommended
-export DREADNODE_API_TOKEN="your-api-token"      # Alternative
-
-# Server configuration
-export DREADNODE_SERVER="https://your-server.com"     # Recommended
-export DREADNODE_SERVER_URL="https://your-server.com" # Alternative
-
 # Profile selection (when not using explicit server/token)
 export DREADNODE_PROFILE="production"
 
+# Platform configuration
+export DREADNODE_API_KEY="your-api-token"
+export DREADNODE_SERVER="http://self-hosted"
+
 # Optional settings
-export DREADNODE_LOCAL_DIR="./runs"           # Local storage directory
-export DREADNODE_PROJECT="my-project"         # Default project name
+export DREADNODE_LOCAL_DIR="./runs"     # Local storage directory
+export DREADNODE_PROJECT="my-project"   # Default project name
+export DREADNODE_CONSOLE="true"         # Enable console logging (default is true)
 ```
 
 ## Configuration Priority Order
