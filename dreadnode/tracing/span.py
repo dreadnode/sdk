@@ -365,6 +365,7 @@ class RunSpan(Span):
         update_frequency: int = 5,
         run_id: str | ULID | None = None,
         type: SpanType = "run",
+        fs_refresh_callback: t.Callable[[], AbstractFileSystem] | None = None,
     ) -> None:
         self.autolog = autolog
         self.project = project
@@ -398,6 +399,7 @@ class RunSpan(Span):
         self._remote_token: object | None = None
         self._file_system = file_system
         self._prefix_path = prefix_path
+        self._fs_refresh_callback = fs_refresh_callback
 
         self._tasks: list[TaskSpan[t.Any]] = []
 
@@ -415,6 +417,7 @@ class RunSpan(Span):
         tracer: Tracer,
         file_system: AbstractFileSystem,
         prefix_path: str,
+        fs_refresh_callback: t.Callable[[], AbstractFileSystem] | None = None,
     ) -> "RunSpan":
         self = RunSpan(
             name=f"run.{context['run_id']}.fragment",
@@ -425,6 +428,7 @@ class RunSpan(Span):
             prefix_path=prefix_path,
             type="run_fragment",
             run_id=context["run_id"],
+            fs_refresh_callback=fs_refresh_callback,
         )
 
         self._remote_context = context["trace_context"]
@@ -615,10 +619,22 @@ class RunSpan(Span):
         Returns:
             The unstrip_protocol version of the full path (for object store URI).
         """
-        if not self._file_system.exists(full_path):
-            logger.debug("Storing new object at: %s", full_path)
-            with self._file_system.open(full_path, "wb") as f:
-                f.write(data)
+        try:
+            if not self._file_system.exists(full_path):
+                logger.debug("Storing new object at: %s", full_path)
+                with self._file_system.open(full_path, "wb") as f:
+                    f.write(data)
+        except Exception as e:
+            # Check if it's an AWS expired token error and we have a refresh callback
+            if "ExpiredToken" in str(e) and self._fs_refresh_callback:
+                logger.debug("Token expired, refreshing filesystem and retrying")
+                self._file_system = self._fs_refresh_callback()
+                # Retry once with refreshed filesystem
+                if not self._file_system.exists(full_path):
+                    with self._file_system.open(full_path, "wb") as f:
+                        f.write(data)
+            else:
+                raise
 
         return str(self._file_system.unstrip_protocol(full_path))
 

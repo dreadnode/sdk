@@ -4,13 +4,14 @@ import os
 import random
 import typing as t
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
 import rich
+from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
 from fsspec.implementations.local import (  # type: ignore [import-untyped]
     LocalFileSystem,
 )
@@ -24,6 +25,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from s3fs import S3FileSystem  # type: ignore [import-untyped]
 
 from dreadnode.api.client import ApiClient
+from dreadnode.api.models import UserDataCredentials
 from dreadnode.config import UserConfig
 from dreadnode.constants import (
     DEFAULT_SERVER_URL,
@@ -68,7 +70,6 @@ from dreadnode.util import clean_str, handle_internal_errors, resolve_endpoint
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
-    from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
     from opentelemetry.sdk.metrics.export import MetricReader
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
@@ -135,6 +136,7 @@ class Dreadnode:
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = ".dreadnode/storage/"
+        self._credentials: UserDataCredentials | None = None
 
         self._initialized = False
 
@@ -348,18 +350,18 @@ class Dreadnode:
             #     )
             # )
 
-            credentials = self._api.get_user_data_credentials()
-            resolved_endpoint = resolve_endpoint(credentials.endpoint)
+            self._credentials = self._api.get_user_data_credentials()
+            resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
             self._fs = S3FileSystem(
-                key=credentials.access_key_id,
-                secret=credentials.secret_access_key,
-                token=credentials.session_token,
+                key=self._credentials.access_key_id,
+                secret=self._credentials.secret_access_key,
+                token=self._credentials.session_token,
                 client_kwargs={
                     "endpoint_url": resolved_endpoint,
-                    "region_name": credentials.region,
+                    "region_name": self._credentials.region,
                 },
             )
-            self._fs_prefix = f"{credentials.bucket}/{credentials.prefix}/"
+            self._fs_prefix = f"{self._credentials.bucket}/{self._credentials.prefix}/"
 
         self._logfire = logfire.configure(
             local=not self.is_default,
@@ -405,6 +407,23 @@ class Dreadnode:
             raise RuntimeError("API is not available without a server configuration")
 
         return self._api
+
+    def _refresh_fs(self) -> AbstractFileSystem:
+        """Refresh the S3 filesystem with new credentials."""
+        if self._credentials is not None and self._api is not None:
+            self._credentials = self._api.get_user_data_credentials()
+            resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
+            self._fs = S3FileSystem(
+                key=self._credentials.access_key_id,
+                secret=self._credentials.secret_access_key,
+                token=self._credentials.session_token,
+                client_kwargs={
+                    "endpoint_url": resolved_endpoint,
+                    "region_name": self._credentials.region,
+                },
+            )
+        return self._fs
+    
 
     def _get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
         return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
@@ -778,6 +797,7 @@ class Dreadnode:
             file_system=self._fs,
             prefix_path=self._fs_prefix,
             autolog=autolog,
+            fs_refresh_callback=self._refresh_fs if self._credentials is not None else None,
         )
 
     def get_run_context(self) -> RunContext:
@@ -824,6 +844,7 @@ class Dreadnode:
             tracer=self._get_tracer(),
             file_system=self._fs,
             prefix_path=self._fs_prefix,
+            fs_refresh_callback=self._refresh_fs if self._credentials is not None else None,
         )
 
     def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
