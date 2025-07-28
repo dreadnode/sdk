@@ -2,15 +2,15 @@ import contextlib
 import inspect
 import os
 import random
-import socket
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import ParseResult, urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
+import rich
 from fsspec.implementations.local import (  # type: ignore [import-untyped]
     LocalFileSystem,
 )
@@ -24,11 +24,14 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from s3fs import S3FileSystem  # type: ignore [import-untyped]
 
 from dreadnode.api.client import ApiClient
+from dreadnode.config import UserConfig
 from dreadnode.constants import (
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
     ENV_API_TOKEN,
+    ENV_CONSOLE,
     ENV_LOCAL_DIR,
+    ENV_PROFILE,
     ENV_PROJECT,
     ENV_SERVER,
     ENV_SERVER_URL,
@@ -61,7 +64,7 @@ from dreadnode.types import (
     Inherited,
     JsonValue,
 )
-from dreadnode.util import clean_str, handle_internal_errors, logger
+from dreadnode.util import clean_str, handle_internal_errors, resolve_endpoint
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -98,7 +101,7 @@ class Dreadnode:
     project: str | None
     service_name: str | None
     service_version: str | None
-    console: logfire.ConsoleOptions | t.Literal[False, True]
+    console: logfire.ConsoleOptions | bool
     send_to_logfire: bool | t.Literal["if-token-present"]
     otel_scope: str
 
@@ -111,7 +114,7 @@ class Dreadnode:
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
-        console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+        console: logfire.ConsoleOptions | bool = True,
         send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
@@ -135,107 +138,37 @@ class Dreadnode:
 
         self._initialized = False
 
-    @staticmethod
-    def _resolve_endpoint(endpoint: str | None) -> str | None:
-        """Automatically resolve endpoints based on environment
+    def _get_profile_server(self, profile: str | None = None) -> str | None:
+        with contextlib.suppress(Exception):
+            user_config = UserConfig.read()
+            profile = profile or os.environ.get(ENV_PROFILE)
+            server_config = user_config.get_server_config(profile)
+            return server_config.url
 
-        Args:
-            endpoint: The endpoint URL to resolve.
+        # Silently fail if profile config is not available or invalid
+        return None
 
-        Returns:
-            str: The resolved endpoint URL.
+    def _get_profile_api_key(self, profile: str | None = None) -> str | None:
+        with contextlib.suppress(Exception):
+            user_config = UserConfig.read()
+            profile = profile or os.environ.get(ENV_PROFILE)
+            server_config = user_config.get_server_config(profile)
+            return server_config.api_key
 
-        Raises:
-            ValueError: If the endpoint URL is invalid.
-        """
-        if not endpoint:
-            return None
-        parsed = urlparse(endpoint)
-
-        # If it's a real domain (has dots), use as-is
-        if not parsed.hostname:
-            raise ValueError(f"Invalid endpoint URL: {endpoint}")
-
-        if "." in parsed.hostname:
-            return endpoint
-
-        # If it's a service name, try to resolve it
-        if Dreadnode._is_docker_service_name(parsed.hostname):
-            return Dreadnode._resolve_docker_service(endpoint, parsed)
-
-        return endpoint
-
-    @staticmethod
-    def _is_docker_service_name(hostname: str) -> bool:
-        """Check if this looks like a Docker service name
-
-        Args:
-            hostname: The hostname to check.
-
-        Returns:
-            bool: True if the hostname looks like a Docker service name, False otherwise.
-        """
-        return bool(hostname and "." not in hostname and hostname != "localhost")
-
-    @staticmethod
-    def _resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
-        """Try different resolution strategies for Docker services
-
-        Args:
-            original_endpoint: The original endpoint URL.
-            parsed: The parsed URL object.
-
-        Returns:
-            str: The resolved endpoint URL.
-
-        Raises:
-            RuntimeError: If no valid endpoint is found.
-        """
-        strategies = [
-            original_endpoint,  # Try original first (works if running in same network)
-            f"{parsed.scheme}://localhost:{parsed.port}",  # Try localhost
-            f"{parsed.scheme}://host.docker.internal:{parsed.port}",  # Docker Desktop
-            f"{parsed.scheme}://172.17.0.1:{parsed.port}",  # Docker bridge IP
-        ]
-
-        for endpoint in strategies:
-            if Dreadnode._test_connection(endpoint):
-                logger.warning(
-                    f"Resolved Docker service for s3 connection '{parsed.hostname}' to '{endpoint}'."
-                )
-                return str(endpoint)
-
-        # If nothing works, return original and let it fail with a helpful error
-        raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")
-
-    @staticmethod
-    def _test_connection(endpoint: str) -> bool:
-        """Quick connectivity test
-
-        Args:
-            endpoint: The endpoint URL to test.
-
-        Returns:
-            bool: True if the connection is successful, False otherwise.
-        """
-        try:
-            parsed = urlparse(endpoint)
-            socket.create_connection((parsed.hostname, parsed.port or 443), timeout=1)
-        except Exception:  # noqa: BLE001
-            return False
-
-        return True
+        # Silently fail if profile config is not available or invalid
+        return None
 
     def configure(
         self,
         *,
         server: str | None = None,
         token: str | None = None,
+        profile: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
-        console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+        console: logfire.ConsoleOptions | bool | None = None,
         send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
@@ -244,28 +177,69 @@ class Dreadnode:
 
         This method should always be called before using the SDK.
 
-        If `server` and `token` are not provided, the SDK will look in
-        the associated environment variables:
+        If `server` and `token` are not provided, the SDK will look for them
+        in the following order:
 
-        - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
-        - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+        1. Environment variables:
+           - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
+           - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+        2. Dreadnode profile (from `dreadnode login`)
+           - Uses `profile` parameter if provided
+           - Falls back to `DREADNODE_PROFILE` environment variable
+           - Defaults to active profile
 
         Args:
             server: The Dreadnode server URL.
             token: The Dreadnode API token.
+            profile: The Dreadnode profile name to use (only used if env vars are not set).
             local_dir: The local directory to store data in.
             project: The default project name to associate all runs with.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
-            console: Whether to log span information to the console.
+            console: Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
             send_to_logfire: Whether to send data to Logfire.
             otel_scope: The OpenTelemetry scope name.
         """
 
         self._initialized = False
 
-        self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-        self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+        # Determine configuration source and active profile for logging
+        config_source = "explicit parameters"
+        active_profile = None
+
+        if not server or not token:
+            # Check environment variables first
+            env_server = os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+            env_token = os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+
+            if env_server or env_token:
+                config_source = "environment vars"
+            else:
+                # Fall back to profile
+                config_source = "profile"
+                with contextlib.suppress(Exception):
+                    user_config = UserConfig.read()
+                    profile_name = profile or os.environ.get(ENV_PROFILE)
+                    if profile_name:
+                        active_profile = profile_name
+                    else:
+                        active_profile = user_config.active_profile_name
+
+                    if active_profile:
+                        config_source = f"profile: {active_profile}"
+
+        self.server = (
+            server
+            or os.environ.get(ENV_SERVER_URL)
+            or os.environ.get(ENV_SERVER)
+            or self._get_profile_server(profile)
+        )
+        self.token = (
+            token
+            or os.environ.get(ENV_API_TOKEN)
+            or os.environ.get(ENV_API_KEY)
+            or self._get_profile_api_key(profile)
+        )
 
         if local_dir is False and ENV_LOCAL_DIR in os.environ:
             env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -279,9 +253,24 @@ class Dreadnode:
         self.project = project or os.environ.get(ENV_PROJECT)
         self.service_name = service_name
         self.service_version = service_version
-        self.console = console
+        self.console = console or os.environ.get(ENV_CONSOLE, "true").lower() in [
+            "true",
+            "1",
+            "yes",
+        ]
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
+
+        # Log config information for clarity
+        if self.server or self.token or self.local_dir:
+            destination = self.server or DEFAULT_SERVER_URL or "local storage"
+            rich.print(f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source})")
+
+        # Warn the user if the profile didn't resolve
+        elif active_profile and not (self.server or self.token):
+            rich.print(
+                f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
+            )
 
         self.initialize()
 
@@ -301,7 +290,8 @@ class Dreadnode:
         if not (self.server or self.token or self.local_dir):
             warn_at_user_stacklevel(
                 "Your current configuration won't persist run data anywhere. "
-                "Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, "
+                "Login with `dreadnode login` to set up a server and token, "
+                "Use `dreadnode.configure(server=..., token=...)`, `dreadnode.configure(profile=...)`, "
                 f"or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
                 category=DreadnodeConfigWarning,
             )
@@ -325,7 +315,7 @@ class Dreadnode:
                     )
                     self.server = urlunparse(parsed_new)
 
-                self._api = ApiClient(self.server, self.token)
+                self._api = ApiClient(self.server, api_key=self.token)
 
                 self._api.list_projects()
             except Exception as e:
@@ -359,7 +349,7 @@ class Dreadnode:
             # )
 
             credentials = self._api.get_user_data_credentials()
-            resolved_endpoint = self._resolve_endpoint(credentials.endpoint)
+            resolved_endpoint = resolve_endpoint(credentials.endpoint)
             self._fs = S3FileSystem(
                 key=credentials.access_key_id,
                 secret=credentials.secret_access_key,
@@ -406,7 +396,7 @@ class Dreadnode:
             An ApiClient instance.
         """
         if server is not None and token is not None:
-            return ApiClient(server, token)
+            return ApiClient(server, api_key=token)
 
         if not self._initialized:
             raise RuntimeError("Call .configure() before accessing the API")
@@ -773,7 +763,7 @@ class Dreadnode:
             The run will automatically be completed when the context manager exits.
         """
         if not self._initialized:
-            self.initialize()
+            self.configure()
 
         if name is None:
             name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311 # nosec
@@ -827,7 +817,7 @@ class Dreadnode:
             A RunSpan object that can be used as a context manager.
         """
         if not self._initialized:
-            self.initialize()
+            self.configure()
 
         return RunSpan.from_context(
             context=run_context,

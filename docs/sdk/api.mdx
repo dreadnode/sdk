@@ -12,7 +12,11 @@ ApiClient
 
 ```python
 ApiClient(
-    base_url: str, api_key: str, *, debug: bool = False
+    base_url: str,
+    *,
+    api_key: str | None = None,
+    cookies: dict[str, str] | None = None,
+    debug: bool = False,
 )
 ```
 
@@ -29,7 +33,9 @@ Initializes the API client.
   (`str`)
   –The base URL of the Dreadnode API.
 * **`api_key`**
-  (`str`)
+  (`str`, default:
+  `None`
+  )
   –The API key for authentication.
 * **`debug`**
   (`bool`, default:
@@ -42,11 +48,13 @@ Initializes the API client.
 def __init__(
     self,
     base_url: str,
-    api_key: str,
     *,
+    api_key: str | None = None,
+    cookies: dict[str, str] | None = None,
     debug: bool = False,
 ):
-    """Initializes the API client.
+    """
+    Initializes the API client.
 
     Args:
         base_url (str): The base URL of the Dreadnode API.
@@ -57,12 +65,28 @@ def __init__(
     if not self._base_url.endswith("/api"):
         self._base_url += "/api"
 
+    _cookies = httpx.Cookies()
+    cookie_domain = urlparse(base_url).hostname
+    if cookie_domain is None:
+        raise ValueError(f"Invalid URL: {base_url}")
+
+    if cookie_domain == "localhost":
+        cookie_domain = "localhost.local"
+
+    for key, value in (cookies or {}).items():
+        _cookies.set(key, value, domain=cookie_domain)
+
+    headers = {
+        "User-Agent": f"dreadnode-sdk/{VERSION}",
+        "Accept": "application/json",
+    }
+
+    if api_key:
+        headers["X-Api-Key"] = api_key
+
     self._client = httpx.Client(
-        headers={
-            "User-Agent": f"dreadnode-sdk/{VERSION}",
-            "Accept": "application/json",
-            "X-API-Key": api_key,
-        },
+        headers=headers,
+        cookies=_cookies,
         base_url=self._base_url,
         timeout=30,
     )
@@ -133,7 +157,8 @@ def export_metrics(
     metrics: list[str] | None = None,
     aggregations: list[MetricAggregationType] | None = None,
 ) -> pd.DataFrame:
-    """Exports metric data for a specific project.
+    """
+    Exports metric data for a specific project.
 
     Args:
         project: The project identifier.
@@ -224,7 +249,8 @@ def export_parameters(
     metrics: list[str] | None = None,
     aggregations: list[MetricAggregationType] | None = None,
 ) -> pd.DataFrame:
-    """Exports parameter data for a specific project.
+    """
+    Exports parameter data for a specific project.
 
     Args:
         project: The project identifier.
@@ -306,7 +332,8 @@ def export_runs(
     status: StatusFilter = "completed",
     aggregations: list[MetricAggregationType] | None = None,
 ) -> pd.DataFrame:
-    """Exports run data for a specific project.
+    """
+    Exports run data for a specific project.
 
     Args:
         project: The project identifier.
@@ -398,7 +425,8 @@ def export_timeseries(
     time_axis: TimeAxisType = "relative",
     aggregations: list[TimeAggregationType] | None = None,
 ) -> pd.DataFrame:
-    """Exports timeseries data for a specific project.
+    """
+    Exports timeseries data for a specific project.
 
     Args:
         project: The project identifier.
@@ -424,6 +452,47 @@ def export_timeseries(
         },
     )
     return pd.read_parquet(io.BytesIO(response.content))
+```
+
+
+</Accordion>
+
+### get\_device\_codes
+
+```python
+get_device_codes() -> DeviceCodeResponse
+```
+
+Start the authentication flow by requesting user and device codes.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_device_codes(self) -> DeviceCodeResponse:
+    """Start the authentication flow by requesting user and device codes."""
+
+    response = self.request("POST", "/auth/device/code")
+    return DeviceCodeResponse(**response.json())
+```
+
+
+</Accordion>
+
+### get\_github\_access\_token
+
+```python
+get_github_access_token(
+    repos: list[str],
+) -> GithubTokenResponse
+```
+
+Try to get a GitHub access token for the given repositories.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
+    """Try to get a GitHub access token for the given repositories."""
+    response = self.request("POST", "/github/token", json_data={"repos": repos})
+    return GithubTokenResponse(**response.json())
 ```
 
 
@@ -636,6 +705,26 @@ def get_run_trace(
 
 </Accordion>
 
+### get\_user
+
+```python
+get_user() -> UserResponse
+```
+
+Get the user email and username.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_user(self) -> UserResponse:
+    """Get the user email and username."""
+
+    response = self.request("GET", "/user")
+    return UserResponse(**response.json())
+```
+
+
+</Accordion>
+
 ### get\_user\_data\_credentials
 
 ```python
@@ -731,6 +820,47 @@ def list_runs(self, project: str) -> list[RunSummary]:
 
 </Accordion>
 
+### poll\_for\_token
+
+```python
+poll_for_token(
+    device_code: str,
+    interval: int = DEFAULT_POLL_INTERVAL,
+    max_poll_time: int = DEFAULT_MAX_POLL_TIME,
+) -> AccessRefreshTokenResponse
+```
+
+Poll for the access token with the given device code.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def poll_for_token(
+    self,
+    device_code: str,
+    interval: int = DEFAULT_POLL_INTERVAL,
+    max_poll_time: int = DEFAULT_MAX_POLL_TIME,
+) -> AccessRefreshTokenResponse:
+    """Poll for the access token with the given device code."""
+
+    start_time = datetime.now(timezone.utc)
+    while (datetime.now(timezone.utc) - start_time).total_seconds() < max_poll_time:
+        response = self._request(
+            "POST", "/auth/device/token", json_data={"device_code": device_code}
+        )
+
+        if response.status_code == 200:  # noqa: PLR2004
+            return AccessRefreshTokenResponse(**response.json())
+        if response.status_code != 401:  # noqa: PLR2004
+            raise RuntimeError(self._get_error_message(response))
+
+        time.sleep(interval)
+
+    raise RuntimeError("Polling for token timed out")
+```
+
+
+</Accordion>
+
 ### request
 
 ```python
@@ -782,7 +912,8 @@ def request(
     params: dict[str, t.Any] | None = None,
     json_data: dict[str, t.Any] | None = None,
 ) -> httpx.Response:
-    """Makes an HTTP request to the API and raises exceptions for errors.
+    """
+    Makes an HTTP request to the API and raises exceptions for errors.
 
     Args:
         method (str): The HTTP method (e.g., "GET", "POST").
@@ -805,6 +936,25 @@ def request(
         raise RuntimeError(self._get_error_message(response)) from e
 
     return response
+```
+
+
+</Accordion>
+
+### url\_for\_user\_code
+
+```python
+url_for_user_code(user_code: str) -> str
+```
+
+Get the URL to verify the user code.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def url_for_user_code(self, user_code: str) -> str:
+    """Get the URL to verify the user code."""
+
+    return f"{self._base_url.removesuffix('/api')}/account/device?code={user_code}"
 ```
 
 

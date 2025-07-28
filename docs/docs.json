@@ -17,16 +17,29 @@
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["intro", "install", "examples"]
+        "pages": ["intro", "install"]
+      },
+      {
+        "group": "Example Agents",
+        "pages": [
+          "examples/overview",
+          "examples/dangerous-capabilities",
+          "examples/dotnet-reversing",
+          "examples/python-agent",
+          "examples/sast-scanning",
+          "examples/sensitive-data"
+        ]
       },
       {
         "group": "Usage",
         "pages": [
+          "usage/cli",
           "usage/config",
           "usage/projects",
           "usage/runs",
           "usage/tasks",
           "usage/metrics",
+          "usage/scorers",
           "usage/data-tracking",
           "usage/rich-objects",
           "usage/model-training",
@@ -52,6 +65,7 @@
           "sdk/api",
           "sdk/artifact",
           "sdk/data_types",
+          "sdk/scorers",
           "sdk/integrations",
           "sdk/main",
           "sdk/metric",

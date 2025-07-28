@@ -1,9 +1,10 @@
 from dreadnode import convert, data_types, scorers
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
+from dreadnode.lookup import Lookup, lookup_input, lookup_output, lookup_param, resolve_lookup
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.metric import Metric, MetricDict, Scorer
 from dreadnode.object import Object
-from dreadnode.task import Task, TaskInput
+from dreadnode.task import Task
 from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
@@ -39,6 +40,7 @@ __all__ = [
     "Code",
     "Dreadnode",
     "Image",
+    "Lookup",
     "Markdown",
     "Metric",
     "MetricDict",
@@ -50,7 +52,6 @@ __all__ = [
     "Span",
     "Table",
     "Task",
-    "TaskInput",
     "TaskSpan",
     "Text",
     "Video",
@@ -69,7 +70,11 @@ __all__ = [
     "log_output",
     "log_param",
     "log_params",
+    "lookup_input",
+    "lookup_output",
+    "lookup_param",
     "push_update",
+    "resolve_lookup",
     "run",
     "scorer",
     "scorers",

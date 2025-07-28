@@ -7,19 +7,19 @@ public: true
 <Note>
 This documentation complements the **"Dotnet Reversing"** example in [`dreadnode/example-agents`](https://github.com/dreadnode/example-agents). We'll reference specific components throughout, but you should explore the full implementation to understand how everything fits together.
 
-We'll assume you have the `dreadnode` package installed and are familiar with the basics of Strikes. If you haven't already, check out the [installation](../install) and [introduction](../intro) guides.
+We'll assume you have the `dreadnode` package installed and are familiar with the basics of Strikes. If you haven't already, check out the [installation](/install) and [introduction](/intro) guides.
 </Note>
 
 In this guide, we'll walk through building an agent for analyzing Dotnet binaries to identify security vulnerabilities and report them to the user. Unlike a more structured evaluation, this agent demonstrates an open-ended analysis task without known answers and specialized tools. We'll see how Strikes helps track agent use on real-world resources for tasks where success may not be as clearly defined as finding a flag.
 
 <Tip>
-Our agent use [Rigging](https://docs.dreadnode.io/rigging) to interact with the LLMs, provide tools, and track inference data. If you aren't already familiar, we recommend checking out the following resources:
+Our agent use [Rigging](https://github.com/dreadnode/rigging) to interact with the LLMs, provide tools, and track inference data. If you aren't already familiar, we recommend checking out the following resources:
 
-- [Introduction](https://docs.dreadnode.io/open-source/rigging/intro)
-- [Generators](https://docs.dreadnode.io/open-source/rigging/topics/generators)
-- [Tools](https://docs.dreadnode.io/open-source/rigging/topics/tools)
+- [Introduction](/open-source/rigging/intro)
+- [Generators](/open-source/rigging/topics/generators)
+- [Tools](/open-source/rigging/topics/tools)
 
-The first point of confusing is usually what to pass to the `--model` argument, which is treated as an [identifier](https://docs.dreadnode.io/open-source/rigging/topics/generators#identifiers) to Rigging. Usually, the model name works as expected, but sometimes you need to supply a prefix like `gemini/` or `ollama/`:
+The first point of confusing is usually what to pass to the `--model` argument, which is treated as an [identifier](/open-source/rigging/topics/generators#identifiers) to Rigging. Usually, the model name works as expected, but sometimes you need to supply a prefix like `gemini/` or `ollama/`:
 
 ```
 gpt-4.1
