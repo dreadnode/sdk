@@ -2,7 +2,7 @@
 
 ## Overview
 
-These user stories illustrate how AIRT makes AI red teamers' jobs easier by automating repetitive tasks, scaling testing capabilities, and providing systematic evaluation frameworks. Each story shows a realistic scenario where security researchers are hired to evaluate different AI systems.
+These user stories demonstrate AIRT implementation patterns for common red teaming scenarios. Each story illustrates specific technical approaches using HTTPGenerator targeting and existing dreadnode.scorers infrastructure.
 
 ---
 
@@ -59,7 +59,11 @@ from dreadnode.scorers import detect_unsafe_shell_content, detect_pii
 
 dn.configure(project="ai-coding-assistant-redteam")
 
-target = airt.HTTPTarget("https://api.codingassistant.com/generate")
+target = airt.HTTPTarget(
+    "https://api.codingassistant.com/generate",
+    headers={"Content-Type": "application/json"},
+    params=GenerateParams(max_tokens=2048, temperature=0.0)
+)
 
 with dn.run("comprehensive-coding-assistant-assessment"):
     
@@ -207,16 +211,16 @@ with dn.run("secure-coding-assistant-redteam"):
 - ⚠️ **Setup complexity**: Requires Ollama installation and model downloads
 - ⚠️ **Hardware requirements**: GPU recommended for optimal performance
 
-**Benefits for Jamie:**
-- **Massive scale**: Tests 100+ code injection scenarios vs 3 manual attempts
-- **Specialized detection**: `detect_unsafe_shell_content` perfect for this domain
-- **Indirect injection coverage**: Tests sophisticated attacks through external content (impossible to do manually at scale)
-- **Tool chain attack detection**: Systematic evaluation of tool call manipulation and privilege escalation
-- **Multi-turn testing**: Systematic evaluation of context manipulation attacks
-- **Credential focus**: Targeted testing for API key/credential leakage
-- **95% time savings**: Automated analysis vs manual code review for complex agent attacks
-- **Model flexibility**: Works with both API models (maximum capability) and local models (privacy-focused)
-- **Reproducible methodology**: Client can re-run exact same comprehensive tests
+**Implementation Results:**
+- **Test Coverage**: 100+ automated code injection scenarios vs 3 manual attempts
+- **Domain Scorers**: `detect_unsafe_shell_content` integration for shell command detection
+- **Indirect Injection**: Systematic external content testing via simulated file/document injection
+- **Tool Chain Analysis**: Automated tool call sequence and privilege escalation detection
+- **Multi-Turn Assessment**: Context manipulation testing across conversation turns
+- **Credential Detection**: Targeted training data inversion for API key/credential extraction
+- **HTTPGenerator Integration**: Standardized target interaction via Rigging infrastructure
+- **Model Flexibility**: API models (gpt-4o-mini, claude-3-5-sonnet) or local models (ollama/codellama:13b)
+- **Reproducible Testing**: Deterministic evaluation using existing dreadnode.scorers patterns
 
 ---
 
@@ -278,10 +282,11 @@ dn.configure(
     project="socialmedia-content-moderation-redteam"
 )
 
-# Define the target system
+# Define the target system using HTTPGenerator
 target = airt.HTTPTarget(
-    url="https://api.socialmedia.com/moderate",
-    headers={"Authorization": "Bearer " + client_api_key}
+    "https://api.socialmedia.com/moderate",
+    headers={"Authorization": "Bearer " + client_api_key},
+    params=GenerateParams(temperature=0.0)  # Deterministic for testing
 )
 
 # Custom scorer for content moderation bypass
@@ -340,13 +345,13 @@ with dn.run("content-moderation-redteam"):
     print(f"High-risk privacy leaks: {len([r for r in privacy_results if r.risk_score > 0.8])}")
 ```
 
-**Benefits for Sarah:**
-- **95% time savings**: Automated attack generation and evaluation
-- **Consistent methodology**: Objective, reproducible scoring
-- **Scale**: Tests 200+ examples instead of 20 manual ones  
-- **Comprehensive coverage**: Multiple attack types and languages automatically
-- **Professional reporting**: Automatic metrics and detailed logs in Dreadnode dashboard
-- **Reproducible**: Client can re-run exact same tests
+**Implementation Results:**
+- **Automation**: Attack generation and llm_judge evaluation using existing scorers
+- **Standardized Scoring**: Objective evaluation via llm_judge rubrics and detect_* scorers
+- **Scale**: 200+ automated test cases vs 20 manual attempts
+- **Multi-Vector Coverage**: Automated attack type generation and multi-language testing
+- **Metrics Integration**: Automatic logging via dn.log_metric() and existing dashboard
+- **Reproducibility**: Deterministic testing using HTTPGenerator and consistent scorer configuration
 
 ---
 
@@ -389,7 +394,11 @@ from dreadnode import airt
 
 dn.configure(project="fintech-ai-advisor-redteam")
 
-target = airt.HTTPTarget("https://api.fintech.com/advisor")
+target = airt.HTTPTarget(
+    "https://api.fintech.com/advisor",
+    headers={"Authorization": "Bearer " + api_token},
+    params=GenerateParams(max_tokens=1024)
+)
 
 # Custom financial advice safety scorer
 financial_safety_scorer = llm_judge(
@@ -450,12 +459,12 @@ with dn.run("fintech-ai-redteam-assessment"):
     )
 ```
 
-**Benefits for Marcus:**
-- **Systematic approach**: Covers all major attack vectors automatically
-- **Quantifiable results**: Clear risk scores for regulatory discussion
-- **Efficiency**: Tests 75+ scenarios instead of 5-10 manual tests
-- **Domain expertise**: Financial-specific safety evaluation
-- **Professional documentation**: Detailed technical report for compliance team
+**Implementation Results:**
+- **Comprehensive Testing**: Automated attack vector coverage via configurable EvasionConfig
+- **Risk Quantification**: Metric-based scoring using llm_judge and detect_pii integration
+- **Test Coverage**: 75+ automated scenarios vs 5-10 manual attempts
+- **Domain Scoring**: Custom financial safety rubrics implemented via llm_judge
+- **Documentation**: Automated report generation via existing dreadnode.metrics infrastructure
 
 ---
 
@@ -498,7 +507,11 @@ from dreadnode import airt
 
 dn.configure(project="edu-ai-tutor-safety-assessment")
 
-target = airt.HTTPTarget("https://api.edtech.com/tutor")
+target = airt.HTTPTarget(
+    "https://api.edtech.com/tutor",
+    headers={"Content-Type": "application/json"},
+    params=GenerateParams(temperature=0.3, max_tokens=512)
+)
 
 # Child safety scorer for educational AI
 child_safety_scorer = llm_judge(
@@ -556,12 +569,12 @@ with dn.run("educational-ai-safety-redteam"):
     print(f"Privacy risks identified: {len([r for r in privacy_results if r.risk_score > 0.6])}")
 ```
 
-**Benefits for Alex:**
-- **Child safety focus**: Specialized evaluation for educational context
-- **Comprehensive testing**: 90+ test scenarios vs. 10 manual tests
-- **Objective evaluation**: Consistent safety criteria applied systematically  
-- **Privacy assessment**: Thorough testing for student data leakage
-- **Clear reporting**: Quantified risk levels for client and regulatory compliance
+**Implementation Results:**
+- **Specialized Evaluation**: Custom child safety rubrics via llm_judge infrastructure
+- **Test Coverage**: 90+ automated test scenarios vs 10 manual attempts
+- **Consistent Scoring**: Systematic safety criteria via standardized llm_judge rubrics
+- **Privacy Analysis**: Data inversion testing using existing detect_pii and privacy_leakage_scorer
+- **Quantified Metrics**: Risk scoring via existing dreadnode.metrics and reporting infrastructure
 
 ---
 

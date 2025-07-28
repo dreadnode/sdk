@@ -1,39 +1,43 @@
-# AI Red Teaming (AIRT) Product Specification
+# AI Red Teaming (AIRT) Module Specification
 
-## Overview
+## Module Definition
 
-The Dreadnode AI Red Teaming (AIRT) module provides automated adversarial testing tools for AI/ML systems, focusing on three core attack categories: **Evasion**, **Model Extraction**, and **Data Inversion**. Built using the `dn.airt` namespace, it integrates with the existing `dreadnode.scorers` infrastructure to provide automated assessment and scoring of red teaming activities.
+The `dreadnode.airt` module implements automated adversarial testing capabilities for AI/ML systems. The module focuses on three attack categories: Evasion, Model Extraction, and Data Inversion. Implementation leverages existing `dreadnode.scorers` infrastructure for evaluation and assessment.
 
-### Target Users
+### Requirements
 
-AIRT is designed for **AI security researchers and red teamers** who need to:
-- Automate repetitive adversarial testing tasks
-- Scale their testing capabilities across multiple AI systems
-- Generate comprehensive, reproducible reports
-- Integrate AI red teaming into existing security workflows
+**Functional Requirements:**
+- Automated adversarial testing for AI/ML systems
+- Scalable testing across multiple AI systems  
+- Reproducible test execution and reporting
+- Integration with existing security testing workflows
 
-**Primary Focus: AI Agents & Coding Assistants**
+**Primary Target Systems:**
+- Code generation systems (GitHub Copilot, ChatGPT Code Interpreter)
+- AI-powered development tools and IDEs
+- Autonomous agents with tool-calling capabilities
+- Multi-turn conversational AI systems
 
-The rise of AI agents and coding assistants has created new attack surfaces requiring specialized red teaming approaches. AIRT provides targeted capabilities for testing:
-- **Code generation systems** (GitHub Copilot, ChatGPT Code Interpreter, etc.)
-- **AI-powered development tools** and IDEs with AI assistance
-- **Autonomous agents** with tool-calling capabilities
-- **Multi-turn conversational AI** systems with persistent context
+**Attack Vector Coverage:**
+- **Indirect Prompt Injection**: Malicious instructions in external content
+- **Tool Call Manipulation**: Unauthorized tools, malicious parameters, dangerous tool chains
+- **Direct Prompt Injection**: Traditional prompt-based attacks
+- **Context Poisoning**: Multi-turn conversation manipulation
 
-**Critical Attack Vectors for AI Agents:**
-- **Indirect Prompt Injection**: Malicious instructions embedded in external content (files, web pages, documents) that agents read and execute
-- **Tool Call Manipulation**: Attacks targeting the tool-calling mechanism itself - unauthorized tools, malicious parameters, dangerous tool chains
-- **Prompt Injection through Tool Calling**: Using tool outputs to inject malicious instructions into agent context
+### Implementation Scope
 
-### Core Capabilities
+**Core Functions:**
+- Black-box adversarial testing via Rigging HTTPGenerator
+- Agent-specific attack pattern generation
+- Multi-turn conversation testing capabilities
+- Automated attack evaluation using existing scorers
+- Integration with security tooling (Burp Suite, custom tools)
 
-- **Black-box adversarial testing** against production AI systems via HTTP APIs
-- **Agent-specific attack patterns** for code injection, tool misuse, and context poisoning
-- **Multi-turn conversation testing** for persistent jailbreaking and context manipulation
-- **Automated attack generation and evaluation** using Dreadnode's scoring infrastructure  
-- **Specialized scoring** for code safety, tool misuse, and credential extraction
-- **Integration with existing security tools** (Burp Suite, custom tooling)
-- **Detailed reporting and metrics** for vulnerability assessment
+**Attack Implementation:**
+- Evasion attacks for robustness testing
+- Model extraction for IP protection assessment  
+- Data inversion for privacy vulnerability testing
+- Specialized agent attack vectors (code injection, tool misuse)
 
 ## Technical Architecture
 
@@ -44,8 +48,8 @@ dreadnode/
 ├── airt/                        # Main AIRT module (dn.airt)
 │   ├── __init__.py              # Public API exports
 │   ├── types.py                 # Type definitions and enums  
-│   ├── targets.py               # Target system implementations
 │   ├── campaigns.py             # Multi-attack campaign orchestration
+│   ├── targets.py               # Target abstractions using Rigging HTTPGenerator
 │   ├── evasion/
 │   │   ├── __init__.py
 │   │   ├── attacks.py           # Adversarial attack implementations
@@ -63,7 +67,6 @@ dreadnode/
 │   │   └── analyzers.py         # Privacy analysis tools
 │   ├── integrations/
 │   │   ├── __init__.py
-│   │   ├── http_client.py       # HTTP API interaction utilities
 │   │   └── burp.py              # Burp Suite integration helpers
 │   └── scorers/                 # AIRT-specific scorers extending dreadnode.scorers
 │       ├── __init__.py          # AIRT scorer exports
@@ -71,34 +74,111 @@ dreadnode/
 │       ├── extraction.py        # Model extraction effectiveness
 │       ├── privacy.py           # Privacy leakage detection
 │       └── safety.py            # AI safety specific to red teaming
-├── scorers/                     # Existing scoring infrastructure (DO NOT MODIFY)
+├── scorers/                     # Existing scoring infrastructure (v1.13.0)
 │   ├── __init__.py              # Core scorers (llm_judge, detect_*, etc.)
-│   ├── llm_judge.py             # LLM-powered evaluation using Rigging
+│   ├── judge.py                 # LLM-powered evaluation using Rigging
 │   ├── contains.py              # Content detection scorers
 │   ├── similarity.py            # Semantic similarity scoring
 │   └── ...                      # Other existing scorers
+```
+
+### Target System Integration
+
+AIRT utilizes Rigging's HTTPGenerator for HTTP-based AI system targeting:
+
+```python
+# dreadnode/airt/targets.py - HTTPGenerator integration
+from rigging.generator.http import HTTPGenerator
+from rigging import GenerateParams
+import typing as t
+
+class HTTPTarget:
+    """HTTP-based AI system target using Rigging HTTPGenerator."""
+    
+    def __init__(
+        self, 
+        base_url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        auth: dict[str, str] | None = None,
+        params: GenerateParams | None = None
+    ):
+        self.generator = HTTPGenerator(
+            base_url=base_url,
+            headers=headers or {},
+            auth=auth,
+            params=params or GenerateParams()
+        )
+        self.base_url = base_url
+    
+    async def generate(self, prompt: str) -> str:
+        """Generate response from target AI system."""
+        result = await self.generator.generate(prompt)
+        return result.text
+    
+    async def chat(self, messages: list[dict]) -> str:
+        """Multi-turn conversation with target AI system."""
+        result = await self.generator.chat(messages)
+        return result.last.text
+
+class ModelTarget:
+    """Local model target using Rigging generators."""
+    
+    def __init__(self, model_id: str, params: GenerateParams | None = None):
+        from rigging import get_generator
+        self.generator = get_generator(model_id, params=params or GenerateParams())
+        self.model_id = model_id
+    
+    async def generate(self, prompt: str) -> str:
+        result = await self.generator.generate(prompt)
+        return result.text
 ```
 
 ### Scoring Integration Strategy
 
 AIRT leverages the existing `dreadnode.scorers` infrastructure rather than creating a separate scoring module:
 
-#### **Core Existing Scorers Used**: 
-- `llm_judge` - Primary LLM-powered evaluation using Rigging
-- `detect_refusal` - Model refusal pattern detection
-- `detect_sensitive_keywords` - Sensitive content identification  
-- `detect_pii` - Privacy violation detection
-- `detect_unsafe_shell_content` - **Critical for coding assistant red teaming**
-- `semantic_similarity` - Output similarity measurement
-- `character_consistency` - Detecting character-level manipulation attacks
-- `wrap_chat` - Rigging chat object evaluation
+#### **Available Scorers (v1.13.0+)**: 
 
-#### **AIRT-Specific Extensions for AI Agents**:
-- Built using `Scorer.from_callable` pattern (no tracer parameter needed)
-- Specialized rubrics for code generation, tool calling, and agent behavior
-- Multi-turn conversation evaluation for persistent attacks
-- Hybrid evaluation combining existing scorers with agent-specific logic
-- **Flexible model support**: API models (GPT-4, Claude, Gemini) or local models (Ollama, etc.)
+**LLM-Powered Evaluation:**
+- `llm_judge` - Primary LLM evaluation using Rigging framework
+- `detect_harm_with_openai` - OpenAI moderation API integration
+- `detect_refusal_with_zero_shot` - Zero-shot refusal classification
+- `zero_shot_classification` - General zero-shot classification
+
+**Content Detection:**
+- `detect_refusal` - Pattern-based refusal detection
+- `detect_sensitive_keywords` - Keyword-based content filtering
+- `detect_unsafe_shell_content` - Shell command safety analysis
+- `detect_bias` - Bias pattern detection
+- `detect_pii` - Privacy information identification
+
+**Format & Structure:**
+- `is_json` - JSON format validation
+- `is_xml` - XML format validation
+- `character_consistency` - Character-level consistency checks
+
+**Similarity & Quality:**
+- `similarity` - General similarity measurement
+- `similarity_with_litellm` - LLM-based similarity
+- `similarity_with_sentence_transformers` - Transformer-based similarity  
+- `similarity_with_tf_idf` - TF-IDF similarity
+- `bleu` - BLEU score evaluation
+- `readability` - Text readability analysis
+- `type_token_ratio` - Lexical diversity measurement
+
+**Operators:**
+- `invert` - Score inversion operator
+- `scale` - Score scaling operator  
+- `threshold` - Threshold-based binary classification
+
+#### **AIRT-Specific Extensions**:
+- Built using `Scorer.from_callable` pattern
+- Utilizes `Lookup` system for dynamic value resolution
+- Specialized rubrics for agent behavior evaluation
+- Multi-turn conversation analysis capabilities
+- Hybrid evaluation combining multiple existing scorers
+- Model flexibility: API models (GPT-4, Claude, Gemini) or local models (Ollama)
 
 ## Model Configuration Options
 
@@ -626,7 +706,7 @@ dn.configure(
     project="airt-testing"
 )
 
-# Set up target and scorers using existing infrastructure
+# Set up target using Rigging HTTPGenerator
 target = airt.HTTPTarget("https://api.example.com/classify")
 scorers = [
     airt.adversarial_robustness_scorer(),  # AIRT-specific scorer
@@ -648,7 +728,7 @@ with dn.run("quick-evasion-test"):
 ### Core API
 
 ```python
-# dreadnode/airt/__init__.py - Updated API using existing scorers
+# dreadnode/airt/__init__.py - API using Rigging HTTPGenerator and existing scorers
 from .targets import HTTPTarget, ModelTarget  
 from .campaigns import RedTeamCampaign
 from .evasion.attacks import evasion_attack
@@ -795,9 +875,13 @@ safety_scorer = llm_judge(
     name="jailbreak_safety_assessment"
 )
 
-# Run comprehensive red team assessment  
+# Execute comprehensive red team assessment  
 with dn.run("comprehensive-redteam-assessment"):
-    target = airt.HTTPTarget("https://api.target-system.com/chat")
+    target = airt.HTTPTarget(
+        "https://api.target-system.com/chat",
+        headers={"Authorization": "Bearer token"},
+        params=GenerateParams(temperature=0.7)
+    )
     
     # Evasion testing with automatic scoring
     evasion_results = await airt.evasion_attack(
@@ -864,7 +948,11 @@ hybrid_model_config = {
 selected_config = api_model_config  # or local_model_config or hybrid_model_config
 
 with dn.run("coding-assistant-redteam"):
-    coding_target = airt.HTTPTarget("https://api.codingassistant.com/generate")
+    coding_target = airt.HTTPTarget(
+        "https://api.codingassistant.com/generate",
+        headers={"Content-Type": "application/json"},
+        params=GenerateParams(max_tokens=2048)
+    )
     
     # Test for code injection vulnerabilities
     code_injection_results = await airt.evasion_attack(
@@ -995,9 +1083,10 @@ discovered_endpoints = burp.get_ai_endpoints()
 
 for endpoint in discovered_endpoints:
     target = airt.HTTPTarget(
-        url=endpoint.url,
+        endpoint.url,
         headers=endpoint.headers,
-        auth=endpoint.auth_config
+        auth=endpoint.auth_config,
+        params=GenerateParams(temperature=0.0)  # Deterministic for testing
     )
     
     # Run AIRT assessment on each discovered AI endpoint
@@ -1016,42 +1105,51 @@ for endpoint in discovered_endpoints:
         burp.import_vulnerabilities(results.to_burp_findings())
 ```
 
-## Integration Benefits
+## Technical Integration
 
-This updated design provides:
+**Infrastructure Dependencies:**
 
-1. **Seamless Integration**: Uses existing `dreadnode.scorers` infrastructure without duplication
-2. **Leverages Existing Capabilities**: `llm_judge`, `detect_*` functions, similarity scorers
-3. **AIRT-Specific Extensions**: Custom scorers for red teaming scenarios built using proven patterns
-4. **No Breaking Changes**: Works with current SDK architecture and `Scorer.from_callable` signature
-5. **Consistent API**: Follows established Dreadnode task and scoring patterns
-6. **Extensible**: Easy to add new AIRT scorers using existing framework
+1. **Rigging HTTPGenerator**: HTTP-based AI system interaction via `rigging.generator.http.HTTPGenerator`
+2. **Existing Scorers**: Reuse of `dreadnode.scorers` v1.13.0+ infrastructure without duplication
+3. **Lookup System**: Dynamic value resolution using `dreadnode.lookup.Lookup` patterns
+4. **Task Framework**: Integration with existing `@dn.task` and `dn.run()` execution patterns
 
-The integration strategy maximizes reuse of existing, well-tested scoring infrastructure while adding specialized capabilities for AI red teaming scenarios.
+**Architecture Compliance:**
+- Uses `Scorer.from_callable` signature for all AIRT-specific scorers
+- Follows established `Metric` and `dn.log_metric()` patterns
+- HTTPGenerator integration eliminates need for custom HTTP client implementation
+- Maintains compatibility with existing SDK architecture (v1.13.0+)
 
-## Implementation Roadmap
+**Extension Points:**
+- AIRT scorers extend existing scorer framework using proven patterns
+- HTTPGenerator allows targeting any HTTP-based AI system
+- Lookup system enables dynamic configuration and value resolution
+- Integration with Burp Suite and other security tools via adapters
 
-### Phase 1: Core Infrastructure
-- Target system abstractions (`HTTPTarget`, `ModelTarget`)
-- Basic attack orchestration framework
-- Integration with existing `dreadnode.scorers`
+## Implementation Components
 
-### Phase 2: Evasion Capabilities  
-- Text-based adversarial example generation
-- Multi-modal support (images, audio)
-- Automated attack success evaluation
+### Core Infrastructure
+- `HTTPTarget` and `ModelTarget` abstractions using Rigging generators
+- Attack orchestration framework leveraging existing task patterns
+- AIRT-specific scorers extending `dreadnode.scorers` infrastructure
 
-### Phase 3: Extraction & Inversion
-- Model extraction algorithms
-- Training data reconstruction techniques
-- Privacy leakage assessment
+### Attack Implementations  
+- Text-based adversarial example generation algorithms
+- Multi-modal support for images, audio, and code
+- Automated attack success evaluation using existing and custom scorers
 
-### Phase 4: Enterprise Features
-- Campaign management and orchestration
-- Advanced reporting and compliance metrics
-- Third-party integrations (Burp Suite, etc.)
+### Model Extraction & Data Inversion
+- Black-box model extraction algorithms via HTTPGenerator
+- Training data reconstruction techniques with privacy assessment
+- Effectiveness measurement using hybrid scoring approaches
 
-### Phase 5: Specialized Applications
-- Domain-specific attack patterns and scorers
-- Advanced campaign orchestration
-- Custom reporting and visualization
+### Security Tooling Integration
+- Campaign management and orchestration via `dn.run()` patterns
+- Burp Suite integration for discovered endpoint testing
+- Compliance reporting using existing metrics infrastructure
+
+### Agent-Specific Capabilities
+- Indirect prompt injection testing through external content
+- Tool call chain manipulation detection and assessment
+- Code injection vulnerability assessment for coding assistants
+- Multi-turn conversation context manipulation testing
