@@ -1,23 +1,19 @@
 import io
 import json
+import time
 import typing as t
+from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 import pandas as pd
 from pydantic import BaseModel
 from ulid import ULID
 
-from dreadnode.api.util import (
-    convert_flat_tasks_to_tree,
-    convert_flat_trace_to_tree,
-    process_run,
-    process_task,
-)
-from dreadnode.constants import DEFAULT_FS_CREDENTIAL_DURATION
-from dreadnode.util import logger
-from dreadnode.version import VERSION
-
-from .models import (
+from dreadnode.api.models import (
+    AccessRefreshTokenResponse,
+    DeviceCodeResponse,
+    GithubTokenResponse,
     MetricAggregationType,
     Project,
     RawRun,
@@ -32,7 +28,21 @@ from .models import (
     TraceSpan,
     TraceTree,
     UserDataCredentials,
+    UserResponse,
 )
+from dreadnode.api.util import (
+    convert_flat_tasks_to_tree,
+    convert_flat_trace_to_tree,
+    process_run,
+    process_task,
+)
+from dreadnode.constants import (
+    DEFAULT_FS_CREDENTIAL_DURATION,
+    DEFAULT_MAX_POLL_TIME,
+    DEFAULT_POLL_INTERVAL,
+)
+from dreadnode.util import logger
+from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
@@ -48,11 +58,13 @@ class ApiClient:
     def __init__(
         self,
         base_url: str,
-        api_key: str,
         *,
+        api_key: str | None = None,
+        cookies: dict[str, str] | None = None,
         debug: bool = False,
     ):
-        """Initializes the API client.
+        """
+        Initializes the API client.
 
         Args:
             base_url (str): The base URL of the Dreadnode API.
@@ -63,12 +75,28 @@ class ApiClient:
         if not self._base_url.endswith("/api"):
             self._base_url += "/api"
 
+        _cookies = httpx.Cookies()
+        cookie_domain = urlparse(base_url).hostname
+        if cookie_domain is None:
+            raise ValueError(f"Invalid URL: {base_url}")
+
+        if cookie_domain == "localhost":
+            cookie_domain = "localhost.local"
+
+        for key, value in (cookies or {}).items():
+            _cookies.set(key, value, domain=cookie_domain)
+
+        headers = {
+            "User-Agent": f"dreadnode-sdk/{VERSION}",
+            "Accept": "application/json",
+        }
+
+        if api_key:
+            headers["X-Api-Key"] = api_key
+
         self._client = httpx.Client(
-            headers={
-                "User-Agent": f"dreadnode-sdk/{VERSION}",
-                "Accept": "application/json",
-                "X-API-Key": api_key,
-            },
+            headers=headers,
+            cookies=_cookies,
             base_url=self._base_url,
             timeout=30,
         )
@@ -78,7 +106,8 @@ class ApiClient:
             self._client.event_hooks["response"].append(self._log_response)
 
     def _log_request(self, request: httpx.Request) -> None:
-        """Logs HTTP requests if debug mode is enabled.
+        """
+        Logs HTTP requests if debug mode is enabled.
 
         Args:
             request (httpx.Request): The HTTP request object.
@@ -91,7 +120,8 @@ class ApiClient:
         logger.debug("-------------------------------------------")
 
     def _log_response(self, response: httpx.Response) -> None:
-        """Logs HTTP responses if debug mode is enabled.
+        """
+        Logs HTTP responses if debug mode is enabled.
 
         Args:
             response (httpx.Response): The HTTP response object.
@@ -104,7 +134,8 @@ class ApiClient:
         logger.debug("--------------------------------------------")
 
     def _get_error_message(self, response: httpx.Response) -> str:
-        """Extracts the error message from an HTTP response.
+        """
+        Extracts the error message from an HTTP response.
 
         Args:
             response (httpx.Response): The HTTP response object.
@@ -126,7 +157,8 @@ class ApiClient:
         params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
-        """Makes a raw HTTP request to the API.
+        """
+        Makes a raw HTTP request to the API.
 
         Args:
             method (str): The HTTP method (e.g., "GET", "POST").
@@ -147,7 +179,8 @@ class ApiClient:
         params: dict[str, t.Any] | None = None,
         json_data: dict[str, t.Any] | None = None,
     ) -> httpx.Response:
-        """Makes an HTTP request to the API and raises exceptions for errors.
+        """
+        Makes an HTTP request to the API and raises exceptions for errors.
 
         Args:
             method (str): The HTTP method (e.g., "GET", "POST").
@@ -170,6 +203,59 @@ class ApiClient:
             raise RuntimeError(self._get_error_message(response)) from e
 
         return response
+
+    # Auth
+
+    def url_for_user_code(self, user_code: str) -> str:
+        """Get the URL to verify the user code."""
+
+        return f"{self._base_url.removesuffix('/api')}/account/device?code={user_code}"
+
+    def get_device_codes(self) -> DeviceCodeResponse:
+        """Start the authentication flow by requesting user and device codes."""
+
+        response = self.request("POST", "/auth/device/code")
+        return DeviceCodeResponse(**response.json())
+
+    def poll_for_token(
+        self,
+        device_code: str,
+        interval: int = DEFAULT_POLL_INTERVAL,
+        max_poll_time: int = DEFAULT_MAX_POLL_TIME,
+    ) -> AccessRefreshTokenResponse:
+        """Poll for the access token with the given device code."""
+
+        start_time = datetime.now(timezone.utc)
+        while (datetime.now(timezone.utc) - start_time).total_seconds() < max_poll_time:
+            response = self._request(
+                "POST", "/auth/device/token", json_data={"device_code": device_code}
+            )
+
+            if response.status_code == 200:  # noqa: PLR2004
+                return AccessRefreshTokenResponse(**response.json())
+            if response.status_code != 401:  # noqa: PLR2004
+                raise RuntimeError(self._get_error_message(response))
+
+            time.sleep(interval)
+
+        raise RuntimeError("Polling for token timed out")
+
+    # User
+
+    def get_user(self) -> UserResponse:
+        """Get the user email and username."""
+
+        response = self.request("GET", "/user")
+        return UserResponse(**response.json())
+
+    # Github
+
+    def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
+        """Try to get a GitHub access token for the given repositories."""
+        response = self.request("POST", "/github/token", json_data={"repos": repos})
+        return GithubTokenResponse(**response.json())
+
+    # Strikes
 
     def list_projects(self) -> list[Project]:
         """Retrieves a list of projects.
@@ -224,7 +310,9 @@ class ApiClient:
     TraceFormat = t.Literal["tree", "flat"]
 
     @t.overload
-    def get_run_tasks(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TaskTree]: ...
+    def get_run_tasks(
+        self, run: str | ULID, *, format: t.Literal["tree"]
+    ) -> list[TaskTree]: ...
 
     @t.overload
     def get_run_tasks(
@@ -252,7 +340,9 @@ class ApiClient:
         return tasks if format == "flat" else convert_flat_tasks_to_tree(tasks)
 
     @t.overload
-    def get_run_trace(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TraceTree]: ...
+    def get_run_trace(
+        self, run: str | ULID, *, format: t.Literal["tree"]
+    ) -> list[TraceTree]: ...
 
     @t.overload
     def get_run_trace(
@@ -295,7 +385,8 @@ class ApiClient:
         status: StatusFilter = "completed",
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
-        """Exports run data for a specific project.
+        """
+        Exports run data for a specific project.
 
         Args:
             project: The project identifier.
@@ -328,7 +419,8 @@ class ApiClient:
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
-        """Exports metric data for a specific project.
+        """
+        Exports metric data for a specific project.
 
         Args:
             project: The project identifier.
@@ -364,7 +456,8 @@ class ApiClient:
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
     ) -> pd.DataFrame:
-        """Exports parameter data for a specific project.
+        """
+        Exports parameter data for a specific project.
 
         Args:
             project: The project identifier.
@@ -402,7 +495,8 @@ class ApiClient:
         time_axis: TimeAxisType = "relative",
         aggregations: list[TimeAggregationType] | None = None,
     ) -> pd.DataFrame:
-        """Exports timeseries data for a specific project.
+        """
+        Exports timeseries data for a specific project.
 
         Args:
             project: The project identifier.
@@ -443,5 +537,7 @@ class ApiClient:
         Returns:
             The user data credentials object.
         """
-        response = self._request("GET", "/user-data/credentials", params={"duration": duration})
+        response = self._request(
+            "GET", "/user-data/credentials", params={"duration": duration}
+        )
         return UserDataCredentials(**response.json())

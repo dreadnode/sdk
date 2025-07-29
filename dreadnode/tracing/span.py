@@ -31,17 +31,13 @@ from ulid import ULID
 from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
-from dreadnode.constants import MAX_INLINE_OBJECT_BYTES
+from dreadnode.constants import DEFAULT_MAX_INLINE_OBJECT_BYTES
 from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
 from dreadnode.storage_utils import with_credential_refresh
-from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
-from dreadnode.util import clean_str
-from dreadnode.version import VERSION
-
-from .constants import (
+from dreadnode.tracing.constants import (
     EVENT_ATTRIBUTE_LINK_HASH,
     EVENT_ATTRIBUTE_OBJECT_HASH,
     EVENT_ATTRIBUTE_OBJECT_LABEL,
@@ -70,6 +66,9 @@ from .constants import (
     SPAN_ATTRIBUTE_VERSION,
     SpanType,
 )
+from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
+from dreadnode.util import clean_str
+from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     import networkx as nx  # type: ignore [import-untyped]
@@ -237,7 +236,9 @@ class Span(ReadableSpan):
         self._added_attributes = True
         if schema and raw is False:
             self._schema[key] = create_json_schema(value, set())
-        otel_value = self._pre_attributes[key] = value if raw else prepare_otlp_attribute(value)
+        otel_value = self._pre_attributes[key] = (
+            value if raw else prepare_otlp_attribute(value)
+        )
         if self._span is not None:
             self._span.set_attribute(key, otel_value)
         self._pre_attributes[key] = otel_value
@@ -325,7 +326,11 @@ class RunUpdateSpan(Span):
             **({SPAN_ATTRIBUTE_INPUTS: inputs} if inputs else {}),
             **({SPAN_ATTRIBUTE_OUTPUTS: outputs} if outputs else {}),
             **({SPAN_ATTRIBUTE_OBJECTS: objects} if objects else {}),
-            **({SPAN_ATTRIBUTE_OBJECT_SCHEMAS: object_schemas} if object_schemas else {}),
+            **(
+                {SPAN_ATTRIBUTE_OBJECT_SCHEMAS: object_schemas}
+                if object_schemas
+                else {}
+            ),
         }
 
         # Mark objects and schemas as large attributes if present
@@ -337,7 +342,9 @@ class RunUpdateSpan(Span):
                 large_attrs.append(SPAN_ATTRIBUTE_OBJECT_SCHEMAS)
             attributes[SPAN_ATTRIBUTE_LARGE_ATTRIBUTES] = large_attrs
 
-        super().__init__(f"run.{run_id}.update", tracer, type="run_update", attributes=attributes)
+        super().__init__(
+            f"run.{run_id}.update", tracer, type="run_update", attributes=attributes
+        )
 
     def __repr__(self) -> str:
         status = "active" if self.is_recording else "inactive"
@@ -517,7 +524,9 @@ class RunSpan(Span):
             return
 
         current_time = time.time()
-        force_update = force or (current_time - self._last_update_time >= self._update_frequency)
+        force_update = force or (
+            current_time - self._last_update_time >= self._update_frequency
+        )
         should_update = force_update and (
             self._pending_params
             or self._pending_inputs
@@ -539,7 +548,9 @@ class RunSpan(Span):
             inputs=self._pending_inputs if self._pending_inputs else None,
             outputs=self._pending_outputs if self._pending_outputs else None,
             objects=self._pending_objects if self._pending_objects else None,
-            object_schemas=self._pending_object_schemas if self._pending_object_schemas else None,
+            object_schemas=self._pending_object_schemas
+            if self._pending_object_schemas
+            else None,
         ):
             pass
 
@@ -594,6 +605,7 @@ class RunSpan(Span):
         if composite_hash not in self._objects:
             # Create a new object, but use the data_hash for deduplication of storage
             obj = self._create_object_by_hash(serialized, composite_hash)
+            obj.runtime_value = value  # Store the original value for runtime access
 
             # Store with composite hash so we can look it up by the combination
             self._objects[composite_hash] = obj
@@ -634,7 +646,9 @@ class RunSpan(Span):
 
         return str(self._file_system.unstrip_protocol(full_path))
 
-    def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
+    def _create_object_by_hash(
+        self, serialized: Serialized, object_hash: str
+    ) -> Object:
         """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
         data = serialized.data
         data_bytes = serialized.data_bytes
@@ -642,7 +656,11 @@ class RunSpan(Span):
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        if data is None or data_bytes is None or data_len <= MAX_INLINE_OBJECT_BYTES:
+        if (
+            data is None
+            or data_bytes is None
+            or data_len <= DEFAULT_MAX_INLINE_OBJECT_BYTES
+        ):
             return ObjectVal(
                 hash=object_hash,
                 value=data,
@@ -662,7 +680,7 @@ class RunSpan(Span):
             size=data_len,
         )
 
-    def get_object(self, hash_: str) -> t.Any:
+    def get_object(self, hash_: str) -> Object:
         return self._objects[hash_]
 
     def link_objects(
@@ -875,7 +893,9 @@ class TaskSpan(Span, t.Generic[R]):
 
         self._output: R | Unset = UNSET  # For the python output
 
-        self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
+        self._context_token: Token[TaskSpan[t.Any] | None] | None = (
+            None  # contextvars context
+        )
 
         self._tasks: list[TaskSpan[t.Any]] = []
         self._parent_task: TaskSpan[t.Any] | None = None
@@ -887,7 +907,9 @@ class TaskSpan(Span, t.Generic[R]):
             SPAN_ATTRIBUTE_OUTPUTS: self._outputs,
             **(attributes or {}),
         }
-        super().__init__(name, tracer, type="task", attributes=attributes, label=label, tags=tags)
+        super().__init__(
+            name, tracer, type="task", attributes=attributes, label=label, tags=tags
+        )
 
     def __enter__(self) -> te.Self:
         self._run = current_run_span.get()
@@ -987,11 +1009,13 @@ class TaskSpan(Span, t.Generic[R]):
             label=label,
             event_name=EVENT_NAME_OBJECT_OUTPUT,
         )
-        self._outputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
+        self._outputs.append(
+            ObjectRef(name, label=label, hash=hash_, attributes=attributes)
+        )
         return hash_
 
     @property
-    def inputs(self) -> AnyDict:
+    def inputs(self) -> dict[str, Object]:
         if self._run is None:
             return {}
         return {ref.name: self._run.get_object(ref.hash) for ref in self._inputs}
@@ -1016,7 +1040,9 @@ class TaskSpan(Span, t.Generic[R]):
             label=label,
             event_name=EVENT_NAME_OBJECT_INPUT,
         )
-        self._inputs.append(ObjectRef(name, label=label, hash=hash_, attributes=attributes))
+        self._inputs.append(
+            ObjectRef(name, label=label, hash=hash_, attributes=attributes)
+        )
         return hash_
 
     @property
@@ -1078,7 +1104,9 @@ class TaskSpan(Span, t.Generic[R]):
         # this task-metric was logged here.
 
         if (run := current_run_span.get()) is not None:
-            metric = run.log_metric(key, metric, prefix=self._label, origin=origin, mode=mode)
+            metric = run.log_metric(
+                key, metric, prefix=self._label, origin=origin, mode=mode
+            )
 
         self._metrics.setdefault(key, []).append(metric)
 

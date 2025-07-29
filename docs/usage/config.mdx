@@ -4,34 +4,117 @@ description: "Set configuration values"
 public: true
 ---
 
-The quickest way to configure Strikes is to set the `DREADNODE_API_KEY` environment variable and let the library handle the rest with `dreadnode.configure()`. However, there are quite a few additional options you can set as needed.
+## Self-Hosted Platforms
 
-## Self-Hosted Platform
+If you're using a **self-hosted Dreadnode platform**, you must specify your server URL during authentication:
 
-If you're using a **self-hosted Dreadnode platform**, you must always specify your server URL explicitly. The SDK defaults to `https://platform.dreadnode.io` otherwise.
-
-<CodeGroup>
-```python in code
-dreadnode.configure(
-    server="https://hosted-server",  # Your self-hosted server URL
-    token="your-api-token",
-)
+```bash
+dreadnode login --server https://your-server.com
 ```
 
-```bash environment variables
-export DREADNODE_SERVER="https://hosted-server"
+This creates a profile for your self-hosted instance. You can manage multiple servers by creating profiles with custom names:
+
+```bash
+# Create profiles for different environments
+dreadnode login --server https://dev.company.com --profile dev
+dreadnode login --server https://prod.company.com --profile production
+```
+
+Switch between profiles anytime:
+
+```bash
+dreadnode profile switch
+```
+
+Your code automatically uses the active profile - no changes needed. For automation and CI/CD with self-hosted platforms, use environment variables:
+
+```bash
+export DREADNODE_SERVER="https://your-server.com"
 export DREADNODE_API_KEY="your-api-token"
 ```
-</CodeGroup>
 
-## Using `configure()`
+## When You Need `configure()`
 
-Initialize and set up connections with `configure()`.
+Most users never need to call `configure()` explicitly. The SDK auto-configures itself using CLI authentication or environment variables.
+
+**You only need `configure()` if you want to:**
+
+### Customize Configuration
 
 ```python
 dreadnode.configure(
-    server="https://platform.dreadnode.io",  # Platform URL
-    token="your-api-token",                  # API token for authentication
+    local_dir="./my-custom-storage",  # Custom local storage
+    project="my-project",             # Default project name
+    console=False,                    # Disable console logging
+)
+```
+
+### Override Auto-Detection
+
+```python
+dreadnode.configure(
+    server="https://platform.dreadnode.io",
+    token="your-api-token",           # Explicit credentials
+    profile="production"              # Specific Dreadnode profile
+)
+```
+
+### Use Environment Variables (CI/CD)
+
+```bash
+export DREADNODE_API_KEY="your-api-token"
+# No configure() call needed - SDK auto-detects
+```
+
+**💡 For most users:** Skip `configure()` entirely. Use `dreadnode login` once and you're set.
+
+## Advanced Configuration
+
+### Managing Multiple Environments with Profiles
+
+Profiles let you manage multiple Dreadnode servers (development, staging, production, etc.) and switch between them seamlessly:
+
+**Create profiles for different environments:**
+
+```bash
+# Hosted environments
+dreadnode login --profile dev
+dreadnode login --profile staging
+dreadnode login --profile production
+
+# Self-hosted environments
+dreadnode login --server https://dev.company.com --profile dev-internal
+dreadnode login --server https://prod.company.com --profile prod-internal
+```
+
+**View and manage profiles:**
+
+```bash
+dreadnode profile show       # List all profiles
+dreadnode profile switch staging  # Switch active profile
+dreadnode profile forget dev      # Remove a profile
+```
+
+**Use specific profiles in code:**
+
+```python
+# Use a specific profile programmatically
+dreadnode.configure(profile="production")
+
+# Or with environment variable
+# DREADNODE_PROFILE=production
+dreadnode.configure()
+```
+
+**Profile priority:** Environment variable `DREADNODE_PROFILE` overrides the active CLI profile.
+
+### Full Configuration Options
+
+```python
+dreadnode.configure(
+    server="https://platform.dreadnode.io",  # Platform URL (optional if using CLI/env)
+    token="your-api-token",                  # API token (optional if using CLI/env)
+    profile="production",                    # Dreadnode profile (only used if server/token not provided)
     local_dir="./runs",                      # Directory for local span storage
     project="my-project",                    # Default project name
     console=True,                            # Enable console logging
@@ -43,13 +126,81 @@ dreadnode.configure(
 )
 ```
 
-## Using Environment Variables
+## Environment Variables Reference
 
-Set variables to call `.config()` more easily.
+Environment variables are a great alternative for automated deployments and CI/CD pipelines. They override CLI profiles but are overridden by explicit `configure()` parameters.
+
+### Complete Reference
 
 ```bash
-export DREADNODE_SERVER="https://platform.dreadnode.io" # or DREADNODE_SERVER_URL
-export DREADNODE_API_KEY="your-api-token" # or DREADNODE_API_TOKEN
-export DREADNODE_LOCAL_DIR="./runs"
-export DREADNODE_PROJECT="my-project"
+# Profile selection (when not using explicit server/token)
+export DREADNODE_PROFILE="production"
+
+# Platform configuration
+export DREADNODE_API_KEY="your-api-token"
+export DREADNODE_SERVER="http://self-hosted"
+
+# Optional settings
+export DREADNODE_LOCAL_DIR="./runs"     # Local storage directory
+export DREADNODE_PROJECT="my-project"   # Default project name
+export DREADNODE_CONSOLE="true"         # Enable console logging (default is true)
 ```
+
+## Configuration Priority Order
+
+The SDK resolves configuration in this priority order:
+
+### 1. Explicit Parameters (Highest Priority)
+
+```python
+# These always override everything else
+dreadnode.configure(
+    server="https://override.com",
+    token="explicit-token"
+)
+```
+
+### 2. Environment Variables
+
+```python
+# Set via shell or CI/CD
+# export DREADNODE_SERVER="https://env.com"
+# export DREADNODE_API_KEY="env-token"
+
+dreadnode.configure()  # Uses env vars
+```
+
+### 3. CLI Profiles
+
+```python
+# After: dreadnode login --profile production
+dreadnode.configure(profile="production")  # Uses CLI profile
+
+# Or let SDK auto-detect active profile
+dreadnode.configure()  # Uses active CLI profile
+```
+
+### 4. Local-Only Mode (Fallback)
+
+```python
+# No credentials found anywhere
+dreadnode.configure()  # ⚠️  Works locally with warning
+```
+
+**Examples demonstrating priority:**
+
+```python
+# Environment overrides profile
+# export DREADNODE_API_KEY="env-token"
+dreadnode.configure(profile="production")  # Uses env-token (not profile)
+
+# Explicit param overrides environment
+# export DREADNODE_SERVER="https://env.com"
+dreadnode.configure(server="https://explicit.com")  # Uses explicit.com
+
+# Profile selection with DREADNODE_PROFILE env var
+# export DREADNODE_PROFILE="staging"
+dreadnode.configure()  # Uses "staging" profile (not active profile)
+```
+
+**💡 Bottom line:** Just start coding. The SDK will find your credentials or work locally.

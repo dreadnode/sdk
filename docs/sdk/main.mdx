@@ -18,7 +18,7 @@ Dreadnode(
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
-    console: ConsoleOptions | Literal[False, True] = True,
+    console: ConsoleOptions | bool = True,
     send_to_logfire: bool
     | Literal["if-token-present"] = False,
     otel_scope: str = "dreadnode",
@@ -42,7 +42,7 @@ def __init__(
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
-    console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+    console: logfire.ConsoleOptions | bool = True,
     send_to_logfire: bool | t.Literal["if-token-present"] = False,
     otel_scope: str = "dreadnode",
 ) -> None:
@@ -121,7 +121,7 @@ def api(self, *, server: str | None = None, token: str | None = None) -> ApiClie
         An ApiClient instance.
     """
     if server is not None and token is not None:
-        return ApiClient(server, token)
+        return ApiClient(server, api_key=token)
 
     if not self._initialized:
         raise RuntimeError("Call .configure() before accessing the API")
@@ -142,11 +142,12 @@ configure(
     *,
     server: str | None = None,
     token: str | None = None,
+    profile: str | None = None,
     local_dir: str | Path | Literal[False] = False,
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
-    console: ConsoleOptions | Literal[False, True] = True,
+    console: ConsoleOptions | bool | None = None,
     send_to_logfire: bool
     | Literal["if-token-present"] = False,
     otel_scope: str = "dreadnode",
@@ -157,11 +158,16 @@ Configure the Dreadnode SDK and call `initialize()`.
 
 This method should always be called before using the SDK.
 
-If `server` and `token` are not provided, the SDK will look in
-the associated environment variables:
+If `server` and `token` are not provided, the SDK will look for them
+in the following order:
 
-* `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
-* `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+1. Environment variables:
+2. `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
+3. `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+4. Dreadnode profile (from `dreadnode login`)
+5. Uses `profile` parameter if provided
+6. Falls back to `DREADNODE_PROFILE` environment variable
+7. Defaults to active profile
 
 **Parameters:**
 
@@ -175,6 +181,11 @@ the associated environment variables:
   `None`
   )
   –The Dreadnode API token.
+* **`profile`**
+  (`str | None`, default:
+  `None`
+  )
+  –The Dreadnode profile name to use (only used if env vars are not set).
 * **`local_dir`**
   (`str | Path | Literal[False]`, default:
   `False`
@@ -196,10 +207,10 @@ the associated environment variables:
   )
   –The service version to use for OpenTelemetry.
 * **`console`**
-  (`ConsoleOptions | Literal[False, True]`, default:
-  `True`
+  (`ConsoleOptions | bool | None`, default:
+  `None`
   )
-  –Whether to log span information to the console.
+  –Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
 * **`send_to_logfire`**
   (`bool | Literal['if-token-present']`, default:
   `False`
@@ -218,11 +229,12 @@ def configure(
     *,
     server: str | None = None,
     token: str | None = None,
+    profile: str | None = None,
     local_dir: str | Path | t.Literal[False] = False,
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
-    console: logfire.ConsoleOptions | t.Literal[False, True] = True,
+    console: logfire.ConsoleOptions | bool | None = None,
     send_to_logfire: bool | t.Literal["if-token-present"] = False,
     otel_scope: str = "dreadnode",
 ) -> None:
@@ -231,28 +243,69 @@ def configure(
 
     This method should always be called before using the SDK.
 
-    If `server` and `token` are not provided, the SDK will look in
-    the associated environment variables:
+    If `server` and `token` are not provided, the SDK will look for them
+    in the following order:
 
-    - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
-    - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+    1. Environment variables:
+       - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
+       - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+    2. Dreadnode profile (from `dreadnode login`)
+       - Uses `profile` parameter if provided
+       - Falls back to `DREADNODE_PROFILE` environment variable
+       - Defaults to active profile
 
     Args:
         server: The Dreadnode server URL.
         token: The Dreadnode API token.
+        profile: The Dreadnode profile name to use (only used if env vars are not set).
         local_dir: The local directory to store data in.
         project: The default project name to associate all runs with.
         service_name: The service name to use for OpenTelemetry.
         service_version: The service version to use for OpenTelemetry.
-        console: Whether to log span information to the console.
+        console: Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
         send_to_logfire: Whether to send data to Logfire.
         otel_scope: The OpenTelemetry scope name.
     """
 
     self._initialized = False
 
-    self.server = server or os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-    self.token = token or os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+    # Determine configuration source and active profile for logging
+    config_source = "explicit parameters"
+    active_profile = None
+
+    if not server or not token:
+        # Check environment variables first
+        env_server = os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
+        env_token = os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+
+        if env_server or env_token:
+            config_source = "environment vars"
+        else:
+            # Fall back to profile
+            config_source = "profile"
+            with contextlib.suppress(Exception):
+                user_config = UserConfig.read()
+                profile_name = profile or os.environ.get(ENV_PROFILE)
+                if profile_name:
+                    active_profile = profile_name
+                else:
+                    active_profile = user_config.active_profile_name
+
+                if active_profile:
+                    config_source = f"profile: {active_profile}"
+
+    self.server = (
+        server
+        or os.environ.get(ENV_SERVER_URL)
+        or os.environ.get(ENV_SERVER)
+        or self._get_profile_server(profile)
+    )
+    self.token = (
+        token
+        or os.environ.get(ENV_API_TOKEN)
+        or os.environ.get(ENV_API_KEY)
+        or self._get_profile_api_key(profile)
+    )
 
     if local_dir is False and ENV_LOCAL_DIR in os.environ:
         env_local_dir = os.environ.get(ENV_LOCAL_DIR)
@@ -266,9 +319,24 @@ def configure(
     self.project = project or os.environ.get(ENV_PROJECT)
     self.service_name = service_name
     self.service_version = service_version
-    self.console = console
+    self.console = console or os.environ.get(ENV_CONSOLE, "true").lower() in [
+        "true",
+        "1",
+        "yes",
+    ]
     self.send_to_logfire = send_to_logfire
     self.otel_scope = otel_scope
+
+    # Log config information for clarity
+    if self.server or self.token or self.local_dir:
+        destination = self.server or DEFAULT_SERVER_URL or "local storage"
+        rich.print(f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source})")
+
+    # Warn the user if the profile didn't resolve
+    elif active_profile and not (self.server or self.token):
+        rich.print(
+            f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
+        )
 
     self.initialize()
 ```
@@ -308,7 +376,7 @@ def continue_run(self, run_context: RunContext) -> RunSpan:
         A RunSpan object that can be used as a context manager.
     """
     if not self._initialized:
-        self.initialize()
+        self.configure()
 
     return RunSpan.from_context(
         context=run_context,
@@ -402,7 +470,8 @@ def initialize(self) -> None:
     if not (self.server or self.token or self.local_dir):
         warn_at_user_stacklevel(
             "Your current configuration won't persist run data anywhere. "
-            "Use `dreadnode.init(server=..., token=...)`, `dreadnode.init(local_dir=...)`, "
+            "Login with `dreadnode login` to set up a server and token, "
+            "Use `dreadnode.configure(server=..., token=...)`, `dreadnode.configure(profile=...)`, "
             f"or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
             category=DreadnodeConfigWarning,
         )
@@ -426,7 +495,7 @@ def initialize(self) -> None:
                 )
                 self.server = urlunparse(parsed_new)
 
-            self._api = ApiClient(self.server, self.token)
+            self._api = ApiClient(self.server, api_key=self.token)
 
             self._api.list_projects()
         except Exception as e:
@@ -1646,7 +1715,7 @@ def run(
         The run will automatically be completed when the context manager exits.
     """
     if not self._initialized:
-        self.initialize()
+        self.configure()
 
     if name is None:
         name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311 # nosec
@@ -1760,7 +1829,6 @@ def scorer(
 
     def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
         return Scorer.from_callable(
-            self._get_tracer(),
             func,
             name=name,
             tags=tags,
@@ -2166,9 +2234,7 @@ def task(
             attributes=_attributes,
             func=t.cast("t.Callable[P, R]", func),
             scorers=[
-                scorer
-                if isinstance(scorer, Scorer)
-                else Scorer.from_callable(self._get_tracer(), scorer)
+                scorer if isinstance(scorer, Scorer) else Scorer.from_callable(scorer)
                 for scorer in scorers or []
             ],
             tags=list(tags or []),

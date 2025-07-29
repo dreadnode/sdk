@@ -20,10 +20,6 @@ class TaskFailedWarning(UserWarning):
     pass
 
 
-class TaskGeneratorWarning(UserWarning):
-    pass
-
-
 class TaskSpanList(list[TaskSpan[R]]):
     """
     Lightweight wrapper around a list of TaskSpans to provide some convenience methods.
@@ -214,7 +210,7 @@ class Task(t.Generic[P, R]):
             else task.log_execution_metrics
         )
 
-        new_scorers = [Scorer.from_callable(self.tracer, scorer) for scorer in (scorers or [])]
+        new_scorers = [Scorer.from_callable(scorer) for scorer in (scorers or [])]
         new_tags = list(tags or [])
 
         if append:
@@ -287,7 +283,10 @@ class Task(t.Generic[P, R]):
 
             input_object_hashes: list[str] = [
                 span.log_input(
-                    name, value, label=f"{self.label}.input.{name}", attributes={"auto": True}
+                    name,
+                    value,
+                    label=f"{self.label}.input.{name}",
+                    attributes={"auto": True},
                 )
                 for name, value in inputs_to_log.items()
             ]
@@ -325,7 +324,10 @@ class Task(t.Generic[P, R]):
                 )
             ):
                 output_object_hash = span.log_output(
-                    "output", output, label=f"{self.label}.output", attributes={"auto": True}
+                    "output",
+                    output,
+                    label=f"{self.label}.output",
+                    attributes={"auto": True},
                 )
 
                 # Link the output to the inputs
