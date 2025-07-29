@@ -1,0 +1,1113 @@
+---
+title: 'span'
+sidebarTitle: 'span'
+groups: ["strikes"]
+---
+
+# Module `span`
+
+*(Full name: `dreadnode.tracing.span`)*
+
+**Source file:** `span.py`
+
+## Classes
+
+
+### Class `RunContext`
+
+**Inherits from:** `dict`
+
+Context for transferring and continuing runs in other places.
+
+
+### Class `RunSpan`
+
+**Inherits from:** `dreadnode.tracing.span.Span`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `active`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently active (recording).
+
+*Has: getter*
+
+---
+
+##### `all_tasks`
+
+**Type:** `list[dreadnode.tracing.span.TaskSpan[Any]]` *(property)*
+
+Get all tasks, including subtasks.
+
+*Has: getter*
+
+---
+
+##### `duration`
+
+**Type:** `\<class 'float'>` *(property)*
+
+Get the duration of the span in seconds.
+
+*Has: getter*
+
+---
+
+##### `failed`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span has failed.
+
+*Has: getter*
+
+---
+
+##### `inputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently recording.
+
+*Has: getter*
+
+---
+
+##### `label`
+
+**Type:** `\<class 'str'>` *(property)*
+
+Get the label of the span.
+
+*Has: getter*
+
+---
+
+##### `metrics`
+
+**Type:** `dict[str, list[dreadnode.metric.Metric]]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `outputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `params`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `run_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `tasks`
+
+**Type:** `list[dreadnode.tracing.span.TaskSpan[Any]]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: traceback | None) -> None
+```
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, project: str, tracer: opentelemetry.trace.Tracer, file_system: fsspec.spec.AbstractFileSystem, prefix_path: str, *, attributes: dict[str, typing.Any] | None = None, params: dict[str, typing.Any] | None = None, metrics: dict[str, list[dreadnode.metric.Metric]] | None = None, tags: Optional[Sequence[str]] = None, autolog: bool = True, update_frequency: int = 5, run_id: str | ulid.ULID | None = None, type: Literal['run', 'task', 'span', 'run_update', 'run_fragment'] = 'run', credential_refresher: Optional[Callable[[], bool]] = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self) -> str
+```
+
+Return repr(self).
+
+---
+
+##### `__str__`
+
+```python
+__str__(self) -> str
+```
+
+Return str(self).
+
+---
+
+##### `add_tags`
+
+```python
+add_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+---
+
+##### `get_object`
+
+```python
+get_object(self, hash_: str) -> Any
+```
+
+---
+
+##### `link_objects`
+
+```python
+link_objects(self, object_hash: str, link_hash: str, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `log_artifact`
+
+```python
+log_artifact(self, local_uri: str | pathlib.Path) -> None
+```
+
+Logs a local file or directory as an artifact to the object store.
+
+Preserves directory structure and uses content hashing for deduplication.
+
+**Parameters:**
+
+- **`local_uri`**: Path to the local file or directory
+
+**Returns:** DirectoryNode representing the artifact's tree structure
+
+**Raises:**
+
+- `FileNotFoundError` — If the path doesn't exist
+
+---
+
+##### `log_event`
+
+```python
+log_event(self, name: str, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `log_input`
+
+```python
+log_input(self, name: str, value: Any, *, label: str | None = None, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `log_metric`
+
+```python
+log_metric(self, name: str, value: float | bool | dreadnode.metric.Metric, *, step: int = 0, origin: typing.Any | None = None, timestamp: datetime.datetime | None = None, mode: Optional[Literal['avg', 'sum', 'min', 'max', 'count']] = None, prefix: str | None = None, attributes: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] | None = None) -> dreadnode.metric.Metric
+```
+
+---
+
+##### `log_object`
+
+```python
+log_object(self, value: Any, *, label: str | None = None, event_name: str = 'dreadnode.object', attributes: dict[str, typing.Any] | None = None) -> str
+```
+
+---
+
+##### `log_output`
+
+```python
+log_output(self, name: str, value: Any, *, label: str | None = None, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `log_param`
+
+```python
+log_param(self, key: str, value: Any) -> None
+```
+
+---
+
+##### `log_params`
+
+```python
+log_params(self, **params: Any) -> None
+```
+
+---
+
+##### `push_update`
+
+```python
+push_update(self, *, force: bool = False) -> None
+```
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any, *, schema: bool = True, raw: bool = False) -> None
+```
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+---
+
+##### `set_exception`
+
+```python
+set_exception(self, exception: BaseException, *, attributes: dict[str, typing.Any] | None = None, status: opentelemetry.trace.status.Status | None = None) -> None
+```
+
+---
+
+##### `set_tags`
+
+```python
+set_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+##### `to_graph`
+
+```python
+to_graph(self) -> 'nx.DiGraph'
+```
+
+---
+
+
+### Class `RunUpdateSpan`
+
+**Inherits from:** `dreadnode.tracing.span.Span`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `active`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently active (recording).
+
+*Has: getter*
+
+---
+
+##### `duration`
+
+**Type:** `\<class 'float'>` *(property)*
+
+Get the duration of the span in seconds.
+
+*Has: getter*
+
+---
+
+##### `failed`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span has failed.
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently recording.
+
+*Has: getter*
+
+---
+
+##### `label`
+
+**Type:** `\<class 'str'>` *(property)*
+
+Get the label of the span.
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: traceback | None) -> None
+```
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, run_id: str, tracer: opentelemetry.trace.Tracer, project: str, *, metrics: dict[str, list[dreadnode.metric.Metric]] | None = None, params: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] | None = None, inputs: list[dreadnode.object.ObjectRef] | None = None, outputs: list[dreadnode.object.ObjectRef] | None = None, objects: dict[str, dreadnode.object.ObjectUri | dreadnode.object.ObjectVal] | None = None, object_schemas: dict[str, dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]]] | None = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self) -> str
+```
+
+Return repr(self).
+
+---
+
+##### `__str__`
+
+```python
+__str__(self) -> str
+```
+
+Return str(self).
+
+---
+
+##### `add_tags`
+
+```python
+add_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+---
+
+##### `log_event`
+
+```python
+log_event(self, name: str, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any, *, schema: bool = True, raw: bool = False) -> None
+```
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+---
+
+##### `set_exception`
+
+```python
+set_exception(self, exception: BaseException, *, attributes: dict[str, typing.Any] | None = None, status: opentelemetry.trace.status.Status | None = None) -> None
+```
+
+---
+
+##### `set_tags`
+
+```python
+set_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+
+### Class `Span`
+
+**Inherits from:** `opentelemetry.sdk.trace.ReadableSpan`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `active`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently active (recording).
+
+*Has: getter*
+
+---
+
+##### `duration`
+
+**Type:** `\<class 'float'>` *(property)*
+
+Get the duration of the span in seconds.
+
+*Has: getter*
+
+---
+
+##### `failed`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span has failed.
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently recording.
+
+*Has: getter*
+
+---
+
+##### `label`
+
+**Type:** `\<class 'str'>` *(property)*
+
+Get the label of the span.
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: traceback | None) -> None
+```
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, tracer: opentelemetry.trace.Tracer, *, attributes: dict[str, typing.Any] | None = None, label: str | None = None, type: Literal['run', 'task', 'span', 'run_update', 'run_fragment'] = 'span', tags: Optional[Sequence[str]] = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self) -> str
+```
+
+Return repr(self).
+
+---
+
+##### `__str__`
+
+```python
+__str__(self) -> str
+```
+
+Return str(self).
+
+---
+
+##### `add_tags`
+
+```python
+add_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+---
+
+##### `log_event`
+
+```python
+log_event(self, name: str, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any, *, schema: bool = True, raw: bool = False) -> None
+```
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+---
+
+##### `set_exception`
+
+```python
+set_exception(self, exception: BaseException, *, attributes: dict[str, typing.Any] | None = None, status: opentelemetry.trace.status.Status | None = None) -> None
+```
+
+---
+
+##### `set_tags`
+
+```python
+set_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+
+### Class `TaskSpan`
+
+**Inherits from:** `dreadnode.tracing.span.Span`, `typing.Generic`
+
+Provides read-only access to span attributes.
+
+Users should NOT be creating these objects directly. `ReadableSpan`s are created as
+a direct result from using the tracing pipeline via the `Tracer`.
+
+#### Properties
+
+##### `active`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently active (recording).
+
+*Has: getter*
+
+---
+
+##### `all_tasks`
+
+**Type:** `list[dreadnode.tracing.span.TaskSpan[Any]]` *(property)*
+
+Get all tasks, including subtasks.
+
+*Has: getter*
+
+---
+
+##### `duration`
+
+**Type:** `\<class 'float'>` *(property)*
+
+Get the duration of the span in seconds.
+
+*Has: getter*
+
+---
+
+##### `failed`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span has failed.
+
+*Has: getter*
+
+---
+
+##### `inputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `is_recording`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+Check if the span is currently recording.
+
+*Has: getter*
+
+---
+
+##### `label`
+
+**Type:** `\<class 'str'>` *(property)*
+
+Get the label of the span.
+
+*Has: getter*
+
+---
+
+##### `metrics`
+
+**Type:** `dict[str, list[dreadnode.metric.Metric]]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `output`
+
+**Type:** `~R` *(property)*
+
+*Has: getter, setter*
+
+---
+
+##### `outputs`
+
+**Type:** `dict[str, Any]` *(property)*
+
+*Has: getter*
+
+---
+
+##### `parent_task`
+
+**Type:** `Optional[dreadnode.tracing.span.TaskSpan[Any]]` *(property)*
+
+Get the parent task if it exists.
+
+*Has: getter*
+
+---
+
+##### `parent_task_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+Get the parent task ID if it exists (may be empty).
+
+*Has: getter*
+
+---
+
+##### `run`
+
+**Type:** `\<class 'dreadnode.tracing.span.RunSpan'>` *(property)*
+
+Get the run this task is associated with.
+
+*Has: getter*
+
+---
+
+##### `run_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+Get the run id this task is associated with (may be empty).
+
+*Has: getter*
+
+---
+
+##### `span_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+##### `tasks`
+
+**Type:** `list[dreadnode.tracing.span.TaskSpan[Any]]` *(property)*
+
+Get the list of children tasks.
+
+*Has: getter*
+
+---
+
+##### `trace_id`
+
+**Type:** `\<class 'str'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__enter__`
+
+```python
+__enter__(self) -> Self
+```
+
+---
+
+##### `__exit__`
+
+```python
+__exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: traceback | None) -> None
+```
+
+---
+
+##### `__getattr__`
+
+```python
+__getattr__(self, name: str) -> Any
+```
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, name: str, run_id: str, tracer: opentelemetry.trace.Tracer, *, attributes: dict[str, typing.Any] | None = None, label: str | None = None, metrics: dict[str, list[dreadnode.metric.Metric]] | None = None, tags: Optional[Sequence[str]] = None) -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self) -> str
+```
+
+Return repr(self).
+
+---
+
+##### `__str__`
+
+```python
+__str__(self) -> str
+```
+
+Return str(self).
+
+---
+
+##### `add_tags`
+
+```python
+add_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+##### `get_attribute`
+
+```python
+get_attribute(self, key: str, default: Any) -> Any
+```
+
+---
+
+##### `get_attributes`
+
+```python
+get_attributes(self) -> dict[str, typing.Any]
+```
+
+---
+
+##### `get_average_metric_value`
+
+```python
+get_average_metric_value(self, key: str | None = None) -> float
+```
+
+---
+
+##### `log_event`
+
+```python
+log_event(self, name: str, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+---
+
+##### `log_input`
+
+```python
+log_input(self, name: str, value: Any, *, label: str | None = None, attributes: dict[str, typing.Any] | None = None) -> str
+```
+
+---
+
+##### `log_metric`
+
+```python
+log_metric(self, name: str, value: float | bool | dreadnode.metric.Metric, *, step: int = 0, origin: typing.Any | None = None, timestamp: datetime.datetime | None = None, mode: Optional[Literal['avg', 'sum', 'min', 'max', 'count']] = None, attributes: dict[str, typing.Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]] | None = None) -> dreadnode.metric.Metric
+```
+
+---
+
+##### `log_output`
+
+```python
+log_output(self, name: str, value: Any, *, label: str | None = None, attributes: dict[str, typing.Any] | None = None) -> str
+```
+
+---
+
+##### `set_attribute`
+
+```python
+set_attribute(self, key: str, value: Any, *, schema: bool = True, raw: bool = False) -> None
+```
+
+---
+
+##### `set_attributes`
+
+```python
+set_attributes(self, attributes: dict[str, typing.Any]) -> None
+```
+
+---
+
+##### `set_exception`
+
+```python
+set_exception(self, exception: BaseException, *, attributes: dict[str, typing.Any] | None = None, status: opentelemetry.trace.status.Status | None = None) -> None
+```
+
+---
+
+##### `set_tags`
+
+```python
+set_tags(self, tags: Sequence[str]) -> None
+```
+
+---
+
+
+## Functions
+
+### `prepare_otlp_attribute`
+
+```python
+prepare_otlp_attribute(value: Any) -> Union[str, bool, int, float, Sequence[str], Sequence[bool], Sequence[int], Sequence[float]]
+```
+
+### `prepare_otlp_attributes`
+
+```python
+prepare_otlp_attributes(attributes: dict[str, typing.Any]) -> dict[str, typing.Union[str, bool, int, float, typing.Sequence[str], typing.Sequence[bool], typing.Sequence[int], typing.Sequence[float]]]
+```
+
+

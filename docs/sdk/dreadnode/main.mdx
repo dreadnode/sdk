@@ -1,0 +1,536 @@
+---
+title: 'main'
+sidebarTitle: 'main'
+groups: ["strikes"]
+---
+
+# Module `main`
+
+*(Full name: `dreadnode.main`)*
+
+**Source file:** `main.py`
+
+## Classes
+
+
+### Class `Dreadnode`
+
+**Inherits from:** `object`
+
+The core Dreadnode SDK class.
+
+A default instance of this class is created and can be used directly with `dreadnode.*`.
+
+Otherwise, you can create your own instance and configure it with `configure()`.
+
+#### Properties
+
+##### `is_default`
+
+**Type:** `\<class 'bool'>` *(property)*
+
+*Has: getter*
+
+---
+
+#### Methods
+
+##### `__eq__`
+
+```python
+__eq__(self, other)
+```
+
+Return self==value.
+
+---
+
+##### `__init__`
+
+```python
+__init__(self, *, server: str | None = None, token: str | None = None, local_dir: Union[str, pathlib.Path, Literal[False]] = False, project: str | None = None, service_name: str | None = None, service_version: str | None = None, console: Union[logfire._internal.config.ConsoleOptions, Literal[False, True]] = True, send_to_logfire: Union[bool, Literal['if-token-present']] = False, otel_scope: str = 'dreadnode') -> None
+```
+
+Initialize self.  See help(type(self)) for accurate signature.
+
+---
+
+##### `__repr__`
+
+```python
+__repr__(self)
+```
+
+Return repr(self).
+
+---
+
+##### `api`
+
+```python
+api(self, *, server: str | None = None, token: str | None = None) -> dreadnode.api.client.ApiClient
+```
+
+Get an API client based on the current configuration or the provided server and token.
+
+If the server and token are not provided, the method will use the current configuration
+and `configure()` needs to be called first.
+
+**Parameters:**
+
+- **`server`**: The server URL to use for the API client.
+- **`token`**: The API token to use for authentication.
+
+**Returns:** An ApiClient instance.
+
+---
+
+##### `configure`
+
+```python
+configure(self, *, server: str | None = None, token: str | None = None, local_dir: Union[str, pathlib.Path, Literal[False]] = False, project: str | None = None, service_name: str | None = None, service_version: str | None = None, console: Union[logfire._internal.config.ConsoleOptions, Literal[False, True]] = True, send_to_logfire: Union[bool, Literal['if-token-present']] = False, otel_scope: str = 'dreadnode') -> None
+```
+
+Configure the Dreadnode SDK and call `initialize()`.
+
+This method should always be called before using the SDK.
+
+If `server` and `token` are not provided, the SDK will look in
+the associated environment variables:
+
+- `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
+- `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+
+**Parameters:**
+
+- **`server`**: The Dreadnode server URL.
+- **`token`**: The Dreadnode API token.
+- **`local_dir`**: The local directory to store data in.
+- **`project`**: The default project name to associate all runs with.
+- **`service_name`**: The service name to use for OpenTelemetry.
+- **`service_version`**: The service version to use for OpenTelemetry.
+- **`console`**: Whether to log span information to the console.
+- **`send_to_logfire`**: Whether to send data to Logfire.
+- **`otel_scope`**: The OpenTelemetry scope name.
+
+---
+
+##### `continue_run`
+
+```python
+continue_run(self, run_context: dreadnode.tracing.span.RunContext) -> dreadnode.tracing.span.RunSpan
+```
+
+Continue a run from captured context on a remote host.
+
+**Parameters:**
+
+- **`run_context`**: The RunContext captured from get_run_context().
+
+**Returns:** A RunSpan object that can be used as a context manager.
+
+---
+
+##### `get_run_context`
+
+```python
+get_run_context(self) -> dreadnode.tracing.span.RunContext
+```
+
+Capture the current run context for transfer to another host, thread, or process.
+
+Use `continue_run()` to continue the run anywhere else.
+
+**Returns:** RunContext containing run state and trace propagation headers.
+
+**Raises:**
+
+- `RuntimeError` — If called outside of an active run.
+
+---
+
+##### `initialize`
+
+```python
+initialize(self) -> None
+```
+
+Initialize the Dreadnode SDK.
+
+This method is called automatically when you call `configure()`.
+
+---
+
+##### `link_objects`
+
+```python
+link_objects(self, origin: Any, link: Any, attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+Associate two runtime objects with each other.
+
+This is useful for linking any two objects which are related to
+each other, such as a model and its training data, or an input
+prompt and the resulting output.
+
+**Parameters:**
+
+- **`origin`**: The origin object to link from.
+- **`link`**: The linked object to link to.
+- **`attributes`**: Additional attributes to attach to the link.
+
+---
+
+##### `log_artifact`
+
+```python
+log_artifact(self, local_uri: str | pathlib.Path) -> None
+```
+
+Log a file or directory artifact to the current run.
+
+This method uploads a local file or directory to the artifact storage associated with the run.
+
+**Parameters:**
+
+- **`local_uri`**: The local path to the file to upload.
+
+---
+
+##### `log_input`
+
+```python
+log_input(self, name: str, value: Any, *, label: str | None = None, to: Literal['task-or-run', 'run'] = 'task-or-run', attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+Log a single input to the current task or run.
+
+Inputs can be any runtime object, which are serialized, stored, and tracked
+in the Dreadnode UI.
+
+---
+
+##### `log_inputs`
+
+```python
+log_inputs(self, to: Literal['task-or-run', 'run'] = 'task-or-run', **inputs: Any) -> None
+```
+
+Log multiple inputs to the current task or run.
+
+See `log_input()` for more details.
+
+---
+
+##### `log_metric`
+
+```python
+log_metric(self, name: str, value: float | bool | dreadnode.metric.Metric, *, step: int = 0, origin: typing.Any | None = None, timestamp: datetime.datetime | None = None, mode: Optional[Literal['avg', 'sum', 'min', 'max', 'count']] = None, attributes: dict[str, typing.Any] | None = None, to: Literal['task-or-run', 'run'] = 'task-or-run') -> dreadnode.metric.Metric
+```
+
+Log a single metric to the current task or run.
+
+Metrics are some measurement or recorded value related to the task or run.
+They can be used to track performance, resource usage, or other quantitative data.
+
+**Parameters:**
+
+- **`name`**: The name of the metric.
+- **`value`**: The value of the metric, either as a raw float/bool or a Metric object.
+- **`step`**: The step of the metric.
+- **`origin`**: The origin of the metric - can be provided any object which was logged
+as an input or output anywhere in the run.
+- **`timestamp`**: The timestamp of the metric - defaults to the current time.
+- **`mode`**: The aggregation mode to use for the metric. Helpful when you want to let
+the library take care of translating your raw values into better representations.
+- direct: do not modify the value at all (default)
+- min: the lowest observed value reported for this metric
+- max: the highest observed value reported for this metric
+- avg: the average of all reported values for this metric
+- sum: the cumulative sum of all reported values for this metric
+- count: increment every time this metric is logged - disregard value
+- **`attributes`**: A dictionary of additional attributes to attach to the metric.
+- **`to`**: The target object to log the metric to. Can be "task-or-run" or "run".
+Defaults to "task-or-run". If "task-or-run", the metric will be logged
+to the current task or run, whichever is the nearest ancestor.
+
+**Returns:** The logged metric object.
+
+---
+
+##### `log_metrics`
+
+```python
+log_metrics(self, metrics: dict[str, float | bool] | list[dreadnode.metric.MetricDict], *, step: int = 0, timestamp: datetime.datetime | None = None, mode: Optional[Literal['avg', 'sum', 'min', 'max', 'count']] = None, attributes: dict[str, typing.Any] | None = None, to: Literal['task-or-run', 'run'] = 'task-or-run') -> list[dreadnode.metric.Metric]
+```
+
+Log multiple metrics to the current task or run.
+
+**Parameters:**
+
+- **`metrics`**: Either a dictionary of name/value pairs or a list of MetricDicts to log.
+- **`step`**: Default step value for metrics if not supplied.
+- **`timestamp`**: Default timestamp for metrics if not supplied.
+- **`mode`**: Default aggregation mode for metrics if not supplied.
+- **`attributes`**: Default attributes for metrics if not supplied.
+- **`to`**: The target object to log metrics to. Can be "task-or-run" or "run".
+Defaults to "task-or-run". If "task-or-run", the metrics will be logged
+to the current task or run, whichever is the nearest ancestor.
+
+**Returns:** List of logged Metric objects.
+
+---
+
+##### `log_output`
+
+```python
+log_output(self, name: str, value: Any, *, label: str | None = None, to: Literal['task-or-run', 'run'] = 'task-or-run', attributes: dict[str, typing.Any] | None = None) -> None
+```
+
+Log a single output to the current task or run.
+
+Outputs can be any runtime object, which are serialized, stored, and tracked
+in the Dreadnode UI.
+
+**Parameters:**
+
+- **`name`**: The name of the output.
+- **`value`**: The value of the output.
+- **`label`**: An optional label for the output, useful for filtering in the UI.
+- **`to`**: The target object to log the output to. Can be "task-or-run" or "run".
+Defaults to "task-or-run". If "task-or-run", the output will be logged
+to the current task or run, whichever is the nearest ancestor.
+- **`attributes`**: Additional attributes to attach to the output.
+
+---
+
+##### `log_outputs`
+
+```python
+log_outputs(self, to: Literal['task-or-run', 'run'] = 'task-or-run', **outputs: Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]) -> None
+```
+
+Log multiple outputs to the current task or run.
+
+See `log_output()` for more details.
+
+---
+
+##### `log_param`
+
+```python
+log_param(self, key: str, value: Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]) -> None
+```
+
+Log a single parameter to the current task or run.
+
+Parameters are key-value pairs that are associated with the task or run
+and can be used to track configuration values, hyperparameters, or other
+metadata.
+
+**Parameters:**
+
+- **`key`**: The name of the parameter.
+- **`value`**: The value of the parameter.
+
+---
+
+##### `log_params`
+
+```python
+log_params(self, **params: Union[int, float, str, bool, NoneType, list['JsonValue'], tuple['JsonValue', ...], ForwardRef('JsonDict')]) -> None
+```
+
+Log multiple parameters to the current task or run.
+
+Parameters are key-value pairs that are associated with the task or run
+and can be used to track configuration values, hyperparameters, or other
+metadata.
+
+**Parameters:**
+
+- **`**params`**: The parameters to log. Each parameter is a key-value pair.
+
+---
+
+##### `push_update`
+
+```python
+push_update(self) -> None
+```
+
+Push any pending run data to the server before run completion.
+
+This is useful for ensuring that the UI is up to date with the
+latest data. Data is automatically pushed periodically, but
+you can call this method to force a push.
+
+---
+
+##### `run`
+
+```python
+run(self, name: str | None = None, *, tags: Optional[Sequence[str]] = None, params: dict[str, typing.Any] | None = None, project: str | None = None, autolog: bool = True, attributes: dict[str, typing.Any] | None = None) -> dreadnode.tracing.span.RunSpan
+```
+
+Create a new run.
+
+Runs are the main way to track work in Dreadnode. They are
+associated with a specific project and can have parameters,
+inputs, and outputs logged to them.
+
+You cannot create runs inside other runs.
+
+**Parameters:**
+
+- **`name`**: The name of the run. If not provided, a random name will be generated.
+- **`tags`**: A list of tags to attach to the run.
+- **`params`**: A dictionary of parameters to attach to the run.
+- **`project`**: The project name to associate the run with. If not provided,
+the project passed to `configure()` will be used, or the
+run will be associated with a default project.
+- **`autolog`**: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
+- **`attributes`**: Additional attributes to attach to the run span.
+
+**Returns:** A RunSpan object that can be used as a context manager.
+The run will automatically be completed when the context manager exits.
+
+---
+
+##### `scorer`
+
+```python
+scorer(self, *, name: str | None = None, tags: Optional[Sequence[str]] = None, attributes: dict[str, typing.Any] | None = None) -> Callable[[Union[Callable[[~T], Awaitable[float | int | bool | dreadnode.metric.Metric]], Callable[[~T], float | int | bool | dreadnode.metric.Metric]]], dreadnode.metric.Scorer[~T]]
+```
+
+Make a scorer from a callable function.
+
+This is useful when you want to change the name of the scorer
+or add additional attributes to it.
+
+**Parameters:**
+
+- **`name`**: The name of the scorer.
+- **`tags`**: A list of tags to attach to the scorer.
+- **`attributes`**: A dictionary of attributes to attach to the scorer.
+
+**Returns:** A new Scorer object.
+
+---
+
+##### `shutdown`
+
+```python
+shutdown(self) -> None
+```
+
+Shutdown any associate OpenTelemetry components and flush any pending spans.
+
+It is not required to call this method, as the SDK will automatically
+flush and shutdown when the process exits.
+
+However, if you want to ensure that all spans are flushed before
+exiting, you can call this method manually.
+
+---
+
+##### `span`
+
+```python
+span(self, name: str, *, tags: Optional[Sequence[str]] = None, attributes: dict[str, typing.Any] | None = None) -> dreadnode.tracing.span.Span
+```
+
+Create a new OpenTelemety span.
+
+Spans are more lightweight than tasks, but still let you track
+work being performed and view it in the UI. You cannot
+log parameters, inputs, or outputs to spans.
+
+**Parameters:**
+
+- **`name`**: The name of the span.
+- **`tags`**: A list of tags to attach to the span.
+- **`attributes`**: A dictionary of attributes to attach to the span.
+
+**Returns:** A Span object.
+
+---
+
+##### `tag`
+
+```python
+tag(self, *tag: str, to: Literal['task-or-run', 'run'] = 'task-or-run') -> None
+```
+
+Add one or many tags to the current task or run.
+
+**Parameters:**
+
+- **`tag`**: The tag to attach to the task or run.
+- **`to`**: The target object to log the tag to. Can be "task-or-run" or "run".
+Defaults to "task-or-run". If "task-or-run", the tag will be logged
+to the current task or run, whichever is the nearest ancestor.
+
+---
+
+##### `task`
+
+```python
+task(self, *, scorers: Optional[Sequence[Union[dreadnode.metric.Scorer[Any], Callable[[Any], Awaitable[float | int | bool | dreadnode.metric.Metric]], Callable[[Any], float | int | bool | dreadnode.metric.Metric]]]] = None, name: str | None = None, label: str | None = None, log_inputs: Union[Sequence[str], bool, dreadnode.types.Inherited] = Inherited, log_output: bool | dreadnode.types.Inherited = Inherited, log_execution_metrics: bool = False, tags: Optional[Sequence[str]] = None, attributes: dict[str, typing.Any] | None = None) -> dreadnode.main.TaskDecorator
+```
+
+Create a new task from a function.
+
+**Parameters:**
+
+- **`scorers`**: A list of scorers to attach to the task. These will be called after every execution
+of the task and will be passed the task's output.
+- **`name`**: The name of the task.
+- **`label`**: The label of the task - useful for filtering in the UI.
+- **`log_inputs`**: Log all, or specific, incoming arguments to the function as inputs.
+- **`log_output`**: Log the result of the function as an output.
+- **`log_execution_metrics`**: Log execution metrics for the task, such as success rate and run count.
+- **`tags`**: A list of tags to attach to the task span.
+- **`attributes`**: A dictionary of attributes to attach to the task span.
+
+**Returns:** A new Task object.
+
+---
+
+##### `task_span`
+
+```python
+task_span(self, name: str, *, label: str | None = None, tags: Optional[Sequence[str]] = None, attributes: dict[str, typing.Any] | None = None) -> dreadnode.tracing.span.TaskSpan[typing.Any]
+```
+
+Create a task span without an explicit associated function.
+
+This is useful for creating tasks on the fly without having to
+define a function.
+
+**Parameters:**
+
+- **`name`**: The name of the task.
+- **`label`**: The label of the task - useful for filtering in the UI.
+- **`tags`**: A list of tags to attach to the task span.
+- **`attributes`**: A dictionary of attributes to attach to the task span.
+
+**Returns:** A TaskSpan object.
+
+---
+
+
+### Class `DreadnodeConfigWarning`
+
+**Inherits from:** `UserWarning`
+
+Base class for warnings generated by user code.
+
+
+### Class `DreadnodeUsageWarning`
+
+**Inherits from:** `UserWarning`
+
+Base class for warnings generated by user code.
+
+
