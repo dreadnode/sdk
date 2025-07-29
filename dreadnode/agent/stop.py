@@ -3,7 +3,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
-from dreadnode.agent.events import AgentEvent, GenerationEnd, ToolCallEnd
+from dreadnode.agent.events import Event, GenerationEnd, ToolEnd
 
 
 class StopCondition(ABC, BaseModel):
@@ -13,7 +13,7 @@ class StopCondition(ABC, BaseModel):
     """
 
     @abstractmethod
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+    def __call__(self, events: Sequence[Event]) -> bool:
         """
         Checks if the termination condition has been met against the history of a run.
 
@@ -38,8 +38,11 @@ class AndStopCondition(StopCondition):
 
     conditions: list[StopCondition]
 
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+    def __call__(self, events: Sequence[Event]) -> bool:
         return all(cond(events) for cond in self.conditions)
+
+    def __repr__(self) -> str:
+        return f"({' & '.join(repr(cond) for cond in self.conditions)})"
 
 
 class OrStopCondition(StopCondition):
@@ -47,11 +50,21 @@ class OrStopCondition(StopCondition):
 
     conditions: list[StopCondition]
 
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+    def __call__(self, events: Sequence[Event]) -> bool:
         return any(cond(events) for cond in self.conditions)
+
+    def __repr__(self) -> str:
+        return f"({' | '.join(repr(cond) for cond in self.conditions)})"
 
 
 # --- Built-in, Concrete Conditions ---
+
+
+class StopNever(StopCondition):
+    """A condition that never stops the agent. Useful for forcing stalling behavior or specific tools for exit conditions."""
+
+    def __call__(self, _: Sequence[Event]) -> bool:
+        return False
 
 
 class StopAfterSteps(StopCondition):
@@ -59,7 +72,7 @@ class StopAfterSteps(StopCondition):
 
     max_steps: int = Field(description="The maximum number of LLM generation steps to allow.")
 
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+    def __call__(self, events: Sequence[Event]) -> bool:
         step_count = sum(1 for event in events if isinstance(event, GenerationEnd))
         return step_count >= self.max_steps
 
@@ -69,11 +82,11 @@ class StopOnToolUse(StopCondition):
 
     tool_name: str = Field(description="The name of the tool that should trigger termination.")
 
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
-        if not events:
-            return False
-        last_event = events[-1]
-        return isinstance(last_event, ToolCallEnd) and last_event.tool_call.name == self.tool_name
+    def __call__(self, events: Sequence[Event]) -> bool:
+        tool_events = [
+            e for e in events if isinstance(e, ToolEnd) and e.tool_call.name == self.tool_name
+        ]
+        return any(event.tool_call.name == self.tool_name for event in tool_events)
 
 
 class StopOnText(StopCondition):
@@ -84,7 +97,7 @@ class StopOnText(StopCondition):
         default=False, description="Whether the text match should be case-sensitive."
     )
 
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+    def __call__(self, events: Sequence[Event]) -> bool:
         if not events:
             return False
 
@@ -92,7 +105,7 @@ class StopOnText(StopCondition):
             (e for e in reversed(events) if isinstance(e, GenerationEnd)), None
         ):
             if self.case_sensitive:
-                return self.text in last_generation.generated_message.content
-            return self.text.lower() in last_generation.generated_message.content.lower()
+                return self.text in last_generation.message.content
+            return self.text.lower() in last_generation.message.content.lower()
 
         return False

@@ -1,4 +1,5 @@
 import typing as t
+from contextlib import asynccontextmanager
 
 from pydantic import ConfigDict, Field, PrivateAttr
 from rigging import get_generator
@@ -16,10 +17,15 @@ from rigging.transform import (
     tools_to_json_with_tag_transform,
 )
 
-from dreadnode.agent.hooks import Hook
+from dreadnode.agent.events import AgentStalled, Event
+from dreadnode.agent.hooks.base import retry_with_feedback
+from dreadnode.agent.reactions import Hook
+from dreadnode.agent.result import AgentResult
 from dreadnode.agent.runnable import Runnable
-from dreadnode.agent.stop import StopCondition
+from dreadnode.agent.stop import StopCondition, StopNever
+from dreadnode.agent.thread import Thread
 from dreadnode.agent.types import Message, Tool
+from dreadnode.util import get_callable_name, shorten_string
 
 
 class Agent(Runnable):
@@ -31,18 +37,45 @@ class Agent(Runnable):
     """The agent's core instructions."""
     tools: list[Tool[..., t.Any]] = Field(default_factory=list)
     """Tools the agent can use."""
-    tool_mode: ToolMode = "auto"
+    tool_mode: ToolMode = Field("auto", repr=False)
     """The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto"."""
-    caching: CacheMode | None = None
+    caching: CacheMode | None = Field(None, repr=False)
     """How to handle cache_control entries on inference messages."""
     stop_conditions: list[StopCondition] = Field(default_factory=list)
     """The logical condition for successfully stopping a run."""
     max_steps: int = 10
     """The maximum number of steps (generation + tool calls) the agent can take before stopping."""
-    hooks: list[Hook] = Field(default_factory=list, exclude=True)
+    hooks: list[Hook] = Field(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the agent's lifecycle."""
+    thread: Thread = Field(default_factory=lambda: Thread())
+    """The default thread for the agent to run in if not otherwise supplied."""
 
     _generator: Generator | None = PrivateAttr(None, init=False)
+
+    def __repr__(self) -> str:
+        description = shorten_string(self.description or "", 50)
+        model = (self.model or "").split(",")[0]
+
+        parts: list[str] = [
+            f"name='{self.name}'",
+            f"description='{description}'",
+            f"model='{model}'",
+        ]
+
+        if self.instructions:
+            instructions = shorten_string(self.instructions or "", 50)
+            parts.append(f"instructions='{instructions}'")
+        if self.tools:
+            tool_names = ", ".join(tool.name for tool in self.tools)
+            parts.append(f"tools=[{tool_names}]")
+        if self.stop_conditions:
+            stop_conditions = ", ".join(repr(cond) for cond in self.stop_conditions)
+            parts.append(f"stop_conditions=[{stop_conditions}]")
+        if self.hooks:
+            hooks = ", ".join(get_callable_name(hook, short=True) for hook in self.hooks)
+            parts.append(f"hooks=[{hooks}]")
+
+        return f"{self.__class__.__name__}({', '.join(parts)})"
 
     def _get_transforms(self) -> list[Transform]:
         transforms = []
@@ -93,6 +126,7 @@ class Agent(Runnable):
         if generator is None:
             raise TypeError("Model must be a string or a Generator instance.")
 
+        messages = list(messages)  # Ensure we have a mutable list
         params = GenerateParams(
             tools=[tool.api_definition for tool in self.tools],
         )
@@ -138,3 +172,58 @@ class Agent(Runnable):
             chat = await post_transform(chat) or chat
 
         return chat
+
+    def reset(self) -> Thread:
+        previous = self.thread
+        self.thread = Thread()
+        return previous
+
+    @asynccontextmanager
+    async def stream(
+        self,
+        user_input: str,
+        *,
+        thread: Thread | None = None,
+    ) -> t.AsyncIterator[t.AsyncGenerator[Event, None]]:
+        thread = thread or self.thread
+        async with thread.stream(
+            self, user_input, commit="always" if thread == self.thread else "on-success"
+        ) as stream:
+            yield stream
+
+    async def run(
+        self,
+        user_input: str,
+        *,
+        thread: Thread | None = None,
+    ) -> AgentResult:
+        thread = thread or self.thread
+        return await thread.run(
+            self, user_input, commit="always" if thread == self.thread else "on-success"
+        )
+
+
+class TaskAgent(Agent):
+    """
+    A specialized agent for running tasks with a focus on completion and reporting.
+    It extends the base Agent class to provide task-specific functionality.
+    """
+
+    def model_post_init(self, _: t.Any) -> None:
+        from dreadnode.agent.tools import finish_task, update_todo
+
+        if not any(tool for tool in self.tools if tool.name == "finish_task"):
+            self.tools.append(finish_task)
+
+        if not any(tool for tool in self.tools if tool.name == "update_todo"):
+            self.tools.append(update_todo)
+
+        # Force the agent to use finish_task
+        self.stop_conditions.append(StopNever())
+        self.hooks.insert(
+            0,
+            retry_with_feedback(
+                event_type=AgentStalled,
+                feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
+            ),
+        )

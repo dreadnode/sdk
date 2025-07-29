@@ -1,20 +1,29 @@
 import typing as t
-from dataclasses import dataclass, field
 
+from pydantic import ConfigDict
+from pydantic.dataclasses import dataclass
 from rigging.generator.base import Usage
 from rigging.message import Message
-from rigging.model import Model
 
-AgentStatus = t.Literal["success", "error"]
+if t.TYPE_CHECKING:
+    from dreadnode.agent.agent import Agent
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class AgentResult:
-    messages: list[Message]
     agent: "Agent"
-    output: Model | Message | None = None
-    failed: bool = False
-    error: Exception | None = None
+    messages: list[Message]
     usage: Usage
-    turns: int
-    sub_tasks: dict[str, "AgentResult"] = field(default_factory=dict)
+    steps: int
+    failed: bool
+    error: Exception | str | None
+
+    def __repr__(self) -> str:
+        return (
+            f"AgentResult(agent={self.agent.name}, "
+            f"messages={len(self.messages)}, "
+            f"usage={self.usage}, "
+            f"steps={self.steps}, "
+            f"failed={self.failed}, "
+            f"error={self.error})"
+        )

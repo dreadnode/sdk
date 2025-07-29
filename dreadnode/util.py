@@ -1,13 +1,15 @@
 # Lots of utilities shamelessly copied from the `logfire` package.
 # https://github.com/pydantic/logfire
 
+import asyncio
+import contextlib
+import functools
 import inspect
-import logging
 import os
 import re
 import sys
 import typing as t
-from contextlib import contextmanager
+from contextlib import aclosing, contextmanager
 from datetime import datetime
 from pathlib import Path
 from types import TracebackType
@@ -28,6 +30,7 @@ from logfire._internal.stack_info import (
 from logfire._internal.stack_info import (
     warn_at_user_stacklevel as _warn_at_user_stacklevel,
 )
+from loguru import logger
 
 get_user_frame_and_stacklevel = _get_user_frame_and_stacklevel
 warn_at_user_stacklevel = _warn_at_user_stacklevel
@@ -35,7 +38,7 @@ get_filepath_attribute = _get_filepath_attribute
 is_user_code = _is_user_code
 
 
-import dreadnode
+import dreadnode  # noqa: E402
 
 SysExcInfo = (
     tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None]
@@ -44,9 +47,41 @@ SysExcInfo = (
 The return type of sys.exc_info(): exc_type, exc_val, exc_tb.
 """
 
-logger = logging.getLogger("dreadnode")
-
 add_non_user_code_prefix(Path(dreadnode.__file__).parent)
+
+T = t.TypeVar("T")
+
+
+# Formatting
+
+
+def shorten_string(content: str, max_length: int, *, sep: str = "...") -> str:
+    """
+    Return a string at most max_length characters long by removing the middle of the string.
+    """
+    if len(content) <= max_length:
+        return content
+
+    remaining = max_length - len(sep)
+    if remaining <= 0:
+        return sep
+
+    middle = remaining // 2
+    return content[:middle] + sep + content[-middle:]
+
+
+def truncate_string(content: str, max_length: int, *, suf: str = "...") -> str:
+    """
+    Return a string at most max_length characters long by removing the end of the string.
+    """
+    if len(content) <= max_length:
+        return content
+
+    remaining = max_length - len(suf)
+    if remaining <= 0:
+        return suf
+
+    return content[:remaining] + suf
 
 
 def clean_str(s: str) -> str:
@@ -54,6 +89,9 @@ def clean_str(s: str) -> str:
     Clean a string by replacing all non-alphanumeric characters (except `/` and `@`) with underscores.
     """
     return re.sub(r"[^\w/@]+", "_", s.lower()).strip("_")
+
+
+# Resolution
 
 
 def safe_repr(obj: t.Any) -> str:
@@ -73,6 +111,60 @@ def safe_repr(obj: t.Any) -> str:
         return f"<{type(obj).__name__} object>"
     except Exception:  # noqa: BLE001
         return "<unknown (repr failed)>"
+
+
+def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> str:
+    """
+    Return a best-effort, comprehensive name for a callable object.
+
+    This function handles a wide variety of callables, including regular
+    functions, methods, lambdas, partials, wrapped functions, and callable
+    class instances.
+
+    Args:
+        obj: The callable object to name.
+        short: If True, returns a shorter name suitable for logs or UI,
+               typically omitting the module path. The class name is
+               retained for methods.
+
+    Returns:
+        A string representing the callable's name.
+    """
+    if not callable(obj):
+        return safe_repr(obj)
+
+    if isinstance(obj, functools.partial):
+        inner_name = get_callable_name(obj.func, short=short)
+        return f"partial({inner_name})"
+
+    unwrapped = obj
+    with contextlib.suppress(Exception):
+        unwrapped = inspect.unwrap(obj)
+
+    name = getattr(unwrapped, "__qualname__", None)
+
+    if name is None:
+        name = getattr(unwrapped, "__name__", None)
+
+    if name is None:
+        if hasattr(obj, "__class__"):
+            name = getattr(obj.__class__, "__qualname__", obj.__class__.__name__)
+        else:
+            return safe_repr(obj)
+
+    if short:
+        return str(name).split(".")[-1]  # Return only the last part of the name
+
+    with contextlib.suppress(Exception):
+        if module := inspect.getmodule(unwrapped):
+            module_name = module.__name__
+            if module_name and module_name not in ("builtins", "__main__"):
+                return f"{module_name}.{name}"
+
+    return str(name)
+
+
+# Time
 
 
 def time_to(future_datetime: datetime) -> str:
@@ -96,6 +188,63 @@ def time_to(future_datetime: datetime) -> str:
         result.append(f"{minutes}m")
 
     return ", ".join(result) if result else "Just now"
+
+
+# Async
+
+
+async def join_generators(*generators: t.AsyncGenerator[T, None]) -> t.AsyncGenerator[T, None]:
+    """
+    Join multiple asynchronous generators into a single asynchronous generator.
+
+    If any of the generators raise an exception, the other generators will be
+    cancelled immediately and the exception will be raised to the caller.
+
+    Args:
+        *generators: The asynchronous generators to join.
+    """
+
+    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
+    queue = asyncio.Queue[T | object | Exception](maxsize=1)
+
+    async def _queue_generator(
+        generator: t.AsyncGenerator[T, None],
+    ) -> None:
+        try:
+            async with aclosing(generator) as gen:
+                async for item in gen:
+                    await queue.put(item)
+        except Exception as e:  # noqa: BLE001
+            await queue.put(e)
+        finally:
+            await queue.put(FINISHED)
+
+    tasks = [asyncio.create_task(_queue_generator(gen)) for gen in generators]
+
+    finished_count = 0
+
+    try:
+        while finished_count < len(generators):
+            item = await queue.get()
+
+            if isinstance(item, Exception):
+                raise item
+
+            if item is FINISHED:
+                finished_count += 1
+                continue
+
+            yield t.cast("T", item)
+
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# Logging
 
 
 def log_internal_error() -> None:
