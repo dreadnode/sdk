@@ -4,10 +4,12 @@ Provides efficient uploading of files and directories with deduplication.
 """
 
 import hashlib
+import typing as t
 from pathlib import Path
 
 import fsspec  # type: ignore[import-untyped]
 
+from dreadnode.storage_utils import with_credential_refresh
 from dreadnode.util import logger
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
@@ -22,15 +24,27 @@ class ArtifactStorage:
     - Batch uploads for directories handled by fsspec
     """
 
-    def __init__(self, file_system: fsspec.AbstractFileSystem):
+    def __init__(
+        self,
+        file_system: fsspec.AbstractFileSystem,
+        credential_refresher: t.Callable[[], bool] | None = None,
+    ):
         """
         Initialize artifact storage with a file system and prefix path.
 
         Args:
             file_system: FSSpec-compatible file system
+            credential_refresher: Optional function to refresh credentials when it's about to expire
         """
         self._file_system = file_system
+        self._credential_refresher = credential_refresher
 
+    def _refresh_credentials_if_needed(self) -> None:
+        """Refresh credentials if refresher is available."""
+        if self._credential_refresher:
+            self._credential_refresher()
+
+    @with_credential_refresh
     def store_file(self, file_path: Path, target_key: str) -> str:
         """
         Store a file in the storage system, using multipart upload for large files.
