@@ -519,7 +519,7 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
     # Primitives early
 
     if isinstance(obj, str | int | float | bool) or obj is None:
-        return obj, EMPTY_SCHEMA
+        return obj, {}
 
     # Cycle tracking
 

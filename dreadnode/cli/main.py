@@ -1,17 +1,30 @@
 import contextlib
+import pathlib
+import shutil
+import sys
 import typing as t
 import webbrowser
 
 import cyclopts
 import rich
+from rich.panel import Panel
+from rich.prompt import Prompt
 
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.api import create_api_client
 from dreadnode.cli.config import ServerConfig, UserConfig
+from dreadnode.cli.github import (
+    GithubRepo,
+    download_and_unzip_archive,
+    validate_server_for_clone,
+)
 from dreadnode.cli.profile import cli as profile_cli
-from dreadnode.constants import PLATFORM_BASE_URL
+from dreadnode.config import ServerConfig, UserConfig
+from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 
-cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
+cli = cyclopts.App(
+    help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True
+)
 
 cli["--help"].group = "Meta"
 
@@ -20,21 +33,34 @@ cli.command(profile_cli)
 
 @cli.meta.default
 def meta(
-    *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
+    *tokens: t.Annotated[
+        str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)
+    ],
 ) -> None:
-    rich.print()
-    cli(tokens)
+    try:
+        rich.print()
+        cli(tokens)
+    except Exception as e:
+        if DEBUG:
+            raise
+
+        rich.print()
+        rich.print(Panel(str(e), title="Error", title_align="left", border_style="red"))
+        sys.exit(1)
 
 
 @cli.command(help="Authenticate to a platform server.", group="Auth")
 def login(
     *,
     server: t.Annotated[
-        str | None, cyclopts.Parameter(name=["--server", "-s"], help="URL of the server")
+        str | None,
+        cyclopts.Parameter(name=["--server", "-s"], help="URL of the server"),
     ] = None,
     profile: t.Annotated[
         str | None,
-        cyclopts.Parameter(name=["--profile", "-p"], help="Profile alias to assign / update"),
+        cyclopts.Parameter(
+            name=["--profile", "-p"], help="Profile alias to assign / update"
+        ),
     ] = None,
 ) -> None:
     if not server:
@@ -73,7 +99,11 @@ Then enter the code: [bold]{codes.user_code}[/]
     tokens = client.poll_for_token(codes.device_code)
 
     client = ApiClient(
-        server, cookies={"refresh_token": tokens.refresh_token, "access_token": tokens.access_token}
+        server,
+        cookies={
+            "refresh_token": tokens.refresh_token,
+            "access_token": tokens.access_token,
+        },
     )
     user = client.get_user()
 
@@ -89,7 +119,9 @@ Then enter the code: [bold]{codes.user_code}[/]
         profile,
     ).write()
 
-    rich.print(f":white_check_mark: Authenticated as {user.email_address} ({user.username})")
+    rich.print(
+        f":white_check_mark: Authenticated as {user.email_address} ({user.username})"
+    )
 
 
 @cli.command(help="Refresh data for the active server profile.", group="Auth")
@@ -111,6 +143,69 @@ def refresh() -> None:
     )
 
 
+@cli.command(
+    help="Clone a github repository, typically privately shared dreadnode repositories."
+)
+def clone(
+    repo: t.Annotated[str, cyclopts.Parameter(help="Repository name or URL")],
+    target: t.Annotated[
+        pathlib.Path | None,
+        cyclopts.Parameter(help="The target directory"),
+    ] = None,
+) -> None:
+    github_repo = GithubRepo(repo)
+
+    # Check if the target directory exists
+    target = target or pathlib.Path(github_repo.repo)
+    if target.exists():
+        if (
+            Prompt.ask(
+                f":axe: Overwrite {target.absolute()}?", choices=["y", "n"], default="n"
+            )
+            == "n"
+        ):
+            return
+        rich.print()
+        shutil.rmtree(target)
+
+    # Check if the repo is accessible
+    if github_repo.exists:
+        temp_dir = download_and_unzip_archive(github_repo.zip_url)
+
+    # This could be a private repo that the user can access
+    # by getting an access token from our API
+    elif github_repo.namespace == "dreadnode":
+        # Validate server configuration for private repository access
+        user_config = UserConfig.read()
+        profile_to_use = validate_server_for_clone(user_config, None)
+
+        if profile_to_use is None:
+            return  # User cancelled
+
+        github_access_token = create_api_client(
+            profile=profile_to_use
+        ).get_github_access_token([github_repo.repo])
+        rich.print(":key: Accessed private repository")
+        temp_dir = download_and_unzip_archive(
+            github_repo.api_zip_url,
+            headers={"Authorization": f"Bearer {github_access_token.token}"},
+        )
+
+    else:
+        raise RuntimeError(f"Repository '{github_repo}' not found or inaccessible")
+
+    # We assume the repo download results in a single
+    # child folder which is the real target
+    sub_dirs = list(temp_dir.iterdir())
+    if len(sub_dirs) == 1 and sub_dirs[0].is_dir():
+        temp_dir = sub_dirs[0]
+
+    shutil.move(temp_dir, target)
+
+    rich.print()
+    rich.print(f":tada: Cloned [b]{repo}[/] to [b]{target.absolute()}[/]")
+
+
 @cli.command(help="Show versions and exit.", group="Meta")
 def version() -> None:
     import importlib.metadata
@@ -118,7 +213,9 @@ def version() -> None:
     import sys
 
     version = importlib.metadata.version("dreadnode")
-    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    python_version = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
 
     os_name = platform.system()
     arch = platform.machine()

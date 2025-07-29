@@ -433,3 +433,12 @@ class TraceTree(BaseModel):
     """Span at this node, can be a Task or a TraceSpan."""
     children: list["TraceTree"] = []
     """Children of this span, representing nested spans or tasks."""
+
+
+# Github
+
+
+class GithubTokenResponse(BaseModel):
+    token: str
+    expires_at: datetime
+    repos: list[str]

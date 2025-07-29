@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from dreadnode.api.client import ApiClient
-from dreadnode.cli.config import UserConfig
+from dreadnode.config import UserConfig
 from dreadnode.constants import (
     DEFAULT_TOKEN_MAX_TTL,
 )
@@ -49,7 +49,10 @@ def create_api_client(*, profile: str | None = None) -> ApiClient:
 
     client = ApiClient(
         config.url,
-        cookies={"access_token": config.access_token, "refresh_token": config.refresh_token},
+        cookies={
+            "access_token": config.access_token,
+            "refresh_token": config.refresh_token,
+        },
     )
 
     # Preemptively check if the token is expired

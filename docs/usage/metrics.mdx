@@ -170,34 +170,7 @@ Strikes automatically logs some additional metrics for every task:
 
 You can use these metrics to track task reliability and usage patterns.
 
-## Creating Scorers
-
-Scorers are specialized functions that evaluate task outputs and log metrics automatically:
-
-```python
-async def accuracy_scorer(result: dict) -> float:
-    """Evaluate the accuracy of a classification result."""
-    if result["predicted_class"] == result["actual_class"]:
-        return 1.0
-    return 0.0
-
-@dn.task(scorers=[accuracy_scorer])
-async def classify_document(doc):
-    # Process document
-    return {
-        "predicted_class": "spam",
-        "actual_class": "spam",
-        "confidence": 0.92
-    }
-```
-
-When the task runs, the scorer will automatically:
-1. Receive the task's output
-2. Evaluate it according to your logic
-3. Log a metric with the scoring function's name and returned value
-4. Associate the metric with the task's output object
-
-### Composite Scoring
+## Composite Metrics
 
 For more complex evaluations, you can create composite metrics from multiple measurements, where each sub-metric can have its own weight. The metric will store the original values of all sub-metrics in the attributes.
 

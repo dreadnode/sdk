@@ -13,6 +13,7 @@ from ulid import ULID
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
     DeviceCodeResponse,
+    GithubTokenResponse,
     MetricAggregationType,
     Project,
     RawRun,
@@ -242,6 +243,13 @@ class ApiClient:
         response = self.request("GET", "/user")
         return UserResponse(**response.json())
 
+    # Github
+
+    def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
+        """Try to get a GitHub access token for the given repositories."""
+        response = self.request("POST", "/github/token", json_data={"repos": repos})
+        return GithubTokenResponse(**response.json())
+
     # Strikes
 
     def list_projects(self) -> list[Project]:
@@ -297,7 +305,9 @@ class ApiClient:
     TraceFormat = t.Literal["tree", "flat"]
 
     @t.overload
-    def get_run_tasks(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TaskTree]: ...
+    def get_run_tasks(
+        self, run: str | ULID, *, format: t.Literal["tree"]
+    ) -> list[TaskTree]: ...
 
     @t.overload
     def get_run_tasks(
@@ -325,7 +335,9 @@ class ApiClient:
         return tasks if format == "flat" else convert_flat_tasks_to_tree(tasks)
 
     @t.overload
-    def get_run_trace(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TraceTree]: ...
+    def get_run_trace(
+        self, run: str | ULID, *, format: t.Literal["tree"]
+    ) -> list[TraceTree]: ...
 
     @t.overload
     def get_run_trace(
