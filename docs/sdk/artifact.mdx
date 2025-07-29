@@ -244,7 +244,10 @@ ArtifactStorage
 ---------------
 
 ```python
-ArtifactStorage(file_system: AbstractFileSystem)
+ArtifactStorage(
+    file_system: AbstractFileSystem,
+    credential_refresher: Callable[[], bool] | None = None,
+)
 ```
 
 Storage for artifacts with efficient handling of large files and directories.
@@ -260,17 +263,28 @@ Initialize artifact storage with a file system and prefix path.
 * **`file_system`**
   (`AbstractFileSystem`)
   –FSSpec-compatible file system
+* **`credential_refresher`**
+  (`Callable[[], bool] | None`, default:
+  `None`
+  )
+  –Optional function to refresh credentials when it's about to expire
 
 <Accordion title="Source code in dreadnode/artifact/storage.py" icon="code">
 ```python
-def __init__(self, file_system: fsspec.AbstractFileSystem):
+def __init__(
+    self,
+    file_system: fsspec.AbstractFileSystem,
+    credential_refresher: t.Callable[[], bool] | None = None,
+):
     """
     Initialize artifact storage with a file system and prefix path.
 
     Args:
         file_system: FSSpec-compatible file system
+        credential_refresher: Optional function to refresh credentials when it's about to expire
     """
     self._file_system = file_system
+    self._credential_refresher = credential_refresher
 ```
 
 
@@ -464,6 +478,7 @@ Store a file in the storage system, using multipart upload for large files.
 
 <Accordion title="Source code in dreadnode/artifact/storage.py" icon="code">
 ```python
+@with_credential_refresh
 def store_file(self, file_path: Path, target_key: str) -> str:
     """
     Store a file in the storage system, using multipart upload for large files.

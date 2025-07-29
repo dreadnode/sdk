@@ -31,8 +31,8 @@ Metric
 Metric(
     value: float,
     step: int = 0,
-    timestamp: datetime = lambda: datetime.now(
-        timezone.utc
+    timestamp: datetime = (
+        lambda: datetime.now(timezone.utc)
     )(),
     attributes: JsonDict = dict(),
 )
