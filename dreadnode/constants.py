@@ -14,3 +14,7 @@ DEFAULT_LOCAL_OBJECT_DIR = ".dreadnode/objects"
 
 # Default values for the S3 storage
 MAX_INLINE_OBJECT_BYTES = 10 * 1024  # 10KB
+
+# Default values for the file system credential management
+DEFAULT_FS_CREDENTIAL_DURATION = 14400  # 4 hours in seconds
+FS_CREDENTIAL_REFRESH_BUFFER = 300  # 5 minutes in seconds

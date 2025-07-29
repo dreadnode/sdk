@@ -36,6 +36,7 @@ from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
+from dreadnode.storage_utils import with_credential_refresh
 from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
 from dreadnode.util import clean_str
 from dreadnode.version import VERSION
@@ -366,6 +367,7 @@ class RunSpan(Span):
         update_frequency: int = 5,
         run_id: str | ULID | None = None,
         type: SpanType = "run",
+        credential_refresher: t.Callable[[], bool] | None = None,
     ) -> None:
         self.autolog = autolog
         self.project = project
@@ -376,7 +378,9 @@ class RunSpan(Span):
         self._object_schemas: dict[str, JsonDict] = {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
-        self._artifact_storage = ArtifactStorage(file_system=file_system)
+        self._artifact_storage = ArtifactStorage(
+            file_system=file_system, credential_refresher=credential_refresher
+        )
         self._artifacts: list[DirectoryNode] = []
         self._artifact_merger = ArtifactMerger()
         self._artifact_tree_builder = ArtifactTreeBuilder(
@@ -407,6 +411,7 @@ class RunSpan(Span):
             SPAN_ATTRIBUTE_PROJECT: project,
             **(attributes or {}),
         }
+        self._credential_refresher = credential_refresher
         super().__init__(name, tracer, attributes=attributes, type=type, tags=tags)
 
     @classmethod
@@ -416,6 +421,7 @@ class RunSpan(Span):
         tracer: Tracer,
         file_system: AbstractFileSystem,
         prefix_path: str,
+        credential_refresher: t.Callable[[], bool] | None = None,
     ) -> "RunSpan":
         self = RunSpan(
             name=f"run.{context['run_id']}.fragment",
@@ -426,6 +432,7 @@ class RunSpan(Span):
             prefix_path=prefix_path,
             type="run_fragment",
             run_id=context["run_id"],
+            credential_refresher=credential_refresher,
         )
 
         self._remote_context = context["trace_context"]
@@ -500,6 +507,10 @@ class RunSpan(Span):
 
         if self._context_token is not None:
             current_run_span.reset(self._context_token)
+
+    def _refresh_credentials_if_needed(self) -> None:
+        if self._credential_refresher:
+            self._credential_refresher()
 
     def push_update(self, *, force: bool = False) -> None:
         if self._span is None:
@@ -604,6 +615,7 @@ class RunSpan(Span):
 
         return composite_hash
 
+    @with_credential_refresh
     def _store_file_by_hash(self, data: bytes, full_path: str) -> str:
         """
         Writes data to the given full_path in the object store if it doesn't already exist.

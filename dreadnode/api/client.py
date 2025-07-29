@@ -13,6 +13,7 @@ from dreadnode.api.util import (
     process_run,
     process_task,
 )
+from dreadnode.constants import DEFAULT_FS_CREDENTIAL_DURATION
 from dreadnode.util import logger
 from dreadnode.version import VERSION
 
@@ -430,12 +431,17 @@ class ApiClient:
 
     # User data access
 
-    def get_user_data_credentials(self) -> UserDataCredentials:
+    def get_user_data_credentials(
+        self, duration: int = DEFAULT_FS_CREDENTIAL_DURATION
+    ) -> UserDataCredentials:
         """
         Retrieves user data credentials for secondary storage access.
+
+        Args:
+            duration: Credential lifetime in seconds (default: 4 hours)
 
         Returns:
             The user data credentials object.
         """
-        response = self.request("GET", "/user-data/credentials")
+        response = self._request("GET", "/user-data/credentials", params={"duration": duration})
         return UserDataCredentials(**response.json())
