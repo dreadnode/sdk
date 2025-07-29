@@ -29,11 +29,15 @@ transformers = { version = "^4.41.0", optional = true }
 soundfile = { version = "^0.13.1", optional = true }
 moviepy = { version = "^2.1.2", optional = true }
 pillow = { version = "^11.2.1", optional = true }
+rapidfuzz = { version = "^3.13.0", optional = true }
+datasets = { version = "^3.5.0", optional = true }
+pyarrow = { version = "^19.0.1", optional = true }
 rigging = "^3.2.1"
 
 [tool.poetry.extras]
 training = ["transformers"]
 multimodal = ["pillow", "soundfile", "moviepy"]
+airt = ["pillow", "rapidfuzz", "datasets", "pyarrow"]
 all = ["multimodal", "training"]
 
 [tool.poetry.group.dev.dependencies]
