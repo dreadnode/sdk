@@ -526,9 +526,7 @@ def initialize(self) -> None:
         #         )
         #     )
         # )
-        self._credentials = self._api.get_user_data_credentials(
-            duration=DEFAULT_FS_CREDENTIAL_DURATION
-        )
+        self._credentials = self._api.get_user_data_credentials()
         self._credentials_expiry = self._credentials.expiration
         resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
         self._fs = S3FileSystem(
