@@ -26,7 +26,6 @@ from s3fs import S3FileSystem  # type: ignore [import-untyped]
 from dreadnode.api.client import ApiClient
 from dreadnode.config import UserConfig
 from dreadnode.constants import (
-    DEFAULT_FS_CREDENTIAL_DURATION,
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
     ENV_API_TOKEN,
@@ -353,9 +352,7 @@ class Dreadnode:
             #         )
             #     )
             # )
-            self._credentials = self._api.get_user_data_credentials(
-                duration=DEFAULT_FS_CREDENTIAL_DURATION
-            )
+            self._credentials = self._api.get_user_data_credentials()
             self._credentials_expiry = self._credentials.expiration
             resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
             self._fs = S3FileSystem(
@@ -427,9 +424,7 @@ class Dreadnode:
         ):
             try:
                 logger.info("Refreshing storage credentials")
-                self._credentials = self._api.get_user_data_credentials(
-                    duration=DEFAULT_FS_CREDENTIAL_DURATION
-                )
+                self._credentials = self._api.get_user_data_credentials()
                 self._credentials_expiry = self._credentials.expiration
 
                 resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
