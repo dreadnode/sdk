@@ -65,6 +65,9 @@ def __init__(
     self._fs_prefix: str = ".dreadnode/storage/"
 
     self._initialized = False
+
+    self._credentials: UserDataCredentials | None = None
+    self._credentials_expiry: datetime | None = None
 ```
 
 
@@ -312,6 +315,7 @@ def continue_run(self, run_context: RunContext) -> RunSpan:
         tracer=self._get_tracer(),
         file_system=self._fs,
         prefix_path=self._fs_prefix,
+        credential_refresher=self._refresh_storage_credentials if self._credentials else None,
     )
 ```
 
@@ -455,18 +459,21 @@ def initialize(self) -> None:
         #     )
         # )
 
-        credentials = self._api.get_user_data_credentials()
-        resolved_endpoint = self._resolve_endpoint(credentials.endpoint)
+        self._credentials = self._api.get_user_data_credentials(
+            duration=DEFAULT_FS_CREDENTIAL_DURATION
+        )
+        self._credentials_expiry = self._credentials.expiration
+        resolved_endpoint = self._resolve_endpoint(self._credentials.endpoint)
         self._fs = S3FileSystem(
-            key=credentials.access_key_id,
-            secret=credentials.secret_access_key,
-            token=credentials.session_token,
+            key=self._credentials.access_key_id,
+            secret=self._credentials.secret_access_key,
+            token=self._credentials.session_token,
             client_kwargs={
                 "endpoint_url": resolved_endpoint,
-                "region_name": credentials.region,
+                "region_name": self._credentials.region,
             },
         )
-        self._fs_prefix = f"{credentials.bucket}/{credentials.prefix}/"
+        self._fs_prefix = f"{self._credentials.bucket}/{self._credentials.prefix}/"
 
     self._logfire = logfire.configure(
         local=not self.is_default,
@@ -1654,6 +1661,7 @@ def run(
         file_system=self._fs,
         prefix_path=self._fs_prefix,
         autolog=autolog,
+        credential_refresher=self._refresh_storage_credentials if self._credentials else None,
     )
 ```
 

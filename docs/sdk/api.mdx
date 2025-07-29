@@ -639,10 +639,20 @@ def get_run_trace(
 ### get\_user\_data\_credentials
 
 ```python
-get_user_data_credentials() -> UserDataCredentials
+get_user_data_credentials(
+    duration: int = DEFAULT_FS_CREDENTIAL_DURATION,
+) -> UserDataCredentials
 ```
 
 Retrieves user data credentials for secondary storage access.
+
+**Parameters:**
+
+* **`duration`**
+  (`int`, default:
+  `DEFAULT_FS_CREDENTIAL_DURATION`
+  )
+  –Credential lifetime in seconds (default: 4 hours)
 
 **Returns:**
 
@@ -651,14 +661,19 @@ Retrieves user data credentials for secondary storage access.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def get_user_data_credentials(self) -> UserDataCredentials:
+def get_user_data_credentials(
+    self, duration: int = DEFAULT_FS_CREDENTIAL_DURATION
+) -> UserDataCredentials:
     """
     Retrieves user data credentials for secondary storage access.
+
+    Args:
+        duration: Credential lifetime in seconds (default: 4 hours)
 
     Returns:
         The user data credentials object.
     """
-    response = self.request("GET", "/user-data/credentials")
+    response = self._request("GET", "/user-data/credentials", params={"duration": duration})
     return UserDataCredentials(**response.json())
 ```
 
