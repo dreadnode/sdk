@@ -3816,14 +3816,14 @@ rich = ">=12.0.0"
 
 [[package]]
 name = "rigging"
-version = "3.2.1"
+version = "3.2.3"
 description = "LLM Interaction Framework"
 optional = false
 python-versions = "<3.14,>=3.10"
 groups = ["main"]
 files = [
-    {file = "rigging-3.2.1-py3-none-any.whl", hash = "sha256:a985a52813029047b8cd1ead556a525c20abd649034e52e407aab7085a82f65e"},
-    {file = "rigging-3.2.1.tar.gz", hash = "sha256:9df1014efac314dcb98ed3c9df69db81a06fb72b5e33989c7304d25dd496abdc"},
+    {file = "rigging-3.2.3-py3-none-any.whl", hash = "sha256:7b6bf820c95e501136dc021941bd64453e25c24f210275c8b459ad666db5255f"},
+    {file = "rigging-3.2.3.tar.gz", hash = "sha256:11f3a0473023cc7b24815fa386fd791385a4fbf4b8f65405f1731d9db7b0d0fa"},
 ]
 
 [package.dependencies]
