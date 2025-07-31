@@ -11,8 +11,8 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from dreadnode.api.client import ApiClient
+from dreadnode.cli.agent import cli as agent_cli
 from dreadnode.cli.api import create_api_client
-from dreadnode.cli.config import ServerConfig, UserConfig
 from dreadnode.cli.github import (
     GithubRepo,
     download_and_unzip_archive,
@@ -22,20 +22,17 @@ from dreadnode.cli.profile import cli as profile_cli
 from dreadnode.config import ServerConfig, UserConfig
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 
-cli = cyclopts.App(
-    help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True
-)
+cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
 
 cli["--help"].group = "Meta"
 
 cli.command(profile_cli)
+cli.command(agent_cli)
 
 
 @cli.meta.default
 def meta(
-    *tokens: t.Annotated[
-        str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)
-    ],
+    *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
 ) -> None:
     try:
         rich.print()
@@ -49,7 +46,7 @@ def meta(
         sys.exit(1)
 
 
-@cli.command(help="Authenticate to a platform server.", group="Auth")
+@cli.command(group="Auth")
 def login(
     *,
     server: t.Annotated[
@@ -58,11 +55,10 @@ def login(
     ] = None,
     profile: t.Annotated[
         str | None,
-        cyclopts.Parameter(
-            name=["--profile", "-p"], help="Profile alias to assign / update"
-        ),
+        cyclopts.Parameter(name=["--profile", "-p"], help="Profile alias to assign / update"),
     ] = None,
 ) -> None:
+    """Authenticate to a Dreadnode platform server and save the profile."""
     if not server:
         server = PLATFORM_BASE_URL
         with contextlib.suppress(Exception):
@@ -119,13 +115,13 @@ Then enter the code: [bold]{codes.user_code}[/]
         profile,
     ).write()
 
-    rich.print(
-        f":white_check_mark: Authenticated as {user.email_address} ({user.username})"
-    )
+    rich.print(f":white_check_mark: Authenticated as {user.email_address} ({user.username})")
 
 
-@cli.command(help="Refresh data for the active server profile.", group="Auth")
+@cli.command(group="Auth")
 def refresh() -> None:
+    """Refresh the active server profile with the latest user data."""
+
     user_config = UserConfig.read()
     server_config = user_config.get_server_config()
 
@@ -143,9 +139,7 @@ def refresh() -> None:
     )
 
 
-@cli.command(
-    help="Clone a github repository, typically privately shared dreadnode repositories."
-)
+@cli.command()
 def clone(
     repo: t.Annotated[str, cyclopts.Parameter(help="Repository name or URL")],
     target: t.Annotated[
@@ -153,15 +147,15 @@ def clone(
         cyclopts.Parameter(help="The target directory"),
     ] = None,
 ) -> None:
+    """Clone a GitHub repository to a local directory"""
+
     github_repo = GithubRepo(repo)
 
     # Check if the target directory exists
     target = target or pathlib.Path(github_repo.repo)
     if target.exists():
         if (
-            Prompt.ask(
-                f":axe: Overwrite {target.absolute()}?", choices=["y", "n"], default="n"
-            )
+            Prompt.ask(f":axe: Overwrite {target.absolute()}?", choices=["y", "n"], default="n")
             == "n"
         ):
             return
@@ -182,9 +176,9 @@ def clone(
         if profile_to_use is None:
             return  # User cancelled
 
-        github_access_token = create_api_client(
-            profile=profile_to_use
-        ).get_github_access_token([github_repo.repo])
+        github_access_token = create_api_client(profile=profile_to_use).get_github_access_token(
+            [github_repo.repo]
+        )
         rich.print(":key: Accessed private repository")
         temp_dir = download_and_unzip_archive(
             github_repo.api_zip_url,
@@ -213,9 +207,7 @@ def version() -> None:
     import sys
 
     version = importlib.metadata.version("dreadnode")
-    python_version = (
-        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    )
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
     os_name = platform.system()
     arch = platform.machine()

@@ -1,76 +1,103 @@
 import typing as t
+from pathlib import Path
 
 import cyclopts
 import rich
-from rich import box
-from rich.table import Table
 
-from dreadnode.cli.api import Token
-from dreadnode.cli.config import UserConfig
-from dreadnode.util import time_to
+from dreadnode.agent.configurable import generate_config_model
+from dreadnode.cli.agent.discover import discover_agents
+from dreadnode.cli.agent.format import format_agent, format_agents_table
 
-cli = cyclopts.App(name="profile", help="Manage server profiles")
+cli = cyclopts.App("agent", help="Run and manage agents.")
 
 
-@cli.command(name=["show", "list"], help="List all server profiles")
-def show() -> None:
-    config = UserConfig.read()
-    if not config.servers:
-        rich.print(":exclamation: No server profiles are configured")
-        return
-
-    table = Table(box=box.ROUNDED)
-    table.add_column("Profile", style="magenta")
-    table.add_column("URL", style="cyan")
-    table.add_column("Email")
-    table.add_column("Username")
-    table.add_column("Valid Until")
-
-    for profile, server in config.servers.items():
-        active = profile == config.active
-        refresh_token = Token(server.refresh_token)
-
-        table.add_row(
-            profile + ("*" if active else ""),
-            server.url,
-            server.email,
-            server.username,
-            "[red]expired[/]"
-            if refresh_token.is_expired()
-            else f"{refresh_token.expires_at.astimezone().strftime('%c')} ({time_to(refresh_token.expires_at)})",
-            style="bold" if active else None,
-        )
-
-    rich.print(table)
-
-
-@cli.command(help="Set the active server profile")
-def switch(profile: t.Annotated[str, cyclopts.Parameter(help="Profile to switch to")]) -> None:
-    config = UserConfig.read()
-    if profile not in config.servers:
-        rich.print(f":exclamation: Profile [bold]{profile}[/] does not exist")
-        return
-
-    config.active = profile
-    config.write()
-
-    rich.print(f":laptop_computer: Switched to [bold magenta]{profile}[/]")
-    rich.print(f"|- email:    [bold]{config.servers[profile].email}[/]")
-    rich.print(f"|- username: {config.servers[profile].username}")
-    rich.print(f"|- url:      {config.servers[profile].url}")
-    rich.print()
-
-
-@cli.command(help="Remove a server profile")
-def forget(
-    profile: t.Annotated[str, cyclopts.Parameter(help="Profile of the server to remove")],
+@cli.command(name=["list", "ls", "show"])
+def show(
+    file: Path | None = None,
+    *,
+    verbose: t.Annotated[
+        bool,
+        cyclopts.Parameter(
+            ["--verbose", "-v"], help="Display detailed information for each agent."
+        ),
+    ] = False,
 ) -> None:
-    config = UserConfig.read()
-    if profile not in config.servers:
-        rich.print(f":exclamation: Profile [bold]{profile}[/] does not exist")
+    """
+    Discover and list available agents in a Python file.
+
+    If no file is specified, searches for main.py, agent.py, or app.py.
+    """
+    discovery = discover_agents(file)
+    if not discovery.agents:
+        rich.print(f"No agents found in '[bold]{discovery.filepath}[/bold]'.")
         return
 
-    del config.servers[profile]
-    config.write()
+    rich.print(f"Agents in [bold]{discovery.filepath}[/bold]:\n")
+    if verbose:
+        for agent in discovery.agents.values():
+            rich.print(format_agent(agent))
+    else:
+        rich.print(format_agents_table(list(discovery.agents.values())))
 
-    rich.print(f":axe: Forgot about [bold]{profile}[/]")
+
+@cli.command()
+async def run(
+    agent: t.Annotated[
+        str,
+        cyclopts.Parameter(
+            help="The agent to run, e.g., 'my_agents.py:basic' or 'my_agents:basic'."
+        ),
+    ],
+    **args: t.Any,
+) -> None:
+    """
+    Run an agent with dynamic configuration. (Not yet implemented)
+    """
+
+    file_path: Path | None = None
+    agent_name: str | None = None
+
+    if agent is not None:
+        if ":" not in agent:
+            file_str, agent_name = agent, None
+        else:
+            file_str, agent_name = agent.split(":", 1)
+
+        if not file_str.endswith(".py"):
+            file_str += ".py"
+
+        file_path = Path(file_str)
+
+    discovered = discover_agents(file_path)
+    if not discovered.agents:
+        rich.print(f":exclamation: No agents found in '{file_path}'.")
+        return
+
+    if agent_name is None:
+        if len(discovered.agents) > 1:
+            rich.print(
+                f"[yellow]Warning:[/yellow] Multiple agents found. Defaulting to the first one: '{next(iter(discovered.agents.keys()))}'."
+            )
+        agent_name = next(iter(discovered.agents.keys()))
+
+    if agent_name not in discovered.agents:
+        rich.print(f":exclamation: Agent '{agent_name}' not found in '{file_path}'.")
+        rich.print(f"Available agents are: {', '.join(discovered.agents.keys())}")
+        return
+
+    agent_blueprint = discovered.agents[agent_name]
+
+    config_model = generate_config_model(agent_blueprint)
+    config_parameter = cyclopts.Parameter(name="*")(config_model)
+
+    async def agent_run(config: t.Any) -> None:
+        print(config)
+
+    agent_run.__annotations__["config"] = config_parameter
+
+    agent_cli = cyclopts.App(help=f"Run the '{agent}' agent.", help_on_error=True)
+    agent_cli.default(agent_run)
+
+    print(args)
+    command, bound = agent_cli.parse_args(list(args))
+    await command(*bound.args, **bound.kwargs)

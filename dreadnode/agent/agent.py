@@ -1,7 +1,7 @@
 import typing as t
 from contextlib import asynccontextmanager
 
-from pydantic import ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from rigging import get_generator
 from rigging.caching import CacheMode, apply_cache_mode_to_messages
 from rigging.chat import Chat
@@ -17,19 +17,28 @@ from rigging.transform import (
     tools_to_json_with_tag_transform,
 )
 
+from dreadnode.agent.configurable import Configurable
 from dreadnode.agent.events import AgentStalled, Event
 from dreadnode.agent.hooks.base import retry_with_feedback
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
-from dreadnode.agent.runnable import Runnable
 from dreadnode.agent.stop import StopCondition, StopNever
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.types import Message, Tool
 from dreadnode.util import get_callable_name, shorten_string
 
 
-class Agent(Runnable):
+class Agent(
+    BaseModel,
+    Configurable,
+    test=["model", "instructions", "max_steps", "tool_mode", "caching"],
+):
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str
+    """The name of the agent."""
+    description: str = ""
+    """A brief description of the agent's purpose."""
 
     model: str | None = None
     """Inference model (rigging generator identifier)."""
@@ -41,14 +50,13 @@ class Agent(Runnable):
     """The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto"."""
     caching: CacheMode | None = Field(None, repr=False)
     """How to handle cache_control entries on inference messages."""
-    stop_conditions: list[StopCondition] = Field(default_factory=list)
-    """The logical condition for successfully stopping a run."""
     max_steps: int = 10
     """The maximum number of steps (generation + tool calls) the agent can take before stopping."""
+
+    stop_conditions: list[StopCondition] = Field(default_factory=list)
+    """The logical condition for successfully stopping a run."""
     hooks: list[Hook] = Field(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the agent's lifecycle."""
-    thread: Thread = Field(default_factory=lambda: Thread())
-    """The default thread for the agent to run in if not otherwise supplied."""
 
     _generator: Generator | None = PrivateAttr(None, init=False)
 
@@ -197,10 +205,15 @@ class Agent(Runnable):
         *,
         thread: Thread | None = None,
     ) -> AgentResult:
-        thread = thread or self.thread
+        thread = thread or Thread()
         return await thread.run(
             self, user_input, commit="always" if thread == self.thread else "on-success"
         )
+
+
+thread = Thread()
+agent.run(thread)
+agent.run(thread)
 
 
 class TaskAgent(Agent):
@@ -227,3 +240,19 @@ class TaskAgent(Agent):
                 feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
             ),
         )
+
+
+class MyAgent(TaskAgent):
+    @entrypoint
+    def run_with_args(self, arg1: str, arg2: int) -> Summary:
+        prompt = "..."
+        return prompt
+
+    @entrypoint
+    async def run_async_with_args(self, arg1: str, arg2: int) -> Summary:
+        prompt = "..."
+        return prompt
+
+
+MyAgent.as_kickoff(entrpoints=["run_with_args"])
+MyAgent.run_with_args.as_kickoff()

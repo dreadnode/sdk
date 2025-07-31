@@ -1,5 +1,6 @@
 import typing as t
 
+from dreadnode.agent.configurable import configurable
 from dreadnode.agent.reactions import RetryWithFeedback
 
 if t.TYPE_CHECKING:
@@ -17,6 +18,7 @@ class Hook(t.Protocol):
     ) -> "Reaction | None": ...
 
 
+@configurable(["feedback"])
 def retry_with_feedback(
     event_type: "type[Event] | t.Callable[[Event], bool]", feedback: str
 ) -> "Hook":
@@ -31,7 +33,7 @@ def retry_with_feedback(
         A hook that provides feedback when the event occurs.
     """
 
-    async def _hook(event: "Event") -> "Reaction | None":
+    async def retry_with_feedback(event: "Event") -> "Reaction | None":
         if isinstance(event_type, type) and not isinstance(event, event_type):
             return None
 
@@ -40,4 +42,4 @@ def retry_with_feedback(
 
         return RetryWithFeedback(feedback=feedback)
 
-    return _hook
+    return retry_with_feedback

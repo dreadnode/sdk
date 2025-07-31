@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import httpx
 import pandas as pd
+from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
 
@@ -37,7 +38,6 @@ from dreadnode.api.util import (
     process_task,
 )
 from dreadnode.constants import DEFAULT_MAX_POLL_TIME, DEFAULT_POLL_INTERVAL
-from dreadnode.util import logger
 from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
@@ -305,9 +305,7 @@ class ApiClient:
     TraceFormat = t.Literal["tree", "flat"]
 
     @t.overload
-    def get_run_tasks(
-        self, run: str | ULID, *, format: t.Literal["tree"]
-    ) -> list[TaskTree]: ...
+    def get_run_tasks(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TaskTree]: ...
 
     @t.overload
     def get_run_tasks(
@@ -335,9 +333,7 @@ class ApiClient:
         return tasks if format == "flat" else convert_flat_tasks_to_tree(tasks)
 
     @t.overload
-    def get_run_trace(
-        self, run: str | ULID, *, format: t.Literal["tree"]
-    ) -> list[TraceTree]: ...
+    def get_run_trace(self, run: str | ULID, *, format: t.Literal["tree"]) -> list[TraceTree]: ...
 
     @t.overload
     def get_run_trace(

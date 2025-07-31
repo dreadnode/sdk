@@ -12,8 +12,10 @@ from dreadnode.util import time_to
 cli = cyclopts.App(name="profile", help="Manage server profiles")
 
 
-@cli.command(name=["show", "list"], help="List all server profiles")
+@cli.command(name=["show", "list", "ls"])
 def show() -> None:
+    """List all configured server profiles."""
+
     config = UserConfig.read()
     if not config.servers:
         rich.print(":exclamation: No server profiles are configured")
@@ -44,12 +46,11 @@ def show() -> None:
     rich.print(table)
 
 
-@cli.command(help="Set the active server profile")
+@cli.command()
 def switch(
-    profile: t.Annotated[
-        str | None, cyclopts.Parameter(help="Profile to switch to")
-    ] = None,
+    profile: t.Annotated[str | None, cyclopts.Parameter(help="Profile to switch to")] = None,
 ) -> None:
+    """Set the active server profile"""
     config = UserConfig.read()
 
     if not config.servers:
@@ -88,12 +89,11 @@ def switch(
     rich.print()
 
 
-@cli.command(help="Remove a server profile")
+@cli.command()
 def forget(
-    profile: t.Annotated[
-        str, cyclopts.Parameter(help="Profile of the server to remove")
-    ],
+    profile: t.Annotated[str, cyclopts.Parameter(help="Profile of the server to remove")],
 ) -> None:
+    """Remove a server profile from the configuration."""
     config = UserConfig.read()
     if profile not in config.servers:
         rich.print(f":exclamation: Profile [bold]{profile}[/] does not exist")

@@ -1,14 +1,14 @@
 import contextlib
 import typing as t
 
+from dreadnode.agent.configurable import configurable
 from dreadnode.agent.events import AgentError, Event, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
-from dreadnode.agent.types import Message
+from dreadnode.agent.types import Generator, Message
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.hooks.base import Hook
-    from dreadnode.agent.types import Generator
 
 # Best-effort match for some common error patterns
 CONTEXT_LENGTH_ERROR_PATTERNS = [
@@ -43,6 +43,7 @@ def _get_last_input_tokens(event: Event) -> int:
     return last_generation_event.usage.input_tokens if last_generation_event.usage else 0
 
 
+@configurable(["max_tokens"])
 def summarize_when_long(
     model: "str | Generator | None" = None,
     *,
@@ -65,7 +66,10 @@ def summarize_when_long(
         min_messages_to_keep: The minimum number of messages to retain after summarization (default is 5).
     """
 
-    async def _hook(event: Event) -> Reaction | None:
+    if min_messages_to_keep < 2:
+        raise ValueError("min_messages_to_keep must be at least 2.")
+
+    async def summarize_when_long(event: Event) -> Reaction | None:
         should_summarize = False
 
         # Proactive check using the last known token count
@@ -97,13 +101,32 @@ def summarize_when_long(
             messages.pop(0) if messages and messages[0].role == "system" else None
         )
 
-        # Preserve the most recent messages (min_messages_to_keep) to maintain context.
-        summarize_until_index = len(messages) - min_messages_to_keep
-        if summarize_until_index <= 0:
-            return None  # Not enough messages in the "summarizable" part of the history.
+        # Find the best point to summarize by walking the message list once.
+        # A boundary is valid after a simple assistant message or a finished tool block.
+        best_summarize_boundary = 0
+        for i, message in enumerate(messages):
+            # If the remaining messages are less than or equal to our minimum, we can't slice any further.
+            if len(messages) - i <= min_messages_to_keep:
+                break
 
-        messages_to_summarize = messages[:summarize_until_index]
-        messages_to_keep = messages[summarize_until_index:]
+            # Condition 1: The message is an assistant response without tool calls.
+            is_simple_assistant = message.role == "assistant" and not getattr(
+                message, "tool_calls", None
+            )
+
+            # Condition 2: The message is the last in a block of tool responses.
+            is_last_tool_in_block = message.role == "tool" and (
+                i + 1 == len(messages) or messages[i + 1].role != "tool"
+            )
+
+            if is_simple_assistant or is_last_tool_in_block:
+                best_summarize_boundary = i + 1
+
+        if best_summarize_boundary == 0:
+            return None  # No valid slice point was found.
+
+        messages_to_summarize = messages[:best_summarize_boundary]
+        messages_to_keep = messages[best_summarize_boundary:]
 
         if not messages_to_summarize:
             return None
@@ -130,4 +153,4 @@ def summarize_when_long(
             else Retry(messages=new_messages)
         )
 
-    return _hook
+    return summarize_when_long
