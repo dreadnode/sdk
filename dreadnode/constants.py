@@ -58,4 +58,4 @@ USER_CONFIG_PATH = pathlib.Path(
 )
 
 # Default values for the file system credential management
-FS_CREDENTIAL_REFRESH_BUFFER = 300  # 5 minutes in seconds
+FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes in seconds

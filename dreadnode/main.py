@@ -21,7 +21,6 @@ from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from s3fs import S3FileSystem  # type: ignore [import-untyped]
 
 from dreadnode.api.client import ApiClient
 from dreadnode.config import UserConfig
@@ -35,8 +34,8 @@ from dreadnode.constants import (
     ENV_PROJECT,
     ENV_SERVER,
     ENV_SERVER_URL,
-    FS_CREDENTIAL_REFRESH_BUFFER,
 )
+from dreadnode.credential_manager import CredentialManager
 from dreadnode.metric import (
     Metric,
     MetricAggMode,
@@ -65,7 +64,7 @@ from dreadnode.types import (
     Inherited,
     JsonValue,
 )
-from dreadnode.util import clean_str, handle_internal_errors, logger, resolve_endpoint
+from dreadnode.util import clean_str, handle_internal_errors
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -73,8 +72,6 @@ if t.TYPE_CHECKING:
     from opentelemetry.sdk.metrics.export import MetricReader
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
-
-    from dreadnode.api.models import UserDataCredentials
 
 
 ToObject = t.Literal["task-or-run", "run"]
@@ -132,7 +129,7 @@ class Dreadnode:
         self.otel_scope = otel_scope
 
         self._api: ApiClient | None = None
-
+        self._credential_manager: CredentialManager | None = None
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
 
@@ -140,8 +137,6 @@ class Dreadnode:
         self._fs_prefix: str = ".dreadnode/storage/"
 
         self._initialized = False
-        self._credentials: UserDataCredentials | None = None
-        self._credentials_expiry: datetime | None = None
 
     def _get_profile_server(self, profile: str | None = None) -> str | None:
         with contextlib.suppress(Exception):
@@ -352,19 +347,13 @@ class Dreadnode:
             #         )
             #     )
             # )
-            self._credentials = self._api.get_user_data_credentials()
-            self._credentials_expiry = self._credentials.expiration
-            resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
-            self._fs = S3FileSystem(
-                key=self._credentials.access_key_id,
-                secret=self._credentials.secret_access_key,
-                token=self._credentials.session_token,
-                client_kwargs={
-                    "endpoint_url": resolved_endpoint,
-                    "region_name": self._credentials.region,
-                },
+            self._credential_manager = CredentialManager(
+                credential_fetcher=lambda: self._api.get_user_data_credentials()
             )
-            self._fs_prefix = f"{self._credentials.bucket}/{self._credentials.prefix}/"
+            self._credential_manager.initialize()
+
+            self._fs = self._credential_manager.get_filesystem()
+            self._fs_prefix = self._credential_manager.get_prefix()
 
         self._logfire = logfire.configure(
             local=not self.is_default,
@@ -410,43 +399,6 @@ class Dreadnode:
             raise RuntimeError("API is not available without a server configuration")
 
         return self._api
-
-    def _refresh_storage_credentials(self) -> bool:
-        """Refresh storage credentials if they are about to expire."""
-        if not self._api or not self._credentials:
-            return False
-
-        now = datetime.now(timezone.utc)
-
-        if (
-            self._credentials_expiry is None
-            or (self._credentials_expiry - now).total_seconds() < FS_CREDENTIAL_REFRESH_BUFFER
-        ):
-            try:
-                logger.info("Refreshing storage credentials")
-                self._credentials = self._api.get_user_data_credentials()
-                self._credentials_expiry = self._credentials.expiration
-
-                resolved_endpoint = resolve_endpoint(self._credentials.endpoint)
-                self._fs = S3FileSystem(
-                    key=self._credentials.access_key_id,
-                    secret=self._credentials.secret_access_key,
-                    token=self._credentials.session_token,
-                    client_kwargs={
-                        "endpoint_url": resolved_endpoint,
-                        "region_name": self._credentials.region,
-                    },
-                )
-                logger.info(
-                    f"Storage credentials refreshed, valid until {self._credentials_expiry}"
-                )
-                return True  # noqa: TRY300
-
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"Failed to refresh storage credentials: {e}")
-                return False
-
-        return True
 
     def _get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
         return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
@@ -817,10 +769,8 @@ class Dreadnode:
             tracer=self._get_tracer(),
             params=params,
             tags=tags,
-            file_system=self._fs,
-            prefix_path=self._fs_prefix,
+            credential_manager=self._credential_manager,  # type: ignore[arg-type]
             autolog=autolog,
-            credential_refresher=self._refresh_storage_credentials if self._credentials else None,
         )
 
     def get_run_context(self) -> RunContext:
@@ -865,9 +815,7 @@ class Dreadnode:
         return RunSpan.from_context(
             context=run_context,
             tracer=self._get_tracer(),
-            file_system=self._fs,
-            prefix_path=self._fs_prefix,
-            credential_refresher=self._refresh_storage_credentials if self._credentials else None,
+            credential_manager=self._credential_manager,  # type: ignore[arg-type]
         )
 
     def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
