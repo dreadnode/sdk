@@ -253,11 +253,16 @@ class Dreadnode:
         self.project = project or os.environ.get(ENV_PROJECT)
         self.service_name = service_name
         self.service_version = service_version
-        self.console = console or os.environ.get(ENV_CONSOLE, "true").lower() in [
-            "true",
-            "1",
-            "yes",
-        ]
+        self.console = (
+            console
+            if console is not None
+            else os.environ.get(ENV_CONSOLE, "true").lower()
+            in [
+                "true",
+                "1",
+                "yes",
+            ]
+        )
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
 
@@ -598,7 +603,7 @@ class Dreadnode:
             )
 
             _name = name or func_name
-            _label = label or func_name
+            _label = label or _name
 
             # conform our label for sanity
             _label = clean_str(_label)
@@ -1435,7 +1440,7 @@ class Dreadnode:
     def log_outputs(
         self,
         to: ToObject = "task-or-run",
-        **outputs: JsonValue,
+        **outputs: t.Any,
     ) -> None:
         """
         Log multiple outputs to the current task or run.

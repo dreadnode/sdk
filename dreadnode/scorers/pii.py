@@ -43,7 +43,6 @@ def detect_pii(
     Args:
         types: A sequence of PII types to search for: "email", "phone", "ip_address", or "ssn".
         extra_patterns: An optional list of regex strings to add to the default PII patterns.
-        invert: Invert the score (1.0 for no PII, 0.0 for PII detected).
         name: Name of the scorer
     """
     default_patterns = {
