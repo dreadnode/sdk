@@ -347,13 +347,15 @@ class Dreadnode:
             #         )
             #     )
             # )
-            self._credential_manager = CredentialManager(
-                credential_fetcher=lambda: self._api.get_user_data_credentials()
-            )
-            self._credential_manager.initialize()
+            if self._api is not None:
+                api = self._api
+                self._credential_manager = CredentialManager(
+                    credential_fetcher=lambda: api.get_user_data_credentials()
+                )
+                self._credential_manager.initialize()
 
-            self._fs = self._credential_manager.get_filesystem()
-            self._fs_prefix = self._credential_manager.get_prefix()
+                self._fs = self._credential_manager.get_filesystem()
+                self._fs_prefix = self._credential_manager.get_prefix()
 
         self._logfire = logfire.configure(
             local=not self.is_default,

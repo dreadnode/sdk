@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, TypeVar
 
 from botocore.exceptions import ClientError
-from s3fs import S3FileSystem
+from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
 from dreadnode.constants import FS_CREDENTIAL_REFRESH_BUFFER
 from dreadnode.util import logger, resolve_endpoint
@@ -29,7 +29,7 @@ class CredentialManager:
         self._credential_fetcher = credential_fetcher
         self._credentials: UserDataCredentials | None = None
         self._credentials_expiry: datetime | None = None
-        self._filesystem = None
+        self._filesystem: S3FileSystem | None = None
         self._prefix = ""
 
     def initialize(self) -> None:
@@ -40,6 +40,7 @@ class CredentialManager:
         """Get current filesystem, refreshing credentials if needed."""
         if self._needs_refresh():
             self._refresh_credentials()
+        assert self._filesystem is not None  # noqa: S101
         return self._filesystem
 
     def get_prefix(self) -> str:
