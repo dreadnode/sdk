@@ -1,125 +1,217 @@
-<p align="center">
-    <img
-    src="https://d1lppblt9t2x15.cloudfront.net/logos/5714928f3cdc09503751580cffbe8d02.png"
-    alt="Logo"
-    align="center"
-    width="144px"
-    height="144px"
-    />
-</p>
+# Python Project Template 🐍
 
-<h3 align="center">
-Dreadnode Strikes SDK
-</h3>
+<div align="center">
 
-<h4 align="center">
-    <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/dreadnode">
-    <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/dreadnode">
-    <img alt="GitHub License" src="https://img.shields.io/github/license/dreadnode/sdk">
-    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/tests.yaml">
-    <img alt="Pre-Commit" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/pre-commit.yaml">
-    <img alt="Renovate" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/renovate.yaml">
-</h4>
+<img
+  src="https://d1lppblt9t2x15.cloudfront.net/logos/5714928f3cdc09503751580cffbe8d02.png"
+  alt="Logo"
+  align="center"
+  width="144px"
+  height="144px"
+/>
 
-</br>
+**A Modern Python Project Scaffold**
 
-Strikes is a platform for building, experimenting with, and evaluating AI security agent code.
+_... with batteries included_ 🔋
 
-- **Experiment + Tasking + Observability** in a single place that's lightweight and scales.
-- **Track your data** with parameters, inputs, and outputs all connected to your tasks.
-- **Log your artifacts** — data, models, files, and folders — to track data of your Dreadnode runs, enabling easy reuse and reproducibility.
-- **Measure everything** with metrics throughout your code and anywhere you need them.
-- **Scale your code** from a single run to thousands.
+</div>
 
-```python
-import dreadnode as dn
-import rigging as rg
+<!-- BEGIN_AUTO_BADGES -->
+<div align="center">
 
-from .tools import reversing_tools
+[![Pre-Commit](https://github.com/dreadnode/python-template/actions/workflows/pre-commit.yaml/badge.svg)](https://github.com/dreadnode/python-template/actions/workflows/pre-commit.yaml)
+[![Renovate](https://github.com/dreadnode/python-template/actions/workflows/renovate.yaml/badge.svg)](https://github.com/dreadnode/python-template/actions/workflows/renovate.yaml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-dn.configure()
+</div>
+<!-- END_AUTO_BADGES -->
 
-@dataclass
-class Finding:
-    name: str
-    severity: str
-    description: str
-    exploit_code: str
+---
 
-@dn.scorer(name="Score Finding")
-async def score_finding(finding: Finding) -> float:
-    if finding.severity == "critical":
-        return 1.0
-    elif finding.severity == "high":
-        return 0.8
-    else:
-        return 0.2
+- [Python Project Template 🐍](#python-project-template-)
+  - [🚀 Quick Start](#-quick-start)
+  - [📦 What's Included](#-whats-included)
+  - [📁 Project Structure](#-project-structure)
+  - [🛠️ Development](#️-development)
+    - [Prerequisites](#prerequisites)
+    - [Common Commands](#common-commands)
+    - [VSCode Integration](#vscode-integration)
+  - [📚 Documentation](#-documentation)
+    - [Using This Template](#using-this-template)
+    - [Template Development](#template-development)
+  - [🤝 Contributing](#-contributing)
+  - [📄 License](#-license)
+  - [🔐 Security](#-security)
+  - [⭐ Star History](#-star-history)
 
-@dn.task(scorers=[score_finding])
-@rg.prompt(tools=[reversing_tools])
-async def analyze_binary(binary: str) -> list[Finding]:
-    """
-    Analyze the binary for vulnerabilities.
-    """
-    ...
 
-with dn.run(tags=["reverse-engineering"]):
-    binary = "c2/downloads/service.exe"
+## 🚀 Quick Start
 
-    dn.log_params(
-        model="gpt-4",
-        temperature=0.5,
-        binary=binary
-    )
+1. Click the green `Use this template` button at the top of this page
+1. Name your repository and select options
+1. Clone your new repository:
 
-    findings = await analyze_binary(binary)
+   ```bash
+   git clone https://github.com/yourusername/your-repo-name.git
+   cd your-repo-name
+   ```
 
-    dn.log_metric("findings", len(findings))
-```
+1. Initialize with your preferred package manager:
 
-## Installation
+   ```bash
+   # Using pip
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
 
-We publish every version to PyPi:
-```bash
-pip install -U dreadnode
-```
+   # Using uv
+   uv venv --python 3.11 # Optional: specify Python version
+   source .venv/bin/activate
+   uv pip install -r requirements.txt
 
-If you want to build from source:
+   # Using poetry
+   poetry install
+   ```
 
-```bash
+1. Set up pre-commit hooks:
 
-poetry install
-# Install with multimodal extras
-poetry install --extras multimodal
+   ```bash
+   pre-commit install
+   ```
 
-# Install with training extras
-poetry install --extras training
+## 📦 What's Included
 
-# Install with all extras
-poetry install --all-extras
-```
+- 📝 Modern `pyproject.toml` configuration
+- 🧪 Testing setup with pytest
+- 🔍 Code quality tools:
+  - Black (code formatting)
+  - Ruff (fast linting)
+  - mypy (type checking)
+  - pre-commit hooks
+- 📚 Documentation template
+- 🔄 GitHub Actions workflows
+- 🔒 Security policy template
+- 👥 CODEOWNERS template
 
-## Installation from PyPI with Optional Features
-
-For advanced media processing capabilities (audio, video, images), install the multimodal extras:
+## 📁 Project Structure
 
 ```bash
-# Multimodal support (audio, video processing)
-pip install -U "dreadnode[multimodal]"
-
-# Training support (ML model integration)
-pip install -U "dreadnode[training]"
-
-# All optional features
-pip install -U "dreadnode[all]"
+.
+├── CODEOWNERS          # Repository access control
+├── LICENSE            # Apache License 2.0
+├── README.md          # This file
+├── SECURITY.md        # Security policy
+├── Taskfile.yaml      # Task automation
+├── docs/              # Documentation
+├── examples/          # Usage examples
+├── pyproject.toml     # Python project config
+├── requirements.txt   # Dependencies
+└── tests/             # Test suite
 ```
 
-See our **[installation guide](https://docs.dreadnode.io/strikes/install)** for more options.
+## 🛠️ Development
 
-## Getting Started
+### Prerequisites
 
-Read through our **[introduction guide](https://docs.dreadnode.io/strikes/intro)** in the docs.
+- Python 3.9+
+- One of: pip, uv, or poetry
+- [pre-commit](https://pre-commit.com/)
+- [Task](https://taskfile.dev/installation/) (optional, but recommended)
+- Ruby 2.7.0+ (for pre-commit hooks)
 
-## Examples
+  ```bash
+  # Install Ruby using rbenv (recommended)
+  brew install rbenv  # or use your system's package manager
+  rbenv install 3.3.0
+  rbenv global 3.3.0
+  rbenv rehash
 
-Check out **[dreadnode/example-agents](https://github.com/dreadnode/example-agents)** to find your favorite use case.
+  # Install required Ruby gems
+  gem install rubocop-ast
+  ```
+
+### Common Commands
+
+```bash
+# Run tests
+task test  # or: pytest
+
+# Format code
+task format  # or: black .
+
+# Run linting
+task lint  # or: ruff check .
+
+# Type checking
+task types  # or: mypy .
+
+# Run all checks
+task check
+```
+
+### VSCode Integration
+
+1. Open `python.code-workspace` in VSCode
+1. Install recommended extensions when prompted
+1. Enjoy automated formatting and linting!
+
+## 📚 Documentation
+
+The project uses MkDocs for documentation with automated builds via pre-commit hooks.
+
+### Using This Template
+
+For step-by-step instructions on creating a new project using this template,
+see our [Project Setup Guide](docs/topics/project-from-template.md).
+
+### Template Development
+
+If you're contributing to the template itself:
+
+1. Set up documentation tools:
+
+   ```bash
+   pip install -r requirements.txt
+   pre-commit install
+   ```
+
+1. (Optional) Install social card dependencies:
+
+   ```bash
+   # macOS
+   brew install cairo freetype2 libffi
+
+   # Ubuntu/Debian
+   apt-get install libcairo2-dev libfreetype6-dev libffi-dev
+
+   # Then uncomment social-cards plugin in mkdocs.yaml
+   ```
+
+1. Preview documentation locally:
+
+   ```bash
+   mkdocs serve
+   ```
+
+Documentation is automatically built before each commit via pre-commit hooks.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see our [Contributing Guide](docs/contributing.md).
+
+## 📄 License
+
+This project is licensed under the Apache License 2.0 - see the
+[LICENSE](LICENSE) file for details.
+
+## 🔐 Security
+
+See our [Security Policy](SECURITY.md) for reporting vulnerabilities.
+
+## ⭐ Star History
+
+[![GitHub stars](https://img.shields.io/github/stars/dreadnode/python-template?style=social)](https://github.com/dreadnode/python-template/stargazers)
+
+By watching the repo, you can also be notified of any upcoming releases.
+
+[![Star history graph](https://api.star-history.com/svg?repos=dreadnode/python-template&type=Date)](https://star-history.com/#dreadnode/python-template&Date)

@@ -14,7 +14,6 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: ^docs/
       - id: trailing-whitespace
 
   - repo: https://github.com/rhysd/actionlint
@@ -32,7 +31,29 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        entry: codespell -q 3 -f --skip=".git,.github,README.md" -L astroid,braket,te,ROUGE,lief
+        entry: codespell -q 3 -f --skip=".git,.github,README.md" --ignore-words-list="astroid"
+
+  - repo: https://github.com/RodrigoGonzalez/check-mkdocs
+    rev: v1.2.0
+    hooks:
+      - id: check-mkdocs
+        name: check-mkdocs
+        args: ["--config", "mkdocs.yaml"]
+        additional_dependencies:
+          - mkdocs-material
+          - mkdocs-section-index
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      - id: script-must-have-extension
+        name: Ensure shell scripts end with .sh
+        types: [shell]
+      - id: shellcheck
+      - id: shfmt
+      # Configuration in .mdlrc and .hooks/linters/mdstyle.rb
+      - id: markdownlint
+        exclude: README.md
 
   # Python code security
   - repo: https://github.com/PyCQA/bandit
@@ -58,6 +79,22 @@ repos:
       - id: nbstripout
         args: [--keep-id]
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.17.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - "types-PyYAML"
+          - "types-requests"
+          - "types-setuptools"
+
   - repo: local
     hooks:
       # Ensure our GH actions are pinned to a specific hash
@@ -67,33 +104,20 @@ repos:
         language: python
         files: \.github/.*\.yml$
 
-      # Format JSON and YAML files
       - id: prettier
         name: Run prettier
         entry: .hooks/prettier.sh
         language: script
         types: [json, yaml]
 
-      # Post-merge hook to refresh dependencies
-      - id: refresh-dependencies
-        name: Refresh Dependencies
-        entry: .hooks/refresh_dependencies.sh
-        language: script
-        stages: [post-merge]
-        always_run: true
-
-      # Pre-push hook to run typing and linting
-      - id: typing-and-linting
-        name: Typing and Linting
-        entry: .hooks/typing_and_linting.sh
-        language: script
-        stages: [pre-push]
-        always_run: true
-
-      # Generate documentation
-      - id: generate-docs
-        name: Generate docs
-        entry: poetry run python .hooks/generate_docs.py
-        language: system
+      - id: generate-readme
+        name: Generate README
+        description: Updates auto-generated sections in README.md
+        entry: python scripts/generate_readme.py
+        language: python
+        files: ^(pyproject\.toml|templates/README\.md\.j2)$
         pass_filenames: false
-        always_run: true
+        require_serial: true
+        additional_dependencies:
+          - jinja2
+          - tomli>=2.0.1
