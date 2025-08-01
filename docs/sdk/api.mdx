@@ -155,7 +155,7 @@ def export_metrics(
     status: StatusFilter = "completed",
     metrics: list[str] | None = None,
     aggregations: list[MetricAggregationType] | None = None,
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """
     Exports metric data for a specific project.
 
@@ -169,6 +169,8 @@ def export_metrics(
     Returns:
         A DataFrame containing the exported metric data.
     """
+    import pandas as pd
+
     response = self.request(
         "GET",
         f"/strikes/projects/{project!s}/export/metrics",
@@ -247,7 +249,7 @@ def export_parameters(
     parameters: list[str] | None = None,
     metrics: list[str] | None = None,
     aggregations: list[MetricAggregationType] | None = None,
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """
     Exports parameter data for a specific project.
 
@@ -262,6 +264,8 @@ def export_parameters(
     Returns:
         A DataFrame containing the exported parameter data.
     """
+    import pandas as pd
+
     response = self.request(
         "GET",
         f"/strikes/projects/{project!s}/export/parameters",
@@ -330,7 +334,7 @@ def export_runs(
     # format: ExportFormat = "parquet",
     status: StatusFilter = "completed",
     aggregations: list[MetricAggregationType] | None = None,
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """
     Exports run data for a specific project.
 
@@ -343,6 +347,8 @@ def export_runs(
     Returns:
         A DataFrame containing the exported run data.
     """
+    import pandas as pd
+
     response = self.request(
         "GET",
         f"/strikes/projects/{project!s}/export",
@@ -423,7 +429,7 @@ def export_timeseries(
     metrics: list[str] | None = None,
     time_axis: TimeAxisType = "relative",
     aggregations: list[TimeAggregationType] | None = None,
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """
     Exports timeseries data for a specific project.
 
@@ -438,6 +444,8 @@ def export_timeseries(
     Returns:
         A DataFrame containing the exported timeseries data.
     """
+    import pandas as pd
+
     response = self.request(
         "GET",
         f"/strikes/projects/{project!s}/export/timeseries",

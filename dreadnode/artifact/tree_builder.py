@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict, Union
 
+from loguru import logger
+
 from dreadnode.artifact.storage import ArtifactStorage
-from dreadnode.util import logger
 
 
 class FileNode(TypedDict):

@@ -7,8 +7,7 @@ import hashlib
 from pathlib import Path
 
 import fsspec  # type: ignore[import-untyped]
-
-from dreadnode.util import logger
+from loguru import logger
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
 

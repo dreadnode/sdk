@@ -122,11 +122,20 @@ def zero_shot_classification(
         model_name: The name of the zero-shot model from Hugging Face Hub.
         name: Name of the scorer.
     """
-    if not _TRANSFORMERS_AVAILABLE:
-        warn_at_user_stacklevel(_TRANSFORMERS_ERROR_MSG, UserWarning)
+    transformers_error_msg = (
+        "Hugging Face transformers dependency is not installed. "
+        "Please install with: pip install transformers torch"
+    )
+
+    try:
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
+            pipeline,
+        )
+    except ImportError:
+        warn_at_user_stacklevel(transformers_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _TRANSFORMERS_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": transformers_error_msg})
 
         return Scorer.from_callable(disabled_evaluate, name=name)
 
@@ -816,7 +825,7 @@ def detect_harm_with_openai(
     *,
     api_key: str | None = None,
     model: t.Literal["text-moderation-stable", "text-moderation-latest"] = "text-moderation-stable",
-    client: openai.AsyncOpenAI | None = None,
+    client: "openai.AsyncOpenAI | None" = None,
     name: str = "openai_harm",
 ) -> "Scorer[t.Any]":
     """
@@ -837,6 +846,7 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
+    import openai
 
     async def evaluate(data: t.Any) -> Metric:
         text = str(data)
@@ -1800,12 +1810,18 @@ def detect_pii_with_presidio(
         invert: Invert the score (1.0 for no PII, 0.0 for PII detected).
         name: Name of the scorer.
     """
+    presidio_import_error_msg = (
+        "Presidio dependencies are not installed. "
+        "Please install them with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
+    )
 
-    if not _PRESIDIO_AVAILABLE:
-        warn_at_user_stacklevel(_PRESIDIO_ERROR_MSG, UserWarning)
+    try:
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
+    except ImportError:
+        warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _PRESIDIO_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": presidio_import_error_msg})
 
         return Scorer.from_callable(disabled_evaluate, name=name)
 

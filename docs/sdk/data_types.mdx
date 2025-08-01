@@ -72,11 +72,7 @@ def __init__(
         caption: Optional caption for the audio
         format: Optional format to use (default is wav for numpy arrays)
     """
-    if sf is None:
-        raise ImportError(
-            "Audio processing requires optional dependencies. "
-            "Install with: pip install dreadnode[multimodal]"
-        )
+    check_imports()
     self._data = data
     self._sample_rate = sample_rate
     self._caption = caption
@@ -211,10 +207,7 @@ def __init__(
         caption: Optional caption for the image
         format: Optional format to use when saving (png, jpg, etc.)
     """
-    if PILImage is None:
-        raise ImportError(
-            "Image processing requires PIL (Pillow). Install with: pip install dreadnode[multimodal]"
-        )
+    check_imports()
     self._data = data
     self._mode = mode
     self._caption = caption
@@ -650,6 +643,13 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     Returns:
         A tuple of (video_bytes, metadata_dict)
     """
+    import numpy as np  # type: ignore[import,unused-ignore]
+
+    try:
+        from moviepy.video.VideoClip import VideoClip  # type: ignore[import,unused-ignore]
+    except ImportError:
+        VideoClip = None  # noqa: N806
+
     if isinstance(self._data, (str, Path)) and Path(self._data).exists():
         return self._process_file_path()
     if isinstance(self._data, bytes):

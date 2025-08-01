@@ -19,7 +19,6 @@ from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from s3fs import S3FileSystem  # type: ignore [import-untyped]
 
 from dreadnode.api.client import ApiClient
 from dreadnode.config import UserConfig
@@ -269,9 +268,7 @@ class Dreadnode:
         # Log config information for clarity
         if self.server or self.token or self.local_dir:
             destination = self.server or DEFAULT_SERVER_URL or "local storage"
-            rich.print(
-                f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source})"
-            )
+            rich.print(f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source})")
 
         # Warn the user if the profile didn't resolve
         elif active_profile and not (self.server or self.token):
@@ -287,6 +284,8 @@ class Dreadnode:
 
         This method is called automatically when you call `configure()`.
         """
+        from s3fs import S3FileSystem  # type: ignore [import-untyped]
+
         if self._initialized:
             return
 
@@ -631,9 +630,7 @@ class Dreadnode:
                 attributes=_attributes,
                 func=t.cast("t.Callable[P, R]", func),
                 scorers=[
-                    scorer
-                    if isinstance(scorer, Scorer)
-                    else Scorer.from_callable(scorer)
+                    scorer if isinstance(scorer, Scorer) else Scorer.from_callable(scorer)
                     for scorer in scorers or []
                 ],
                 tags=list(tags or []),

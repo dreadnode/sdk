@@ -6,23 +6,9 @@ from dreadnode.scorers.contains import contains
 from dreadnode.util import warn_at_user_stacklevel
 
 if t.TYPE_CHECKING:
-    from dreadnode.types import JsonDict
-
-_PRESIDIO_AVAILABLE = False
-_PRESIDIO_ERROR_MSG = (
-    "Presidio dependencies are not installed. "
-    "Please install them with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
-)
-
-try:
     from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found,unused-ignore]
-    from presidio_analyzer.nlp_engine import (  # type: ignore[import-not-found,unused-ignore]
-        NlpEngineProvider,
-    )
 
-    _PRESIDIO_AVAILABLE = True
-except ImportError:
-    pass
+    from dreadnode.types import JsonDict
 
 
 def detect_pii(
@@ -78,6 +64,9 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
 
+    from presidio_analyzer import AnalyzerEngine
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+
     if g_analyzer_engine is None:
         provider = NlpEngineProvider(
             nlp_configuration={
@@ -113,12 +102,18 @@ def detect_pii_with_presidio(
         invert: Invert the score (1.0 for no PII, 0.0 for PII detected).
         name: Name of the scorer.
     """
+    presidio_import_error_msg = (
+        "Presidio dependencies are not installed. "
+        "Please install them with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
+    )
 
-    if not _PRESIDIO_AVAILABLE:
-        warn_at_user_stacklevel(_PRESIDIO_ERROR_MSG, UserWarning)
+    try:
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
+    except ImportError:
+        warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _PRESIDIO_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": presidio_import_error_msg})
 
         return Scorer.from_callable(disabled_evaluate, name=name)
 

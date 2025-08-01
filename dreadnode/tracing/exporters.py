@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import IO
 
 from google.protobuf import json_format
+from loguru import logger
 from opentelemetry.exporter.otlp.proto.common._log_encoder import encode_logs
 from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
 from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
@@ -17,8 +18,6 @@ from opentelemetry.sdk.metrics.export import (
 )
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
-
-from dreadnode.util import logger
 
 
 @dataclass

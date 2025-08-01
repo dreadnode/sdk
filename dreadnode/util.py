@@ -45,8 +45,7 @@ import dreadnode  # noqa: E402
 warn_at_user_stacklevel = _warn_at_user_stacklevel
 
 SysExcInfo = (
-    tuple[type[BaseException], BaseException, TracebackType | None]
-    | tuple[None, None, None]
+    tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None]
 )
 """
 The return type of sys.exc_info(): exc_type, exc_val, exc_tb.
@@ -214,9 +213,7 @@ async def join_generators(
         *generators: The asynchronous generators to join.
     """
 
-    FINISHED = (
-        object()
-    )  # sentinel object to indicate a generator has finished  # noqa: N806
+    FINISHED = object()  # sentinel object to indicate a generator has finished
     queue = asyncio.Queue[T | object | Exception](maxsize=1)
 
     async def _queue_generator(
@@ -256,6 +253,22 @@ async def join_generators(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+# List utilities
+
+
+def flatten_list(nested_list: t.Iterable[t.Iterable[t.Any] | t.Any]) -> list[t.Any]:
+    """
+    Recursively flatten a nested list into a single list.
+    """
+    flattened = []
+    for item in nested_list:
+        if isinstance(item, list):
+            flattened.extend(flatten_list(item))
+        else:
+            flattened.append(item)
+    return flattened
+
+
 # Logging
 
 
@@ -269,9 +282,7 @@ def log_internal_error() -> None:
     if reraise:
         raise  # noqa: PLE0704
 
-    with (
-        suppress_instrumentation()
-    ):  # prevent infinite recursion from the logging integration
+    with suppress_instrumentation():  # prevent infinite recursion from the logging integration
         logger.exception(
             "Caught an error in Dreadnode. This will not prevent code from running, but you may lose data.",
             exc_info=_internal_error_exc_info(),
@@ -449,12 +460,8 @@ def resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
 
     for endpoint in strategies:
         if test_connection(endpoint):
-            logger.warning(
-                f"Resolved Docker service endpoint '{parsed.hostname}' to '{endpoint}'."  # noqa: G004
-            )
+            logger.warning(f"Resolved Docker service endpoint '{parsed.hostname}' to '{endpoint}'.")
             return str(endpoint)
 
     # If nothing works, return original and let it fail with a helpful error
-    raise RuntimeError(
-        f"Failed to connect to the Dreadnode Artifact storage at {endpoint}."
-    )
+    raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")
