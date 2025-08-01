@@ -1,3 +1,4 @@
+import inspect
 import typing as t
 
 from dreadnode.agent.configurable import configurable
@@ -37,7 +38,7 @@ def retry_with_feedback(
         if isinstance(event_type, type) and not isinstance(event, event_type):
             return None
 
-        if callable(event_type) and not event_type(event):  # type: ignore[arg-type,call-arg]
+        if inspect.isfunction(event_type) and not event_type(event):
             return None
 
         return RetryWithFeedback(feedback=feedback)

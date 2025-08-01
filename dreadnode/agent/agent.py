@@ -1,7 +1,8 @@
+import inspect
 import typing as t
 from contextlib import asynccontextmanager
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 from rigging import get_generator
 from rigging.caching import CacheMode, apply_cache_mode_to_messages
 from rigging.chat import Chat
@@ -17,23 +18,21 @@ from rigging.transform import (
     tools_to_json_with_tag_transform,
 )
 
-from dreadnode.agent.configurable import Configurable
+from dreadnode.agent.configurable import configurable
 from dreadnode.agent.events import AgentStalled, Event
 from dreadnode.agent.hooks.base import retry_with_feedback
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
 from dreadnode.agent.stop import StopCondition, StopNever
 from dreadnode.agent.thread import Thread
-from dreadnode.agent.types import Message, Tool
-from dreadnode.util import get_callable_name, shorten_string
+from dreadnode.agent.tools.base import AnyTool, Tool, Toolset
+from dreadnode.agent.types import Message
+from dreadnode.util import flatten_list, get_callable_name, shorten_string
 
 
-class Agent(
-    BaseModel,
-    Configurable,
-    test=["model", "instructions", "max_steps", "tool_mode", "caching"],
-):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+@configurable(["model", "instructions", "max_steps", "tool_mode", "caching"])
+class Agent(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
     name: str
     """The name of the agent."""
@@ -44,21 +43,48 @@ class Agent(
     """Inference model (rigging generator identifier)."""
     instructions: str | None = None
     """The agent's core instructions."""
-    tools: list[Tool[..., t.Any]] = Field(default_factory=list)
+    tools: list[AnyTool | Toolset] = []
     """Tools the agent can use."""
-    tool_mode: ToolMode = Field("auto", repr=False)
+    tool_mode: t.Annotated[ToolMode, Field(repr=False)] = "auto"
     """The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto"."""
-    caching: CacheMode | None = Field(None, repr=False)
+    caching: t.Annotated[CacheMode | None, Field(repr=False)] = None
     """How to handle cache_control entries on inference messages."""
     max_steps: int = 10
     """The maximum number of steps (generation + tool calls) the agent can take before stopping."""
 
-    stop_conditions: list[StopCondition] = Field(default_factory=list)
+    stop_conditions: list[StopCondition] = []
     """The logical condition for successfully stopping a run."""
-    hooks: list[Hook] = Field(default_factory=list, exclude=True, repr=False)
+    hooks: t.Annotated[list[Hook], Field(exclude=True, repr=False)] = []
     """Hooks to run at various points in the agent's lifecycle."""
+    thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
+    """Stateful thread for this agent, for when otherwise not specified during execution."""
 
     _generator: Generator | None = PrivateAttr(None, init=False)
+
+    @field_validator("tools", mode="before")
+    @classmethod
+    def validate_tools(cls, value: t.Any) -> t.Any:
+        tools: list[AnyTool | Toolset] = []
+        for tool in flatten_list(list(value)):
+            if isinstance(tool, Toolset):
+                tools.append(tool)
+                continue
+
+            interior_tools = [
+                val
+                for _, val in inspect.getmembers(
+                    tool,
+                    predicate=lambda x: isinstance(x, Tool),
+                )
+            ]
+            if interior_tools:
+                tools.extend(interior_tools)
+            elif not isinstance(tool, Tool):
+                tools.append(Tool.from_callable(tool))
+            else:
+                tools.append(tool)
+
+        return tools
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)
@@ -92,7 +118,7 @@ class Agent(
             match self.tool_mode:
                 case "xml":
                     transforms.append(
-                        make_tools_to_xml_transform(self.tools, add_tool_stop_token=True)
+                        make_tools_to_xml_transform(self.all_tools, add_tool_stop_token=True)
                     )
                 case "json-in-xml":
                     transforms.append(tools_to_json_in_xml_transform)
@@ -102,6 +128,17 @@ class Agent(
                     transforms.append(tools_to_json_transform)
 
         return transforms
+
+    @property
+    def all_tools(self) -> list[AnyTool]:
+        """Returns a flattened list of all available tools."""
+        flat_tools: list[AnyTool] = []
+        for item in self.tools:
+            if isinstance(item, Toolset):
+                flat_tools.extend(item.get_tools())
+            elif isinstance(item, Tool):
+                flat_tools.append(item)
+        return flat_tools
 
     def get_prompt(self) -> str:
         prompt = "You are an agent that can use tools to assist with tasks."
@@ -136,7 +173,7 @@ class Agent(
 
         messages = list(messages)  # Ensure we have a mutable list
         params = GenerateParams(
-            tools=[tool.api_definition for tool in self.tools],
+            tools=[tool.api_definition for tool in self.all_tools],
         )
         messages = inject_system_content(messages, self.get_prompt())
 
@@ -211,15 +248,14 @@ class Agent(
         )
 
 
-thread = Thread()
-agent.run(thread)
-agent.run(thread)
-
-
 class TaskAgent(Agent):
     """
     A specialized agent for running tasks with a focus on completion and reporting.
     It extends the base Agent class to provide task-specific functionality.
+
+    - Automatically includes the `finish_task` and `update_todo` tools.
+    - Installs a default StopNever condition to trigger stalling behavior when no tools calls are made.
+    - Uses the `AgentStalled` event to handle stalled tasks by pushing the model to continue or finish the task.
     """
 
     def model_post_init(self, _: t.Any) -> None:
@@ -240,19 +276,3 @@ class TaskAgent(Agent):
                 feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
             ),
         )
-
-
-class MyAgent(TaskAgent):
-    @entrypoint
-    def run_with_args(self, arg1: str, arg2: int) -> Summary:
-        prompt = "..."
-        return prompt
-
-    @entrypoint
-    async def run_async_with_args(self, arg1: str, arg2: int) -> Summary:
-        prompt = "..."
-        return prompt
-
-
-MyAgent.as_kickoff(entrpoints=["run_with_args"])
-MyAgent.run_with_args.as_kickoff()

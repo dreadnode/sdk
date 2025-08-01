@@ -26,7 +26,8 @@ class TodoItem(BaseModel):
 @tool
 def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of todo items."]) -> str:
     """
-    Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+    Use this tool to create and manage a structured task list for your current session.
+    This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
     It also helps the user understand the progress of the task and overall progress of their requests.
 
     ## When to Use This Tool
@@ -94,9 +95,14 @@ def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of to
         logger.info("Todo list cleared.")
         return "Todo list cleared."
 
-    logger.info(f"Updated todo list with {len(todos)} tasks:\n")
+    status_log = f"Updated todo list with {len(todos)} tasks:\n"
     for todo in todos:
-        logger.info(f"- [{todo.status}] {todo.content} (id: {todo.id} | priority: {todo.priority})")
+        status = (
+            "✅" if todo.status == "completed" else ("⏳" if todo.status == "in_progress" else "📌")
+        )
+        status_log += f"{status} {todo.content} (priority: {todo.priority})\n"
+
+    logger.info(status_log)
 
     return (
         f"Updated todo list with {len(todos)} tasks. "

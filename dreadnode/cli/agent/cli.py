@@ -1,14 +1,15 @@
+import contextlib
 import typing as t
 from pathlib import Path
 
 import cyclopts
 import rich
 
-from dreadnode.agent.configurable import generate_config_model
+from dreadnode.agent.configurable import generate_config_type_for_agent, hydrate_agent
 from dreadnode.cli.agent.discover import discover_agents
 from dreadnode.cli.agent.format import format_agent, format_agents_table
 
-cli = cyclopts.App("agent", help="Run and manage agents.")
+cli = cyclopts.App("agent", help="Run and manage agents.", help_flags=[])
 
 
 @cli.command(name=["list", "ls", "show"])
@@ -40,33 +41,36 @@ def show(
         rich.print(format_agents_table(list(discovery.agents.values())))
 
 
-@cli.command()
-async def run(
-    agent: t.Annotated[
-        str,
-        cyclopts.Parameter(
-            help="The agent to run, e.g., 'my_agents.py:basic' or 'my_agents:basic'."
-        ),
-    ],
-    **args: t.Any,
+@cli.command(help_flags=[])
+async def run(  # noqa: PLR0915
+    agent: str,
+    input: str,
+    *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
+    config: Path | None = None,
 ) -> None:
     """
-    Run an agent with dynamic configuration. (Not yet implemented)
+    Run an agent by name, file, or module.
+
+    - If just a file is passed, it will search for the first agent in that file ('my_agents.py').\n
+    - If just an agent name is passed, it will search for that agent in the default files ('web_enum').\n
+    - If the agent is specified with a file, it will run that specific agent in the given file ('my_agents.py:web_enum').\n
+    - If the file is not specified, it defaults to searching for main.py, agent.py, or app.py.
+
+    Args:
+        agent: The agent to run, e.g., 'my_agents.py:basic' or 'basic'.
+        input: The input to provide to the agent.
+        config: Optional path to a TOML/YAML/JSON configuration file for the agent.
     """
 
     file_path: Path | None = None
     agent_name: str | None = None
 
     if agent is not None:
-        if ":" not in agent:
-            file_str, agent_name = agent, None
-        else:
-            file_str, agent_name = agent.split(":", 1)
-
-        if not file_str.endswith(".py"):
-            file_str += ".py"
-
-        file_path = Path(file_str)
+        agent_name = agent
+        agent_as_path = Path(agent.split(":")[0]).with_suffix(".py")
+        if agent_as_path.exists():
+            file_path = agent_as_path
+            agent_name = agent.split(":", 1)[-1] if ":" in agent else None
 
     discovered = discover_agents(file_path)
     if not discovered.agents:
@@ -87,17 +91,46 @@ async def run(
 
     agent_blueprint = discovered.agents[agent_name]
 
-    config_model = generate_config_model(agent_blueprint)
-    config_parameter = cyclopts.Parameter(name="*")(config_model)
+    config_model = generate_config_type_for_agent(agent_blueprint)
+    config_parameter = cyclopts.Parameter(name="*", group=f"Agent '{agent_name}' Config")(
+        config_model
+    )
 
-    async def agent_run(config: t.Any) -> None:
-        print(config)
+    config_default = None
+    with contextlib.suppress(Exception):
+        config_default = config_model()
+        config_parameter = t.Optional[config_parameter]  # type: ignore [assignment] # noqa: UP007
 
-    agent_run.__annotations__["config"] = config_parameter
+    async def agent_cli(*, config: t.Any = config_default) -> None:
+        agent = hydrate_agent(agent_blueprint, config)
+        rich.print(f"Running agent: [bold]{agent.name}[/bold]")
+        rich.print(agent)
+        async with agent.stream(input) as stream:
+            async for event in stream:
+                rich.print(event)
+                rich.print("---")
 
-    agent_cli = cyclopts.App(help=f"Run the '{agent}' agent.", help_on_error=True)
-    agent_cli.default(agent_run)
+    agent_cli.__annotations__["config"] = config_parameter
 
-    print(args)
-    command, bound = agent_cli.parse_args(list(args))
+    agent_app = cyclopts.App(help=f"Run the '{agent}' agent.", help_on_error=True)
+    agent_app.default(agent_cli)
+
+    if config:
+        if not config.exists():
+            rich.print(f":exclamation: Configuration file '{config}' does not exist.")
+            return
+
+        if config.suffix in {".toml"}:
+            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # noqa: SLF001
+        elif config.suffix in {".yaml", ".yml"}:
+            agent_app._config = cyclopts.config.Toml(config, use_commands_as_keys=False)  # noqa: SLF001
+        elif config.suffix in {".json"}:
+            agent_app._config = cyclopts.config.Json(config, use_commands_as_keys=False)  # noqa: SLF001
+        else:
+            rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
+            return
+
+    print(tokens)
+    command, bound, unbound = agent_app.parse_args(tokens)
+    print(bound, unbound)
     await command(*bound.args, **bound.kwargs)

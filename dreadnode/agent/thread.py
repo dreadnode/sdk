@@ -206,7 +206,7 @@ class Thread(BaseModel):
 
             message: Message
             stop = False
-            tool = next((t for t in agent.tools if t.name == tool_call.name), None)
+            tool = next((t for t in agent.all_tools if t.name == tool_call.name), None)
 
             if tool is not None:
                 try:
