@@ -24,7 +24,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@8edcb1bdb4e267140fa742c62e395cd74f332709
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
     - name: Setup Python ${{ matrix.python-version }}
       uses: actions/setup-python@532b046aaf352bab5717122cc0ea52b7f12266a3
