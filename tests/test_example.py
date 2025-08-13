@@ -1,2 +1,5 @@
-def test_example() -> None:
-    assert True
+from src.example import greet
+
+
+def test_greet():
+    assert greet("World") == "Hello, World!"
