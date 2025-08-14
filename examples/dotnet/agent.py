@@ -8,6 +8,9 @@ import dreadnode
 from dreadnode.agent.agent import TaskAgent
 from dreadnode.agent.tools import (
     DotnetReversing,
+    create_proof_of_concept,
+    report_auth_material,
+    report_finding,
 )
 
 from .prompts import reversing_agent_prompt, verification_agent_prompt
@@ -73,19 +76,19 @@ async def main(*, args: Args, dn_args: DreadnodeArgs | None = None) -> None:
         instructions=reversing_agent_prompt(),
         model=random.choice(models),
         max_steps=args.max_steps,
-        tools=DotnetReversing,
+        tools=[DotnetReversing],
     )
 
-    verification_agent = TaskAgent(
+    create_poc = TaskAgent(
         name="verify_findings",
         description="A basic agent that analyzes findings and generates exploit instructions.",
         instructions=verification_agent_prompt(),
         model=random.choice(models),
         max_steps=args.max_steps,
-        tools=[],
+        tools=[create_proof_of_concept, report_auth_material, report_finding],
     )
 
     rev_results = await reversing_agent.run()
-    ver_results = await verification_agent.run(rev_results)
+    ver_results = await create_poc.run(rev_results)
 
     return ver_results
