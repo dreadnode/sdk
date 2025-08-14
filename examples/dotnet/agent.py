@@ -1,16 +1,16 @@
 import random
 import typing as t
 from dataclasses import dataclass
-from pathlib import Path
 
 import cyclopts
-import yaml
 
 import dreadnode
 from dreadnode.agent.agent import TaskAgent
 from dreadnode.agent.tools import (
     DotnetReversing,
 )
+
+from .prompts import reversing_agent_prompt, verification_agent_prompt
 
 app = cyclopts.App()
 
@@ -47,15 +47,6 @@ class DreadnodeArgs:
     """Show span information in the console"""
 
 
-def load_instructions(instructions_file: Path) -> str:
-    """
-    Load the instructions from a YAML file.
-    """
-    with Path.open(instructions_file) as file:
-        instructions = yaml.safe_load(file)
-        return instructions.get("instructions", "")
-
-
 @app.default
 async def main(*, args: Args, dn_args: DreadnodeArgs | None = None) -> None:
     dn_args = dn_args or DreadnodeArgs()
@@ -79,7 +70,7 @@ async def main(*, args: Args, dn_args: DreadnodeArgs | None = None) -> None:
     reversing_agent = TaskAgent(
         name="dotnet-reversing",
         description="A basic agent that can handle .NET reversing tasks.",
-        instructions=load_instructions(Path("examples/dotnet/prompts/reversing_agent.yml")),
+        instructions=reversing_agent_prompt(),
         model=random.choice(models),
         max_steps=args.max_steps,
         tools=DotnetReversing,
@@ -88,7 +79,7 @@ async def main(*, args: Args, dn_args: DreadnodeArgs | None = None) -> None:
     verification_agent = TaskAgent(
         name="verify_findings",
         description="A basic agent that analyzes findings and generates exploit instructions.",
-        instructions=load_instructions(Path("examples/dotnet/prompts/verification_agent.yml")),
+        instructions=verification_agent_prompt(),
         model=random.choice(models),
         max_steps=args.max_steps,
         tools=[],
