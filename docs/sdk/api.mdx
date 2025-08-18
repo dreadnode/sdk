@@ -754,7 +754,7 @@ def get_user_data_credentials(self) -> UserDataCredentials:
     Returns:
         The user data credentials object.
     """
-    response = self.request("GET", "/user-data/credentials")
+    response = self._request("GET", "/user-data/credentials")
     return UserDataCredentials(**response.json())
 ```
 

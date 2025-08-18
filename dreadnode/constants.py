@@ -56,3 +56,6 @@ USER_CONFIG_PATH = pathlib.Path(
     # allow overriding the user config file via env variable
     os.getenv("DREADNODE_USER_CONFIG_FILE") or pathlib.Path.home() / ".dreadnode" / "config"
 )
+
+# Default values for the file system credential management
+FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes in seconds

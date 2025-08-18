@@ -33,6 +33,7 @@ from dreadnode.constants import (
     ENV_SERVER,
     ENV_SERVER_URL,
 )
+from dreadnode.credential_manager import CredentialManager
 from dreadnode.metric import (
     Metric,
     MetricAggMode,
@@ -65,7 +66,6 @@ from dreadnode.util import (
     clean_str,
     get_filepath_attribute,
     handle_internal_errors,
-    resolve_endpoint,
     safe_repr,
     warn_at_user_stacklevel,
 )
@@ -133,7 +133,7 @@ class Dreadnode:
         self.otel_scope = otel_scope
 
         self._api: ApiClient | None = None
-
+        self._credential_manager: CredentialManager | None = None
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
 
@@ -257,11 +257,16 @@ class Dreadnode:
         self.project = project or os.environ.get(ENV_PROJECT)
         self.service_name = service_name
         self.service_version = service_version
-        self.console = console or os.environ.get(ENV_CONSOLE, "true").lower() in [
-            "true",
-            "1",
-            "yes",
-        ]
+        self.console = (
+            console
+            if console is not None
+            else os.environ.get(ENV_CONSOLE, "true").lower()
+            in [
+                "true",
+                "1",
+                "yes",
+            ]
+        )
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
 
@@ -284,7 +289,6 @@ class Dreadnode:
 
         This method is called automatically when you call `configure()`.
         """
-        from s3fs import S3FileSystem  # type: ignore [import-untyped]
 
         if self._initialized:
             return
@@ -353,19 +357,15 @@ class Dreadnode:
             #         )
             #     )
             # )
+            if self._api is not None:
+                api = self._api
+                self._credential_manager = CredentialManager(
+                    credential_fetcher=lambda: api.get_user_data_credentials()
+                )
+                self._credential_manager.initialize()
 
-            credentials = self._api.get_user_data_credentials()
-            resolved_endpoint = resolve_endpoint(credentials.endpoint)
-            self._fs = S3FileSystem(
-                key=credentials.access_key_id,
-                secret=credentials.secret_access_key,
-                token=credentials.session_token,
-                client_kwargs={
-                    "endpoint_url": resolved_endpoint,
-                    "region_name": credentials.region,
-                },
-            )
-            self._fs_prefix = f"{credentials.bucket}/{credentials.prefix}/"
+                self._fs = self._credential_manager.get_filesystem()
+                self._fs_prefix = self._credential_manager.get_prefix()
 
         self._logfire = logfire.configure(
             local=not self.is_default,
@@ -608,7 +608,7 @@ class Dreadnode:
             )
 
             _name = name or func_name
-            _label = label or func_name
+            _label = label or _name
 
             # conform our label for sanity
             _label = clean_str(_label)
@@ -781,8 +781,7 @@ class Dreadnode:
             tracer=self._get_tracer(),
             params=params,
             tags=tags,
-            file_system=self._fs,
-            prefix_path=self._fs_prefix,
+            credential_manager=self._credential_manager,  # type: ignore[arg-type]
             autolog=autolog,
         )
 
@@ -828,8 +827,7 @@ class Dreadnode:
         return RunSpan.from_context(
             context=run_context,
             tracer=self._get_tracer(),
-            file_system=self._fs,
-            prefix_path=self._fs_prefix,
+            credential_manager=self._credential_manager,  # type: ignore[arg-type]
         )
 
     def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
@@ -1447,7 +1445,7 @@ class Dreadnode:
     def log_outputs(
         self,
         to: ToObject = "task-or-run",
-        **outputs: JsonValue,
+        **outputs: t.Any,
     ) -> None:
         """
         Log multiple outputs to the current task or run.

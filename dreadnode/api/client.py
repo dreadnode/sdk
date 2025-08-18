@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
-from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
 
@@ -36,7 +35,11 @@ from dreadnode.api.util import (
     process_run,
     process_task,
 )
-from dreadnode.constants import DEFAULT_MAX_POLL_TIME, DEFAULT_POLL_INTERVAL
+from dreadnode.constants import (
+    DEFAULT_MAX_POLL_TIME,
+    DEFAULT_POLL_INTERVAL,
+)
+from dreadnode.util import logger
 from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
@@ -533,5 +536,5 @@ class ApiClient:
         Returns:
             The user data credentials object.
         """
-        response = self.request("GET", "/user-data/credentials")
+        response = self._request("GET", "/user-data/credentials")
         return UserDataCredentials(**response.json())

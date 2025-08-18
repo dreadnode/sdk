@@ -6,8 +6,8 @@ Provides efficient uploading of files and directories with deduplication.
 import hashlib
 from pathlib import Path
 
-import fsspec  # type: ignore[import-untyped]
-from loguru import logger
+from dreadnode.credential_manager import CredentialManager
+from dreadnode.util import logger
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
 
@@ -21,14 +21,14 @@ class ArtifactStorage:
     - Batch uploads for directories handled by fsspec
     """
 
-    def __init__(self, file_system: fsspec.AbstractFileSystem):
+    def __init__(self, credential_manager: CredentialManager):
         """
-        Initialize artifact storage with a file system and prefix path.
+        Initialize artifact storage with credential manager.
 
         Args:
-            file_system: FSSpec-compatible file system
+            credential_manager: Optional credential manager for S3 operations
         """
-        self._file_system = file_system
+        self._credential_manager: CredentialManager = credential_manager
 
     def store_file(self, file_path: Path, target_key: str) -> str:
         """
@@ -41,13 +41,19 @@ class ArtifactStorage:
         Returns:
             Full URI with protocol to the stored file
         """
-        if not self._file_system.exists(target_key):
-            self._file_system.put(str(file_path), target_key)
-            logger.debug("Artifact successfully stored at %s", target_key)
-        else:
-            logger.debug("Artifact already exists at %s, skipping upload.", target_key)
 
-        return str(self._file_system.unstrip_protocol(target_key))
+        def store_operation() -> str:
+            filesystem = self._credential_manager.get_filesystem()
+
+            if not filesystem.exists(target_key):
+                filesystem.put(str(file_path), target_key)
+                logger.info("Artifact successfully stored at %s", target_key)
+            else:
+                logger.info("Artifact already exists at %s, skipping upload.", target_key)
+
+            return str(filesystem.unstrip_protocol(target_key))
+
+        return self._credential_manager.execute_with_retry(store_operation)
 
     def batch_upload_files(self, source_paths: list[str], target_paths: list[str]) -> list[str]:
         """
@@ -63,23 +69,26 @@ class ArtifactStorage:
         if not source_paths:
             return []
 
-        logger.debug("Batch uploading %d files", len(source_paths))
+        def batch_upload_operation() -> list[str]:
+            filesystem = self._credential_manager.get_filesystem()
 
-        srcs = []
-        dsts = []
+            srcs = []
+            dsts = []
 
-        for src, dst in zip(source_paths, target_paths, strict=False):
-            if not self._file_system.exists(dst):
-                srcs.append(src)
-                dsts.append(dst)
+            for src, dst in zip(source_paths, target_paths, strict=False):
+                if not filesystem.exists(dst):
+                    srcs.append(src)
+                    dsts.append(dst)
 
-        if srcs:
-            self._file_system.put(srcs, dsts)
-            logger.debug("Batch upload completed for %d files", len(srcs))
-        else:
-            logger.debug("All files already exist, skipping upload")
+            if srcs:
+                filesystem.put(srcs, dsts)
+                logger.info("Batch upload completed for %d files", len(srcs))
+            else:
+                logger.info("All files already exist, skipping upload")
 
-        return [str(self._file_system.unstrip_protocol(target)) for target in target_paths]
+            return [str(filesystem.unstrip_protocol(target)) for target in target_paths]
+
+        return self._credential_manager.execute_with_retry(batch_upload_operation)
 
     def compute_file_hash(self, file_path: Path, stream_threshold_mb: int = 10) -> str:
         """
@@ -92,8 +101,9 @@ class ArtifactStorage:
         Returns:
             First 16 chars of SHA1 hash
         """
+
         file_size = file_path.stat().st_size
-        stream_threshold = stream_threshold_mb * 1024 * 1024  # Convert MB to bytes
+        stream_threshold = stream_threshold_mb * 1024 * 1024
 
         sha1 = hashlib.sha1()  # noqa: S324 # nosec
 
