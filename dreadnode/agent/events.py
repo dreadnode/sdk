@@ -11,7 +11,7 @@ if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
     from dreadnode.agent.reactions import Reaction
     from dreadnode.agent.result import AgentResult
-    from dreadnode.agent.thread import Thread
+    from dreadnode.agent.state import State
 
 
 EventT = t.TypeVar("EventT", bound="Event")
@@ -20,13 +20,13 @@ EventT = t.TypeVar("EventT", bound="Event")
 @dataclass
 class Event:
     agent: "Agent" = field(repr=False)
-    thread: "Thread" = field(repr=False)
+    state: "State" = field(repr=False)
     messages: "list[Message]" = field(repr=False)
     events: "list[Event]" = field(repr=False)
 
     def get_latest_event_by_type(self, event_type: type[EventT]) -> EventT | None:
         """
-        Returns the latest event of the specified type from the thread's events.
+        Returns the latest event of the specified type from the state's events.
 
         Args:
             event_type: The type of event to search for.
@@ -38,7 +38,7 @@ class Event:
 
     def get_events_by_type(self, event_type: type[EventT]) -> list[EventT]:
         """
-        Returns all events of the specified type from the thread's events.
+        Returns all events of the specified type from the state's events.
 
         Args:
             event_type: The type of event to search for.
@@ -77,6 +77,21 @@ class AgentError(Event):
 
 
 @dataclass
+class SubAgentTaskStart(Event):
+    """Fired when a Director assigns a task to a sub-agent."""
+
+    target_agent: "Agent"
+    task_input: str
+
+
+@dataclass
+class SubAgentTaskEnd(Event):
+    """Fired when a sub-agent completes a task."""
+
+    result: "AgentResult"
+
+
+@dataclass
 class ToolStart(Event):
     tool_call: ToolCall
 
@@ -111,7 +126,7 @@ def rebuild_event_models() -> None:
     from dreadnode.agent.agent import Agent  # noqa: F401
     from dreadnode.agent.reactions import Reaction  # noqa: F401
     from dreadnode.agent.result import AgentResult  # noqa: F401
-    from dreadnode.agent.thread import Thread  # noqa: F401
+    from dreadnode.agent.state import State  # noqa: F401
 
     rebuild_dataclass(Event)  # type: ignore[arg-type]
     rebuild_dataclass(AgentStart)  # type: ignore[arg-type]

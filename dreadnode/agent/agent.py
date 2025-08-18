@@ -2,7 +2,7 @@ import inspect
 import typing as t
 from contextlib import asynccontextmanager
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import ConfigDict, Field, PrivateAttr, field_validator
 from rigging import get_generator
 from rigging.caching import CacheMode, apply_cache_mode_to_messages
 from rigging.chat import Chat
@@ -23,15 +23,15 @@ from dreadnode.agent.events import AgentStalled, Event
 from dreadnode.agent.hooks.base import retry_with_feedback
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
+from dreadnode.agent.state import State
 from dreadnode.agent.stop import StopCondition, StopNever
-from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools.base import AnyTool, Tool, Toolset
 from dreadnode.agent.types import Message
 from dreadnode.util import flatten_list, get_callable_name, shorten_string
 
 
 @configurable(["model", "instructions", "max_steps", "tool_mode", "caching"])
-class Agent(BaseModel):
+class Agent(Toolset):
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
     name: str
@@ -56,8 +56,8 @@ class Agent(BaseModel):
     """The logical condition for successfully stopping a run."""
     hooks: t.Annotated[list[Hook], Field(exclude=True, repr=False)] = []
     """Hooks to run at various points in the agent's lifecycle."""
-    thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
-    """Stateful thread for this agent, for when otherwise not specified during execution."""
+    state: State = Field(default_factory=State, exclude=True, repr=False)
+    """State for this agent, for when otherwise not specified during execution."""
 
     _generator: Generator | None = PrivateAttr(None, init=False)
 
@@ -218,9 +218,9 @@ class Agent(BaseModel):
 
         return chat
 
-    def reset(self) -> Thread:
-        previous = self.thread
-        self.thread = Thread()
+    def reset(self) -> State:
+        previous = self.state
+        self.state = State()
         return previous
 
     @asynccontextmanager
@@ -228,11 +228,11 @@ class Agent(BaseModel):
         self,
         user_input: str,
         *,
-        thread: Thread | None = None,
+        state: State | None = None,
     ) -> t.AsyncIterator[t.AsyncGenerator[Event, None]]:
-        thread = thread or self.thread
-        async with thread.stream(
-            self, user_input, commit="always" if thread == self.thread else "on-success"
+        state = state or self.state
+        async with state.stream(
+            self, user_input, commit="always" if state == self.state else "on-success"
         ) as stream:
             yield stream
 
@@ -240,11 +240,11 @@ class Agent(BaseModel):
         self,
         user_input: str,
         *,
-        thread: Thread | None = None,
+        state: State | None = None,
     ) -> AgentResult:
-        thread = thread or Thread()
-        return await thread.run(
-            self, user_input, commit="always" if thread == self.thread else "on-success"
+        state = state or State()
+        return await state.run(
+            self, user_input, commit="always" if state == self.state else "on-success"
         )
 
 
@@ -276,3 +276,38 @@ class TaskAgent(Agent):
                 feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
             ),
         )
+
+
+class MultiAgent(Agent):
+    """
+    An orchestrator agent that manages a team of sub-agents (workers)
+    to accomplish complex tasks.
+    """
+
+    workers: list[Agent] = []
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._register_worker_tools()
+
+    def _register_worker_tools(self):
+        """
+        Exposes each worker as a tool for the Dispatcher to use.
+        """
+        for worker in self.workers:
+
+            async def run_worker(user_input: str) -> str:
+                # Each worker gets its own state for isolated execution
+                worker_state = State()
+                result = await worker.run(user_input, state=worker_state)
+                if result.failed:
+                    return f"Worker {worker.name} failed with error: {result.error}"
+                # We'll need a way to get a structured output
+                return str(result.messages[-1].content)
+
+            worker_tool = Tool.from_callable(
+                run_worker,
+                name=f"delegate_to_{worker.name.lower()}",
+                description=f"Delegate a task to {worker.name}: {worker.description}",
+            )
+            self.tools.append(worker_tool)

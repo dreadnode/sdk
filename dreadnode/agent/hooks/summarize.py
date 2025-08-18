@@ -34,7 +34,7 @@ def _is_context_length_error(error: Exception) -> bool:
 
 def _get_last_input_tokens(event: Event) -> int:
     """
-    Finds the input token count from the most recent GenerationEnd event in the thread.
+    Finds the input token count from the most recent GenerationEnd event in the state.
     This represents the size of the context for the last successful model call.
     """
     last_generation_event = event.get_latest_event_by_type(GenerationEnd)

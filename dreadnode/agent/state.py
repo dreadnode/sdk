@@ -43,8 +43,8 @@ CommitBehavior = t.Literal["always", "on-success"]
 HookMap = dict[type[Event], list[Hook]]
 
 
-class ThreadWarning(UserWarning):
-    """A warning that is raised when a thread is used in a way that may not be safe or intended."""
+class StateWarning(UserWarning):
+    """A warning that is raised when a state is used in a way that may not be safe or intended."""
 
 
 def _total_usage_from_events(events: list[Event]) -> Usage:
@@ -56,7 +56,7 @@ def _total_usage_from_events(events: list[Event]) -> Usage:
     return total
 
 
-class Thread(BaseModel):
+class State(BaseModel):
     messages: list[Message] = Field(default_factory=list)
     """The log of messages exchanged during the session."""
     events: list[Event] = Field(default_factory=list)
@@ -64,8 +64,8 @@ class Thread(BaseModel):
 
     def __repr__(self) -> str:
         if not self.messages and not self.events:
-            return "Thread()"
-        return f"Thread(messages={len(self.messages)}, events={len(self.events)}, last_event={self.events[-1] if self.events else 'None'})"
+            return "State()"
+        return f"State(messages={len(self.messages)}, events={len(self.events)}, last_event={self.events[-1] if self.events else 'None'})"
 
     @property
     def total_usage(self) -> Usage:
@@ -124,7 +124,7 @@ class Thread(BaseModel):
                 if not isinstance(reaction, Reaction):
                     warn_at_user_stacklevel(
                         f"Hook '{hook_name}' returned {reaction}, but expected a Reaction.",
-                        ThreadWarning,
+                        StateWarning,
                     )
                     continue
 
@@ -160,7 +160,7 @@ class Thread(BaseModel):
                 if reaction is not None and reaction is not winning_reaction:
                     warn_at_user_stacklevel(
                         f"Hook '{hook_name}' returned {reaction}, but another hook already reacted. Only the first one will be applied.",
-                        ThreadWarning,
+                        StateWarning,
                     )
 
             winning_hook_name = next(
@@ -169,7 +169,7 @@ class Thread(BaseModel):
             )
             reacted_event = Reacted(
                 agent=agent,
-                thread=self,
+                state=self,
                 messages=messages,
                 events=events,
                 hook_name=winning_hook_name,
@@ -196,7 +196,7 @@ class Thread(BaseModel):
             async for event in _dispatch(
                 ToolStart(
                     agent=agent,
-                    thread=self,
+                    state=self,
                     messages=messages,
                     events=events,
                     tool_call=tool_call,
@@ -215,7 +215,7 @@ class Thread(BaseModel):
                     async for event in _dispatch(
                         AgentError(
                             agent=agent,
-                            thread=self,
+                            state=self,
                             messages=messages,
                             events=events,
                             error=e,
@@ -231,7 +231,7 @@ class Thread(BaseModel):
             async for event in _dispatch(
                 ToolEnd(
                     agent=agent,
-                    thread=self,
+                    state=self,
                     messages=messages,
                     events=events,
                     tool_call=tool_call,
@@ -246,7 +246,7 @@ class Thread(BaseModel):
         async for event in _dispatch(
             AgentStart(
                 agent=agent,
-                thread=self,
+                state=self,
                 messages=messages,
                 events=events,
             )
@@ -265,7 +265,7 @@ class Thread(BaseModel):
                 async for event in _dispatch(
                     StepStart(
                         agent=agent,
-                        thread=self,
+                        state=self,
                         messages=messages,
                         events=events,
                         step=step,
@@ -280,7 +280,7 @@ class Thread(BaseModel):
                     async for event in _dispatch(
                         AgentError(
                             agent=agent,
-                            thread=self,
+                            state=self,
                             messages=messages,
                             events=events,
                             error=t.cast("Exception", step_chat.error),
@@ -294,7 +294,7 @@ class Thread(BaseModel):
                 async for event in _dispatch(
                     GenerationEnd(
                         agent=agent,
-                        thread=self,
+                        state=self,
                         messages=messages,
                         events=events,
                         message=step_chat.last,
@@ -317,7 +317,7 @@ class Thread(BaseModel):
                     async for event in _dispatch(
                         AgentStalled(
                             agent=agent,
-                            thread=self,
+                            state=self,
                             messages=messages,
                             events=events,
                         )
@@ -373,7 +373,7 @@ class Thread(BaseModel):
 
         yield AgentEnd(
             agent=agent,
-            thread=self,
+            state=self,
             messages=messages,
             events=events,
             result=AgentResult(
@@ -432,5 +432,5 @@ class Thread(BaseModel):
 
             return final_event.result
 
-    def fork(self) -> "Thread":
-        return Thread(messages=deepcopy(self.messages), events=deepcopy(self.events))
+    def fork(self) -> "State":
+        return State(messages=deepcopy(self.messages), events=deepcopy(self.events))
