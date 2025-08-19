@@ -4,7 +4,6 @@ Utility for merging artifact tree structures while preserving directory hierarch
 
 import hashlib
 from pathlib import Path
-from typing import cast
 
 from dreadnode.artifact.tree_builder import DirectoryNode, FileNode
 
@@ -247,15 +246,12 @@ class ArtifactMerger:
 
             if existing_node["type"] == "dir" and new_node["type"] == "dir":
                 # Both are directories - merge them
-                self._merge_directory_nodes(
-                    cast("DirectoryNode", existing_node),
-                    cast("DirectoryNode", new_node),
-                )
+                self._merge_directory_nodes(existing_node, new_node)
                 merged = True
             elif existing_node["type"] == "file" and new_node["type"] == "file":
                 # Both are files - propagate URIs and update if hash differs
-                existing_file = cast("FileNode", existing_node)
-                new_file = cast("FileNode", new_node)
+                existing_file = existing_node
+                new_file = new_node
 
                 # Always propagate URIs between files with identical hash
                 if existing_file["hash"] == new_file["hash"]:
@@ -333,7 +329,7 @@ class ArtifactMerger:
                 return True
 
             if child["type"] == "dir" and self._update_file_in_tree(
-                cast("DirectoryNode", child),
+                child,
                 old_file,
                 new_file,
             ):
@@ -420,7 +416,7 @@ class ArtifactMerger:
         """
         if node["type"] == "dir":
             # Add directory to path map
-            dir_node = cast("DirectoryNode", node)
+            dir_node = node
             dir_path = dir_node["dir_path"]
             path_map[dir_path] = dir_node
 
@@ -429,7 +425,7 @@ class ArtifactMerger:
                 self._build_path_and_hash_maps(child, path_map, hash_map)
         else:  # File node
             # Add file to path map
-            file_node = cast("FileNode", node)
+            file_node = node
             file_path = file_node["final_real_path"]
             path_map[file_path] = file_node
 
@@ -468,13 +464,13 @@ class ArtifactMerger:
             if source_child["type"] == "dir":
                 self._merge_directory_child(
                     target_dir,
-                    cast("DirectoryNode", source_child),
+                    source_child,
                     path_to_index,
                 )
             else:  # file
                 self._merge_file_child(
                     target_dir,
-                    cast("FileNode", source_child),
+                    source_child,
                     path_to_index,
                     hash_to_index,
                 )
@@ -494,9 +490,9 @@ class ArtifactMerger:
 
         for i, child in enumerate(dir_node["children"]):
             if child["type"] == "dir":
-                path_to_index[cast("DirectoryNode", child)["dir_path"]] = i
+                path_to_index[child["dir_path"]] = i
             else:  # file
-                file_child = cast("FileNode", child)
+                file_child = child
                 path_to_index[file_child["final_real_path"]] = i
                 hash_to_index[file_child["hash"]] = i
 
@@ -516,7 +512,7 @@ class ArtifactMerger:
             existing_child = target_dir["children"][index]
             if existing_child["type"] == "dir":
                 self._merge_directory_nodes(
-                    cast("DirectoryNode", existing_child),
+                    existing_child,
                     source_dir,
                 )
         else:
@@ -542,14 +538,14 @@ class ArtifactMerger:
                 target_dir["children"][index] = source_file
             elif existing_child["type"] == "file":
                 # Same file - propagate URI if needed
-                self._propagate_uri(cast("FileNode", existing_child), source_file)
+                self._propagate_uri(existing_child, source_file)
         elif file_hash in hash_to_index:
             # Same file content exists but at different path
             index = hash_to_index[file_hash]
             existing_child = target_dir["children"][index]
             if existing_child["type"] == "file":
                 # Propagate URI if needed
-                self._propagate_uri(cast("FileNode", existing_child), source_file)
+                self._propagate_uri(existing_child, source_file)
 
             if source_file["uri"] and file_hash in self._hash_map:
                 for other_file in self._hash_map[file_hash]:
@@ -586,9 +582,9 @@ class ArtifactMerger:
 
         for child in dir_node["children"]:
             if child["type"] == "file":
-                child_hashes.append(cast("FileNode", child)["hash"])
+                child_hashes.append(child["hash"])
             else:
-                child_hash = self._update_directory_hash(cast("DirectoryNode", child))
+                child_hash = self._update_directory_hash(child)
                 child_hashes.append(child_hash)
 
         child_hashes.sort()  # Ensure consistent hash regardless of order

@@ -70,7 +70,7 @@ def configurable(obj: ItemT | list[str] | None = None) -> ItemT | t.Callable[[It
 
         # If the decorated object is a class, our work is done. Just tag and return.
         if inspect.isclass(obj):
-            return t.cast("ItemT", obj)
+            return obj
 
         if not callable(obj):
             raise TypeError(
@@ -99,7 +99,7 @@ def configurable(obj: ItemT | list[str] | None = None) -> ItemT | t.Callable[[It
         return t.cast("ItemT", factory_wrapper)
 
     if callable(obj) and not isinstance(obj, list):
-        return decorator(t.cast("ItemT", obj))
+        return decorator(obj)
 
     return decorator
 

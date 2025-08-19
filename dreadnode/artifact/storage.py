@@ -6,8 +6,9 @@ Provides efficient uploading of files and directories with deduplication.
 import hashlib
 from pathlib import Path
 
+from loguru import logger
+
 from dreadnode.credential_manager import CredentialManager
-from dreadnode.util import logger
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
 

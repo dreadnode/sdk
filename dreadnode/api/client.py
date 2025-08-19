@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
+from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
 
@@ -39,7 +40,6 @@ from dreadnode.constants import (
     DEFAULT_MAX_POLL_TIME,
     DEFAULT_POLL_INTERVAL,
 )
-from dreadnode.util import logger
 from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)

@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, TypeVar
 
 from botocore.exceptions import ClientError
+from loguru import logger
 from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
 from dreadnode.constants import FS_CREDENTIAL_REFRESH_BUFFER
-from dreadnode.util import logger, resolve_endpoint
+from dreadnode.util import resolve_endpoint
 
 if TYPE_CHECKING:
     from dreadnode.api.models import UserDataCredentials
