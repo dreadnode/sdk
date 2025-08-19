@@ -19,8 +19,8 @@ from dreadnode.cli.github import (
     validate_server_for_clone,
 )
 from dreadnode.cli.profile import cli as profile_cli
-from dreadnode.config import ServerConfig, UserConfig
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
+from dreadnode.user_config import ServerConfig, UserConfig
 
 cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
 

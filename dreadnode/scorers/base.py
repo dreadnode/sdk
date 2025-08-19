@@ -278,7 +278,7 @@ class Scorer(t.Generic[T]):
         metrics = await self.normalize_and_score(object)
         return metrics[0], metrics[1:]
 
-    async def score(self, data: T) -> Metric:
+    async def score(self, obj: T) -> Metric:
         """
         Execute the scorer and return the metric. If the scorer is a composition of other scorers,
         it will return the "highest-priority" metric, typically the first in the list.
@@ -286,12 +286,12 @@ class Scorer(t.Generic[T]):
         Any output value will be converted to a Metric object if not already one.
 
         Args:
-            object: The object to score.
+            obj: The object to score.
 
         Returns:
             A Metric object.
         """
-        all_metrics = await self.normalize_and_score(data)
+        all_metrics = await self.normalize_and_score(obj)
         return all_metrics[0]
 
     async def __call__(self, object: T) -> Metric:

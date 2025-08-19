@@ -105,7 +105,6 @@ def safe_repr(obj: t.Any) -> str:
     """
     Return some kind of non-empty string representation of an object, catching exceptions.
     """
-
     try:
         result = repr(obj)
     except Exception:  # noqa: BLE001
@@ -175,8 +174,9 @@ def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> st
 
 
 def time_to(future_datetime: datetime) -> str:
-    """Get a string describing the time difference between a future datetime and now."""
-
+    """
+    Get a string describing the time difference between a future datetime and now.
+    """
     now = datetime.now(tz=future_datetime.tzinfo)
     time_difference = future_datetime - now
 
@@ -200,9 +200,100 @@ def time_to(future_datetime: datetime) -> str:
 # Async
 
 
-async def join_generators(
-    *generators: t.AsyncGenerator[T, None],
-) -> t.AsyncGenerator[T, None]:
+async def concurrent(coros: t.Iterable[t.Awaitable[T]], limit: int | None = None) -> list[T]:
+    """
+    Run multiple coroutines concurrently with a limit on the number of concurrent tasks.
+
+    Args:
+        coros: An iterable of coroutines to run concurrently.
+        limit: The maximum number of concurrent tasks. If None, no limit is applied.
+
+    Returns:
+        A list of results from the coroutines, in the order they were provided.
+    """
+    coros = list(coros)
+    semaphore = asyncio.Semaphore(limit or len(coros))
+
+    async def run_coroutine_with_semaphore(
+        coro: t.Awaitable[T],
+    ) -> T:
+        async with semaphore:
+            return await coro
+
+    return await asyncio.gather(
+        *(run_coroutine_with_semaphore(coro) for coro in coros),
+    )
+
+
+# Some weirdness here: https://discuss.python.org/t/overloads-of-async-generators-inconsistent-coroutine-wrapping/56665/2
+
+
+@t.overload
+@contextlib.asynccontextmanager
+def concurrent_gen(
+    coros: t.Iterable[t.Awaitable[T]],
+    limit: int | None = None,
+    *,
+    return_task: t.Literal[False] = False,
+) -> t.AsyncIterator[t.AsyncGenerator[T, None]]: ...
+
+
+@t.overload
+@contextlib.asynccontextmanager
+def concurrent_gen(
+    coros: t.Iterable[t.Awaitable[T]],
+    limit: int | None = None,
+    *,
+    return_task: t.Literal[True],
+) -> t.AsyncIterator[t.AsyncGenerator[asyncio.Task[T], None]]: ...
+
+
+@contextlib.asynccontextmanager
+async def concurrent_gen(
+    coros: t.Iterable[t.Awaitable[T]],
+    limit: int | None = None,
+    *,
+    return_task: bool = False,
+) -> t.AsyncIterator[t.AsyncGenerator[T | asyncio.Task[T], None]]:
+    """
+    Run multiple coroutines concurrently with a limit on the number of concurrent tasks.
+
+    Args:
+        coros: An iterable of coroutines to run concurrently.
+        limit: The maximum number of concurrent tasks. If None, no limit is applied.
+        return_task: If True, yields the asyncio.Task object instead of the result.
+
+    Yields:
+        An asynchronous generator yielding the results of the coroutines.
+        If return_task is True, yields the asyncio.Task objects instead.
+    """
+    coros = list(coros)
+    semaphore = asyncio.Semaphore(limit or len(coros))
+
+    async def run_coroutine_with_semaphore(coro: t.Awaitable[T]) -> T:
+        async with semaphore:
+            return await coro
+
+    async def generator() -> t.AsyncGenerator[T | asyncio.Task[T], None]:
+        pending_tasks = {asyncio.create_task(run_coroutine_with_semaphore(coro)) for coro in coros}
+
+        try:
+            while pending_tasks:
+                done, pending_tasks = await asyncio.wait(
+                    pending_tasks, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    yield task if return_task else await task
+        finally:
+            for task in pending_tasks:
+                task.cancel()
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+    async with aclosing(generator()) as gen:
+        yield gen
+
+
+async def join_generators(*generators: t.AsyncGenerator[T, None]) -> t.AsyncGenerator[T, None]:
     """
     Join multiple asynchronous generators into a single asynchronous generator.
 
@@ -211,8 +302,13 @@ async def join_generators(
 
     Args:
         *generators: The asynchronous generators to join.
-    """
 
+    Yields:
+        The items yielded by the joined generators.
+
+    Raises:
+        Exception: If any of the generators raises an exception.
+    """
     FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
     queue = asyncio.Queue[T | object | Exception](maxsize=1)
 
@@ -256,7 +352,15 @@ async def join_generators(
 # List utilities
 
 
-def flatten_list(nested_list: t.Iterable[t.Iterable[t.Any] | t.Any]) -> list[t.Any]:
+@t.overload
+def flatten_list(nested_list: t.Sequence[t.Sequence[t.Sequence[T] | T]]) -> list[T]: ...
+
+
+@t.overload
+def flatten_list(nested_list: t.Sequence[t.Sequence[T] | T]) -> list[T]: ...
+
+
+def flatten_list(nested_list: t.Sequence[t.Any]) -> list[t.Any]:
     """
     Recursively flatten a nested list into a single list.
     """
@@ -273,6 +377,9 @@ def flatten_list(nested_list: t.Iterable[t.Iterable[t.Any] | t.Any]) -> list[t.A
 
 
 def log_internal_error() -> None:
+    """
+    Log an internal error with a detailed traceback.
+    """
     try:
         current_test = os.environ.get("PYTEST_CURRENT_TEST", "")
         reraise = bool(current_test and "test_internal_exception" not in current_test)
@@ -290,7 +397,9 @@ def log_internal_error() -> None:
 
 
 def _internal_error_exc_info() -> SysExcInfo:
-    """Returns an exc_info tuple with a nicely tweaked traceback."""
+    """
+    Returns an exc_info tuple with a nicely tweaked traceback.
+    """
     original_exc_info: SysExcInfo = sys.exc_info()
     exc_type, exc_val, original_tb = original_exc_info
     try:
@@ -367,6 +476,9 @@ def _internal_error_exc_info() -> SysExcInfo:
 
 @contextmanager
 def handle_internal_errors() -> t.Iterator[None]:
+    """
+    Context manager to handle internal errors.
+    """
     try:
         yield
     except Exception:  # noqa: BLE001
@@ -377,7 +489,8 @@ _HANDLE_INTERNAL_ERRORS_CODE = inspect.unwrap(handle_internal_errors).__code__
 
 
 def is_docker_service_name(hostname: str) -> bool:
-    """Check if this looks like a Docker service name
+    """
+    Check if this looks like a Docker service name
 
     Args:
         hostname: The hostname to check.
@@ -389,7 +502,8 @@ def is_docker_service_name(hostname: str) -> bool:
 
 
 def resolve_endpoint(endpoint: str | None) -> str | None:
-    """Automatically resolve endpoints based on environment
+    """
+    Automatically resolve endpoints based on environment
 
     Args:
         endpoint: The endpoint URL to resolve.

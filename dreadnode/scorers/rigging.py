@@ -1,6 +1,7 @@
 import typing as t
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers.base import Scorer
 
 if t.TYPE_CHECKING:
     from rigging.chat import Chat

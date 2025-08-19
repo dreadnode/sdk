@@ -5,8 +5,9 @@ from dreadnode import convert, data_types
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.lookup import Lookup, lookup_input, lookup_output, lookup_param, resolve_lookup
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
-from dreadnode.metric import Metric, MetricDict, Scorer
+from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object
+from dreadnode.scorers import Scorer
 from dreadnode.task import Task
 from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
@@ -23,6 +24,7 @@ task = DEFAULT_INSTANCE.task
 task_span = DEFAULT_INSTANCE.task_span
 run = DEFAULT_INSTANCE.run
 scorer = DEFAULT_INSTANCE.scorer
+score = DEFAULT_INSTANCE.score
 push_update = DEFAULT_INSTANCE.push_update
 tag = DEFAULT_INSTANCE.tag
 get_run_context = DEFAULT_INSTANCE.get_run_context
@@ -35,6 +37,8 @@ log_input = DEFAULT_INSTANCE.log_input
 log_inputs = DEFAULT_INSTANCE.log_inputs
 log_output = DEFAULT_INSTANCE.log_output
 log_outputs = DEFAULT_INSTANCE.log_outputs
+log_sample = DEFAULT_INSTANCE.log_sample
+log_samples = DEFAULT_INSTANCE.log_samples
 link_objects = DEFAULT_INSTANCE.link_objects
 log_artifact = DEFAULT_INSTANCE.log_artifact
 

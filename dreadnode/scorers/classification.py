@@ -1,13 +1,16 @@
 import typing as t
 
+from dreadnode.configurable import configurable
 from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 from dreadnode.util import clean_str, warn_at_user_stacklevel
 
 # Global cache for pipelines
 g_pipelines: dict[str, t.Any] = {}
 
 
+@configurable(["model_name"])
 def zero_shot_classification(
     labels: list[str],
     score_label: str,
@@ -20,6 +23,8 @@ def zero_shot_classification(
 
     The final score is the confidence score for the `score_label`.
     This is a powerful way to replace brittle keyword-based classifiers.
+
+    Requires `transformers`, see https://huggingface.co/docs/transformers.
 
     Args:
         labels: A list of candidate labels for the classification.

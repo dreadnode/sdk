@@ -6,7 +6,8 @@ from rigging.model import Model, element
 from rigging.prompt import prompt
 
 from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 
 
 class JudgeInput(Model):
@@ -18,14 +19,15 @@ class JudgeInput(Model):
 
 class Judgement(Model):
     reason: str = element()
-    pass_: bool = element(alias="pass")
+    passing: bool = element()
     score: float = element()
 
 
 @prompt()
 def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
     """
-    You are grading output according to a user-specified rubric. \
+    You are grading output according to a user-specified rubric.
+
     If the statement in the rubric is true for the provided input and output, then the output passes the test.
     Assign a score based on the rubric, where applicable, otherwise 1.0 for passing and 0.0 for failing.
     """
@@ -57,7 +59,7 @@ def llm_judge(
         name: The name of the scorer.
     """
 
-    async def evaluate(data: t.Any) -> Metric:
+    async def evaluate(data: t.Any) -> list[Metric]:
         nonlocal model, rubric, expected_output
 
         model = str(resolve_lookup(model))
@@ -87,14 +89,17 @@ def llm_judge(
             judgement.score = min(max_score, judgement.score)
 
         if passing is not None:
-            judgement.pass_ = passing(judgement.score)
+            judgement.passing = passing(judgement.score)
 
-        return Metric(
+        score_metric = Metric(
             value=judgement.score,
             attributes={
                 "reason": judgement.reason,
-                "pass": judgement.pass_,
             },
         )
+        pass_metric = Metric(value=float(judgement.passing))
+        pass_metric._scorer_name = f"{name}_pass"  # type: ignore[attr-defined] # noqa: SLF001
+
+        return [score_metric, pass_metric]
 
     return Scorer.from_callable(evaluate, name=name, catch=True)

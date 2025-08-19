@@ -1,24 +1,14 @@
 import typing as t
 
 from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers.base import Scorer
 from dreadnode.util import warn_at_user_stacklevel
-
-_TEXTSTAT_AVAILABLE = False
-_TEXTSTAT_ERROR_MSG = (
-    "textstat dependency is not installed. Please install it with: pip install textstat"
-)
-
-try:
-    import textstat  # type: ignore[import-not-found,unused-ignore,import-untyped]
-
-    _TEXTSTAT_AVAILABLE = True
-except ImportError:
-    pass
 
 
 def readability(
     target_grade: float | Lookup = 8.0,
+    *,
     name: str = "readability",
 ) -> "Scorer[t.Any]":
     """
@@ -27,15 +17,23 @@ def readability(
     The score is 1.0 if the calculated grade level matches the target_grade,
     and it degrades towards 0.0 as the distance from the target increases.
 
+    Requires `textstat`, see https://github.com/textstat/textstat
+
     Args:
         target_grade: The ideal reading grade level (e.g., 8.0 for 8th grade).
         name: Name of the scorer.
     """
-    if not _TEXTSTAT_AVAILABLE:
-        warn_at_user_stacklevel(_TEXTSTAT_ERROR_MSG, UserWarning)
+    textstat_import_error_msg = (
+        "textstat dependency is not installed. Please install it with: pip install textstat"
+    )
+
+    try:
+        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
+    except ImportError:
+        warn_at_user_stacklevel(textstat_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _TEXTSTAT_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": textstat_import_error_msg})
 
         return Scorer.from_callable(disabled_evaluate, name=name)
 

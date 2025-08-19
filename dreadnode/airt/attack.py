@@ -3,7 +3,7 @@ import typing as t
 from abc import ABC, abstractmethod
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from rigging import Generator, get_generator
+from rigging import Generator, Message, get_generator
 
 from dreadnode.optimization import Study, StudyEvent, Trial
 from dreadnode.optimization.search import BeamSearch
@@ -77,8 +77,7 @@ class Attack(ABC, BaseModel, t.Generic[CandidateT]):
 class GenerativeCandidate(BaseModel):
     """The state passed between steps of a generative attack."""
 
-    # Using simple dicts for conversation history for easy serialization
-    conversation:
+    conversation: list[Message]
     prompt_for_target: str
 
 
@@ -108,9 +107,9 @@ class GenerativeAttack(Attack[GenerativeCandidate]):
 
     _attacker_generator: Generator = Field(None, repr=False, exclude=True)
 
-    def model_post_init(self, __context: t.Any) -> None:
+    def model_post_init(self, context: t.Any) -> None:
         """Initialize both target and attacker generators."""
-        super().model_post_init(__context)
+        super().model_post_init(context)
         if isinstance(self.attacker, str):
             self._attacker_generator = get_generator(self.attacker)
         else:
@@ -151,7 +150,6 @@ class GenerativeAttack(Attack[GenerativeCandidate]):
 
         # 4. Define the apply and objective functions.
         def apply_candidate_fn(candidate: GenerativeCandidate) -> Task:
-
             async def run_target() -> str:
                 resp = await self._target_generator.chat(candidate.prompt_for_target).run()
                 return resp.last.content

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
+import pandas as pd
 from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID

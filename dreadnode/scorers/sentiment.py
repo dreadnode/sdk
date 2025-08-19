@@ -3,19 +3,11 @@ import typing as t
 
 import httpx
 
+from dreadnode.configurable import configurable
 from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers.base import Scorer
 from dreadnode.util import warn_at_user_stacklevel
-
-_TEXTBLOB_AVAILABLE = False
-_TEXTBLOB_ERROR_MSG = "textblob dependency is not installed. Please run: pip install textblob && python -m textblob.download_corpora"
-
-try:
-    from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
-
-    _TEXTBLOB_AVAILABLE = True
-except ImportError:
-    pass
 
 Sentiment = t.Literal["positive", "negative", "neutral"]
 
@@ -32,15 +24,21 @@ def sentiment(
     - For "negative", score is 0-1 (0=positive, 1=very negative).
     - For "neutral", score is 0-1 (1=perfectly neutral, 0=very polarized).
 
+    Requires `textblob`, see https://textblob.readthedocs.io.
+
     Args:
         target: The desired sentiment to score against.
         name: Name of the scorer.
     """
-    if not _TEXTBLOB_AVAILABLE:
-        warn_at_user_stacklevel(_TEXTBLOB_ERROR_MSG, UserWarning)
+    textblob_import_error_msg = "textblob dependency is not installed. Please run: pip install textblob && python -m textblob.download_corpora"
+
+    try:
+        from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
+    except ImportError:
+        warn_at_user_stacklevel(textblob_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _TEXTBLOB_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": textblob_import_error_msg})
 
         return Scorer.from_callable(disabled_evaluate, name=name)
 
@@ -83,6 +81,7 @@ PerspectiveAttribute = t.Literal[
 ]
 
 
+@configurable(["api_key"])
 def sentiment_with_perspective(
     *,
     api_key: str | None = None,

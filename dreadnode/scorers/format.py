@@ -2,7 +2,8 @@ import json
 import typing as t
 import xml.etree.ElementTree as ET  # nosec
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 
 
 def is_json(*, name: str = "is_json") -> "Scorer[t.Any]":

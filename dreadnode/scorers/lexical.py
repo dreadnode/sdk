@@ -2,11 +2,13 @@ import re
 import typing as t
 
 from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 
 
 def type_token_ratio(
     target_ratio: float | Lookup | None = None,
+    *,
     name: str = "type_token_ratio",
 ) -> "Scorer[t.Any]":
     """

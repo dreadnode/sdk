@@ -9,7 +9,7 @@ import httpx
 import rich
 from rich.prompt import Prompt
 
-from dreadnode.config import UserConfig, find_dreadnode_saas_profiles, is_dreadnode_saas_server
+from dreadnode.user_config import UserConfig, find_dreadnode_saas_profiles, is_dreadnode_saas_server
 
 
 class GithubRepo(str):  # noqa: SLOT000

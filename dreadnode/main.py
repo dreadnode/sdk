@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import inspect
 import os
@@ -21,7 +22,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
-from dreadnode.config import UserConfig
+from dreadnode.configurable import CONFIGURABLE_FIELDS_ATTR
 from dreadnode.constants import (
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
@@ -38,10 +39,11 @@ from dreadnode.metric import (
     Metric,
     MetricAggMode,
     MetricDict,
-    Scorer,
-    ScorerCallable,
+    MetricsLike,
     T,
 )
+from dreadnode.scorers import Scorer, ScorerCallable
+from dreadnode.scorers.base import ScorersLike
 from dreadnode.task import P, R, Task
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -62,6 +64,7 @@ from dreadnode.types import (
     Inherited,
     JsonValue,
 )
+from dreadnode.user_config import UserConfig
 from dreadnode.util import (
     clean_str,
     get_filepath_attribute,
@@ -524,13 +527,14 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        configurable: list[str] | bool = True,
     ) -> TaskDecorator: ...
 
     @t.overload
     def task(
         self,
         *,
-        scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
+        scorers: ScorersLike[R],
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
@@ -538,12 +542,13 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        configurable: list[str] | bool = True,
     ) -> ScoredTaskDecorator[R]: ...
 
     def task(
         self,
         *,
-        scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[t.Any]] | None = None,
+        scorers: ScorersLike[t.Any] | None = None,
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
@@ -551,6 +556,7 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        configurable: list[str] | bool = True,
     ) -> TaskDecorator:
         """
         Create a new task from a function.
@@ -574,6 +580,7 @@ class Dreadnode:
             log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
             tags: A list of tags to attach to the task span.
             attributes: A dictionary of attributes to attach to the task span.
+            configurable: A list of task arguments (keyword-only) to expose to the CLI.
 
         Returns:
             A new Task object.
@@ -600,6 +607,11 @@ class Dreadnode:
                 unwrapped,
             ):
                 raise TypeError("@task cannot be applied to generators")
+
+            config_fields = t.cast(
+                "list[str] | bool", getattr(func, CONFIGURABLE_FIELDS_ATTR, None)
+            )
+            config_fields = configurable or config_fields
 
             func_name = getattr(
                 unwrapped,
@@ -629,15 +641,15 @@ class Dreadnode:
                 name=_name,
                 attributes=_attributes,
                 func=t.cast("t.Callable[P, R]", func),
-                scorers=[
-                    scorer if isinstance(scorer, Scorer) else Scorer.from_callable(scorer)
-                    for scorer in scorers or []
-                ],
+                scorers=Scorer.fit_like(scorers),
                 tags=list(tags or []),
-                log_inputs=log_inputs,
+                log_inputs=log_inputs
+                if isinstance(log_inputs, bool | Inherited)
+                else list(log_inputs),
                 log_output=log_output,
                 log_execution_metrics=log_execution_metrics,
                 label=_label,
+                configurable=config_fields,
             )
 
         return make_task
@@ -687,7 +699,6 @@ class Dreadnode:
         self,
         *,
         name: str | None = None,
-        tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
     ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
         """
@@ -711,7 +722,6 @@ class Dreadnode:
 
         Args:
             name: The name of the scorer.
-            tags: A list of tags to attach to the scorer.
             attributes: A dictionary of attributes to attach to the scorer.
 
         Returns:
@@ -719,14 +729,40 @@ class Dreadnode:
         """
 
         def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-            return Scorer.from_callable(
-                func,
-                name=name,
-                tags=tags,
-                attributes=attributes,
-            )
+            return Scorer.from_callable(func, name=name, attributes=attributes)
 
         return make_scorer
+
+    async def score(
+        self, object: T, scorers: ScorersLike[T], step: int | None = None
+    ) -> list[Metric]:
+        """
+        Score an object using all the provided scorers.
+
+        Args:
+            object: The object to score.
+            scorers: A list of scorers to use for scoring the object.
+
+        Returns:
+            A list of metrics generated by the scorers.
+        """
+        if not self._initialized:
+            self.configure()
+
+        _scorers = Scorer.fit_like(scorers)
+
+        metrics: list[Metric] = []
+        nested_metrics = await asyncio.gather(
+            *[scorer.normalize_and_score(object) for scorer in _scorers]
+        )
+        for scorer, _metrics in zip(_scorers, nested_metrics, strict=True):
+            for metric in _metrics:
+                if step is not None:
+                    metric.step = step
+                metric_name = str(getattr(metric, "_scorer_name", scorer.name))
+                metrics.append(self.log_metric(metric_name, metric, origin=object))
+
+        return metrics
 
     def run(
         self,
@@ -1122,6 +1158,7 @@ class Dreadnode:
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
+        origin: t.Any | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1162,6 +1199,7 @@ class Dreadnode:
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
+        origin: t.Any | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1195,12 +1233,13 @@ class Dreadnode:
     @handle_internal_errors()
     def log_metrics(
         self,
-        metrics: dict[str, float | bool] | list[MetricDict],
+        metrics: MetricsLike,
         *,
         step: int = 0,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
+        origin: t.Any | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1236,6 +1275,7 @@ class Dreadnode:
             timestamp: Default timestamp for metrics if not supplied.
             mode: Default aggregation mode for metrics if not supplied.
             attributes: Default attributes for metrics if not supplied.
+            origin: The origin of the metrics - can be provided any object which was logged
             to: The target object to log metrics to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metrics will be logged
                 to the current task or run, whichever is the nearest ancestor.
@@ -1267,6 +1307,7 @@ class Dreadnode:
                     timestamp=timestamp,
                     mode=mode,
                     attributes=attributes,
+                    origin=origin,
                 )
                 for name, value in metrics.items()
             ]
@@ -1281,6 +1322,7 @@ class Dreadnode:
                     timestamp=metric.get("timestamp", timestamp),
                     mode=metric.get("mode", mode),
                     attributes=metric.get("attributes", attributes) or {},
+                    origin=origin,
                 )
                 for metric in metrics
             ]
@@ -1454,6 +1496,71 @@ class Dreadnode:
         """
         for name, value in outputs.items():
             self.log_output(name, value, to=to)
+
+    @handle_internal_errors()
+    def log_sample(
+        self,
+        label: str,
+        input: t.Any,
+        output: t.Any,
+        metrics: MetricsLike | None = None,
+        *,
+        step: int = 0,
+    ) -> None:
+        """
+        Convenience method to log an input/output pair with metrics as a ephemeral task.
+
+        This is useful for logging a single sample of input and output data
+        along with any metrics that were computed during the process.
+        """
+
+        with self.task_span(name=label, label=label):
+            self.log_input("input", input)
+            self.log_output("output", output)
+            self.link_objects(output, input)
+            if metrics is not None:
+                self.log_metrics(metrics, step=step, origin=output)
+
+    @handle_internal_errors()
+    def log_samples(
+        self,
+        name: str,
+        samples: list[tuple[t.Any, t.Any] | tuple[t.Any, t.Any, MetricsLike]],
+    ) -> None:
+        """
+        Log multiple input/output samples as ephemeral tasks.
+
+        This is useful for logging a batch of input/output pairs with metrics
+        in a single run.
+
+        Example:
+            ```
+            dreadnode.log_samples(
+                "my_samples",
+                [
+                    (input1, output1, {"accuracy": 0.95}),
+                    (input2, output2, {"accuracy": 0.90}),
+                ]
+            )
+            ```
+
+        Args:
+            name: The name of the task to create for each sample.
+            samples: A list of tuples containing (input, output, metrics [optional]).
+        """
+        for sample in samples:
+            metrics: MetricsLike | None = None
+            if len(sample) == 3:  # noqa: PLR2004
+                input_data, output_data, metrics = sample
+            elif len(sample) == 2:  # noqa: PLR2004
+                input_data, output_data = sample
+            else:
+                raise ValueError(
+                    "Each sample must be a tuple of (input, output) or (input, output, metrics)",
+                )
+
+            # Log each sample as an ephemeral task
+            self.log_sample(name, input_data, output_data, metrics=metrics)
 
     @handle_internal_errors()
     def link_objects(

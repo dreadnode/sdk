@@ -65,7 +65,7 @@ from dreadnode.tracing.constants import (
     SPAN_ATTRIBUTE_VERSION,
     SpanType,
 )
-from dreadnode.types import UNSET, AnyDict, JsonDict, Unset
+from dreadnode.types import UNSET, AnyDict, Arguments, JsonDict, Unset
 from dreadnode.util import clean_str
 from dreadnode.version import VERSION
 
@@ -127,6 +127,8 @@ class Span(ReadableSpan):
         self._schema: JsonSchemaProperties = JsonSchemaProperties({})
         self._token: object | None = None  # trace sdk context
         self._span: trace_api.Span | None = None
+        self._exception: BaseException | None = None
+        self._traceback: types.TracebackType | None = None
 
     if not t.TYPE_CHECKING:
 
@@ -158,21 +160,21 @@ class Span(ReadableSpan):
         if self._token is None or self._span is None:
             return
 
-        context_api.detach(self._token)  # type: ignore [arg-type]
-        self._token = None
-
-        if not self._span.is_recording():
-            return
-
         self._span.set_attribute(
             SPAN_ATTRIBUTE_SCHEMA,
             attributes_json_schema(self._schema) if self._schema else r"{}",
         )
         self._span.set_attribute(SPAN_ATTRIBUTE_TAGS_, self.tags)
 
+        if exc_value is not None:
+            self.set_exception(exc_value, traceback=traceback)
+
         self._span.__exit__(exc_type, exc_value, traceback)
 
         OPEN_SPANS.discard(self._span)  # type: ignore [arg-type]
+
+        context_api.detach(self._token)  # type: ignore [arg-type]
+        self._token = None
 
     @property
     def span_id(self) -> str:
@@ -206,7 +208,12 @@ class Span(ReadableSpan):
     @property
     def failed(self) -> bool:
         """Check if the span has failed."""
-        return self.status.status_code == StatusCode.ERROR
+        return self._exception is not None or self.status.status_code == StatusCode.ERROR
+
+    @property
+    def exception(self) -> BaseException | None:
+        """Get the exception recorded in the span, if any."""
+        return self._exception
 
     @property
     def duration(self) -> float:
@@ -258,7 +265,7 @@ class Span(ReadableSpan):
         name: str,
         attributes: AnyDict | None = None,
     ) -> None:
-        if self._span is not None:
+        if self._span is not None and self._span.is_recording():
             self._span.add_event(
                 name,
                 attributes=prepare_otlp_attributes(attributes or {}),
@@ -270,9 +277,13 @@ class Span(ReadableSpan):
         *,
         attributes: AnyDict | None = None,
         status: Status | None = None,
+        traceback: types.TracebackType | None = None,
     ) -> None:
-        if self._span is None:
-            raise ValueError("Span is not active")
+        self._exception = exception
+        self._traceback = traceback
+
+        if self._span is None or not self._span.is_recording():
+            return
 
         if status is None:
             status = Status(StatusCode.ERROR, str(exception))
@@ -282,6 +293,14 @@ class Span(ReadableSpan):
             exception,
             attributes=prepare_otlp_attributes(attributes or {}),
         )
+
+    def raise_if_failed(self) -> None:
+        if self.exception is not None:
+            raise (
+                self.exception.with_traceback(self._traceback)
+                if self._traceback
+                else self.exception
+            )
 
     def __repr__(self) -> str:
         return (
@@ -852,11 +871,13 @@ class TaskSpan(Span, t.Generic[R]):
         label: str | None = None,
         metrics: MetricsDict | None = None,
         tags: t.Sequence[str] | None = None,
+        arguments: Arguments | None = None,
     ) -> None:
         self._metrics = metrics or {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
 
+        self._arguments = arguments
         self._output: R | Unset = UNSET  # For the python output
 
         self._context_token: Token[TaskSpan[t.Any] | None] | None = None  # contextvars context
@@ -937,12 +958,20 @@ class TaskSpan(Span, t.Generic[R]):
 
     @property
     def outputs(self) -> AnyDict:
+        """Get all logged outputs of this task."""
         if self._run is None:
             return {}
-        return {ref.name: self._run.get_object(ref.hash) for ref in self._outputs}
+        return {ref.name: self._run.get_object(ref.hash).value for ref in self._outputs}
+
+    @property
+    def arguments(self) -> Arguments | None:
+        """Get the arguments used for this task if it was created from a function."""
+        return self._arguments
 
     @property
     def output(self) -> R:
+        """Get the output of this tas if it was created from a function."""
+        self.raise_if_failed()
         if isinstance(self._output, Unset):
             raise TypeError("Task output is not set")
         return self._output
@@ -975,10 +1004,10 @@ class TaskSpan(Span, t.Generic[R]):
         return hash_
 
     @property
-    def inputs(self) -> dict[str, Object]:
+    def inputs(self) -> AnyDict:
         if self._run is None:
             return {}
-        return {ref.name: self._run.get_object(ref.hash) for ref in self._inputs}
+        return {ref.name: self._run.get_object(ref.hash).value for ref in self._inputs}
 
     def log_input(
         self,

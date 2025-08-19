@@ -6,7 +6,7 @@ from rich import box
 from rich.table import Table
 
 from dreadnode.cli.api import Token
-from dreadnode.config import UserConfig
+from dreadnode.user_config import UserConfig
 from dreadnode.util import time_to
 
 cli = cyclopts.App(name="profile", help="Manage server profiles")

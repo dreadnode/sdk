@@ -1,7 +1,8 @@
 import re
 import typing as t
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 from dreadnode.scorers.contains import contains
 from dreadnode.util import warn_at_user_stacklevel
 
@@ -93,7 +94,7 @@ def detect_pii_with_presidio(
     threshold, and 0.0 otherwise. The metadata will contain details of
     any PII found.
 
-    This is a powerful but dependency-heavy scorer.
+    Requires the `presidio-analyzer` package, see https://github.com/microsoft/presidio.
 
     Args:
         entities: A list of specific Presidio entity types to look for (e.g., ["PHONE_NUMBER", "CREDIT_CARD"]).

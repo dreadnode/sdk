@@ -1,7 +1,8 @@
 import typing as t
 
 from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 
 
 def length_ratio(

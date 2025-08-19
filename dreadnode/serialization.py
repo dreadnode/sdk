@@ -323,6 +323,23 @@ def _handle_attrs(obj: t.Any, seen: set[int]) -> tuple[JsonValue, JsonDict]:
     return _handle_custom_object(obj, keys, seen, "attrs")
 
 
+def _handle_pydantic_dataclass(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
+    import pydantic.dataclasses
+    from pydantic import TypeAdapter
+
+    if not pydantic.dataclasses.is_pydantic_dataclass(obj.__class__):
+        return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
+
+    adapter = TypeAdapter(obj.__class__)
+
+    schema = adapter.json_schema()
+    schema["x-python-datatype"] = "pydantic.dataclass"
+
+    serialized = adapter.dump_python(obj, mode="json")
+
+    return serialized, schema
+
+
 def _handle_pydantic_model(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
     import pydantic
 
@@ -554,6 +571,12 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
         # Common struct types
 
         if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+            with contextlib.suppress(Exception):
+                import pydantic.dataclasses
+
+                if pydantic.dataclasses.is_pydantic_dataclass(obj.__class__):
+                    return _handle_pydantic_dataclass(obj, seen)
+
             return _handle_dataclass(obj, seen)
 
         if _is_attrs_instance(obj_type):

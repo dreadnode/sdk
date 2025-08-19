@@ -1,11 +1,17 @@
 import typing as t
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.configurable import configurable
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
+
+if t.TYPE_CHECKING:
+    import openai
 
 if t.TYPE_CHECKING:
     import openai
 
 
+@configurable(["api_key", "model"])
 def detect_harm_with_openai(
     *,
     api_key: str | None = None,
@@ -23,7 +29,7 @@ def detect_harm_with_openai(
     The metric's attributes contain a detailed breakdown of all category scores
     and whether the content was flagged by OpenAI.
 
-    Requires the `openai` python package.
+    Requires `openai`, see https://github.com/openai/openai-python.
 
     Args:
         api_key: Your OpenAI API key. If not provided, it will be sourced from the
