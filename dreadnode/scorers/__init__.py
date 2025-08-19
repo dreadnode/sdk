@@ -1,3 +1,11 @@
+from dreadnode.scorers.base import (
+    Scorer,
+    ScorerCallable,
+    ScorerLike,
+    ScorerResult,
+    ScorersLike,
+    ScorerWarning,
+)
 from dreadnode.scorers.classification import detect_refusal_with_zero_shot, zero_shot_classification
 from dreadnode.scorers.consistency import character_consistency
 from dreadnode.scorers.contains import (
@@ -27,6 +35,12 @@ from dreadnode.scorers.similarity import (
 )
 
 __all__ = [
+    "Scorer",
+    "ScorerCallable",
+    "ScorerLike",
+    "ScorerResult",
+    "ScorerWarning",
+    "ScorersLike",
     "bleu",
     "character_consistency",
     "contains",
