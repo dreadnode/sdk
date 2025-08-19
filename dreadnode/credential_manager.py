@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, TypeVar
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from loguru import logger
 from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
