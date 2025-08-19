@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import typing_extensions as te
-from logfire._internal.stack_info import warn_at_user_stacklevel
-from logfire._internal.utils import safe_repr
 
+# from logfire._internal.stack_info import warn_at_user_stacklevel
+# from logfire._internal.utils import safe_repr
 from dreadnode.types import JsonDict, JsonValue
 from dreadnode.util import safe_repr, warn_at_user_stacklevel
 
@@ -114,9 +114,7 @@ class Metric:
             self.value = len(others) + 1
         elif mode == "avg" and prior_values:
             current_avg = prior_values[-1]
-            self.value = current_avg + (self.value - current_avg) / (
-                len(prior_values) + 1
-            )
+            self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
 
         return self
 
@@ -125,9 +123,7 @@ MetricsDict = dict[str, list[Metric]]
 """A dictionary of metrics, where the key is the metric name and the value is a list of metrics with that name."""
 ScorerResult = float | int | bool | Metric
 """The result of a scorer function, which can be a numeric value or a Metric object."""
-ScorerCallable = (
-    t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], ScorerResult]
-)
+ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], ScorerResult]
 
 
 @dataclass

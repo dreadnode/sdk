@@ -213,7 +213,7 @@ async def join_generators(
         *generators: The asynchronous generators to join.
     """
 
-    FINISHED = object()  # sentinel object to indicate a generator has finished
+    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
     queue = asyncio.Queue[T | object | Exception](maxsize=1)
 
     async def _queue_generator(

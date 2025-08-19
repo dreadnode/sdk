@@ -42,7 +42,7 @@ def show(
 
 
 @cli.command(help_flags=[])
-async def run(  # noqa: PLR0915
+async def run(
     agent: str,
     input: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
@@ -130,7 +130,7 @@ async def run(  # noqa: PLR0915
             rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
             return
 
-    print(tokens)
+    # print(tokens)
     command, bound, unbound = agent_app.parse_args(tokens)
-    print(bound, unbound)
+    # print(bound, unbound)
     await command(*bound.args, **bound.kwargs)
