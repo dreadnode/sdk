@@ -15,8 +15,6 @@ from fsspec.implementations.local import (  # type: ignore [import-untyped]
     LocalFileSystem,
 )
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
-from logfire._internal.stack_info import get_filepath_attribute, warn_at_user_stacklevel
-from logfire._internal.utils import safe_repr
 from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -64,7 +62,13 @@ from dreadnode.types import (
     Inherited,
     JsonValue,
 )
-from dreadnode.util import clean_str, handle_internal_errors
+from dreadnode.util import (
+    clean_str,
+    get_filepath_attribute,
+    handle_internal_errors,
+    safe_repr,
+    warn_at_user_stacklevel,
+)
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
@@ -285,6 +289,7 @@ class Dreadnode:
 
         This method is called automatically when you call `configure()`.
         """
+
         if self._initialized:
             return
 

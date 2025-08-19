@@ -136,7 +136,9 @@ def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
         self.value = len(others) + 1
     elif mode == "avg" and prior_values:
         current_avg = prior_values[-1]
-        self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
+        self.value = current_avg + (self.value - current_avg) / (
+            len(prior_values) + 1
+        )
 
     return self
 ```

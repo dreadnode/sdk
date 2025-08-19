@@ -4,19 +4,6 @@ from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric, Scorer
 from dreadnode.util import clean_str, warn_at_user_stacklevel
 
-_TRANSFORMERS_AVAILABLE = False
-_TRANSFORMERS_ERROR_MSG = (
-    "Hugging Face transformers dependency is not installed. "
-    "Please install with: pip install transformers torch"
-)
-
-try:
-    from transformers import pipeline  # type: ignore [attr-defined,import-not-found,unused-ignore]
-
-    _TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    pass
-
 # Global cache for pipelines
 g_pipelines: dict[str, t.Any] = {}
 
@@ -40,11 +27,20 @@ def zero_shot_classification(
         model_name: The name of the zero-shot model from Hugging Face Hub.
         name: Name of the scorer.
     """
-    if not _TRANSFORMERS_AVAILABLE:
-        warn_at_user_stacklevel(_TRANSFORMERS_ERROR_MSG, UserWarning)
+    transformers_error_msg = (
+        "Hugging Face transformers dependency is not installed. "
+        "Please install with: pip install transformers torch"
+    )
+
+    try:
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
+            pipeline,
+        )
+    except ImportError:
+        warn_at_user_stacklevel(transformers_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _TRANSFORMERS_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": transformers_error_msg})
 
         return Scorer.from_callable(disabled_evaluate, name=name)
 

@@ -1,4 +1,7 @@
-from dreadnode import convert, data_types, scorers
+import importlib
+import typing as t
+
+from dreadnode import convert, data_types
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.lookup import Lookup, lookup_input, lookup_output, lookup_param, resolve_lookup
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
@@ -7,6 +10,9 @@ from dreadnode.object import Object
 from dreadnode.task import Task
 from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
+
+if t.TYPE_CHECKING:
+    from dreadnode import scorers  # noqa: F401
 
 configure = DEFAULT_INSTANCE.configure
 shutdown = DEFAULT_INSTANCE.shutdown
@@ -77,7 +83,6 @@ __all__ = [
     "resolve_lookup",
     "run",
     "scorer",
-    "scorers",
     "shutdown",
     "span",
     "tag",
@@ -85,3 +90,17 @@ __all__ = [
     "task_span",
     "task_span",
 ]
+
+__lazy_submodules__ = ["scorers"]
+
+
+def __getattr__(name: str) -> t.Any:
+    if name in __lazy_submodules__:
+        module = importlib.import_module(f".{name}", __name__)
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def __dir__() -> list[str]:
+    return sorted(list(globals().keys()) + __lazy_submodules__)

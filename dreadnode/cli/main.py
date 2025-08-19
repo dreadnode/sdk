@@ -11,8 +11,13 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from dreadnode.api.client import ApiClient
+from dreadnode.cli.agent import cli as agent_cli
 from dreadnode.cli.api import create_api_client
-from dreadnode.cli.github import GithubRepo, download_and_unzip_archive, validate_server_for_clone
+from dreadnode.cli.github import (
+    GithubRepo,
+    download_and_unzip_archive,
+    validate_server_for_clone,
+)
 from dreadnode.cli.profile import cli as profile_cli
 from dreadnode.config import ServerConfig, UserConfig
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
@@ -22,6 +27,7 @@ cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], h
 cli["--help"].group = "Meta"
 
 cli.command(profile_cli)
+cli.command(agent_cli)
 
 
 @cli.meta.default
@@ -40,17 +46,19 @@ def meta(
         sys.exit(1)
 
 
-@cli.command(help="Authenticate to a platform server.", group="Auth")
+@cli.command(group="Auth")
 def login(
     *,
     server: t.Annotated[
-        str | None, cyclopts.Parameter(name=["--server", "-s"], help="URL of the server")
+        str | None,
+        cyclopts.Parameter(name=["--server", "-s"], help="URL of the server"),
     ] = None,
     profile: t.Annotated[
         str | None,
         cyclopts.Parameter(name=["--profile", "-p"], help="Profile alias to assign / update"),
     ] = None,
 ) -> None:
+    """Authenticate to a Dreadnode platform server and save the profile."""
     if not server:
         server = PLATFORM_BASE_URL
         with contextlib.suppress(Exception):
@@ -87,7 +95,11 @@ Then enter the code: [bold]{codes.user_code}[/]
     tokens = client.poll_for_token(codes.device_code)
 
     client = ApiClient(
-        server, cookies={"refresh_token": tokens.refresh_token, "access_token": tokens.access_token}
+        server,
+        cookies={
+            "refresh_token": tokens.refresh_token,
+            "access_token": tokens.access_token,
+        },
     )
     user = client.get_user()
 
@@ -106,8 +118,10 @@ Then enter the code: [bold]{codes.user_code}[/]
     rich.print(f":white_check_mark: Authenticated as {user.email_address} ({user.username})")
 
 
-@cli.command(help="Refresh data for the active server profile.", group="Auth")
+@cli.command(group="Auth")
 def refresh() -> None:
+    """Refresh the active server profile with the latest user data."""
+
     user_config = UserConfig.read()
     server_config = user_config.get_server_config()
 
@@ -125,7 +139,7 @@ def refresh() -> None:
     )
 
 
-@cli.command(help="Clone a github repository, typically privately shared dreadnode repositories.")
+@cli.command()
 def clone(
     repo: t.Annotated[str, cyclopts.Parameter(help="Repository name or URL")],
     target: t.Annotated[
@@ -133,6 +147,8 @@ def clone(
         cyclopts.Parameter(help="The target directory"),
     ] = None,
 ) -> None:
+    """Clone a GitHub repository to a local directory"""
+
     github_repo = GithubRepo(repo)
 
     # Check if the target directory exists

@@ -460,6 +460,8 @@ def initialize(self) -> None:
 
     This method is called automatically when you call `configure()`.
     """
+    from s3fs import S3FileSystem  # type: ignore [import-untyped]
+
     if self._initialized:
         return
 

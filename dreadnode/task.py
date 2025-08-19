@@ -4,13 +4,13 @@ import traceback
 import typing as t
 from dataclasses import dataclass
 
-from logfire._internal.stack_info import warn_at_user_stacklevel
 from opentelemetry.trace import Tracer
 
 from dreadnode.metric import Scorer, ScorerCallable
 from dreadnode.serialization import seems_useful_to_serialize
 from dreadnode.tracing.span import TaskSpan, current_run_span
 from dreadnode.types import INHERITED, AnyDict, Inherited
+from dreadnode.util import warn_at_user_stacklevel
 
 P = t.ParamSpec("P")
 R = t.TypeVar("R")
