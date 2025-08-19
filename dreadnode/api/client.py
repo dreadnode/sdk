@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
-import pandas as pd
+from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
 
@@ -36,11 +36,16 @@ from dreadnode.api.util import (
     process_run,
     process_task,
 )
-from dreadnode.constants import DEFAULT_MAX_POLL_TIME, DEFAULT_POLL_INTERVAL
-from dreadnode.util import logger
+from dreadnode.constants import (
+    DEFAULT_MAX_POLL_TIME,
+    DEFAULT_POLL_INTERVAL,
+)
 from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
+
+if t.TYPE_CHECKING:
+    import pandas as pd
 
 
 class ApiClient:
@@ -88,11 +93,10 @@ class ApiClient:
         }
 
         if api_key:
-            headers["X-Api-Key"] = api_key
+            headers["X-API-Key"] = api_key
 
         self._client = httpx.Client(
             headers=headers,
-            cookies=_cookies,
             base_url=self._base_url,
             timeout=30,
         )
@@ -376,7 +380,7 @@ class ApiClient:
         # format: ExportFormat = "parquet",
         status: StatusFilter = "completed",
         aggregations: list[MetricAggregationType] | None = None,
-    ) -> pd.DataFrame:
+    ) -> "pd.DataFrame":
         """
         Exports run data for a specific project.
 
@@ -389,6 +393,8 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported run data.
         """
+        import pandas as pd
+
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export",
@@ -410,7 +416,7 @@ class ApiClient:
         status: StatusFilter = "completed",
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
-    ) -> pd.DataFrame:
+    ) -> "pd.DataFrame":
         """
         Exports metric data for a specific project.
 
@@ -424,6 +430,8 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported metric data.
         """
+        import pandas as pd
+
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/metrics",
@@ -447,7 +455,7 @@ class ApiClient:
         parameters: list[str] | None = None,
         metrics: list[str] | None = None,
         aggregations: list[MetricAggregationType] | None = None,
-    ) -> pd.DataFrame:
+    ) -> "pd.DataFrame":
         """
         Exports parameter data for a specific project.
 
@@ -462,6 +470,8 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported parameter data.
         """
+        import pandas as pd
+
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/parameters",
@@ -486,7 +496,7 @@ class ApiClient:
         metrics: list[str] | None = None,
         time_axis: TimeAxisType = "relative",
         aggregations: list[TimeAggregationType] | None = None,
-    ) -> pd.DataFrame:
+    ) -> "pd.DataFrame":
         """
         Exports timeseries data for a specific project.
 
@@ -501,6 +511,8 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
+        import pandas as pd
+
         response = self.request(
             "GET",
             f"/strikes/projects/{project!s}/export/timeseries",
@@ -524,5 +536,5 @@ class ApiClient:
         Returns:
             The user data credentials object.
         """
-        response = self.request("GET", "/user-data/credentials")
+        response = self._request("GET", "/user-data/credentials")
         return UserDataCredentials(**response.json())

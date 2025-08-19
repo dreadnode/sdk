@@ -3,14 +3,15 @@ import typing as t
 from pathlib import Path
 from typing import ClassVar
 
-import numpy as np
-import pandas as pd
-
 from dreadnode.data_types.base import DataType
 
-TableDataType = (
-    pd.DataFrame | dict[t.Any, t.Any] | list[t.Any] | str | Path | np.ndarray[t.Any, t.Any]
-)
+if t.TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+
+TableDataType = t.Union[
+    "pd.DataFrame", dict[t.Any, t.Any], list[t.Any], str, Path, "np.ndarray[t.Any, t.Any]"
+]
 
 
 class Table(DataType):
@@ -71,12 +72,15 @@ class Table(DataType):
 
         return table_bytes, metadata
 
-    def _to_dataframe(self) -> pd.DataFrame:
+    def _to_dataframe(self) -> "pd.DataFrame":
         """
         Convert the input data to a pandas DataFrame.
         Returns:
             A pandas DataFrame representation of the input data
         """
+        import numpy as np
+        import pandas as pd
+
         if isinstance(self._data, pd.DataFrame):
             return self._data
         if isinstance(self._data, (str, Path)) and Path(self._data).exists():
@@ -99,7 +103,7 @@ class Table(DataType):
 
         raise ValueError(f"Unsupported table data type: {type(self._data)}")
 
-    def _dataframe_to_bytes(self, data_frame: pd.DataFrame) -> bytes:
+    def _dataframe_to_bytes(self, data_frame: "pd.DataFrame") -> bytes:
         """
         Convert the DataFrame to bytes based on the specified format.
         Args:
@@ -122,7 +126,7 @@ class Table(DataType):
         buffer.seek(0)
         return buffer.getvalue()
 
-    def _generate_metadata(self, data_frame: pd.DataFrame) -> dict[str, t.Any]:
+    def _generate_metadata(self, data_frame: "pd.DataFrame") -> dict[str, t.Any]:
         """
         Generate metadata for the table.
         Args:
@@ -130,6 +134,9 @@ class Table(DataType):
         Returns:
             A dictionary of metadata
         """
+        import numpy as np
+        import pandas as pd
+
         metadata = {
             "extension": self._format,
             "x-python-datatype": "dreadnode.Table.bytes",

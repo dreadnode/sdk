@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import typing_extensions as te
-from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
 from logfire._internal.json_encoder import logfire_json_dumps as json_dumps
 from logfire._internal.json_schema import (
     JsonSchemaProperties,
@@ -33,6 +32,7 @@ from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import DEFAULT_MAX_INLINE_OBJECT_BYTES
 from dreadnode.convert import run_span_to_graph
+from dreadnode.credential_manager import CredentialManager
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
@@ -71,6 +71,7 @@ from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     import networkx as nx  # type: ignore [import-untyped]
+
 
 logger = logging.getLogger(__name__)
 
@@ -354,8 +355,7 @@ class RunSpan(Span):
         name: str,
         project: str,
         tracer: Tracer,
-        file_system: AbstractFileSystem,
-        prefix_path: str,
+        credential_manager: CredentialManager,
         *,
         attributes: AnyDict | None = None,
         params: AnyDict | None = None,
@@ -375,12 +375,16 @@ class RunSpan(Span):
         self._object_schemas: dict[str, JsonDict] = {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
-        self._artifact_storage = ArtifactStorage(file_system=file_system)
+
+        # Credential manager for S3 operations
+        self._credential_manager = credential_manager
+
+        # Initialize artifact components
+        self._artifact_storage = ArtifactStorage(credential_manager=credential_manager)
         self._artifacts: list[DirectoryNode] = []
         self._artifact_merger = ArtifactMerger()
         self._artifact_tree_builder = ArtifactTreeBuilder(
-            storage=self._artifact_storage,
-            prefix_path=prefix_path,
+            storage=self._artifact_storage, prefix_path=self._credential_manager.get_prefix()
         )
 
         # Update mechanics
@@ -393,12 +397,9 @@ class RunSpan(Span):
         self._pending_objects = deepcopy(self._objects)
         self._pending_object_schemas = deepcopy(self._object_schemas)
 
-        self._context_token: Token[RunSpan | None] | None = None  # contextvars context
-        self._remote_context: dict[str, str] | None = None  # remote run trace context
+        self._context_token: Token[RunSpan | None] | None = None
+        self._remote_context: dict[str, str] | None = None
         self._remote_token: object | None = None
-        self._file_system = file_system
-        self._prefix_path = prefix_path
-
         self._tasks: list[TaskSpan[t.Any]] = []
 
         attributes = {
@@ -406,6 +407,7 @@ class RunSpan(Span):
             SPAN_ATTRIBUTE_PROJECT: project,
             **(attributes or {}),
         }
+
         super().__init__(name, tracer, attributes=attributes, type=type, tags=tags)
 
     @classmethod
@@ -413,22 +415,19 @@ class RunSpan(Span):
         cls,
         context: RunContext,
         tracer: Tracer,
-        file_system: AbstractFileSystem,
-        prefix_path: str,
+        credential_manager: CredentialManager,
     ) -> "RunSpan":
         self = RunSpan(
             name=f"run.{context['run_id']}.fragment",
             project=context["project"],
             attributes={},
             tracer=tracer,
-            file_system=file_system,
-            prefix_path=prefix_path,
             type="run_fragment",
             run_id=context["run_id"],
+            credential_manager=credential_manager,
         )
 
         self._remote_context = context["trace_context"]
-
         return self
 
     def __enter__(self) -> te.Self:
@@ -604,23 +603,19 @@ class RunSpan(Span):
 
         return composite_hash
 
-    def _store_file_by_hash(self, data: bytes, full_path: str) -> str:
-        """
-        Writes data to the given full_path in the object store if it doesn't already exist.
+    def _store_file_by_hash(self, data_bytes: bytes, full_path: str) -> str:
+        """Store file with automatic credential refresh."""
 
-        Args:
-            data: Content to write.
-            full_path: The path in the object store (e.g., S3 key or local path).
+        def store_operation() -> str:
+            filesystem = self._credential_manager.get_filesystem()
 
-        Returns:
-            The unstrip_protocol version of the full path (for object store URI).
-        """
-        if not self._file_system.exists(full_path):
-            logger.debug("Storing new object at: %s", full_path)
-            with self._file_system.open(full_path, "wb") as f:
-                f.write(data)
+            if not filesystem.exists(full_path):
+                with filesystem.open(full_path, "wb") as f:
+                    f.write(data_bytes)
 
-        return str(self._file_system.unstrip_protocol(full_path))
+            return str(filesystem.unstrip_protocol(full_path))
+
+        return self._credential_manager.execute_with_retry(store_operation)
 
     def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
         """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
@@ -640,7 +635,8 @@ class RunSpan(Span):
         # Offload to file system (e.g., S3)
         # For storage efficiency, still use just the data_hash for the file path
         # This ensures we don't duplicate storage for the same data
-        full_path = f"{self._prefix_path.rstrip('/')}/{data_hash}"
+        prefix = self._credential_manager.get_prefix()
+        full_path = f"{prefix.rstrip('/')}/{data_hash}"
         object_uri = self._store_file_by_hash(data_bytes, full_path)
 
         return ObjectUri(
