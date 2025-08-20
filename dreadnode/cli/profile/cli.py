@@ -59,7 +59,7 @@ def switch(
 
     # If no profile provided, prompt user to choose
     if profile is None:
-        from rich.prompt import Prompt
+        from rich.prompt import Prompt  # noqa: PLC0415
 
         profiles = list(config.servers.keys())
         rich.print("\nAvailable profiles:")

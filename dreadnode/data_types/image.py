@@ -11,14 +11,14 @@ if t.TYPE_CHECKING:
 
 def check_imports() -> None:
     try:
-        import PIL  # type: ignore[import,unused-ignore]  # noqa: F401
+        import PIL  # type: ignore[import,unused-ignore]  # noqa: F401,PLC0415
     except ImportError as e:
         raise ImportError(
             "Image processing requires `pillow`. Install with: pip install dreadnode[multimodal]"
         ) from e
 
     try:
-        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: F401
+        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: F401,PLC0415
     except ImportError as e:
         raise ImportError(
             "Image processing requires `numpy`. Install with: pip install dreadnode[multimodal]"
@@ -83,8 +83,8 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         if isinstance(self._data, (str, Path)) and Path(self._data).exists():
             return self._process_file_path()
@@ -104,7 +104,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         path_str = str(self._data)
         image_bytes = Path(path_str).read_bytes()
@@ -122,7 +122,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         if not isinstance(self._data, PIL.Image.Image):
             raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
@@ -160,8 +160,8 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         buffer = io.BytesIO()
         image_format = self._format or "png"
@@ -191,7 +191,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         if not isinstance(self._data, bytes):
             raise TypeError(f"Expected bytes, got {type(self._data)}")
@@ -216,7 +216,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         if not isinstance(self._data, str):
             raise TypeError(f"Expected str, got {type(self._data)}")
@@ -253,8 +253,8 @@ class Image(DataType):
         self, image_format: str, mode: str | None, width: int | None, height: int | None
     ) -> dict[str, str | int | None]:
         """Generate metadata for the image."""
-        import numpy as np  # type: ignore[import,unused-ignore]
-        import PIL.Image  # type: ignore[import,unused-ignore]
+        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import PIL.Image  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         metadata: dict[str, str | int | None] = {
             "extension": image_format.lower(),
@@ -313,7 +313,7 @@ class Image(DataType):
         self, array: "np.ndarray[t.Any, np.dtype[t.Any]]"
     ) -> "np.ndarray[t.Any, np.dtype[t.Any]]":
         """Convert numpy array to a format suitable for PIL."""
-        import numpy as np  # type: ignore[import,unused-ignore]
+        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         grayscale_dim = 2
         rgb_dim = 3

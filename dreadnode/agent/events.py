@@ -108,10 +108,10 @@ class AgentEnd(Event):
 
 
 def rebuild_event_models() -> None:
-    from dreadnode.agent.agent import Agent  # noqa: F401
-    from dreadnode.agent.reactions import Reaction  # noqa: F401
-    from dreadnode.agent.result import AgentResult  # noqa: F401
-    from dreadnode.agent.thread import Thread  # noqa: F401
+    from dreadnode.agent.agent import Agent  # noqa: F401,PLC0415
+    from dreadnode.agent.reactions import Reaction  # noqa: F401,PLC0415
+    from dreadnode.agent.result import AgentResult  # noqa: F401,PLC0415
+    from dreadnode.agent.thread import Thread  # noqa: F401,PLC0415
 
     rebuild_dataclass(Event)  # type: ignore[arg-type]
     rebuild_dataclass(AgentStart)  # type: ignore[arg-type]

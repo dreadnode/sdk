@@ -99,7 +99,7 @@ async def run(
     config_default = None
     with contextlib.suppress(Exception):
         config_default = config_model()
-        config_parameter = t.Optional[config_parameter]  # type: ignore [assignment] # noqa: UP007
+        config_parameter = config_parameter | None  # type: ignore [assignment]
 
     async def agent_cli(*, config: t.Any = config_default) -> None:
         agent = hydrate_agent(agent_blueprint, config)
