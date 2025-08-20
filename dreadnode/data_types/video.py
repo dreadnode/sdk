@@ -65,8 +65,8 @@ class Video(DataType):
         import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         try:
-            from moviepy.video.VideoClip import (  # noqa: PLC0415
-                VideoClip,  # type: ignore[import,unused-ignore]
+            from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]  # noqa: PLC0415
+                VideoClip,
             )
         except ImportError:
             VideoClip = None  # noqa: N806
@@ -162,8 +162,8 @@ class Video(DataType):
         import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
 
         try:
-            from moviepy.video.io import (  # noqa: PLC0415
-                ImageSequenceClip,  # type: ignore[import,unused-ignore]
+            from moviepy.video.io import (  # type: ignore[import,unused-ignore,import-untyped]  # noqa: PLC0415
+                ImageSequenceClip,
             )
         except ImportError as e:
             raise ImportError(
