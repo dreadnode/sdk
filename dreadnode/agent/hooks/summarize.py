@@ -23,7 +23,7 @@ CONTEXT_LENGTH_ERROR_PATTERNS = [
 def _is_context_length_error(error: Exception) -> bool:
     """Checks if an exception is likely due to exceeding the context window."""
     with contextlib.suppress(ImportError):
-        from litellm.exceptions import ContextWindowExceededError
+        from litellm.exceptions import ContextWindowExceededError  # noqa: PLC0415
 
         if isinstance(error, ContextWindowExceededError):
             return True

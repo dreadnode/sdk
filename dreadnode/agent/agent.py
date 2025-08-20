@@ -259,7 +259,7 @@ class TaskAgent(Agent):
     """
 
     def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools import finish_task, update_todo
+        from dreadnode.agent.tools import finish_task, update_todo  # noqa: PLC0415
 
         if not any(tool for tool in self.tools if tool.name == "finish_task"):
             self.tools.append(finish_task)

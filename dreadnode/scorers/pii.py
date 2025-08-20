@@ -64,8 +64,8 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
 
-    from presidio_analyzer import AnalyzerEngine
-    from presidio_analyzer.nlp_engine import NlpEngineProvider
+    from presidio_analyzer import AnalyzerEngine  # noqa: PLC0415
+    from presidio_analyzer.nlp_engine import NlpEngineProvider  # noqa: PLC0415
 
     if g_analyzer_engine is None:
         provider = NlpEngineProvider(
@@ -108,7 +108,7 @@ def detect_pii_with_presidio(
     )
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401, PLC0415
     except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 

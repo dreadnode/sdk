@@ -224,10 +224,7 @@ class Dreadnode:
                 with contextlib.suppress(Exception):
                     user_config = UserConfig.read()
                     profile_name = profile or os.environ.get(ENV_PROFILE)
-                    if profile_name:
-                        active_profile = profile_name
-                    else:
-                        active_profile = user_config.active_profile_name
+                    active_profile = profile_name or user_config.active_profile_name
 
                     if active_profile:
                         config_source = f"profile: {active_profile}"
@@ -945,7 +942,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool,
+        value: float | bool,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1036,7 +1033,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,
+        value: float | bool | Metric,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,

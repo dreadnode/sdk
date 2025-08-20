@@ -8,7 +8,7 @@ if t.TYPE_CHECKING:
 
 def run_span_to_graph(run: "RunSpan") -> "nx.DiGraph":
     try:
-        import networkx as nx
+        import networkx as nx  # noqa: PLC0415 # pyright: ignore[reportMissingModuleSource]
     except ImportError as e:
         raise RuntimeError("The `networkx` package is required for graph conversion") from e
 

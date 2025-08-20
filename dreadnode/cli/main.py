@@ -202,9 +202,9 @@ def clone(
 
 @cli.command(help="Show versions and exit.", group="Meta")
 def version() -> None:
-    import importlib.metadata
-    import platform
-    import sys
+    import importlib.metadata  # noqa: PLC0415
+    import platform  # noqa: PLC0415
+    import sys  # noqa: PLC0415
 
     version = importlib.metadata.version("dreadnode")
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
