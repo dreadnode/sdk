@@ -20,18 +20,7 @@
         "pages": ["intro", "install"]
       },
       {
-        "group": "Example Agents",
-        "pages": [
-          "examples/overview",
-          "examples/dangerous-capabilities",
-          "examples/dotnet-reversing",
-          "examples/python-agent",
-          "examples/sast-scanning",
-          "examples/sensitive-data"
-        ]
-      },
-      {
-        "group": "Usage",
+        "group": "Strikes",
         "pages": [
           "usage/cli",
           "usage/config",
@@ -47,6 +36,30 @@
         ]
       },
       {
+        "group": "Agents",
+        "pages": [
+          "agents/agents",
+          "agents/cli",
+          "agents/hooks",
+          "agents/reactions",
+          "agents/events",
+          "agents/state",
+          "agents/stops",
+          "agents/tools"
+        ]
+      },
+      {
+        "group": "Example Agents",
+        "pages": [
+          "examples/overview",
+          "examples/dangerous-capabilities",
+          "examples/dotnet-reversing",
+          "examples/python-agent",
+          "examples/sast-scanning",
+          "examples/sensitive-data"
+        ]
+      },
+      {
         "group": "How To",
         "pages": [
           "how-to/write-an-eval",
@@ -54,10 +67,6 @@
           "how-to/airtbench-agent",
           "how-to/write-a-dotnet-reversing-agent"
         ]
-      },
-      {
-        "group": "Migrations",
-        "pages": ["migrations/v1"]
       },
       {
         "group": "SDK",
@@ -72,6 +81,10 @@
           "sdk/serialization",
           "sdk/task"
         ]
+      },
+            {
+        "group": "Migrations",
+        "pages": ["migrations/v1"]
       }
     ]
   },

@@ -230,6 +230,17 @@ class Agent(BaseModel):
         *,
         thread: Thread | None = None,
     ) -> t.AsyncIterator[t.AsyncGenerator[Event, None]]:
+        """
+        Streams the agent's response to a user input, yielding events as they are generated.
+        If a thread is provided, it will be used to manage the state of the agent.
+        If no thread is provided, the agent's internal thread will be used.
+
+        Example usage:
+        ```python
+        async for event in agent.stream("What is the capital of France?"):
+            print(event)
+        ```
+        """
         thread = thread or self.thread
         async with thread.stream(
             self, user_input, commit="always" if thread == self.thread else "on-success"

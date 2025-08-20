@@ -2,7 +2,7 @@
 name = "dreadnode"
 version = "1.13.4"
 description = "Dreadnode SDK"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.13"
 
 [tool.poetry]
 name = "dreadnode"
@@ -13,7 +13,7 @@ repository = "https://github.com/dreadnode/sdk"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.14"
+python = ">=3.10,<3.13"
 pydantic = "^2.9.2"
 httpx = "^0.28.0"
 logfire = ">=3.5.3,<=3.20.0"

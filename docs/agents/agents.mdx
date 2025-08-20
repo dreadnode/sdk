@@ -1,0 +1,76 @@
+---
+title: "Introduction"
+description: "Agents are an abstraction on top of the SDK. They allow you to create complex workflows that can handle various tasks."
+public: true
+---
+
+# A Basic Agent
+The most primitive agent is an agent like this, which can handle simple tasks. It takes a name, and description, and uses a specified model to process input provided in `agent.run` and return results.
+
+```python agent.run()
+from dreadnode.agent.agent import Agent
+
+agent = Agent(
+    name="basic",
+    description="A basic agent that can handle simple tasks.",
+    model="gpt-4o-mini",
+
+)
+
+results = await agent.run("What is the capital of France?")
+```
+
+This agent is a standard `Agent` class, which allows you to run tasks with a specified model. The `run` method takes a string input and returns an `AgentResult`. The result contains the `Agent`, the number of messages exchanged, token usage (in, out, and total), the number of steps the agent took (currently 0), and whether the run failed or encountered an error.
+
+```plaintext results
+AgentResult(agent=basic, messages=2, usage=in: 31 | out: 9 | total: 40, steps=0, failed=False, error=None)
+```
+
+### Instructions
+You can add instructions to the agent to guide its behavior. This is done by passing a list of instructions to the `instructions` parameter when creating the agent. The instructions will be used to guide the agent as a system prompt.
+
+
+### Tools
+You can add tools to the agent to extend its capabilities. Tools are functions that the agent can call to perform specific tasks. You can add tools by passing a list of tool functions to the `tools` parameter when creating the agent. The agent will be able to call these tools during its execution.
+
+See the [Tools documentation](./tools) for more information on how to build and use tools.
+
+
+#### Tool Mode
+
+#### Max Steps
+
+### Stop Conditions
+You can add stop conditions to the agent to control when it should stop processing input.
+
+See the [Stop Conditions documentation](./stop-conditions) for more information on how to build and use stop conditions.
+
+### Hooks
+You can add hooks to the agent to perform actions at specific points during its life-cycle. Hooks are functions that are called when a specific `Event` is emitted during agent execution. They are not part of inference, but are rather used to control the agent during runtime. Here are the basic `Event` primitives that hooks listen for:
+
+`AgentStart`
+`StepStart`
+`GenerationEnd`
+`AgentStalled`
+`ToolStart`
+`ToolEnd`
+`Reacted`
+`AgentEnd`
+
+You can add hooks by passing a list of hook functions to the `hooks` parameter when creating the agent. The hooks will be called at the appropriate times during the agent's execution.
+
+
+```python agent.hooks()
+
+```
+
+See the [Hooks documentation](./hooks) for more information on how to build and use hooks.
+
+### Running the Agent
+You can run the agent using the `run` method. The `run` method takes a string input and returns an `AgentResult`. The agent will process the input and return the result. You can also stream the output of the agent using the `stream` method. The `stream` method takes a string input and returns an `AsyncGenerator` that yields the output as it is generated.
+
+```python agent.stream()
+result = agent.stream("What is the capital of France?")
+async for chunk in result:
+    print(chunk)
+```
