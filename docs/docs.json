@@ -17,10 +17,10 @@
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["intro", "install"]
+        "pages": ["intro"]
       },
       {
-        "group": "Strikes",
+        "group": "Strikes Core",
         "pages": [
           "usage/cli",
           "usage/config",
@@ -40,23 +40,22 @@
         "pages": [
           "agents/agents",
           "agents/cli",
-          "agents/hooks",
-          "agents/reactions",
-          "agents/events",
+          "agents/agent-lifecycle",
           "agents/state",
-          "agents/stops",
-          "agents/tools"
-        ]
-      },
-      {
-        "group": "Example Agents",
-        "pages": [
-          "examples/overview",
-          "examples/dangerous-capabilities",
-          "examples/dotnet-reversing",
-          "examples/python-agent",
-          "examples/sast-scanning",
-          "examples/sensitive-data"
+          "agents/tools",
+          "agents/building-an-agent",
+          "agents/prebuilt-agents",
+          {
+            "group": "Prebuilt-agents",
+            "pages": [
+              "examples/dotnet-reversing",
+              "examples/python-agent",
+              "examples/sast-scanning",
+              "examples/sensitive-data"
+
+            ]
+          },
+          "agents/available-tools"
         ]
       },
       {

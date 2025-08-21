@@ -1,0 +1,26 @@
+---
+title: "Life Cycle"
+description: "The agent life cycle describes the various stages an agent goes through from creation to termination. Including Events, Hooks, and Reactions."
+public: true
+---
+
+# The Agent Life Cycle
+During an agent's life cycle, it goes through several stages, each with its own set of events, hooks, and reactions.
+
+## Events
+Events are emitted at various points in an agent's life cycle. These events can be used to trigger hooks or reactions, allowing you to customize the agent's behavior based on its state or actions.
+
+See the [Events documentation](./events) for more information on the different events that can be emitted during an agent's life cycle.
+
+## Hooks
+Hooks are functions that are called at specific points during an agent's execution. They allow you to perform actions based on events emitted by the agent. Hooks can be used to log information, modify the agent's state, or perform other actions that are not part of the agent's inference process.
+
+You can add hooks by passing a list of hook functions to the `hooks` parameter when creating the agent. The hooks will be called at the appropriate times during the agent's execution.
+
+See the [Hooks documentation](./hooks) for more information on how to build and use hooks.
+
+## Reactions
+Reactions are actions that the agent can take based on the output of tools or the state of the agent. Reactions can be used to modify the agent's state or perform additional tasks based on the agent's results. They can be triggered by events or hooks, allowing you to customize the agent's behavior based on its output.
+
+## Stop Conditions
+Stop conditions are used to define when an agent should stop its execution. They allow you to specify conditions that, when met, will cause the agent to terminate its operations gracefully.

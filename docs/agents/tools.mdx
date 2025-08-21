@@ -3,3 +3,59 @@ title: "Tools"
 description: "Tools are specialized functions that agents can use to perform specific tasks. They allow agents to interact with external systems, process data, and execute commands as part of their workflows."
 public: true
 ---
+
+## Defining Tools
+To define a tool, you typically create a function that encapsulates the desired behavior. This function can then be registered with the agent, allowing it to be invoked during the agent's execution.
+
+### Functions
+Functions are the most straightforward way to define tools. You can create a function that performs a specific task and then register it with the agent. When the agent needs to use the tool, it can call the function directly.
+
+```python
+def my_tool_function(input_data):
+    # Perform some processing
+    return processed_data
+```
+
+### Classes
+Tools can also be defined as classes, which allows for more complex behavior and state management. When using classes, you can define methods that the agent can call, and you can maintain internal state within the class. 
+
+Classes can obviously contain multiple methods, where some methods are relevant to the agent's tasks, and others that are for state management. To make a class method available as a tool, use the `@tool_method` decorator. This will make the method callable by the agent when it needs to use the tool. 
+
+```python
+class MyTool:
+    def __init__(self, config):
+        self.config = config
+
+    def initialize(self):
+        # Perform any setup required for the tool
+        pass
+
+    @tool_method
+    def execute(self, input_data):
+        # Perform some processing using self.config
+        return processed_data
+```
+
+## Registering Tools with the Agent
+Once you have defined your tools, you can register them with the agent. This is typically done by passing a list of tool functions or classes to the agent's constructor or configuration.
+
+```python
+from dreadnode.agent.agent import Agent
+
+agent = Agent(
+    name="my_agent",
+    description="An agent that uses custom tools.",
+    model="gpt-4o-mini",
+    tools=[my_tool_function, MyTool(config={"key": "value"})]
+)
+```
+
+## Tool Lifecycle
+Tools have events that are emitted during agent execution. These events can be used to trigger hooks or reactions, allowing you to customize the agent's behavior based on the tool's state or actions.
+
+### Events
+Tools can emit events at various points in their lifecycle. These events can be used to trigger hooks.
+
+
+### Reactions
+Tools can return reactions, which are actions that the agent can take based on the tool's output. Reactions can be used to modify the agent's state or perform additional tasks based on the tool's results.
