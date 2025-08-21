@@ -1,6 +1,6 @@
 from pydantic.dataclasses import rebuild_dataclass
 
-from dreadnode.agent.agent import Agent
+from dreadnode.agent.agent import Agent, TaskAgent
 from dreadnode.agent.events import rebuild_event_models
 from dreadnode.agent.result import AgentResult
 from dreadnode.agent.thread import Thread

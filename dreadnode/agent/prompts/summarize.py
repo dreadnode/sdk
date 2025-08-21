@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from dreadnode.agent.types import Chat, prompt
+from dreadnode.agent._types import Chat, prompt
 
 
 @dataclass

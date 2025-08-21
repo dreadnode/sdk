@@ -3,7 +3,7 @@ import typing as t
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
 
-from dreadnode.agent.types import Message
+from dreadnode.agent._types import Message
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.events import Event

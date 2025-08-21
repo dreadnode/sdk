@@ -4,7 +4,7 @@ from dataclasses import field  # Some odities with repr=False, otherwise I would
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass, rebuild_dataclass
 
-from dreadnode.agent.types import Message, ToolCall, Usage
+from dreadnode.agent._types import Message, ToolCall, Usage
 from dreadnode.util import shorten_string
 
 if t.TYPE_CHECKING:

@@ -26,7 +26,7 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.stop import StopCondition, StopNever
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools.base import AnyTool, Tool, Toolset
-from dreadnode.agent.types import Message
+from dreadnode.agent._types import Message
 from dreadnode.util import flatten_list, get_callable_name, shorten_string
 
 
