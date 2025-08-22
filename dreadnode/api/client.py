@@ -12,6 +12,7 @@ from ulid import ULID
 
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
+    ContainerRegistryCredentials,
     DeviceCodeResponse,
     GithubTokenResponse,
     MetricAggregationType,
@@ -538,3 +539,15 @@ class ApiClient:
         """
         response = self._request("GET", "/user-data/credentials")
         return UserDataCredentials(**response.json())
+
+    # Container registry access
+
+    def get_container_registry_credentials(self) -> ContainerRegistryCredentials:
+        """
+        Retrieves container registry credentials for Docker image access.
+
+        Returns:
+            The container registry credentials object.
+        """
+        response = self._request("GET", "/platform/container-registry/credentials")
+        return ContainerRegistryCredentials(**response.json())

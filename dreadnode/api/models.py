@@ -43,6 +43,13 @@ class UserDataCredentials(BaseModel):
     endpoint: str | None
 
 
+class ContainerRegistryCredentials(BaseModel):
+    registry: str
+    username: str
+    password: str
+    expires_at: datetime
+
+
 # Auth
 
 
