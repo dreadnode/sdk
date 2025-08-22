@@ -6,6 +6,7 @@ from pydantic.dataclasses import dataclass
 from rigging.generator.base import Usage
 from rigging.message import Message
 
+
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
 
