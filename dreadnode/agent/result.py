@@ -82,7 +82,7 @@ class AgentDataset:
         s += " [turquoise2]Usage:[white]"
         for k, v in info["usage"].items():
             s += f"\n  {k} - {v}"
-        s += f"\n [turquoise2]Tool Calls: {len(info["tool_calls"])}"
+        s += f"\n [turquoise2]Tool Calls: [white]{len(info["tool_calls"])}"
         s += "\n [turquoise2]Tool Call Summary:[white]"
         for k, v in info["tool_calls"].items():
             s += f"\n  {k} - {v}"
