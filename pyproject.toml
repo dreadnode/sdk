@@ -3,6 +3,9 @@ name = "dreadnode"
 version = "1.13.4"
 description = "Dreadnode SDK"
 requires-python = ">=3.10,<3.14"
+dependencies = [
+    "bbot>=2.6.1",
+]
 
 [tool.poetry]
 name = "dreadnode"
