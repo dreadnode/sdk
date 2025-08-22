@@ -1,10 +1,11 @@
 from __future__ import annotations
 import typing as t
-import json
+import copy
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 from rigging.generator.base import Usage
 from rigging.message import Message
+
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
@@ -49,10 +50,10 @@ class AgentDataset:
     ]
 
     def __init__(self, agent_result: "AgentResult"):
-        self.agent_result = agent_result
+        self._agent_result = agent_result
 
     def __iter__(self):
-        for i in self.agent_result.messages:
+        for i in self._agent_result.messages:
             yield dict(
                 uuid=str(i.uuid),
                 role=i.role,
@@ -66,6 +67,49 @@ class AgentDataset:
                 ),
                 metadata=i.metadata,
             )
+
+    def __repr__(self):
+        return str(self.info)
+
+    @property
+    def human(self) -> None:
+        """ """
+        import rich
+
+        info = self.info
+        s = "[grey66]Dreadnode Agent Dataset"
+        s += f"\n [turquoise2]Agent:[white] {info["agent"]}\n [turquoise2]Failed: [white]{info["failed"]}\n [turquoise2]Error: [white]{info["error"]}\n [turquoise2]Steps: [white]{info["steps"]}\n [turquoise2]Messages: [white]{info["messages"]}\n"
+        s += " [turquoise2]Usage:[white]"
+        for k, v in info["usage"].items():
+            s += f"\n  {k} - {v}"
+        s += f"\n [turquoise2]Tool Calls: {len(info["tool_calls"])}"
+        s += "\n [turquoise2]Tool Call Summary:[white]"
+        for k, v in info["tool_calls"].items():
+            s += f"\n  {k} - {v}"
+
+        rich.print(s)
+
+    @property
+    def info(self):
+        if not getattr(self, "_info", False):
+            info = dict(
+                agent=self._agent_result.agent.name,
+                failed=self._agent_result.failed,
+                error=self._agent_result.error,
+                steps=self._agent_result.steps,
+                messages=len(self._agent_result.messages),
+                usage=dict(self._agent_result.usage),
+                tool_calls=dict(),
+            )
+            for i in self._agent_result.messages:
+                if i.tool_calls and len(i.tool_calls) > 0:
+                    for j in i.tool_calls:
+                        if j.name not in info["tool_calls"]:
+                            info["tool_calls"][j.name] = 0
+                        info["tool_calls"][j.name] += 1
+
+            self._info = info
+        return copy.deepcopy(self._info)
 
     @property
     def fields(self) -> list[str]:
@@ -108,7 +152,7 @@ class AgentDataset:
         pass
 
     def _get_dir_path(self):
-        return f"/tmp/dn_agent_dataset-{self.agent_result.agent.name}-{str(uuid.uuid4())[:8]}"
+        return f"/tmp/dn_agent_dataset-{self._agent_result.agent.name}-{str(uuid.uuid4())[:8]}"
 
     def _encode_tool_call(self, tool_call: "ToolCall") -> dict:
         """ """
