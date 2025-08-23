@@ -100,6 +100,7 @@ class ApiClient:
             headers=headers,
             base_url=self._base_url,
             timeout=30,
+            cookies=_cookies,
         )
 
         if debug:

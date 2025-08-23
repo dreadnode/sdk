@@ -37,6 +37,7 @@ presidio-analyzer = "^2.2.359"
 [tool.poetry.extras]
 training = ["transformers"]
 multimodal = ["pillow", "soundfile", "moviepy"]
+platform = ["docker"]
 all = ["multimodal", "training"]
 
 [tool.poetry.group.dev.dependencies]
