@@ -1,0 +1,35 @@
+name: dotnet-reversing
+description: "Dreadnode plugin: .NET reversing tools"
+factory: dreaddotnet.plugin:register
+version: 0.1.0
+tags: [dotnet, reversing]
+
+provides:
+  - decompile_module
+  - decompile_type
+  - decompile_methods
+  - list_namespaces
+  - list_types_in_namespace
+  - list_methods_in_type
+  - list_types
+  - list_methods
+  - search_for_references
+  - search_by_name
+  - get_call_flows_to_method
+
+defaults:
+  pattern: "**/*"
+  exclude: ["mscorlib.dll"]
+
+args_schema:
+  path:
+    { type: path, required: true, description: "Base directory of assemblies" }
+  pattern: { type: str, required: false }
+  exclude: { type: list, items: str, required: false }
+
+runtime:
+  python: { min: "3.10", max: "3.12" }
+  requirements:
+    - pythonnet
+  resources:
+    - "lib/*.dll"

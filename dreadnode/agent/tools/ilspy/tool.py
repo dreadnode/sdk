@@ -2,28 +2,25 @@
 # Fair warning, this file is a mess on the part of .NET interop. Order matters here for imports.
 #
 
-import asyncio
-import functools
 import sys
 import typing as t
-from dataclasses import dataclass
-from functools import cached_property
 from pathlib import Path
 
-import dreadnode as dn
-import rigging as rg
 from loguru import logger
 from pythonnet import load  # type: ignore [import-untyped]
+
+from dreadnode.agent.tools import Toolset, tool_method
 
 load("coreclr")
 
 import clr  # type: ignore [import-untyped] # noqa: E402
 
-lib_dir = Path(__file__).parent / "lib"
+lib_dir = Path(__file__).parent / "bin"
 sys.path.append(str(lib_dir))
 
 clr.AddReference("ICSharpCode.Decompiler")
 clr.AddReference("Mono.Cecil")
+
 
 from ICSharpCode.Decompiler import (  # type: ignore [import-not-found] # noqa: E402
     DecompilerSettings,
@@ -107,8 +104,7 @@ DEFAULT_EXCLUDE = [
 ]
 
 
-@dataclass
-class DotnetReversing:
+class ILSpyTool(Toolset):
     base_path: Path
     binaries: list[str]
 
@@ -118,7 +114,7 @@ class DotnetReversing:
         path: Path | str,
         pattern: str = "**/*",
         exclude: list[str] = DEFAULT_EXCLUDE,
-    ) -> "DotnetReversing":
+    ) -> "ILSpyTool":
         base_path = Path(path)
         if not base_path.exists():
             raise ValueError(f"Base path does not exist: {base_path}")
@@ -136,35 +132,6 @@ class DotnetReversing:
 
         return cls(base_path=base_path, binaries=binaries)
 
-    @cached_property
-    def tools(self) -> list[t.Callable[..., t.Any]]:
-        def wrap(func: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:
-            @rg.tool(catch=True, truncate=10_000)
-            @dn.task()
-            @functools.wraps(func)
-            async def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Any:
-                # Use asyncio.to_thread to run the function in a separate thread
-                # and avoid blocking the event loop.
-                return await asyncio.to_thread(func, *args, **kwargs)
-
-            return wrapper
-
-        return [
-            wrap(func)
-            for func in (
-                self.decompile_module,
-                self.decompile_type,
-                self.decompile_methods,
-                self.list_namespaces,
-                self.list_types_in_namespace,
-                self.list_methods_in_type,
-                self.list_types,
-                self.list_methods,
-                self.search_for_references,
-                self.get_call_flows_to_method,
-            )
-        ]
-
     def _resolve_path(self, path: str) -> str:
         rel_path = Path(path)
         full_path = self.base_path / path
@@ -179,7 +146,8 @@ class DotnetReversing:
 
         return str(full_path)
 
-    def decompile_module(self, path: t.Annotated[str, "The binary file path"]) -> str:
+    @tool_method()
+    def decompile_module(self, path: t.Annotated[str | None, "The binary file path"]) -> str:
         """
         Decompile the entire module and return the decompiled code as a string.
         """
@@ -187,6 +155,7 @@ class DotnetReversing:
         path = self._resolve_path(path)
         return _get_decompiler(path).DecompileWholeModuleAsString()  # type: ignore [no-any-return]
 
+    @tool_method()
     def decompile_type(
         self,
         path: t.Annotated[str, "The binary file path"],
@@ -199,6 +168,7 @@ class DotnetReversing:
         path = self._resolve_path(path)
         return _get_decompiler(path).DecompileTypeAsString(type_name)  # type: ignore [no-any-return]
 
+    @tool_method()
     def decompile_methods(
         self,
         path: t.Annotated[str, "The binary file path"],
@@ -220,6 +190,7 @@ class DotnetReversing:
                         methods[method.FullName] = _decompile_token(path, method.MetadataToken)
         return methods
 
+    @tool_method()
     def list_namespaces(self, path: t.Annotated[str, "The binary file path"]) -> list[str]:
         """
         List all namespaces in the assembly.
@@ -241,6 +212,7 @@ class DotnetReversing:
 
         return sorted(namespaces)
 
+    @tool_method()
     def list_types_in_namespace(
         self,
         path: t.Annotated[str, "The binary file path"],
@@ -271,6 +243,7 @@ class DotnetReversing:
 
         return types
 
+    @tool_method()
     def list_methods_in_type(
         self,
         path: t.Annotated[str, "The binary file path"],
@@ -292,6 +265,7 @@ class DotnetReversing:
 
         return methods
 
+    @tool_method()
     def list_types(self, path: t.Annotated[str, "The binary file path"]) -> list[str]:
         """
         List all types in the assembly and return their full names.
@@ -301,6 +275,7 @@ class DotnetReversing:
         assembly = AssemblyDefinition.ReadAssembly(path)
         return [module_type.FullName for module in assembly.Modules for module_type in module.Types]
 
+    @tool_method()
     def list_methods(self, path: t.Annotated[str, "The binary file path"]) -> list[str]:
         """
         List all methods in the assembly and return their full names.
@@ -314,6 +289,7 @@ class DotnetReversing:
                 methods.extend([method.FullName for method in module_type.Methods])
         return methods
 
+    @tool_method()
     def search_for_references(
         self,
         path: t.Annotated[str, "The binary file path"],
@@ -329,6 +305,7 @@ class DotnetReversing:
         assembly = AssemblyDefinition.ReadAssembly(path)
         return _find_references(assembly, search)
 
+    @tool_method()
     def search_by_name(
         self,
         path: t.Annotated[str, "The binary file path"],
@@ -365,6 +342,7 @@ class DotnetReversing:
 
         return results
 
+    @tool_method()
     def get_call_flows_to_method(
         self,
         paths: t.Annotated[
