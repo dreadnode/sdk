@@ -7,8 +7,8 @@ from rigging.tools.base import Tool, ToolMethod
 
 from dreadnode.agent.configurable import CONFIGURABLE_ATTR, configurable
 
-Tool = tools.Tool
-tool = tools.tool
+Tool = tools.Tool  # redefine for export
+tool = tools.tool  # redefine for export
 
 AnyTool = Tool[t.Any, t.Any]
 
