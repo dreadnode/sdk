@@ -1,8 +1,9 @@
+import inspect
 import typing as t
 
 from pydantic import BaseModel, ConfigDict
 from rigging import tools
-from rigging.tools.base import ToolMethod as RiggingToolMethod
+from rigging.tools.base import Tool, ToolMethod
 
 from dreadnode.agent.configurable import CONFIGURABLE_ATTR, configurable
 
@@ -24,7 +25,7 @@ def tool_method(
     description: str | None = None,
     catch: bool | t.Iterable[type[Exception]] | None = None,
     truncate: int | None = None,
-) -> t.Callable[[t.Callable[P, R]], RiggingToolMethod[P, R]]:
+) -> t.Callable[[t.Callable[P, R]], ToolMethod[P, R]]:
     """
     Marks a method on a Toolset as a tool, adding it to specified variants.
 
@@ -41,8 +42,8 @@ def tool_method(
         truncate: The maximum number of characters for the tool's output.
     """
 
-    def decorator(func: t.Callable[P, R]) -> RiggingToolMethod[P, R]:
-        tool_method_descriptor: RiggingToolMethod[P, R] = tools.tool_method(
+    def decorator(func: t.Callable[P, R]) -> ToolMethod[P, R]:
+        tool_method_descriptor: ToolMethod[P, R] = tools.tool_method(
             name=name,
             description=description,
             catch=catch,
@@ -89,16 +90,13 @@ class Toolset(BaseModel):
 
     def get_tools(self, *, variant: str | None = None) -> list[AnyTool]:
         variant = variant or self.variant
-
         tools: list[AnyTool] = []
-        for name in dir(self):
-            class_member = getattr(self.__class__, name, None)
 
-            # We only act on ToolMethod descriptors that have our variants metadata.
-            if isinstance(class_member, RiggingToolMethod):
-                variants = getattr(class_member, TOOL_VARIANTS_ATTR, [])
+        # The loop
+        for name, raw in inspect.getmembers_static(self.__class__):
+            if isinstance(raw, ToolMethod):
+                variants = getattr(raw, TOOL_VARIANTS_ATTR, [])
                 if variant in variants:
                     bound_tool = t.cast("AnyTool", getattr(self, name))
                     tools.append(bound_tool)
-
         return tools

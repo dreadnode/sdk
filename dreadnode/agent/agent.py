@@ -49,7 +49,7 @@ class Agent(BaseModel):
     """The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto"."""
     caching: t.Annotated[CacheMode | None, Field(repr=False)] = None
     """How to handle cache_control entries on inference messages."""
-    max_steps: int = 10
+    max_steps: int = 100
     """The maximum number of steps (generation + tool calls) the agent can take before stopping."""
 
     stop_conditions: list[StopCondition] = []
@@ -83,7 +83,6 @@ class Agent(BaseModel):
                 tools.append(Tool.from_callable(tool))
             else:
                 tools.append(tool)
-
         return tools
 
     def __repr__(self) -> str:
@@ -242,7 +241,7 @@ class Agent(BaseModel):
         *,
         thread: Thread | None = None,
     ) -> AgentResult:
-        thread = thread or Thread()
+        thread = thread or self.thread
         return await thread.run(
             self, user_input, commit="always" if thread == self.thread else "on-success"
         )
@@ -259,10 +258,10 @@ class TaskAgent(Agent):
     """
 
     def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools import finish_task, update_todo  # noqa: PLC0415
+        from dreadnode.agent.tools import mark_complete, update_todo
 
         if not any(tool for tool in self.tools if tool.name == "finish_task"):
-            self.tools.append(finish_task)
+            self.tools.append(mark_complete)
 
         if not any(tool for tool in self.tools if tool.name == "update_todo"):
             self.tools.append(update_todo)
@@ -273,6 +272,6 @@ class TaskAgent(Agent):
             0,
             retry_with_feedback(
                 event_type=AgentStalled,
-                feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
+                feedback="Continue the task if possible or use the 'mark_complete' tool to complete it.",
             ),
         )

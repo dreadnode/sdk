@@ -7,10 +7,10 @@ from uuid import uuid4
 import aiofiles
 import rich
 from loguru import logger
+from mythic import mythic  # type: ignore
 from rich.panel import Panel
 
 from dreadnode.agent.tools import Toolset, tool_method
-from mythic import mythic  # type: ignore
 
 MAX_ACTOR_PAYLOAD_SIZE = 1 * 1024 * 1024
 
@@ -113,7 +113,7 @@ class Apollo(Toolset):
             args=path,
         )
 
-    @tool_method
+    @tool_method()
     async def cd(self, path: t.Annotated[str, "The path to change into."]) -> str:
         """
         Change directory to [path]. Path relative identifiers such as ../ are accepted. The path can be absolute or relative. If the path is relative, it will be resolved against the current working directory of the agent.
@@ -128,7 +128,7 @@ class Apollo(Toolset):
             args=path,
         )
 
-    @tool_method
+    @tool_method()
     async def cp(
         self,
         source: t.Annotated[str, "The path to the source file on the target system to copy."],
@@ -155,7 +155,7 @@ class Apollo(Toolset):
             ],
         )
 
-    @tool_method
+    @tool_method()
     async def download(
         self,
         path: t.Annotated[str, "The full path of the file on the target system to download."],
@@ -172,7 +172,7 @@ class Apollo(Toolset):
             args=path,
         )
 
-    @tool_method
+    @tool_method()
     async def getprivs(self) -> str:
         """
         Attempt to enable all possible privileges for the agent's current access token. This may include privileges like SeDebugPrivilege, SeImpersonatePrivilege, etc.
@@ -182,7 +182,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def ifconfig(self) -> str:
         """
         List the network interfaces and their configuration details on the target system. This includes IP addresses, subnet masks, and other relevant information.
@@ -192,7 +192,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def jobkill(
         self,
         jid: t.Annotated[int, "The job identifier of the background job to terminate."],
@@ -210,7 +210,7 @@ class Apollo(Toolset):
             args=jid,
         )
 
-    @tool_method
+    @tool_method()
     async def jobs(self) -> str:
         """
         Get all currently active background jobs being managed by the agent.
@@ -229,7 +229,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def ls(
         self,
         path: t.Annotated[
@@ -248,7 +248,7 @@ class Apollo(Toolset):
             args=path,
         )
 
-    @tool_method
+    @tool_method()
     async def make_token(
         self,
         username: t.Annotated[str, "The username to use for the new logon session."],
@@ -271,7 +271,7 @@ class Apollo(Toolset):
             args={"username": username, "password": password, "netOnly": str(netonly)},
         )
 
-    @tool_method
+    @tool_method()
     async def mimikatz(
         self,
         commands: t.Annotated[
@@ -298,7 +298,7 @@ class Apollo(Toolset):
             args=commands,
         )
 
-    @tool_method(
+    @tool_method()(
         name="net_dclist",
         description="Enumerate Domain Controllers for the specified domain (or the current domain).",
     )
@@ -316,7 +316,7 @@ class Apollo(Toolset):
             args=domain,
         )
 
-    @tool_method
+    @tool_method()
     async def net_localgroup(
         self,
         computer: t.Annotated[
@@ -336,7 +336,7 @@ class Apollo(Toolset):
             args=computer or "",
         )
 
-    @tool_method
+    @tool_method()
     async def net_localgroup_member(
         self,
         group: t.Annotated[str, "The name of the local group to list members for."],
@@ -358,7 +358,7 @@ class Apollo(Toolset):
             args=f"-group {group} -computer {computer} " if computer else f"-group {group}",
         )
 
-    @tool_method
+    @tool_method()
     async def net_shares(
         self,
         computer: t.Annotated[
@@ -379,12 +379,12 @@ class Apollo(Toolset):
             args=computer,
         )
 
-    @tool_method
+    @tool_method()
     async def netstat(self) -> str:
         """Display active TCP/UDP connections and listening ports on the target system. This includes information about the local and remote addresses, port numbers, and connection states."""
         return await self.execute(command="netstat", args="")
 
-    @tool_method
+    @tool_method()
     async def powerpick(
         self,
         arguments: t.Annotated[
@@ -399,7 +399,7 @@ class Apollo(Toolset):
         """
         return await self.execute(command="powerpick", args=arguments)
 
-    @tool_method
+    @tool_method()
     async def powershell_import(
         self,
         filename: t.Annotated[
@@ -415,7 +415,7 @@ class Apollo(Toolset):
             command="powershell_import", args={"existingFile": filename}, timeout=60
         )
 
-    @tool_method
+    @tool_method()
     async def powershell_script(
         self,
         filename: t.Annotated[str, "File name of powershell script."],
@@ -449,7 +449,7 @@ class Apollo(Toolset):
 
         return await self.powerpick(command=entry_function)
 
-    @tool_method
+    @tool_method()
     async def powerview(
         self,
         command: t.Annotated[
@@ -489,7 +489,7 @@ class Apollo(Toolset):
 
         return await self.powerpick(command=powerview_cmd)
 
-    @tool_method
+    @tool_method()
     async def pth(
         self,
         domain: t.Annotated[
@@ -519,7 +519,7 @@ class Apollo(Toolset):
             ],
         )
 
-    @tool_method
+    @tool_method()
     async def ps(
         self,
         args: t.Annotated[str, "arguments for the 'ps' command, encoded in a string"],
@@ -530,7 +530,7 @@ class Apollo(Toolset):
             args=args,
         )
 
-    @tool_method
+    @tool_method()
     async def pwd(self) -> str:
         """Print the agent's current working directory on the target system. This is the directory where the agent is currently operating."""
         return await self.execute(
@@ -538,7 +538,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def reg_query(
         self,
         key: t.Annotated[
@@ -556,7 +556,7 @@ class Apollo(Toolset):
             args=key,
         )
 
-    @tool_method
+    @tool_method()
     async def register_assembly(
         self,
         filename: t.Annotated[str, "Assembly file to register to the Apollo agent"],
@@ -570,7 +570,7 @@ class Apollo(Toolset):
             fix_dependencies=False,
         )
 
-    @tool_method
+    @tool_method()
     async def rev2self(self) -> str:
         """
         Revert the agent's impersonation state, returning to its original primary token. This is useful for restoring the agent's original security context after performing actions with a different token.
@@ -582,7 +582,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def rubeus_asreproast(self) -> str:
         """
         Execute ASREP-Roast technique against current domain using the Rubeus tool. The technique extracts kerberos ticket-granting tickets for active directory users that dont require pre-authentication on the domain. If ticket-granting tickets can be obtained, they will be returned (in hash form)
@@ -591,7 +591,7 @@ class Apollo(Toolset):
             command="execute_assembly", args="Rubeus.exe asreproast /format:hashcat"
         )
 
-    @tool_method
+    @tool_method()
     async def rubeus_kerberoast(
         self,
         cred_user: t.Annotated[
@@ -615,12 +615,12 @@ class Apollo(Toolset):
 
         return await self.execute(command="execute_assembly", args=args)
 
-    @tool_method
+    @tool_method()
     async def seatbelt(self) -> str:
         """Performs a number of security oriented host-survey 'safety checks' relevant from both offensive and defensive security perspectives."""
         return await self.execute(command="execute_assembly", args="Seatbelt.exe")
 
-    @tool_method
+    @tool_method()
     async def set_injection_technique(
         self,
         technique: t.Annotated[
@@ -639,7 +639,7 @@ class Apollo(Toolset):
             args=technique,
         )
 
-    @tool_method
+    @tool_method()
     async def setspn(self, args: t.Annotated[str, "Command line arguments for setspn tool"]) -> str:
         """
         Allows for reading, modifying, and detelting the Service Principal Names (SPN) directory property for an Active Directory (AD) account. You can use setspn to view the current SPNs for an account, reset the account's default SPNs, and add or delete supplemental SPNs.
@@ -648,7 +648,7 @@ class Apollo(Toolset):
         """
         return await self.powerpick(arguments=f"($sspn = setspn {args}); echo $sspn")
 
-    @tool_method
+    @tool_method()
     async def sharphound_and_download(
         self,
         domain: t.Annotated[str, "domain to enumerate."],
@@ -712,7 +712,7 @@ class Apollo(Toolset):
 
         return local_download_file
 
-    @tool_method
+    @tool_method()
     async def sharpview(
         self,
         method: t.Annotated[str, "SharpView method to execute"],
@@ -852,7 +852,7 @@ class Apollo(Toolset):
         """
         return await self.powerpick(f"Invoke-SharpView -Method {method} -Arguments {method_args}")
 
-    @tool_method
+    @tool_method()
     async def shinject(self) -> str:
         """
         Inject raw shellcode into a remote process. This allows for executing arbitrary code in the context of another process.
@@ -865,7 +865,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def spawn(self) -> str:
         """Spawn a new agent session using the currently configured 'spawnto' executable and payload template (must be shellcode)."""
 
@@ -874,7 +874,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def spawnto_x64(
         self,
         path: t.Annotated[
@@ -897,7 +897,7 @@ class Apollo(Toolset):
             args=[path, args] if args else [path],
         )
 
-    @tool_method
+    @tool_method()
     async def steal_token(
         self,
         pid: t.Annotated[
@@ -916,7 +916,7 @@ class Apollo(Toolset):
             args=pid,
         )
 
-    @tool_method
+    @tool_method()
     async def unlink(self) -> str:
         """
         Disconnect a specific callback communication channel (e.g., an SMB or TCP P2P link). This allows for terminating the connection to a specific channel without affecting other channels.
@@ -929,7 +929,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def upload(
         self,
         path: t.Annotated[str, "Local path of the file to upload"],
@@ -948,7 +948,7 @@ class Apollo(Toolset):
             args={"Path": path, "Destination": destination},
         )
 
-    @tool_method
+    @tool_method()
     async def whoami(self) -> str:
         """Display the username associated with the agent's current security context (impersonated token or primary token). This includes information about the user and their privileges."""
         return await self.execute(
@@ -956,7 +956,7 @@ class Apollo(Toolset):
             args="",
         )
 
-    @tool_method
+    @tool_method()
     async def wmiexecute(
         self,
         arguments: t.Annotated[str, "The command or script block to execute on the remote system."],

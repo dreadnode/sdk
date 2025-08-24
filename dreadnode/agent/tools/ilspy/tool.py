@@ -31,6 +31,9 @@ from ICSharpCode.Decompiler.CSharp import (  # type: ignore [import-not-found] #
 from ICSharpCode.Decompiler.Metadata import (  # type: ignore [import-not-found] # noqa: E402
     MetadataTokenHelpers,
 )
+from ICSharpCode.Decompiler.TypeSystem import (
+    FullTypeName,  # type: ignore [import-not-found]
+)
 from Mono.Cecil import AssemblyDefinition  # type: ignore [import-not-found] # noqa: E402
 
 # Helpers
@@ -105,13 +108,13 @@ DEFAULT_EXCLUDE = [
 
 
 class ILSpyTool(Toolset):
-    base_path: Path
+    base_path: Path | str
     binaries: list[str]
 
     @classmethod
     def from_path(
         cls,
-        path: Path | str,
+        path: str,
         pattern: str = "**/*",
         exclude: list[str] = DEFAULT_EXCLUDE,
     ) -> "ILSpyTool":
@@ -147,7 +150,15 @@ class ILSpyTool(Toolset):
         return str(full_path)
 
     @tool_method()
-    def decompile_module(self, path: t.Annotated[str | None, "The binary file path"]) -> str:
+    def list_binaries(self) -> list[str]:
+        """
+        List all available binaries in the toolset.
+        """
+        logger.info("list_binaries()")
+        return self.binaries
+
+    @tool_method()
+    def decompile_module(self, path: t.Annotated[str, "The binary file path"]) -> str:
         """
         Decompile the entire module and return the decompiled code as a string.
         """
@@ -161,12 +172,10 @@ class ILSpyTool(Toolset):
         path: t.Annotated[str, "The binary file path"],
         type_name: t.Annotated[str, "The specific type to decompile"],
     ) -> str:
-        """
-        Decompile a specific type and return the decompiled code as a string.
-        """
         logger.info(f"decompile_type({path}, {type_name})")
         path = self._resolve_path(path)
-        return _get_decompiler(path).DecompileTypeAsString(type_name)  # type: ignore [no-any-return]
+        # construct the FullTypeName from your string
+        return _get_decompiler(path).DecompileTypeAsString(FullTypeName(type_name))  # type: ignore[no-any-return]
 
     @tool_method()
     def decompile_methods(

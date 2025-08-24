@@ -575,6 +575,7 @@ class PythonKernel(Toolset):
             case _:
                 return execution
 
+    @tool_method()
     async def execute_cell(self, cell: NotebookCell) -> NotebookCell:
         """Execute a notebook cell."""
         cell = cell.model_copy(deep=True)
@@ -589,7 +590,7 @@ class PythonKernel(Toolset):
 
         return cell
 
-    @tool_method
+    @tool_method()
     async def execute_notebook(
         self,
         notebook: Notebook,
@@ -622,7 +623,7 @@ class PythonKernel(Toolset):
 
         return notebook
 
-    @tool_method
+    @tool_method()
     async def execute_code(self, code: str) -> str:
         """
         Execute Python code in the jupyter kernel and return the output.
@@ -669,7 +670,7 @@ class PythonKernel(Toolset):
 
         logger.debug(f"Kernel {self._kernel_id} interrupted")
 
-    @tool_method
+    @tool_method()
     async def restart(self) -> None:
         """Restart the kernel."""
         if not self._kernel_id:

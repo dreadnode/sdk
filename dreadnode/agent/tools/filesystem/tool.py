@@ -118,7 +118,7 @@ class FilesystemTools(Toolset):
         full_path = str(path.resolve())
         return full_path[len(base_path) :]
 
-    @tool_method
+    @tool_method()
     def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"],
@@ -135,7 +135,7 @@ class FilesystemTools(Toolset):
         except UnicodeDecodeError:
             return rg.ContentImageUrl.from_file(path)
 
-    @tool_method
+    @tool_method()
     def read_lines(
         self,
         path: t.Annotated[str, "Path to the file to read"],
@@ -169,7 +169,7 @@ class FilesystemTools(Toolset):
 
             return "\n".join(lines[start_line:end_line])
 
-    @tool_method
+    @tool_method()
     def ls(
         self,
         path: t.Annotated[str, "Directory path to list"] = "",
@@ -189,7 +189,7 @@ class FilesystemTools(Toolset):
         items = list(_path.iterdir())
         return [FilesystemItem.from_path(item, self.path) for item in items]
 
-    @tool_method
+    @tool_method()
     def glob(
         self,
         pattern: t.Annotated[str, "Glob pattern for file matching"],
@@ -207,7 +207,7 @@ class FilesystemTools(Toolset):
 
         return [FilesystemItem.from_path(match, self.path) for match in matches]
 
-    @tool_method
+    @tool_method()
     def grep(
         self,
         pattern: t.Annotated[str, "Regular expression pattern to search for"],
@@ -278,7 +278,7 @@ class FilesystemTools(Toolset):
 
         return matches
 
-    @tool_method
+    @tool_method()
     def write_file(
         self,
         path: t.Annotated[str, "Path to write the file to"],
@@ -297,7 +297,7 @@ class FilesystemTools(Toolset):
 
         return FilesystemItem.from_path(_path, self.path)
 
-    @tool_method
+    @tool_method()
     def write_lines(
         self,
         path: t.Annotated[str, "Path to write to"],
@@ -345,7 +345,7 @@ class FilesystemTools(Toolset):
 
         return FilesystemItem.from_path(_path, self.path)
 
-    @tool_method
+    @tool_method()
     def mkdir(
         self,
         path: t.Annotated[str, "Directory path to create"],
@@ -362,7 +362,7 @@ class FilesystemTools(Toolset):
 
         return FilesystemItem.from_path(dir_path, self.path)
 
-    @tool_method
+    @tool_method()
     def mv(
         self,
         src: t.Annotated[str, "Source path"],
@@ -387,7 +387,7 @@ class FilesystemTools(Toolset):
 
         return FilesystemItem.from_path(dest_path, self.path)
 
-    @tool_method
+    @tool_method()
     def cp(
         self,
         src: t.Annotated[str, "Source file"],
@@ -416,7 +416,7 @@ class FilesystemTools(Toolset):
 
         return FilesystemItem.from_path(dest_path, self.path)
 
-    @tool_method
+    @tool_method()
     def delete(
         self,
         path: t.Annotated[str, "File or directory"],
