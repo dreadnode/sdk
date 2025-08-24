@@ -92,7 +92,7 @@ class FilesystemTools(Toolset):
         if not str(full_path).startswith(str(self.path)):
             raise ValueError(f"'{path}' is not accessible.")
 
-        full_path._fs_cached = self._fs  # noqa: SLF001
+        full_path._fs_cached = self._fs
 
         return full_path
 

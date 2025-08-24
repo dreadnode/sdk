@@ -147,7 +147,7 @@ class ApiClient:
         try:
             obj = response.json()
             return f"{response.status_code}: {obj.get('detail', json.dumps(obj))}"
-        except Exception:  # noqa: BLE001
+        except Exception:
             return str(response.content)
 
     def _request(
@@ -231,9 +231,9 @@ class ApiClient:
                 "POST", "/auth/device/token", json_data={"device_code": device_code}
             )
 
-            if response.status_code == 200:  # noqa: PLR2004
+            if response.status_code == 200:
                 return AccessRefreshTokenResponse(**response.json())
-            if response.status_code != 401:  # noqa: PLR2004
+            if response.status_code != 401:
                 raise RuntimeError(self._get_error_message(response))
 
             time.sleep(interval)
@@ -393,7 +393,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported run data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -430,7 +430,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported metric data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -470,7 +470,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported parameter data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -511,7 +511,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",

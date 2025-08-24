@@ -190,7 +190,7 @@ class Agent(BaseModel):
 
             generated = (await generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
-                raise generated  # noqa: TRY301
+                raise generated
 
             chat = Chat(
                 messages,
@@ -202,7 +202,7 @@ class Agent(BaseModel):
                 extra=generated.extra,
             )
 
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             chat = Chat(
                 messages,
                 [],

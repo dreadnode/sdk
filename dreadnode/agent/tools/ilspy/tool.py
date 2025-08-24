@@ -13,7 +13,7 @@ from dreadnode.agent.tools import Toolset, tool_method
 
 load("coreclr")
 
-import clr  # type: ignore [import-untyped] # noqa: E402
+import clr  # type: ignore [import-untyped]
 
 lib_dir = Path(__file__).parent / "bin"
 sys.path.append(str(lib_dir))
@@ -22,19 +22,19 @@ clr.AddReference("ICSharpCode.Decompiler")
 clr.AddReference("Mono.Cecil")
 
 
-from ICSharpCode.Decompiler import (  # type: ignore [import-not-found] # noqa: E402
+from ICSharpCode.Decompiler import (  # type: ignore [import-not-found]
     DecompilerSettings,
 )
-from ICSharpCode.Decompiler.CSharp import (  # type: ignore [import-not-found] # noqa: E402
+from ICSharpCode.Decompiler.CSharp import (  # type: ignore [import-not-found]
     CSharpDecompiler,
 )
-from ICSharpCode.Decompiler.Metadata import (  # type: ignore [import-not-found] # noqa: E402
+from ICSharpCode.Decompiler.Metadata import (  # type: ignore [import-not-found]
     MetadataTokenHelpers,
 )
 from ICSharpCode.Decompiler.TypeSystem import (
     FullTypeName,  # type: ignore [import-not-found]
 )
-from Mono.Cecil import AssemblyDefinition  # type: ignore [import-not-found] # noqa: E402
+from Mono.Cecil import AssemblyDefinition  # type: ignore [import-not-found]
 
 # Helpers
 

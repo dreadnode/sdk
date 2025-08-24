@@ -437,7 +437,7 @@ class PythonKernel(Toolset):
         log_output: bool = ...,
     ) -> Notebook: ...
 
-    async def execute(  # noqa: PLR0912, PLR0915
+    async def execute(
         self,
         source: str | list[str],
         *,

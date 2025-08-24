@@ -31,7 +31,7 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai  # noqa: PLC0415
+    import openai
 
     async def evaluate(data: t.Any) -> Metric:
         text = str(data)

@@ -43,7 +43,7 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat  # noqa: PLC0415
+        from rigging.chat import Chat
 
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):

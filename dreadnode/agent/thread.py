@@ -82,7 +82,7 @@ class Thread(BaseModel):
             return last_event.usage
         return None
 
-    async def _stream(  # noqa: PLR0912, PLR0915
+    async def _stream(
         self, agent: "Agent", message: Message, hooks: HookMap, *, commit: CommitBehavior
     ) -> t.AsyncGenerator[Event, None]:
         events: list[Event] = []
@@ -341,7 +341,7 @@ class Thread(BaseModel):
                     yield event
 
                 if stopped_by_tool_call:
-                    raise Finish(  # noqa: TRY301
+                    raise Finish(
                         f"Tool '{stopped_by_tool_call.name}' handling "
                         f"{stopped_by_tool_call.id} requested to stop the agent."
                     )

@@ -54,8 +54,6 @@ class Bloodhound(Toolset):
             encrypted=False,
         )
 
-        await self.verify_connectivity()
-
         if await self._api_authenticate() is None:
             raise Warning("Could not authenticate to Bloodhound REST API")
 
@@ -69,11 +67,12 @@ class Bloodhound(Toolset):
             "secret": self.config["password"],
         }
         auth_token = None
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url=url, json=auth_data) as resp:
-                auth_token = await resp.json()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url=url, json=auth_data) as resp,
+        ):
+            auth_token = await resp.json()
 
-        # logger.info(_rich_print(f"authentication token returned from BloodHound API: {auth_token}"))
         if auth_token is None or auth_token.get("data", None) is None:
             logger.error(self._rich_print("Couldnt authenticate to Bloodhound REST API."))
             return None
@@ -81,29 +80,6 @@ class Bloodhound(Toolset):
         self._api_auth_token = auth_token["data"]
 
         return self._api_auth_token
-
-    async def verify_connectivity(self):
-        """verify BloodHound neo4j database connectivity"""
-        try:
-            # Try both default and bloodhound databases
-            databases = ["neo4j", "bloodhound"]
-            for db in databases:
-                try:
-                    with self._graph_driver.session(database=db) as session:
-                        logger.debug(f"Attempting to verify connection to database '{db}'...")
-                        result = session.run("MATCH (n:User) RETURN count(n) as count")
-                        count = result.single()["count"]
-                        logger.info(
-                            f"Successfully connected to database '{db}'. Found {count} users."
-                        )
-                        return True
-                except Exception as e:
-                    logger.debug(f"Failed to connect to database '{db}': {e!s}")
-                    continue
-            raise Exception("Could not connect to any database")
-        except Exception as e:
-            logger.error(f"Failed to connect to Neo4j: {e!s}")
-            return False
 
     @tool_method()
     async def query_bloodhound(self, query: str):

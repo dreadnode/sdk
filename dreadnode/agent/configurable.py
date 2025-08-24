@@ -118,7 +118,7 @@ def _is_cli_friendly_type(annotation: t.Any) -> bool:
 
     if origin is dict:
         args = t.get_args(annotation)
-        if len(args) != 2:  # noqa: PLR2004
+        if len(args) != 2:
             return False
         key_type, value_type = args
         return key_type in PRIMITIVE_TYPES and value_type in PRIMITIVE_TYPES
@@ -160,7 +160,7 @@ def _make_model_fields(obj: t.Callable[..., t.Any], defaults: AnyDict) -> dict[s
 
     # Otherwise use the signature to extract fields
     @functools.wraps(obj)
-    def empty_func(*args, **kwargs):  # type: ignore [no-untyped-def] # noqa: ARG001
+    def empty_func(*args, **kwargs):  # type: ignore [no-untyped-def]
         return kwargs
 
     # Clear the return annotation to help reduce errors

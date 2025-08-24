@@ -98,7 +98,9 @@ def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of to
     status_log = f"Updated todo list with {len(todos)} tasks:\n"
     for todo in todos:
         status = (
-            "Complete" if todo.status == "completed" else ("⏳" if todo.status == "in_progress" else "📌")
+            "Complete"
+            if todo.status == "completed"
+            else ("⏳" if todo.status == "in_progress" else "📌")
         )
         status_log += f"{status} {todo.content} (priority: {todo.priority})\n"
 

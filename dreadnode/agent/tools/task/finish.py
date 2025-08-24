@@ -7,7 +7,7 @@ from dreadnode.data_types import Markdown
 
 
 @tool
-async def mark_complete(success: bool, summary: str) -> None:  # noqa: FBT001
+async def mark_complete(success: bool, summary: str) -> None:
     """
     Mark your task as complete with a success/failure status and markdown summary of actions taken.
 

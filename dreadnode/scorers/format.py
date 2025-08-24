@@ -53,7 +53,7 @@ def is_xml(*, name: str = "is_xml") -> "Scorer[t.Any]":
         text = text.removesuffix("\n```")
 
         try:
-            ET.fromstring(text)  # noqa: S314 # nosec
+            ET.fromstring(text)  # nosec
             return Metric(value=1.0)
         except ET.ParseError as e:
             return Metric(value=0.0, attributes={"error": str(e)})

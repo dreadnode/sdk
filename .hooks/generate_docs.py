@@ -1,4 +1,4 @@
-import argparse  # noqa: INP001
+import argparse
 import re
 import typing as t
 from pathlib import Path
@@ -18,7 +18,7 @@ class CustomMarkdownConverter(MarkdownConverter):  # type: ignore[misc]
         return super().convert_pre(el, text.strip(), parent_tags)
 
     # bold items with doc-section-title in a span class
-    def convert_span(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:  # noqa: ARG002
+    def convert_span(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:
         if "doc-section-title" in el.get("class", []):
             return f"**{text.strip()}**"
         return text
@@ -30,7 +30,7 @@ class CustomMarkdownConverter(MarkdownConverter):  # type: ignore[misc]
         return super().convert_div(el, text, parent_tags)
 
     # Map mkdocstrings details classes to Mintlify callouts
-    def convert_details(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:  # noqa: ARG002
+    def convert_details(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:
         classes = el.get("class", [])
 
         # Handle source code details specially
@@ -83,7 +83,7 @@ class AutoDocGenerator:
         self.handler = PythonHandler(PythonConfig.from_data(), base_dir=Path.cwd())
         self.options = options
 
-        self.handler._update_env(  # noqa: SLF001
+        self.handler._update_env(
             Markdown(),
             config={"mdx": ["toc"]},
         )
@@ -96,7 +96,7 @@ class AutoDocGenerator:
             html_id: str = "",
             **kwargs: t.Any,
         ) -> t.Any:
-            return Markup(md.convert(text) if text else "")  # noqa: S704 # nosec
+            return Markup(md.convert(text) if text else "")  # nosec
 
         self.handler.env.filters["convert_markdown"] = simple_convert_markdown
 
