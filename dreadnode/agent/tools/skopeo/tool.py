@@ -25,7 +25,7 @@ class Skopeo(Toolset):
 
     def _run(self, cmd: str) -> subprocess.CompletedProcess:
         cmd_list = cmd.split() if isinstance(cmd, str) else cmd
-        return subprocess.run(cmd_list, shell=False, capture_output=True, check=False)  # nosec
+        return subprocess.run(cmd_list, shell=False, capture_output=True, check=False)  # noqa: S603
 
     def _skopeo_json(self, args: str) -> dict[str, t.Any]:
         cp = self._run(f"skopeo {args}")
