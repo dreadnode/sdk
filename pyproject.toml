@@ -120,6 +120,7 @@ ignore = [
     "FIX002",  # contains todo, consider fixing
     "COM812",  # disabled for formatting
     "ISC001",  # disabled for formatting
+    "BLE001",  # disabled blind exceptions
 ]
 
 [tool.ruff.format]

@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+from pathlib import Path
 
 import aiohttp
 import rich
@@ -907,12 +908,11 @@ class Bloodhound(Toolset):
 
     @tool_method()
     async def upload_collection_zip(self, filename: str) -> dict:
-        """Upload a Bloodhound collection zip file (that was collected via the SharpHound tool.)"""
+        """Upload a Bloodhound collection zip file (that was collected via SharpHound)"""
 
         if self._api_auth_token is None or self._api_auth_token.get("auth_expired", True):
             await self._api_authenticate()
 
-        # 1. start Bloodhound server upload job
         start_job = {
             "url": f"http://{self.config['url']}/api/v2/file-upload/start",
             "headers": {
@@ -931,7 +931,7 @@ class Bloodhound(Toolset):
             return err_msg
 
         # 2. upload Bloodhound collection files
-        upload_fn = os.path.abspath(filename)
+        upload_fn = Path.resolve(filename)
         upload_job = {
             "url": f"http://{self.config['url']}/api/v2/file-upload/{job_record['id']}",
             "headers": {
@@ -962,7 +962,6 @@ class Bloodhound(Toolset):
         }
         end_job_record = await self._async_post_request(resp_type="text", **end_job)
 
-        # wait for upload to complete
         upload_job_done, upload_job_status = await self.wait_for_upload_completion(
             job_id=job_record["id"], seconds=60
         )
@@ -1022,42 +1021,40 @@ class Bloodhound(Toolset):
             },
         }
         job_statuses = await self._async_get_request(resp_type="json", **upload_status_job)
-        job_status = [j for j in job_statuses["data"] if j["id"] == job_id][0]
+        job_status = next(j for j in job_statuses["data"] if j["id"] == job_id)
         job_done = True if job_status["status"] == 2 else False
         return job_done, job_status
 
-    async def _async_get_request(self, resp_type: str = None, **kwargs) -> dict:
+    async def _async_get_request(self, resp_type: str | None = None, **kwargs) -> dict:
         """ """
-        async with aiohttp.ClientSession() as session:
-            async with session.get(**kwargs) as resp:
-                if resp_type == "json":
-                    return await resp.json()
-                if resp_type == "text":
-                    return await resp.text()
-                return str(resp)
+        async with aiohttp.ClientSession() as session, session.get(**kwargs) as resp:
+            if resp_type == "json":
+                return await resp.json()
+            if resp_type == "text":
+                return await resp.text()
+            return str(resp)
 
-    async def _async_post_request(self, resp_type: str = None, **kwargs) -> dict:
-        """ """
+    async def _async_post_request(self, resp_type: str | None = None, **kwargs) -> dict:
         response = None
-        async with aiohttp.ClientSession() as session:
-            async with session.post(**kwargs) as resp:
-                if resp_type == "json":
-                    response = await resp.json()
-                elif resp_type == "text":
-                    response = await resp.text()
-                else:
-                    response = str(resp)
+        async with aiohttp.ClientSession() as session, session.post(**kwargs) as resp:
+            if resp_type == "json":
+                response = await resp.json()
+            elif resp_type == "text":
+                response = await resp.text()
+            else:
+                response = str(resp)
         return response
 
     async def _async_post_file(self, url: str, filename: str, **kwargs) -> dict:
-        """ """
         response = None
-        with open(filename, "rb") as fh:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, data=fh, **kwargs) as resp:
-                    if resp.status != 202:
-                        resp.raise_for_status()
-                        response = resp
+        with Path.open(filename, "rb") as fh:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(url, data=fh, **kwargs) as resp,
+            ):
+                if resp.status != 202:
+                    resp.raise_for_status()
+                    response = resp
         return response
 
     def _rich_print(self, text: str):

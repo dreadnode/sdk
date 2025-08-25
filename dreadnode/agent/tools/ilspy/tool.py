@@ -13,7 +13,7 @@ from dreadnode.agent.tools import Toolset, tool_method
 
 load("coreclr")
 
-import clr  # type: ignore [import-untyped]
+import clr  # type: ignore [import-untyped] # noqa: E402
 
 lib_dir = Path(__file__).parent / "bin"
 sys.path.append(str(lib_dir))
@@ -22,19 +22,19 @@ clr.AddReference("ICSharpCode.Decompiler")
 clr.AddReference("Mono.Cecil")
 
 
-from ICSharpCode.Decompiler import (  # type: ignore [import-not-found]
+from ICSharpCode.Decompiler import (  # type: ignore [import-not-found] # noqa: E402
     DecompilerSettings,
 )
-from ICSharpCode.Decompiler.CSharp import (  # type: ignore [import-not-found]
+from ICSharpCode.Decompiler.CSharp import (  # type: ignore [import-not-found] # noqa: E402
     CSharpDecompiler,
 )
-from ICSharpCode.Decompiler.Metadata import (  # type: ignore [import-not-found]
+from ICSharpCode.Decompiler.Metadata import (  # type: ignore [import-not-found] # noqa: E402
     MetadataTokenHelpers,
 )
-from ICSharpCode.Decompiler.TypeSystem import (
-    FullTypeName,  # type: ignore [import-not-found]
+from ICSharpCode.Decompiler.TypeSystem import (  # type: ignore [import-not-found] # noqa: E402
+    FullTypeName,
 )
-from Mono.Cecil import AssemblyDefinition  # type: ignore [import-not-found]
+from Mono.Cecil import AssemblyDefinition  # type: ignore [import-not-found] # noqa: E402
 
 # Helpers
 
@@ -63,10 +63,7 @@ def _find_references(assembly: AssemblyDefinition, search: str) -> list[str]:
 
     using_methods: set[str] = set()
     for module in assembly.Modules:
-        methods = []
-        for module_type in module.Types:
-            for method in module_type.Methods:
-                methods.append(method)
+        methods = [method for module_type in module.Types for method in module_type.Methods]
 
         for method in methods:
             if not method.HasBody:
