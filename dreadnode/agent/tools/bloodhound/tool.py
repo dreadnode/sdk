@@ -1,20 +1,12 @@
-import asyncio
-import json
 import os
-import time
-from pathlib import Path
+import typing as t
 
 import aiohttp
-import rich
-from dotenv import load_dotenv
 from loguru import logger
 from neo4j import GraphDatabase
-from rich.panel import Panel
+from rich.console import Console
 
 from dreadnode.agent.tools import Toolset, tool_method
-
-# Load environment variables
-load_dotenv()
 
 # BloodHound & Neo4j connection details
 BLOODHOUND_URL = os.getenv("BLOODHOUND_URL", "localhost:8080")
@@ -23,6 +15,8 @@ BLOODHOUND_PASSWORD = os.getenv("BLOODHOUND_PASSWORD", "bloodhound")
 BLOODHOUND_NEO4J_URL = os.getenv("BLOODHOUND_NEO4J_URL", "bolt://localhost:7687")
 BLOODHOUND_NEO4J_USERNAME = os.getenv("BLOODHOUND_NEO4J_USERNAME", "neo4j")
 BLOODHOUND_NEO4J_PASSWORD = os.getenv("BLOODHOUND_NEO4J_PASSWORD", "bloodhoundcommunityedition")
+
+console = Console()
 
 
 class Bloodhound(Toolset):
@@ -58,7 +52,7 @@ class Bloodhound(Toolset):
         if await self._api_authenticate() is None:
             raise Warning("Could not authenticate to Bloodhound REST API")
 
-    async def _api_authenticate(self) -> dict | None:
+    async def _api_authenticate(self) -> None:
         """authenticate to Bloodhound API and get access token to use for REST API requests"""
 
         url = f"http://{self.config['url']}/api/v2/login"
@@ -75,15 +69,12 @@ class Bloodhound(Toolset):
             auth_token = await resp.json()
 
         if auth_token is None or auth_token.get("data", None) is None:
-            logger.error(self._rich_print("Couldnt authenticate to Bloodhound REST API."))
-            return None
+            logger.error("Authentication to Bloodhound REST API failed")
+            return
 
         self._api_auth_token = auth_token["data"]
 
-        return self._api_auth_token
-
-    @tool_method()
-    async def query_bloodhound(self, query: str):
+    async def query_bloodhound(self, query: str) -> dict[str, t.Any]:
         databases = ["neo4j", "bloodhound"]
         last_error = None
 
@@ -92,19 +83,19 @@ class Bloodhound(Toolset):
                 with self._graph_driver.session(database=db) as session:
                     result = session.run(query)
                     data = [record.data() for record in result]
-                    logger.info(self._rich_print(f"Query successful on database '{db}'"))
+                    logger.info(f"Query successful on database '{db}'")
                     return {"success": True, "data": data}
             except Exception as e:
                 last_error = e
-                logger.debug(self._rich_print(f"Query failed on database '{db}': {e!s}"))
+                logger.debug(f"Query failed on database '{db}': {e!s}")
                 continue
 
-        logger.error(self._rich_print(f"Query failed on all databases. Last error: {last_error!s}"))
+        logger.error(f"Query failed on all databases. Last error: {last_error!s}")
         return {"success": False, "error": str(last_error)}
 
     # Domain Information
     @tool_method()
-    async def find_all_domain_admins(self):
+    async def find_all_domain_admins(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (t:Group)<-[:MemberOf*1..]-(a)
         WHERE (a:User or a:Computer) and t.objectid ENDS WITH '-512'
@@ -114,7 +105,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def map_domain_trusts(self):
+    async def map_domain_trusts(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Domain)-[:TrustedBy]->(:Domain)
         RETURN p
@@ -123,7 +114,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_tier_zero_locations(self):
+    async def find_tier_zero_locations(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (t:Base)<-[:Contains*1..]-(:Domain)
         WHERE t.highvalue = true
@@ -133,7 +124,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def map_ou_structure(self):
+    async def map_ou_structure(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Domain)-[:Contains*1..]->(:OU)
         RETURN p
@@ -143,7 +134,7 @@ class Bloodhound(Toolset):
 
     # Dangerous Privileges
     @tool_method()
-    async def find_dcsync_privileges(self):
+    async def find_dcsync_privileges(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(:Base)-[:DCSync|AllExtendedRights|GenericAll]->(:Domain)
         RETURN p
@@ -152,7 +143,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_foreign_group_memberships(self):
+    async def find_foreign_group_memberships(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(s:Base)-[:MemberOf]->(t:Group)
         WHERE s.domainsid<>t.domainsid
@@ -162,7 +153,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_users_local_admins(self):
+    async def find_domain_users_local_admins(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(s:Group)-[:AdminTo]->(:Computer)
         WHERE s.objectid ENDS WITH '-513'
@@ -172,7 +163,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_users_laps_readers(self):
+    async def find_domain_users_laps_readers(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(s:Group)-[:AllExtendedRights|ReadLAPSPassword]->(:Computer)
         WHERE s.objectid ENDS WITH '-513'
@@ -182,7 +173,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_users_high_value_paths(self):
+    async def find_domain_users_high_value_paths(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:Group)-[r*1..]->(t))
         WHERE t.highvalue = true AND s.objectid ENDS WITH '-513' AND s<>t
@@ -192,7 +183,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_users_workstation_rdp(self):
+    async def find_domain_users_workstation_rdp(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(s:Group)-[:CanRDP]->(t:Computer)
         WHERE s.objectid ENDS WITH '-513' AND NOT toUpper(t.operatingsystem) CONTAINS 'SERVER'
@@ -202,7 +193,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_users_server_rdp(self):
+    async def find_domain_users_server_rdp(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(s:Group)-[:CanRDP]->(t:Computer)
         WHERE s.objectid ENDS WITH '-513' AND toUpper(t.operatingsystem) CONTAINS 'SERVER'
@@ -212,7 +203,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_users_privileges(self):
+    async def find_domain_users_privileges(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(s:Group)-[r]->(:Base)
         WHERE s.objectid ENDS WITH '-513'
@@ -222,7 +213,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domain_admin_non_dc_logons(self):
+    async def find_domain_admin_non_dc_logons(self) -> dict[str, t.Any]:
         query = """
         MATCH (s)-[:MemberOf*0..]->(g:Group)
         WHERE g.objectid ENDS WITH '-516'
@@ -236,7 +227,7 @@ class Bloodhound(Toolset):
 
     # Kerberos Interaction
     @tool_method()
-    async def find_kerberoastable_tier_zero(self):
+    async def find_kerberoastable_tier_zero(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.hasspn=true
@@ -251,7 +242,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_all_kerberoastable_users(self):
+    async def find_all_kerberoastable_users(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.hasspn=true
@@ -265,7 +256,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_kerberoastable_most_admin(self):
+    async def find_kerberoastable_most_admin(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.hasspn = true
@@ -282,7 +273,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_asreproast_users(self):
+    async def find_asreproast_users(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.dontreqpreauth = true
@@ -294,7 +285,7 @@ class Bloodhound(Toolset):
 
     # Shortest Paths
     @tool_method()
-    async def find_shortest_paths_unconstrained_delegation(self):
+    async def find_shortest_paths_unconstrained_delegation(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s)-[r*1..]->(t:Computer))
         WHERE t.unconstraineddelegation = true AND s<>t
@@ -304,7 +295,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_paths_from_kerberoastable_to_da(self):
+    async def find_paths_from_kerberoastable_to_da(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:User)-[r*1..]->(t:Group))
         WHERE s.hasspn=true
@@ -319,7 +310,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_shortest_paths_to_tier_zero(self):
+    async def find_shortest_paths_to_tier_zero(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s)-[r*1..]->(t))
         WHERE t.highvalue = true AND s<>t
@@ -329,7 +320,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_paths_from_domain_users_to_tier_zero(self):
+    async def find_paths_from_domain_users_to_tier_zero(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:Group)-[r*1..]->(t))
         WHERE t.highvalue = true AND s.objectid ENDS WITH '-513' AND s<>t
@@ -339,7 +330,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_shortest_paths_to_domain_admins(self):
+    async def find_shortest_paths_to_domain_admins(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((t:Group)<-[r*1..]-(s:Base))
         WHERE t.objectid ENDS WITH '-512' AND s<>t
@@ -349,7 +340,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_paths_from_owned_objects(self):
+    async def find_paths_from_owned_objects(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:Base)-[r*1..]->(t:Base))
         WHERE s.owned = true AND s<>t
@@ -360,7 +351,7 @@ class Bloodhound(Toolset):
 
     # Active Directory Certificate Services
     @tool_method()
-    async def find_pki_hierarchy(self):
+    async def find_pki_hierarchy(self) -> dict[str, t.Any]:
         query = """
         MATCH p=()-[:HostsCAService|IssuedSignedBy|EnterpriseCAFor|RootCAFor|TrustedForNTAuth|NTAuthStoreFor*..]->(:Domain)
         RETURN p
@@ -369,7 +360,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_public_key_services(self):
+    async def find_public_key_services(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (c:Container)-[:Contains*..]->(:Base)
         WHERE c.distinguishedname starts with 'CN=PUBLIC KEY SERVICES,CN=SERVICES,CN=CONFIGURATION,DC='
@@ -379,7 +370,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_certificate_enrollment_rights(self):
+    async def find_certificate_enrollment_rights(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:Enroll|GenericAll|AllExtendedRights]->(:CertTemplate)-[:PublishedTo]->(:EnterpriseCA)
         RETURN p
@@ -388,7 +379,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_esc1_vulnerable_templates(self):
+    async def find_esc1_vulnerable_templates(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:Enroll|GenericAll|AllExtendedRights]->(ct:CertTemplate)-[:PublishedTo]->(:EnterpriseCA)
         WHERE ct.enrolleesuppliessubject = True
@@ -401,7 +392,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_esc2_vulnerable_templates(self):
+    async def find_esc2_vulnerable_templates(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:Enroll|GenericAll|AllExtendedRights]->(c:CertTemplate)-[:PublishedTo]->(:EnterpriseCA)
         WHERE c.requiresmanagerapproval = false
@@ -413,7 +404,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_enrollment_agent_templates(self):
+    async def find_enrollment_agent_templates(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:Enroll|GenericAll|AllExtendedRights]->(ct:CertTemplate)-[:PublishedTo]->(:EnterpriseCA)
         WHERE '1.3.6.1.4.1.311.20.2.1' IN ct.effectiveekus
@@ -425,7 +416,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_dcs_weak_certificate_binding(self):
+    async def find_dcs_weak_certificate_binding(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (s:Computer)-[:DCFor]->(:Domain)
         WHERE s.strongcertificatebindingenforcementraw = 0 OR s.strongcertificatebindingenforcementraw = 1
@@ -435,7 +426,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_inactive_tier_zero_principals(self):
+    async def find_inactive_tier_zero_principals(self) -> dict[str, t.Any]:
         query = """
         WITH 60 as inactive_days
         MATCH (n:Base)
@@ -452,7 +443,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_tier_zero_without_smartcard(self):
+    async def find_tier_zero_without_smartcard(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.highvalue = true
@@ -466,7 +457,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_domains_with_machine_quota(self):
+    async def find_domains_with_machine_quota(self) -> dict[str, t.Any]:
         query = """
         MATCH (d:Domain)
         WHERE d.machineaccountquota > 0
@@ -475,7 +466,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_smartcard_dont_expire_domains(self):
+    async def find_smartcard_dont_expire_domains(self) -> dict[str, t.Any]:
         query = """
         MATCH (s:Domain)-[:Contains*1..]->(t:Base)
         WHERE s.expirepasswordsonsmartcardonlyaccounts = false
@@ -486,7 +477,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_two_way_forest_trust_delegation(self):
+    async def find_two_way_forest_trust_delegation(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(n:Domain)-[r:TrustedBy]->(m:Domain)
         WHERE (m)-[:TrustedBy]->(n)
@@ -497,7 +488,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_unsupported_operating_systems(self):
+    async def find_unsupported_operating_systems(self) -> dict[str, t.Any]:
         query = """
         MATCH (c:Computer)
         WHERE c.operatingsystem =~ '(?i).*Windows.* (2000|2003|2008|2012|xp|vista|7|8|me|nt).*'
@@ -507,7 +498,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_users_with_no_password_required(self):
+    async def find_users_with_no_password_required(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.passwordnotreqd = true
@@ -517,7 +508,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_users_password_not_rotated(self):
+    async def find_users_password_not_rotated(self) -> dict[str, t.Any]:
         query = """
         WITH 365 as days_since_change
         MATCH (u:User)
@@ -529,7 +520,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_nested_tier_zero_groups(self):
+    async def find_nested_tier_zero_groups(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(t:Group)<-[:MemberOf*..]-(s:Group)
         WHERE t.highvalue = true
@@ -541,7 +532,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_disabled_tier_zero_principals(self):
+    async def find_disabled_tier_zero_principals(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:Base)
         WHERE n.highvalue = true
@@ -554,7 +545,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_principals_reversible_encryption(self):
+    async def find_principals_reversible_encryption(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:Base)
         WHERE n.encryptedtextpwdallowed = true
@@ -563,7 +554,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_principals_des_only_kerberos(self):
+    async def find_principals_des_only_kerberos(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:Base)
         WHERE n.enabled = true
@@ -573,7 +564,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_principals_weak_kerberos_encryption(self):
+    async def find_principals_weak_kerberos_encryption(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:Base)
         WHERE 'DES-CBC-CRC' IN u.supportedencryptiontypes
@@ -584,7 +575,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_tier_zero_non_expiring_passwords(self):
+    async def find_tier_zero_non_expiring_passwords(self) -> dict[str, t.Any]:
         query = """
         MATCH (u:User)
         WHERE u.enabled = true
@@ -597,7 +588,7 @@ class Bloodhound(Toolset):
 
     # NTLM Relay Attacks
     @tool_method()
-    async def find_ntlm_relay_edges(self):
+    async def find_ntlm_relay_edges(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (n:Base)-[:CoerceAndRelayNTLMToLDAP|CoerceAndRelayNTLMToLDAPS|CoerceAndRelayNTLMToADCS|CoerceAndRelayNTLMToSMB]->(:Base)
         RETURN p LIMIT 500
@@ -605,7 +596,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_esc8_vulnerable_cas(self):
+    async def find_esc8_vulnerable_cas(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:EnterpriseCA)
         WHERE n.hasvulnerableendpoint=true
@@ -614,7 +605,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_computers_outbound_ntlm_deny(self):
+    async def find_computers_outbound_ntlm_deny(self) -> dict[str, t.Any]:
         query = """
         MATCH (c:Computer)
         WHERE c.restrictoutboundntlm = True
@@ -623,7 +614,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_computers_in_protected_users(self):
+    async def find_computers_in_protected_users(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:MemberOf*1..]->(g:Group)
         WHERE g.objectid ENDS WITH "-525"
@@ -632,7 +623,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_dcs_vulnerable_ntlm_relay(self):
+    async def find_dcs_vulnerable_ntlm_relay(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (dc:Computer)-[:DCFor]->(:Domain)
         WHERE (dc.ldapavailable = True AND dc.ldapsigning = False)
@@ -643,7 +634,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_computers_webclient_running(self):
+    async def find_computers_webclient_running(self) -> dict[str, t.Any]:
         query = """
         MATCH (c:Computer)
         WHERE c.webclientrunning = True
@@ -652,7 +643,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_computers_no_smb_signing(self):
+    async def find_computers_no_smb_signing(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:Computer)
         WHERE n.smbsigning = False
@@ -662,7 +653,7 @@ class Bloodhound(Toolset):
 
     # Azure - General
     @tool_method()
-    async def find_global_administrators(self):
+    async def find_global_administrators(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:AZBase)-[:AZGlobalAdmin*1..]->(:AZTenant)
         RETURN p
@@ -671,7 +662,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_high_privileged_role_members(self):
+    async def find_high_privileged_role_members(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(t:AZRole)<-[:AZHasRole|AZMemberOf*1..2]-(:AZBase)
         WHERE t.name =~ '(?i)(Global Administrator|User Access Administrator|Privileged Role Administrator|Privileged Authentication Administrator|Partner Tier1 Support|Partner Tier2 Support)'
@@ -682,7 +673,7 @@ class Bloodhound(Toolset):
 
     # Azure - Shortest Paths
     @tool_method()
-    async def find_paths_from_entra_to_tier_zero(self):
+    async def find_paths_from_entra_to_tier_zero(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:AZUser)-[r*1..]->(t:AZBase))
         WHERE t.highvalue = true AND t.name =~ '(?i)(Global Administrator|User Access Administrator|Privileged Role Administrator|Privileged Authentication Administrator|Partner Tier1 Support|Partner Tier2 Support)' AND s<>t
@@ -692,7 +683,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_paths_to_privileged_roles(self):
+    async def find_paths_to_privileged_roles(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:AZBase)-[r*1..]->(t:AZRole))
         WHERE t.name =~ '(?i)(Global Administrator|User Access Administrator|Privileged Role Administrator|Privileged Authentication Administrator|Partner Tier1 Support|Partner Tier2 Support)' AND s<>t
@@ -702,7 +693,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_paths_from_azure_apps_to_tier_zero(self):
+    async def find_paths_from_azure_apps_to_tier_zero(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:AZApp)-[r*1..]->(t:AZBase))
         WHERE t.highvalue = true AND s<>t
@@ -712,7 +703,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_paths_to_azure_subscriptions(self):
+    async def find_paths_to_azure_subscriptions(self) -> dict[str, t.Any]:
         query = """
         MATCH p=shortestPath((s:AZBase)-[r*1..]->(t:AZSubscription))
         WHERE s<>t
@@ -722,8 +713,8 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     # Azure - Microsoft Graph
-    @tool_method()(name="sp_app_role_grant")
-    async def find_service_principals_with_app_role_grant(self):
+    @tool_method()
+    async def find_service_principals_with_app_role_grant(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(:AZServicePrincipal)-[:AZMGGrantAppRoles]->(:AZTenant)
         RETURN p
@@ -731,8 +722,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="find_sp_graph_assignments")
-    async def find_service_principals_with_graph_assignments(self):
+    @tool_method()
+    async def find_service_principals_with_graph_assignments(self) -> dict[str, t.Any]:
         query = """
         MATCH p=(:AZServicePrincipal)-[:AZMGAppRoleAssignment_ReadWrite_All|AZMGApplication_ReadWrite_All|AZMGDirectory_ReadWrite_All|AZMGGroupMember_ReadWrite_All|AZMGGroup_ReadWrite_All|AZMGRoleManagement_ReadWrite_Directory|AZMGServicePrincipalEndpoint_ReadWrite_All]->(:AZServicePrincipal)
         RETURN p
@@ -742,7 +733,7 @@ class Bloodhound(Toolset):
 
     # Azure - Hygiene
     @tool_method()
-    async def find_foreign_tier_zero_principals(self):
+    async def find_foreign_tier_zero_principals(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:AZServicePrincipal)
         WHERE n.highvalue = true
@@ -754,7 +745,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_synced_tier_zero_principals(self):
+    async def find_synced_tier_zero_principals(self) -> dict[str, t.Any]:
         query = """
         MATCH (ENTRA:AZBase)
         MATCH (AD:Base)
@@ -767,7 +758,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_external_tier_zero_users(self):
+    async def find_external_tier_zero_users(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:AZUser)
         WHERE n.highvalue = true
@@ -778,7 +769,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_disabled_azure_tier_zero_principals(self):
+    async def find_disabled_azure_tier_zero_principals(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:AZBase)
         WHERE n.highvalue = true
@@ -789,7 +780,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_devices_unsupported_os(self):
+    async def find_devices_unsupported_os(self) -> dict[str, t.Any]:
         query = """
         MATCH (n:AZDevice)
         WHERE n.operatingsystem CONTAINS 'WINDOWS'
@@ -801,7 +792,7 @@ class Bloodhound(Toolset):
 
     # Azure - Cross Platform Attack Paths
     @tool_method()
-    async def find_entra_users_in_domain_admins(self):
+    async def find_entra_users_in_domain_admins(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:AZUser)-[:SyncedToADUser]->(:User)-[:MemberOf]->(t:Group)
         WHERE t.objectid ENDS WITH '-512'
@@ -811,7 +802,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_onprem_users_owning_entra_objects(self):
+    async def find_onprem_users_owning_entra_objects(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:User)-[:SyncedToEntraUser]->(:AZUser)-[:AZOwns]->(:AZBase)
         RETURN p
@@ -820,7 +811,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_onprem_users_in_entra_groups(self):
+    async def find_onprem_users_in_entra_groups(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:User)-[:SyncedToEntraUser]->(:AZUser)-[:AZMemberOf]->(:AZGroup)
         RETURN p
@@ -828,8 +819,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="templates_no_security_ext")
-    async def find_templates_no_security_extension(self):
+    @tool_method()
+    async def find_templates_no_security_extension(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:Enroll|GenericAll|AllExtendedRights]->(ct:CertTemplate)-[:PublishedTo]->(:EnterpriseCA)
         WHERE ct.nosecurityextension = true
@@ -838,8 +829,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="templates_with_user_san")
-    async def find_templates_with_user_specified_san(self):
+    @tool_method()
+    async def find_templates_with_user_specified_san(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:Enroll|GenericAll|AllExtendedRights]->(ct:CertTemplate)-[:PublishedTo]->(eca:EnterpriseCA)
         WHERE eca.isuserspecifiessanenabled = True
@@ -849,7 +840,7 @@ class Bloodhound(Toolset):
         return await self.query_bloodhound(query)
 
     @tool_method()
-    async def find_ca_administrators(self):
+    async def find_ca_administrators(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:Base)-[:ManageCertificates|ManageCA]->(:EnterpriseCA)
         RETURN p
@@ -857,8 +848,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="onprem_users_direct_entra_roles")
-    async def find_onprem_users_with_direct_entra_roles(self):
+    @tool_method()
+    async def find_onprem_users_with_direct_entra_roles(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:User)-[:SyncedToEntraUser]->(:AZUser)-[:AZHasRole]->(:AZRole)
         RETURN p
@@ -866,8 +857,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="onprem_users_group_entra_roles")
-    async def find_onprem_users_with_group_entra_roles(self):
+    @tool_method()
+    async def find_onprem_users_with_group_entra_roles(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:User)-[:SyncedToEntraUser]->(:AZUser)-[:AZMemberOf]->(:AZGroup)-[:AZHasRole]->(:AZRole)
         RETURN p
@@ -875,8 +866,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="onprem_users_direct_azure_roles")
-    async def find_onprem_users_with_direct_azure_roles(self):
+    @tool_method()
+    async def find_onprem_users_with_direct_azure_roles(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:User)-[:SyncedToEntraUser]->(:AZUser)-[:AZOwner|AZUserAccessAdministrator|AZGetCertificates|AZGetKeys|AZGetSecrets|AZAvereContributor|AZKeyVaultContributor|AZContributor|AZVMAdminLogin|AZVMContributor|AZAKSContributor|AZAutomationContributor|AZLogicAppContributor|AZWebsiteContributor]->(:AZBase)
         RETURN p
@@ -884,8 +875,8 @@ class Bloodhound(Toolset):
         """
         return await self.query_bloodhound(query)
 
-    @tool_method()(name="onprem_users_group_azure_roles")
-    async def find_onprem_users_with_group_azure_roles(self):
+    @tool_method()
+    async def find_onprem_users_with_group_azure_roles(self) -> dict[str, t.Any]:
         query = """
         MATCH p = (:User)-[:SyncedToEntraUser]->(:AZUser)-[:AZMemberOf]->(:AZGroup)-[:AZOwner|AZUserAccessAdministrator|AZGetCertificates|AZGetKeys|AZGetSecrets|AZAvereContributor|AZKeyVaultContributor|AZContributor|AZVMAdminLogin|AZVMContributor|AZAKSContributor|AZAutomationContributor|AZLogicAppContributor|AZWebsiteContributor]->(:AZBase)
         RETURN p
@@ -896,7 +887,7 @@ class Bloodhound(Toolset):
     @tool_method()
     async def find_paths_user_to_user(
         self, source_user: str, target_user: str, domain: str
-    ) -> dict:
+    ) -> dict[str, t.Any]:
         """search for potential exploit/attack paths from source_user to target_user on the given domain"""
         query = f"""
         MATCH p=shortestPath((user1:User)-[*]->(user2:User)) 
@@ -905,164 +896,3 @@ class Bloodhound(Toolset):
         RETURN p
         """
         return await self.query_bloodhound(query)
-
-    @tool_method()
-    async def upload_collection_zip(self, filename: str) -> dict:
-        """Upload a Bloodhound collection zip file (that was collected via SharpHound)"""
-
-        if self._api_auth_token is None or self._api_auth_token.get("auth_expired", True):
-            await self._api_authenticate()
-
-        start_job = {
-            "url": f"http://{self.config['url']}/api/v2/file-upload/start",
-            "headers": {
-                "accept": "application/json",
-                "Authorization": f"Bearer {self._api_auth_token['session_token']}",
-            },
-        }
-        job_record = await self._async_post_request(resp_type="json", **start_job)
-        job_record = job_record["data"]
-
-        if not job_record.get("id", False):
-            err_msg = (
-                f"Could not start collection upload on Bloodhound server. Error: {job_record}."
-            )
-            logger.error(self._rich_print(err_msg))
-            return err_msg
-
-        # 2. upload Bloodhound collection files
-        upload_fn = Path.resolve(filename)
-        upload_job = {
-            "url": f"http://{self.config['url']}/api/v2/file-upload/{job_record['id']}",
-            "headers": {
-                "accept": "application/zip",
-                "Authorization": f"Bearer {self._api_auth_token['session_token']}",
-            },
-        }
-        try:
-            upload_job_status = await self._async_post_file(filename=upload_fn, **upload_job)
-            logger.info(
-                self._rich_print(
-                    f"Collection file upload initiated: {upload_fn}.\n\nStatus: {upload_job_status}"
-                )
-            )
-        except Exception as e:
-            err_msg = f"Error uploading collection file to Bloodhound: {e}"
-            logger.error(self._rich_print(err_msg))
-            return err_msg
-
-        # await asyncio.sleep(45)
-        # 3. end Bloodhound server upload job
-        end_job = {
-            "url": f"http://{self.config['url']}/api/v2/file-upload/{job_record['id']}/end",
-            "headers": {
-                "accept": "application/json",
-                "Authorization": f"Bearer {self._api_auth_token['session_token']}",
-            },
-        }
-        end_job_record = await self._async_post_request(resp_type="text", **end_job)
-
-        upload_job_done, upload_job_status = await self.wait_for_upload_completion(
-            job_id=job_record["id"], seconds=60
-        )
-        if not upload_job_done:
-            err_msg = f"Timeout error of collection file upload for {upload_fn}.\n\n Dumping upload job status: {upload_job_status}"
-            logger.error(self._rich_print(err_msg))
-            return err_msg
-
-        success_msg = f"Successfully uploaded {filename} collection file to Bloodhound."
-        logger.info(self._rich_print(success_msg))
-
-        return success_msg
-
-    """ Utilities """
-
-    async def clear_database(self) -> str:
-        """clears the bloodhound database"""
-        clear_db_req = {
-            "url": f"http://{self.config['url']}/api/v2/clear-database",
-            "headers": {
-                "accept": "application/plain",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._api_auth_token['session_token']}",
-            },
-            "data": json.dumps(
-                {
-                    "deleteCollectedGraphData": True,
-                    "deleteFileIngestHistory": False,
-                    "deleteDataQualityHistory": True,
-                    "deleteAssetGroupSelectors": [0],
-                }
-            ),
-        }
-        clear_status = await self._async_post_request(**clear_db_req)
-        logger.info(self._rich_print(f"Cleared Bloodhound database - {clear_status}"))
-        return clear_status
-
-    async def wait_for_upload_completion(self, job_id: int, seconds: int = 10) -> tuple[bool, dict]:
-        """ """
-        start_time = int(time.time())
-        while True:
-            await asyncio.sleep(2)
-            job_done, job_status = await self.upload_job_status(job_id=job_id)
-            if job_done:
-                break
-            if start_time + seconds < int(time.time()):
-                break
-        return job_done, job_status
-
-    async def upload_job_status(self, job_id: int) -> tuple[bool, dict]:
-        """ """
-        upload_status_job = {
-            "url": f"http://{self.config['url']}/api/v2/file-upload?id={job_id!s}",
-            "headers": {
-                "accept": "application/json",
-                "Authorization": f"Bearer {self._api_auth_token['session_token']}",
-            },
-        }
-        job_statuses = await self._async_get_request(resp_type="json", **upload_status_job)
-        job_status = next(j for j in job_statuses["data"] if j["id"] == job_id)
-        job_done = True if job_status["status"] == 2 else False
-        return job_done, job_status
-
-    async def _async_get_request(self, resp_type: str | None = None, **kwargs) -> dict:
-        """ """
-        async with aiohttp.ClientSession() as session, session.get(**kwargs) as resp:
-            if resp_type == "json":
-                return await resp.json()
-            if resp_type == "text":
-                return await resp.text()
-            return str(resp)
-
-    async def _async_post_request(self, resp_type: str | None = None, **kwargs) -> dict:
-        response = None
-        async with aiohttp.ClientSession() as session, session.post(**kwargs) as resp:
-            if resp_type == "json":
-                response = await resp.json()
-            elif resp_type == "text":
-                response = await resp.text()
-            else:
-                response = str(resp)
-        return response
-
-    async def _async_post_file(self, url: str, filename: str, **kwargs) -> dict:
-        response = None
-        with Path.open(filename, "rb") as fh:
-            async with (
-                aiohttp.ClientSession() as session,
-                session.post(url, data=fh, **kwargs) as resp,
-            ):
-                if resp.status != 202:
-                    resp.raise_for_status()
-                    response = resp
-        return response
-
-    def _rich_print(self, text: str):
-        """ """
-        return rich.print(
-            Panel(
-                f"[white]{text}",
-                title="[red]Bloodhound",
-                style="red",
-            )
-        )

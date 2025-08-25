@@ -122,7 +122,7 @@ class FilesystemTools(Toolset):
     def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"],
-    ) -> rg.ContentImageUrl | str:
+    ) -> rg.ContentImageUrl | str | t.Any:
         """
         Read a file and return its contents.
         """

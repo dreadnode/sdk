@@ -1,7 +1,7 @@
 import typing as t
 
 if t.TYPE_CHECKING:
-    import networkx as nx  # type: ignore [import-untyped]
+    import networkx as nx
 
     from dreadnode.tracing.span import RunSpan
 

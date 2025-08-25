@@ -6,7 +6,8 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from dreadnode.agent import Agent, AgentResult
+from dreadnode.agent.agent import Agent
+from dreadnode.agent.result import AgentResult
 from dreadnode.agent.tools.ilspy.tool import ILSpyTool
 
 console = Console()
@@ -17,7 +18,7 @@ async def main() -> AgentResult:
         name="dotnet-reversing-agent",
         description="An agent that uses ILSpy to reverse engineer .NET binaries.",
         model="groq/moonshotai/kimi-k2-instruct",
-        tools=[ILSpyTool.from_path(path=Path(__file__).parent / "bin")],
+        tools=[ILSpyTool.from_path(path=str(Path(__file__).parent / "bin"))],
         instructions="""You are an expert dotnet reverse engineer with decades of experience. Your task is to analyze the provided static binaries and identify high impact vulnerabilities using the tools available to you. You care most about exploitable bugs from a remote perspective. It is okay to review the code multiple times,
 
         - DO NOT write fixes or suggestions.
