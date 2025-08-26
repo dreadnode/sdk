@@ -1,7 +1,6 @@
 import re
 import typing as t
 
-from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
@@ -18,7 +17,7 @@ def _analyze_text(text: str) -> dict[str, int]:
 
 
 def character_consistency(
-    reference: str | Lookup,
+    reference: str,
     *,
     max_ratio_diff: float = 2.0,
     name: str = "char_consistency",
@@ -30,7 +29,7 @@ def character_consistency(
     A score of 1.0 indicates identical distributions.
 
     Args:
-        reference: The reference text (e.g., the prompt) or a Lookup.
+        reference: The reference text.
         max_ratio_diff: The denominator for normalizing ratio differences.
         name: Name of the scorer.
     """
@@ -39,7 +38,6 @@ def character_consistency(
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         candidate_chars = _analyze_text(candidate_text)
         reference_chars = _analyze_text(reference)
@@ -62,4 +60,4 @@ def character_consistency(
 
         return Metric.from_many([(name, score, 1.0) for name, score in scores.items()])
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import typing_extensions as te
 from pydantic import PlainSerializer, WithJsonSchema
 
+T = t.TypeVar("T")
+
 # Common types
 
 JsonValue = te.TypeAliasType(
@@ -30,15 +32,13 @@ class Unset:
         return False
 
 
-UNSET: Unset = Unset()
+UNSET: t.Any = Unset()
 
 
-class Inherited:
-    def __repr__(self) -> str:
-        return "Inherited"
+class Inherited: ...
 
 
-INHERITED: Inherited = Inherited()
+INHERITED: t.Any = Inherited()
 
 
 ErrorField = t.Annotated[
@@ -50,3 +50,21 @@ ErrorField = t.Annotated[
     ),
     WithJsonSchema({"type": "string", "description": "Error message"}),
 ]
+
+# from annotated_types
+
+
+class SupportsGt(t.Protocol):
+    def __gt__(self, __other: te.Self) -> bool: ...  # noqa: PYI063
+
+
+class SupportsGe(t.Protocol):
+    def __ge__(self, __other: te.Self) -> bool: ...  # noqa: PYI063
+
+
+class SupportsLt(t.Protocol):
+    def __lt__(self, __other: te.Self) -> bool: ...  # noqa: PYI063
+
+
+class SupportsLe(t.Protocol):
+    def __le__(self, __other: te.Self) -> bool: ...  # noqa: PYI063

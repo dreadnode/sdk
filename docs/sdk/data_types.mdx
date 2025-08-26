@@ -412,7 +412,7 @@ Initialize a Table object.
   (`bool`, default:
   `False`
   )
-  –Whether to include index in the output
+  –Include index in the output
 
 <Accordion title="Source code in dreadnode/data_types/table.py" icon="code">
 ```python
@@ -435,7 +435,7 @@ def __init__(
             - A NumPy array
         caption: Optional caption for the table
         format: Optional format to use when saving (csv, parquet, json)
-        index: Whether to include index in the output
+        index: Include index in the output
     """
     self._data = data
     self._caption = caption

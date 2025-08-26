@@ -1,3 +1,4 @@
+from dreadnode.agent.events import rebuild_event_models
 from dreadnode.optimization import events, search
 from dreadnode.optimization.events import StudyEvent
 from dreadnode.optimization.study import Study
@@ -11,3 +12,5 @@ __all__ = [
     "events",
     "search",
 ]
+
+rebuild_event_models()

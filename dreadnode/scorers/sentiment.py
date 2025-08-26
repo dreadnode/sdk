@@ -3,8 +3,7 @@ import typing as t
 
 import httpx
 
-from dreadnode.configurable import configurable
-from dreadnode.lookup import Lookup, resolve_lookup
+from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.util import warn_at_user_stacklevel
@@ -13,7 +12,7 @@ Sentiment = t.Literal["positive", "negative", "neutral"]
 
 
 def sentiment(
-    target: Sentiment | Lookup = "neutral",
+    target: Sentiment = "neutral",
     name: str = "score_sentiment",
 ) -> "Scorer[t.Any]":
     """
@@ -40,12 +39,11 @@ def sentiment(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": textblob_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal target
 
-        target = t.cast("Sentiment", str(resolve_lookup(target)).lower())
         if target not in {"positive", "negative", "neutral"}:
             target = "neutral"  # Default to neutral if invalid
             warn_at_user_stacklevel(
@@ -73,7 +71,7 @@ def sentiment(
 
         return Metric(value=score, attributes={"polarity": polarity, "target": target})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 PerspectiveAttribute = t.Literal[
@@ -81,7 +79,6 @@ PerspectiveAttribute = t.Literal[
 ]
 
 
-@configurable(["api_key"])
 def sentiment_with_perspective(
     *,
     api_key: str | None = None,
@@ -105,7 +102,7 @@ def sentiment_with_perspective(
             "API key must be provided or set in the PERSPECTIVE_API_KEY environment variable."
         )
 
-    async def evaluate(data: t.Any) -> float:
+    async def evaluate(data: t.Any, *, api_key: str | None = Config(api_key)) -> float:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze",
@@ -125,4 +122,4 @@ def sentiment_with_perspective(
     if name is None:
         name = f"perspective_{attribute.lower()}"
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

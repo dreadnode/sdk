@@ -116,7 +116,7 @@ def detect_pii_with_presidio(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": presidio_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         analyzer = _get_presidio_analyzer()
@@ -149,4 +149,4 @@ def detect_pii_with_presidio(
 
         return Metric(value=final_score, attributes=metadata)
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

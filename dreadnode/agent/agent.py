@@ -242,7 +242,7 @@ class Agent(BaseModel):
         *,
         thread: Thread | None = None,
     ) -> AgentResult:
-        thread = thread or Thread()
+        thread = thread or self.thread
         return await thread.run(
             self, user_input, commit="always" if thread == self.thread else "on-success"
         )

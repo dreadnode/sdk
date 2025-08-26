@@ -1,0 +1,323 @@
+---
+title: dreadnode.eval
+---
+
+{/*
+::: dreadnode.eval.eval
+::: dreadnode.eval.dataset
+*/}
+
+Eval
+----
+
+### assertions
+
+```python
+assertions: ScorersLike[OutputT] | None = None
+```
+
+Assertions to validate the task's output (scores are resolved as truthy).
+
+### concurrency
+
+```python
+concurrency: int | None = None
+```
+
+Maximum number of tasks to run in parallel. If None, runs with unlimited concurrency.
+
+### dataset
+
+```python
+dataset: InputDataset[InputT] | list[AnyDict] | FilePath
+```
+
+The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
+
+### description
+
+```python
+description: str = ''
+```
+
+A brief description of the eval's purpose.
+
+### label
+
+```python
+label: str | None = None
+```
+
+Override the name-derived label for logging.
+
+### name
+
+```python
+name: str | None = None
+```
+
+The name of the evaluation.
+
+### preprocessor
+
+```python
+preprocessor: InputDatasetProcessor | None = None
+```
+
+Optional preprocessor function to transform the dataset before evaluation.
+
+### scorers
+
+```python
+scorers: ScorersLike[OutputT] | None = None
+```
+
+Scorers to evaluate the task's output.
+
+### task
+
+```python
+task: Task[[InputT], OutputT] | str
+```
+
+The task to evaluate. Can be a Task object or a string representing qualified task name.
+
+### run
+
+```python
+run() -> EvalResult[InputT, OutputT]
+```
+
+Evaluate the task with the given arguments and return a list of Samples.
+
+<Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
+```python
+async def run(self) -> EvalResult[InputT, OutputT]:
+    """
+    Evaluate the task with the given arguments and return a list of Samples.
+    """
+    async with self.stream() as stream:
+        async for sample_or_eval in stream:
+            if isinstance(sample_or_eval, EvalResult):
+                return sample_or_eval
+        raise RuntimeError("Evaluation failed to complete")
+```
+
+
+</Accordion>
+
+### stream
+
+```python
+stream() -> t.AsyncIterator[
+    t.AsyncGenerator[
+        Sample[InputT, OutputT]
+        | EvalResult[InputT, OutputT],
+        None,
+    ]
+]
+```
+
+Create an async context manager for streaming evaluation results.
+
+This method provides a streaming interface for running evaluations, yielding
+individual Sample objects as they complete, followed by a final EvalResult.
+The streaming approach allows for real-time processing and monitoring of
+evaluation progress, especially useful for long-running evaluations.
+
+The method handles:
+- Task and dataset preparation via \_prepare()
+- Configuration of scorers and assertions
+- Concurrent execution of tasks with optional concurrency limits
+- Proper resource cleanup through async context management
+- Telemetry and span tracking for observability
+
+**Yields:**
+
+* `AsyncIterator[AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]]`
+  –An async generator that yields:
+* `AsyncIterator[AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]]`
+  –+ Sample[InputT, OutputT]: Individual evaluation samples as they complete
+* `AsyncIterator[AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]]`
+  –+ EvalResult[InputT, OutputT]: Final aggregated result containing all samples
+
+Example
+
+```python
+async with eval_instance.stream() as stream:
+    async for item in stream:
+        if isinstance(item, Sample):
+            print(f"Completed sample: {item}")
+        elif isinstance(item, EvalResult):
+            print(f"Final result: {item}")
+```
+
+
+<Note>
+The context manager ensures proper cleanup of async resources and
+maintains consistent telemetry spans for the entire evaluation process.
+</Note>
+
+<Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
+```python
+@asynccontextmanager
+async def stream(
+    self,
+) -> t.AsyncIterator[
+    t.AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]
+]:
+    """
+    Create an async context manager for streaming evaluation results.
+
+    This method provides a streaming interface for running evaluations, yielding
+    individual Sample objects as they complete, followed by a final EvalResult.
+    The streaming approach allows for real-time processing and monitoring of
+    evaluation progress, especially useful for long-running evaluations.
+
+    The method handles:
+    - Task and dataset preparation via _prepare()
+    - Configuration of scorers and assertions
+    - Concurrent execution of tasks with optional concurrency limits
+    - Proper resource cleanup through async context management
+    - Telemetry and span tracking for observability
+
+    Yields:
+        An async generator that yields:
+        - Sample[InputT, OutputT]: Individual evaluation samples as they complete
+        - EvalResult[InputT, OutputT]: Final aggregated result containing all samples
+
+    Example:
+        ~~~python
+        async with eval_instance.stream() as stream:
+            async for item in stream:
+                if isinstance(item, Sample):
+                    print(f"Completed sample: {item}")
+                elif isinstance(item, EvalResult):
+                    print(f"Final result: {item}")
+        ~~~
+
+    Note:
+        The context manager ensures proper cleanup of async resources and
+        maintains consistent telemetry spans for the entire evaluation process.
+    """
+    from dreadnode import task_span
+
+    task, dataset = await self._prepare()
+
+    assertion_scorers = Scorer.fit_like(self.assertions or [], attributes={"assertion": True})
+    extra_scorers = Scorer.fit_like(self.scorers or []) + assertion_scorers
+    eval_task = task.with_(scorers=extra_scorers, append=True)
+    eval_name = self.name or f"eval - {eval_task.name}"
+    eval_label = self.label or f"eval_{eval_task.label}"
+
+    async def sample_gen() -> t.AsyncGenerator[
+        Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None
+    ]:
+        with task_span(eval_name, label=eval_label, tags=["eval"]):
+            samples: list[Sample[InputT, OutputT]] = []
+
+            async with eval_task.stream_map(dataset, concurrency=self.concurrency) as stream:
+                async for span in stream:
+                    sample = Sample[InputT, OutputT].from_task(span)
+                    samples.append(sample)
+                    yield sample
+
+            yield EvalResult[InputT, OutputT](name=eval_name, samples=samples)
+
+    async with contextlib.aclosing(sample_gen()) as gen:
+        yield gen
+```
+
+
+</Accordion>
+EvalResult
+----------
+
+Represents the result of an evaluation, including input, output, metrics, and error.
+
+load\_from\_file
+----------------
+
+```python
+load_from_file(
+    path: Path, *, file_format: FileFormat | None = None
+) -> list[AnyDict]
+```
+
+Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
+
+**Parameters:**
+
+* **`path`**
+  (`Path`)
+  –The path to the file to load.
+* **`file_format`**
+  (`FileFormat | None`, default:
+  `None`
+  )
+  –Optional format of the file. If not provided, it will be inferred from the file extension.
+
+**Returns:**
+
+* `list[AnyDict]`
+  –A list of dictionaries representing the objects in the file.
+
+<Accordion title="Source code in dreadnode/eval/dataset.py" icon="code">
+```python
+def load_from_file(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]:
+    """
+    Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
+
+    Args:
+        path: The path to the file to load.
+        file_format: Optional format of the file. If not provided, it will be inferred from the file extension.
+
+    Returns:
+        A list of dictionaries representing the objects in the file.
+    """
+    path = Path(path)
+    dataset: list[AnyDict] = []
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    if not path.is_file():
+        raise ValueError(f"Path is not a file: {path}")
+
+    content = path.read_text(encoding="utf-8").strip()
+    if not content:
+        return dataset
+
+    file_format = file_format or t.cast("FileFormat", path.suffix.lstrip(".").lower())
+    if file_format not in t.get_args(FileFormat):
+        raise ValueError(f"Unsupported file format: {file_format}")
+
+    if file_format == "jsonl":
+        dataset = [json.loads(line) for line in content.splitlines() if line.strip()]
+
+    elif file_format == "csv":
+        reader = csv.DictReader(content.splitlines())
+        dataset = list(reader)
+
+    elif file_format == "json":
+        dataset = json.loads(content)
+        if not isinstance(dataset, list):
+            raise ValueError("JSON file must contain a list of objects.")
+
+    elif file_format in {"yaml", "yml"}:
+        try:
+            import yaml  # type: ignore[import-untyped,unused-ignore]
+        except ImportError as e:
+            raise ImportError(
+                "YAML support requires the 'PyYAML' package. Install with: pip install pyyaml"
+            ) from e
+
+        dataset = yaml.safe_load(content)
+        if not isinstance(dataset, list):
+            raise ValueError("YAML file must contain a list of objects.")
+
+    return dataset
+```
+
+
+</Accordion>

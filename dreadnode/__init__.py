@@ -1,10 +1,20 @@
 import importlib
 import typing as t
 
-from dreadnode import convert, data_types
+from dreadnode import convert, data_types, meta
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
-from dreadnode.lookup import Lookup, lookup_input, lookup_output, lookup_param, resolve_lookup
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
+from dreadnode.meta import (
+    Config,
+    CurrentRun,
+    CurrentTask,
+    ParentTask,
+    RunInput,
+    RunOutput,
+    RunParam,
+    TaskInput,
+    TaskOutput,
+)
 from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object
 from dreadnode.scorers import Scorer
@@ -48,20 +58,28 @@ __all__ = [
     "DEFAULT_INSTANCE",
     "Audio",
     "Code",
+    "Config",
+    "CurrentRun",
+    "CurrentTask",
     "Dreadnode",
     "Image",
-    "Lookup",
     "Markdown",
     "Metric",
     "MetricDict",
     "Object",
     "Object3D",
+    "ParentTask",
     "Run",
+    "RunInput",
+    "RunOutput",
+    "RunParam",
     "RunSpan",
     "Scorer",
     "Span",
     "Table",
     "Task",
+    "TaskInput",
+    "TaskOutput",
     "TaskSpan",
     "Text",
     "Video",
@@ -80,11 +98,8 @@ __all__ = [
     "log_output",
     "log_param",
     "log_params",
-    "lookup_input",
-    "lookup_output",
-    "lookup_param",
+    "meta",
     "push_update",
-    "resolve_lookup",
     "run",
     "scorer",
     "shutdown",

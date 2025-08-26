@@ -1,0 +1,192 @@
+---
+title: dreadnode.airt
+---
+
+{/*
+::: dreadnode.airt.attack
+*/}
+
+Attack
+------
+
+The abstract base class for configuring and executing an attack.
+
+This class acts as a high-level factory for an underlying optimization Study,
+providing a simple and declarative interface for complex attack patterns.
+
+### dataset
+
+```python
+dataset: list[AnyDict] = Field(default_factory=lambda: [{}])
+```
+
+The dataset to evaluate each candidate against for robustness.
+
+### objective
+
+```python
+objective: ScorerLike[str]
+```
+
+The scorer that defines the final 'fitness' or 'success' of a candidate.
+
+### target
+
+```python
+target: str | Generator
+```
+
+The model or endpoint to attack, as a rigging generator identifier string or object.
+
+### make\_study
+
+```python
+make_study() -> Study[CandidateT]
+```
+
+[Internal] Each Attack subclass must implement this method.
+
+Its job is to translate the Attack's high-level configuration into a
+fully-configured Study object with the correct Strategy and glue functions.
+
+<Accordion title="Source code in dreadnode/airt/attack/base.py" icon="code">
+```python
+@abstractmethod
+def make_study(self) -> Study[CandidateT]:
+    """
+    [Internal] Each Attack subclass must implement this method.
+
+    Its job is to translate the Attack's high-level configuration into a
+    fully-configured Study object with the correct Strategy and glue functions.
+    """
+```
+
+
+</Accordion>
+
+AttackResult
+------------
+
+The final, clean output of a completed attack.
+
+GenerativeAttack
+----------------
+
+A base class for attacks that iteratively generate and test new candidates.
+
+This class provides the chassis for complex sequential attacks like TAP or PAIR.
+It is configured with a `Mutation` primitive that defines the core generative step.
+
+### beam\_width
+
+```python
+beam_width: int = 1
+```
+
+The number of best candidates to keep at each step. (width=1 for PAIR, >1 for TAP).
+
+### branching\_factor
+
+```python
+branching_factor: int = 1
+```
+
+The number of new candidates to generate from each beam at each step.
+
+### constraints
+
+```python
+constraints: list[Scorer[Any]] = Field(default_factory=list)
+```
+
+Fast, cheap scorers to prune invalid candidates before full evaluation.
+
+### direction
+
+```python
+direction: Literal['maximize', 'minimize'] = 'maximize'
+```
+
+The direction for the optimization objective.
+
+### initial\_candidate
+
+```python
+initial_candidate: CandidateT
+```
+
+The starting point (e.g., an initial prompt or state) for the generative search.
+
+### max\_steps
+
+```python
+max_steps: int = 5
+```
+
+The maximum number of generative steps (the 'depth' of the search).
+
+### transform
+
+```python
+transform: TransformLike[CandidateT]
+```
+
+The core generative primitive used to create new candidates at each step.
+
+TAPAttack
+---------
+
+```python
+TAPAttack(
+    goal: str,
+    target: str | Generator,
+    attacker: str | Generator,
+    evaluator: str | Generator,
+    beam_width: int = 10,
+    branching_factor: int = 3,
+    max_steps: int = 10,
+    **kwargs: Any,
+)
+```
+
+A generative attack implementing the Tree of Attacks (TAP) methodology.
+
+<Accordion title="Source code in dreadnode/airt/attack/tap.py" icon="code">
+```python
+def __init__(
+    self,
+    goal: str,
+    target: str | rg.Generator,
+    attacker: str | rg.Generator,
+    evaluator: str | rg.Generator,
+    beam_width: int = 10,
+    branching_factor: int = 3,
+    max_steps: int = 10,
+    **kwargs: t.Any,
+) -> None:
+    mutation = llm_refine(model=attacker, guidance=REFINE_GUIDANCE.format(goal=goal))
+    constraints = [llm_judge(evaluator, ON_TOPIC_RUBRIC.format(goal=goal))]
+    objective = llm_judge(
+        evaluator,
+        EVALUATION_RUBRIC.format(goal=goal),
+        min_score=1,
+        max_score=10,
+    )
+
+    super().__init__(
+        target=target,
+        attacker=attacker,
+        evaluator=evaluator,
+        objective=objective,
+        mutation=mutation,
+        constraints=constraints,
+        initial_candidate=goal,
+        beam_width=beam_width,
+        branching_factor=branching_factor,
+        max_steps=max_steps,
+        **kwargs,
+    )
+```
+
+
+</Accordion>

@@ -21,8 +21,8 @@ def load_from_file(path: Path, *, file_format: FileFormat | None = None) -> list
     Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
 
     Args:
-        - path: The path to the file to load.
-        - file_format: Optional format of the file. If not provided, it will be inferred from the file extension.
+        path: The path to the file to load.
+        file_format: Optional format of the file. If not provided, it will be inferred from the file extension.
 
     Returns:
         A list of dictionaries representing the objects in the file.
@@ -61,7 +61,7 @@ def load_from_file(path: Path, *, file_format: FileFormat | None = None) -> list
             import yaml  # type: ignore[import-untyped,unused-ignore]
         except ImportError as e:
             raise ImportError(
-                "YAML support requires the 'PyYAML' package. Install it with 'pip install pyyaml'."
+                "YAML support requires the 'PyYAML' package. Install with: pip install pyyaml"
             ) from e
 
         dataset = yaml.safe_load(content)

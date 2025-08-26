@@ -1,17 +1,21 @@
 import asyncio
 import inspect
 import typing as t
-from dataclasses import dataclass
+from copy import deepcopy
 from datetime import datetime, timezone
 
-from logfire._internal.stack_info import warn_at_user_stacklevel
-from logfire._internal.utils import safe_repr
+import typing_extensions as te
 
-from dreadnode.configurable import clone_config_attrs
+from dreadnode.meta import Component
+from dreadnode.meta.context import Context
+from dreadnode.meta.types import ConfigInfo
 from dreadnode.metric import Metric
 from dreadnode.types import JsonDict
+from dreadnode.util import get_callable_name, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
+OuterT = t.TypeVar("OuterT")
+UnusedP = te.ParamSpec("UnusedP", default=...)
 
 
 class ScorerWarning(UserWarning):
@@ -20,136 +24,112 @@ class ScorerWarning(UserWarning):
 
 ScorerResult = float | int | bool | Metric
 """The result of a scorer function, which can be a numeric value or a Metric object."""
+
+# It's an absolute monster to get all the type hints to work here properly
+# - Need to use Sequence for the return type for proper variance
+# - Need both versions of [T] and Concatenate[T, ...] to support scorers with more complex signatures
+# - Functions can be async, or not
+
 ScorerCallable = (
-    t.Callable[[T], t.Awaitable[ScorerResult]]
-    | t.Callable[[T], ScorerResult]
-    | t.Callable[[T], t.Awaitable[t.Sequence[ScorerResult]]]
-    | t.Callable[[T], t.Sequence[ScorerResult]]
+    t.Callable[[T], t.Awaitable[ScorerResult] | ScorerResult]
+    | t.Callable[[T], t.Awaitable[t.Sequence[ScorerResult]] | t.Sequence[ScorerResult]]
+    | t.Callable[te.Concatenate[T, ...], t.Awaitable[ScorerResult] | ScorerResult]
+    | t.Callable[
+        te.Concatenate[T, ...], t.Awaitable[t.Sequence[ScorerResult]] | t.Sequence[ScorerResult]
+    ]
 )
-"""A callable that takes an object of type T and returns a ScorerResult or a sequence of ScorerResults."""
-ScorerLike = t.Union["Scorer[T]", ScorerCallable[T]]
-ScorersLike = t.Sequence[ScorerLike[T]] | dict[str, ScorerLike[T]]
+"""A callable that takes an object and returns a compatible score result."""
 
 
-@dataclass
-class Scorer(t.Generic[T]):
-    name: str
-    "The name of the scorer, used for reporting metrics."
-    func: ScorerCallable[T]
-    "The function to call to get the metric."
-    attributes: JsonDict
-    "A dictionary of attributes for metrics produced by this Scorer."
-    step: int = 0
-    "The step value to attach to metrics produced by this Scorer."
-    auto_increment_step: bool = False
-    "Whether to automatically increment the step for each time this scorer is called."
-    catch: bool = False
-    "Whether to catch exceptions in the scorer function and return a 0 Metric with error information."
-    log_all: bool = False
-    "Whether to log all sub-metrics from nested composition, or just the final resulting metric."
+class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
+    """
+    A stateful, configurable, and composable wrapper for a scoring function.
 
-    @classmethod
-    def from_callable(
-        cls,
-        func: "ScorerCallable[T] | Scorer[T]",
+    A Scorer is a specialized Component that evaluates an object and produces a Metric.
+    It inherits the configuration and context-awareness of a Component, allowing
+    scorers to be defined with `dn.Config` and `dn.Context` parameters.
+    """
+
+    def __init__(
+        self,
+        func: ScorerCallable[T],
         *,
         name: str | None = None,
         attributes: JsonDict | None = None,
         catch: bool = False,
+        step: int = 0,
         auto_increment_step: bool = False,
         log_all: bool = False,
-    ) -> "Scorer[T]":
-        """
-        Create a scorer from a callable function.
+        config: dict[str, ConfigInfo] | None = None,
+        context: dict[str, Context] | None = None,
+    ):
+        super().__init__(func, config=config, context=context)
 
-        Args:
-            func: The function to call to get the metric.
-            name: The name of the scorer, used for reporting metrics.
-            attributes: A dictionary of attributes to attach to the metric.
-            catch: Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-            auto_increment_step: Whether to automatically increment the step for each time this scorer is called.
-            log_all: Whether to log all sub-metrics from nested composition, or just the final resulting metric.
+        if name is None:
+            unwrapped = inspect.unwrap(func)
+            name = get_callable_name(unwrapped, short=True)
 
-        Returns:
-            A Scorer object.
-        """
-        if isinstance(func, Scorer):
-            return func
-
-        # if isinstance(func, Task):
-        #     raise TypeError(
-        #         f"Cannot create a Scorer from a @dn.task object ('{func.name}'). "
-        #         "Scorer functions should be simple, undecorated callables. "
-        #         "If you need to configure your scorer, create a factory function that returns a Scorer object."
-        #     )
-
-        # if inspect.iscoroutine(func):
-        #     raise TypeError(
-        #         "Received a coroutine when creating a Scorer. This can happen if you apply "
-        #         "@dn.task to a scorer factory function. Please remove the @dn.task decorator "
-        #         "from your scorer factory."
-        #     )
-
-        unwrapped = inspect.unwrap(func)
-        func_name = getattr(
-            unwrapped,
-            "__qualname__",
-            getattr(func, "__name__", safe_repr(unwrapped)),
-        )
-        name = name or func_name
-        return clone_config_attrs(
-            func,
-            cls(
-                name=name,
-                func=func,
-                catch=catch,
-                auto_increment_step=auto_increment_step,
-                log_all=log_all,
-                attributes=attributes or {},
-            ),
-        )
+        self.name = name
+        "The name of the scorer, used for reporting metrics."
+        self.attributes = attributes or {}
+        "A dictionary of attributes for metrics produced by this Scorer."
+        self.catch = catch
+        "Catch exceptions in the scorer function and return a 0 Metric with error information."
+        self.step = step
+        "The step value to attach to metrics produced by this Scorer."
+        self.auto_increment_step = auto_increment_step
+        "Automatically increment an internal step counter every time this scorer is called."
+        self.log_all = log_all
+        "Log all sub-metrics from nested composition, or just the final resulting metric."
 
     @classmethod
     def fit_like(
-        cls, scorers: ScorersLike[T] | None, *, attributes: JsonDict | None = None
+        cls, scorers: "ScorersLike[T] | None", *, attributes: JsonDict | None = None
     ) -> list["Scorer[T]"]:
+        """
+        Convert a collection of scorer-like objects into a list of Scorer instances.
+
+        This method provides a flexible way to handle different input formats for scorers,
+        automatically converting callables to Scorer objects and applying consistent naming
+        and attributes across all scorers.
+
+        Args:
+            scorers: A collection of scorer-like objects. Can be:
+                - A dictionary mapping names to scorer objects or callables
+                - A sequence of scorer objects or callables
+                - None (returns empty list)
+            attributes: Optional attributes to apply to all resulting scorers.
+
+        Returns:
+            A list of Scorer instances with consistent configuration.
+        """
         if isinstance(scorers, dict):
             return [
                 scorer.with_(name=name, attributes=attributes)
                 if isinstance(scorer, Scorer)
-                else cls.from_callable(scorer, name=name, attributes=attributes)
+                else cls(scorer, name=name, attributes=attributes)
                 for name, scorer in scorers.items()
             ]
 
         return [
             scorer.with_(attributes=attributes)
             if isinstance(scorer, Scorer)
-            else cls.from_callable(scorer, attributes=attributes)
+            else cls(scorer, attributes=attributes)
             for scorer in scorers or []
         ]
 
-    def __post_init__(self) -> None:
-        self.__signature__ = inspect.signature(self.func)
-        self.__name__ = self.name
-
     def clone(self) -> "Scorer[T]":
-        """
-        Clone the scorer.
-
-        Returns:
-            A new Scorer.
-        """
-        return clone_config_attrs(
-            self,
-            Scorer(
-                name=self.name,
-                attributes=self.attributes,
-                func=self.func,
-                step=self.step,
-                auto_increment_step=self.auto_increment_step,
-                log_all=self.log_all,
-                catch=self.catch,
-            ),
+        """Clone the scorer."""
+        return Scorer(
+            func=self.func,
+            name=self.name,
+            attributes=self.attributes.copy(),
+            catch=self.catch,
+            step=self.step,
+            auto_increment_step=self.auto_increment_step,
+            log_all=self.log_all,
+            config=deepcopy(self.__dn_param_config__),
+            context=deepcopy(self.__dn_context__),
         )
 
     def with_(
@@ -168,9 +148,9 @@ class Scorer(t.Generic[T]):
             name: New name for the scorer.
             attributes: New attributes for the scorer.
             step: New step value for the scorer.
-            auto_increment_step: Whether to auto-increment the step.
-            catch: Whether to catch exceptions in the scorer function.
-            log_all: Whether to log all sub-metrics from nested composition.
+            auto_increment_step: Automatically increment the step for each time this scorer is called.
+            catch: Catch exceptions in the scorer function.
+            log_all: Log all sub-metrics from nested composition.
 
         Returns:
             A new Scorer with the updated properties
@@ -199,7 +179,33 @@ class Scorer(t.Generic[T]):
         """
         return self.with_(name=new_name)
 
-    async def normalize_and_score(self, object: T) -> list[Metric]:
+    def adapt(
+        self: "Scorer[T]",
+        adapt: t.Callable[[OuterT], T],
+        name: str | None = None,
+    ) -> "Scorer[OuterT]":
+        """
+        Adapts a scorer to operate with some other type
+
+        This is a powerful wrapper that allows a generic scorer (e.g., one that
+        refines a string) to be used with a complex candidate object (e.g., a
+        Pydantic model containing that string).
+
+        Args:
+            adapt: A function to extract the `T` from the `OuterT`.
+            name: An optional new name for the adapted scorer.
+
+        Returns:
+            A new Scorer instance that operates on the `OuterT`.
+        """
+        original = self
+
+        async def evaluate(object: OuterT, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+            return await original.normalize_and_score(adapt(object), *args, **kwargs)
+
+        return Scorer(evaluate, name=name or self.name)
+
+    async def normalize_and_score(self, object: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         """
         Executes the scorer and returns all generated metrics,
         including from nested compositions.
@@ -218,7 +224,8 @@ class Scorer(t.Generic[T]):
         )
 
         try:
-            result = self.func(object)
+            bound_args = self._bind_args(object, *args, **kwargs)
+            result = self.func(*bound_args.args, **bound_args.kwargs)
             if inspect.isawaitable(result):
                 result = await result
         except Exception as e:
@@ -264,7 +271,9 @@ class Scorer(t.Generic[T]):
 
         return metrics
 
-    async def score_composite(self, object: T) -> tuple[Metric, list[Metric]]:
+    async def score_composite(
+        self, object: T, *args: t.Any, **kwargs: t.Any
+    ) -> tuple[Metric, list[Metric]]:
         """
         Executes the scorer and returns both the primary Metric and a list of any
         additional metrics from nested compositions.
@@ -275,26 +284,10 @@ class Scorer(t.Generic[T]):
         Returns:
             A tuple of the primary Metric and a list of all metrics generated.
         """
-        metrics = await self.normalize_and_score(object)
+        metrics = await self.normalize_and_score(object, *args, **kwargs)
         return metrics[0], metrics[1:]
 
-    async def score(self, obj: T) -> Metric:
-        """
-        Execute the scorer and return the metric. If the scorer is a composition of other scorers,
-        it will return the "highest-priority" metric, typically the first in the list.
-
-        Any output value will be converted to a Metric object if not already one.
-
-        Args:
-            obj: The object to score.
-
-        Returns:
-            A Metric object.
-        """
-        all_metrics = await self.normalize_and_score(obj)
-        return all_metrics[0]
-
-    async def __call__(self, object: T) -> Metric:
+    async def score(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:
         """
         Execute the scorer and return the metric. If the scorer is a composition of other scorers,
         it will return the "highest-priority" metric, typically the first in the list.
@@ -307,7 +300,12 @@ class Scorer(t.Generic[T]):
         Returns:
             A Metric object.
         """
-        return await self.score(object)
+        all_metrics = await self.normalize_and_score(object, *args, **kwargs)
+        return all_metrics[0]
+
+    @te.override
+    async def __call__(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:  # type: ignore[override]
+        return await self.score(object, *args, **kwargs)
 
     def __gt__(self, value: float) -> "Scorer[T]":
         return threshold(self, gt=value)
@@ -352,6 +350,10 @@ class Scorer(t.Generic[T]):
         return self.with_(name=name, log_all=True)
 
 
+ScorerLike = Scorer[T] | ScorerCallable[T]
+ScorersLike = t.Sequence[ScorerLike[T]] | dict[str, ScorerLike[T]]
+
+
 def named(name: str, scorer: Scorer[T]) -> Scorer[T]:
     """
     Give a scorer a name.
@@ -375,18 +377,28 @@ def invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None
 
     The new score is calculated as `max_value - original_score`.
 
+    Examples:
+        ```
+        @scorer
+        def harmful(data: T) -> float:
+            ... # 0 (safe) to 1 (harmful)
+
+        safety = invert(harmful)
+        # 0 (harmful) to 1 (safe)
+        ```
+
     Args:
         scorer: The Scorer instance to wrap.
         known_max: The maximum value of the original score, used for inversion.
         name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
     """
 
-    async def evaluate(data: t.Any) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         metric = Metric(max(0, known_max - original.value), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_inverted")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_inverted")
 
 
 # Range remapping and normalization
@@ -404,6 +416,20 @@ def remap_range(
     """
     Remap the output of a scorer from one range to another.
 
+    Examples:
+        ```
+        @scorer
+        def harmful(data: T) -> float:
+            ... # 0 (safe) to 1 (harmful)
+
+        remapped = remap_range(
+            harmful,
+            known_min=0, known_max=1,
+            new_min=0, new_max=100
+        )
+        # 0 (safe) to 100 (harmful)
+        ```
+
     Args:
         scorer: The Scorer instance to wrap.
         known_min: The assumed minimum of the original score
@@ -418,8 +444,8 @@ def remap_range(
     original_range = known_max - known_min
     new_range = new_max - new_min
 
-    async def evaluate(data: t.Any) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
 
         if original.value > known_max:
             warn_at_user_stacklevel(
@@ -446,7 +472,7 @@ def remap_range(
         metric = Metric(value=final_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_remapped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_remapped")
 
 
 def normalize(
@@ -456,6 +482,16 @@ def normalize(
     Normalize the output of a scorer to a range of [0.0, 1.0].
 
     Uses `remap_range` internally.
+
+    Examples:
+        ```
+        @scorer
+        def confidence(data: T) -> float:
+            ... # 0 (low) to 50 (high)
+
+        normalized = normalize(confidence, known_max=50)
+        # 0 (low) to 1 (high)
+        ```
 
     Args:
         scorer: The Scorer instance to wrap.
@@ -492,6 +528,16 @@ def threshold(
     """
     Perform a threshold check on the output of a scorer and treat the result as a binary pass/fail.
 
+    Examples:
+        ```
+        @scorer
+        def confidence(data: T) -> float:
+            ... # 0 (low) to 50 (high)
+
+        strong_confidence = threshold(confidence, gte=40)
+        # 0.0 (weak) and 1.0 (strong)
+        ```
+
     Args:
         scorer: The Scorer instance to wrap.
         gt: Passes if score is greater than this value.
@@ -505,8 +551,8 @@ def threshold(
         name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         score = original.value
 
         passed = False
@@ -537,7 +583,7 @@ def threshold(
     operators = [op for op in operators if op]
     operator_str = ("_" + "_".join(operators)) if operators else ""
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}{operator_str}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}{operator_str}")
 
 
 # Logical combinations
@@ -545,12 +591,19 @@ def threshold(
 
 def and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
     """
-    Apply a logical AND operation between two scorers - testing their values as truthy (non-zero).
+    Create a scorer that performs logical AND between two scorers.
+
+    The resulting scorer returns 1.0 if both input scorers produce truthy values
+    (greater than 0), and 0.0 otherwise.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The first Scorer instance to combine.
+        other: The second Scorer instance to combine.
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_and_other_name".
+
+    Returns:
+        A new Scorer that applies logical AND to the two input scorers.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -561,17 +614,24 @@ def and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Sco
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_and_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_and_{other.name}")
 
 
 def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
     """
-    Apply a logical OR operation between two scorers - testing their values as truthy (non-zero).
+    Create a scorer that performs logical OR between two scorers.
+
+    The resulting scorer returns 1.0 if either input scorer produces a truthy value
+    (greater than 0), and 0.0 only if both scorers produce falsy values (0 or negative).
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The first Scorer instance to combine.
+        other: The second Scorer instance to combine.
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_or_other_name".
+
+    Returns:
+        A new Scorer that applies logical OR to the two input scorers.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -582,7 +642,7 @@ def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scor
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_or_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_or_{other.name}")
 
 
 def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -594,13 +654,13 @@ def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
         name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         passed = original.value <= 0
         metric = Metric(float(passed), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"not_{scorer.name}")
+    return Scorer[T](evaluate, name=name or f"not_{scorer.name}")
 
 
 # Arithmetic operations
@@ -610,13 +670,21 @@ def add(
     scorer: Scorer[T], other: Scorer[T], *, average: bool = False, name: str | None = None
 ) -> Scorer[T]:
     """
-    Add two scorers together.
+    Create a scorer that adds the values of two scorers together.
+
+    This composition performs arithmetic addition of the two scorer values,
+    with an optional averaging mode.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        average: If True, the average of the two scores will be divided by 2.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The first Scorer instance to combine.
+        other: The second Scorer instance to combine.
+        average: If True, divides the sum by 2 to compute the average instead
+            of the raw sum. Defaults to False.
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_add_other_name".
+
+    Returns:
+        A new Scorer that adds (or averages) the values of the two input scorers.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -630,17 +698,24 @@ def add(
         )
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_add_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}")
 
 
 def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
     """
-    Subtract one scorer from another.
+    Create a scorer that subtracts one scorer's value from another's.
+
+    This composition performs arithmetic subtraction (scorer - other), which can be
+    useful for penalty systems, relative scoring, or creating difference metrics.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The Scorer instance to subtract from (minuend).
+        other: The Scorer instance to subtract (subtrahend).
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_sub_other_name".
+
+    Returns:
+        A new Scorer that subtracts the second scorer's value from the first.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -651,7 +726,7 @@ def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) ->
         metric = Metric(value, step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_sub_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}")
 
 
 def avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -670,14 +745,28 @@ def avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scor
 
 def weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> Scorer[T]:
     """
-    Combine multiple scorers with specified weights.
+    Create a scorer that computes a weighted average of multiple scorers.
+
+    This composition allows for sophisticated scoring schemes where different
+    metrics have different importance levels. The final score is calculated as
+    the sum of (score * weight) for each scorer, divided by the total weight.
+
+    Examples:
+        ```
+        # Safety is most important, then accuracy, then speed
+        composite = weighted_avg(
+            (safety, 1.0),
+            (accuracy, 0.7),
+            (speed, 0.3)
+        )
+        # (safety * 1.0 + accuracy * 0.7 + speed * 0.3) / 2.0
+        ```
 
     Args:
-        *scorers: A variable number of tuples, each containing a Scorer and its weight.
-        name: Optional name for the new scorer. If None, it will be derived from the names of the scorers.
-
-    Returns:
-        A new Scorer that combines the weighted scores of the input scorers.
+        *scorers: Variable number of (Scorer, weight) tuples. Each tuple contains
+            a Scorer instance and its corresponding weight (float). At least one
+            scorer must be provided.
+        name: Optional name for the composed scorer. Defaults to "weighted_avg".
     """
 
     if not scorers:
@@ -698,25 +787,35 @@ def weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> 
         metric = Metric(weighted_avg_value, step=max(m.step for m in all_metrics))
         return [metric, *all_metrics]
 
-    return Scorer[T].from_callable(evaluate, name=name or "weighted_avg")
+    return Scorer[T](evaluate, name=name or "weighted_avg")
 
 
 def scale(scorer: Scorer[T], factor: float, *, name: str | None = None) -> Scorer[T]:
     """
-    Scale the output of a scorer by some factor.
+    Create a scorer that scales the output of another scorer by a constant factor.
+
+    This composition multiplies the scorer's output by the specified factor,
+    which is useful for adjusting score ranges, applying importance weights,
+    or inverting scores (with negative factors). The original metric is
+    preserved alongside the scaled result.
 
     Args:
-        scorer: The Scorer instance to wrap.
-        factor: The factor to scale the score by.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
+        scorer: The Scorer instance to scale.
+        factor: The multiplier to apply to the scorer's output. Can be positive,
+            negative, or fractional.
+        name: Optional name for the scaled scorer. If None, derives the name
+            from the original scorer as "scorer_name_scaled".
+
+    Returns:
+        A new Scorer that returns the scaled value of the input scorer.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         metric = Metric(original.value * factor, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_scaled")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_scaled")
 
 
 def clip(
@@ -727,19 +826,28 @@ def clip(
     name: str | None = None,
 ) -> Scorer[T]:
     """
-    Clip the result of a scorer to a specified range.
+    Create a scorer that clips the output of another scorer to a specified range.
+
+    This composition constrains the scorer's output to lie within [min_val, max_val],
+    clamping values that exceed the bounds. This is useful for ensuring scores
+    remain within expected ranges, preventing outliers from skewing results,
+    or enforcing score normalization bounds.
 
     Args:
-        scorer: The Scorer instance to wrap.
-        min_val: The minimum value to clip to.
-        max_val: The maximum value to clip to.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
+        scorer: The Scorer instance to clip.
+        min_val: The minimum value to clip to. Values below this will be set to min_val.
+        max_val: The maximum value to clip to. Values above this will be set to max_val.
+        name: Optional name for the clipped scorer. If None, derives the name
+            from the original scorer as "scorer_name_clipped".
+
+    Returns:
+        A new Scorer that returns the clipped value of the input scorer.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         clipped_value = max(min_val, min(max_val, original.value))
         metric = Metric(clipped_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_clipped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_clipped")

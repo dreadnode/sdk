@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import inspect
 import os
 import random
 import typing as t
@@ -22,7 +21,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
-from dreadnode.configurable import CONFIGURABLE_FIELDS_ATTR
+from dreadnode.artifact.credential_manager import CredentialManager
 from dreadnode.constants import (
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
@@ -34,7 +33,6 @@ from dreadnode.constants import (
     ENV_SERVER,
     ENV_SERVER_URL,
 )
-from dreadnode.credential_manager import CredentialManager
 from dreadnode.metric import (
     Metric,
     MetricAggMode,
@@ -44,7 +42,7 @@ from dreadnode.metric import (
 )
 from dreadnode.scorers import Scorer, ScorerCallable
 from dreadnode.scorers.base import ScorersLike
-from dreadnode.task import P, R, Task
+from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
     FileExportConfig,
     FileMetricReader,
@@ -67,9 +65,7 @@ from dreadnode.types import (
 from dreadnode.user_config import UserConfig
 from dreadnode.util import (
     clean_str,
-    get_filepath_attribute,
     handle_internal_errors,
-    safe_repr,
     warn_at_user_stacklevel,
 )
 from dreadnode.version import VERSION
@@ -203,8 +199,8 @@ class Dreadnode:
             project: The default project name to associate all runs with.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
-            console: Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
-            send_to_logfire: Whether to send data to Logfire.
+            console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
+            send_to_logfire: Send data to Logfire.
             otel_scope: The OpenTelemetry scope name.
         """
 
@@ -474,50 +470,11 @@ class Dreadnode:
             tags=tags,
         )
 
-    # Some excessive typing here to ensure we can properly
-    # overload our decorator for sync/async and cases
-    # where we need the return type of the task to align
-    # with the scorer inputs
-
-    class TaskDecorator(t.Protocol):
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
-
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
-    class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
-
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
     @t.overload
     def task(
         self,
+        func: None = None,
+        /,
         *,
         scorers: None = None,
         name: str | None = None,
@@ -527,12 +484,13 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
-        configurable: list[str] | bool = True,
     ) -> TaskDecorator: ...
 
     @t.overload
     def task(
         self,
+        func: None = None,
+        /,
         *,
         scorers: ScorersLike[R],
         name: str | None = None,
@@ -542,11 +500,19 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
-        configurable: list[str] | bool = True,
     ) -> ScoredTaskDecorator[R]: ...
+
+    @t.overload
+    def task(
+        self,
+        func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
+        /,
+    ) -> Task[P, R]: ...
 
     def task(
         self,
+        func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R] | None = None,
+        /,
         *,
         scorers: ScorersLike[t.Any] | None = None,
         name: str | None = None,
@@ -556,14 +522,13 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
-        configurable: list[str] | bool = True,
-    ) -> TaskDecorator:
+    ) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]:
         """
         Create a new task from a function.
 
         Example:
             ```
-            @dreadnode.task(name="my_task")
+            @dreadnode.task
             async def my_task(x: int) -> int:
                 return x * 2
 
@@ -580,11 +545,13 @@ class Dreadnode:
             log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
             tags: A list of tags to attach to the task span.
             attributes: A dictionary of attributes to attach to the task span.
-            configurable: A list of task arguments (keyword-only) to expose to the CLI.
 
         Returns:
             A new Task object.
         """
+
+        if isinstance(func, Task):
+            return func
 
         def make_task(
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
@@ -601,58 +568,24 @@ class Dreadnode:
                     append=True,
                 )
 
-            unwrapped = inspect.unwrap(func)
-
-            if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
-                unwrapped,
-            ):
-                raise TypeError("@task cannot be applied to generators")
-
-            config_fields = t.cast(
-                "list[str] | bool", getattr(func, CONFIGURABLE_FIELDS_ATTR, None)
-            )
-            config_fields = configurable or config_fields
-
-            func_name = getattr(
-                unwrapped,
-                "__qualname__",
-                getattr(func, "__name__", safe_repr(func)),
-            )
-
-            _name = name or func_name
-            _label = label or _name
-
-            # conform our label for sanity
-            _label = clean_str(_label)
-
-            _attributes = attributes or {}
-            _attributes["code.function"] = func_name
-            with contextlib.suppress(Exception):
-                _attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
-            with contextlib.suppress(Exception):
-                _attributes.update(
-                    get_filepath_attribute(
-                        inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
-                    ),
-                )
-
             return Task(
-                tracer=self._get_tracer(),
-                name=_name,
-                attributes=_attributes,
                 func=t.cast("t.Callable[P, R]", func),
-                scorers=Scorer.fit_like(scorers),
-                tags=list(tags or []),
-                log_inputs=log_inputs
-                if isinstance(log_inputs, bool | Inherited)
-                else list(log_inputs),
+                tracer=self._get_tracer(),
+                name=name,
+                label=label,
+                scorers=scorers,
+                log_inputs=log_inputs,
                 log_output=log_output,
                 log_execution_metrics=log_execution_metrics,
-                label=_label,
-                configurable=config_fields,
+                tags=tags,
+                attributes=attributes,
             )
 
-        return make_task
+        return (
+            t.cast("TaskDecorator | ScoredTaskDecorator[R]", make_task)
+            if func is None
+            else make_task(func)
+        )
 
     def task_span(
         self,
@@ -695,12 +628,30 @@ class Dreadnode:
             tracer=self._get_tracer(),
         )
 
+    @t.overload
     def scorer(
         self,
+        func: None = None,
+        /,
         *,
         name: str | None = None,
         attributes: AnyDict | None = None,
-    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
+    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]: ...
+
+    @t.overload
+    def scorer(
+        self,
+        func: ScorerCallable[T],
+        /,
+    ) -> Scorer[T]: ...
+
+    def scorer(
+        self,
+        func: ScorerCallable[T] | None = None,
+        *,
+        name: str | None = None,
+        attributes: AnyDict | None = None,
+    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]:
         """
         Make a scorer from a callable function.
 
@@ -709,7 +660,7 @@ class Dreadnode:
 
         Example:
             ```
-            @dreadnode.scorer(name="my_scorer")
+            @dreadnode.scorer
             async def my_scorer(x: int) -> float:
                 return x * 2
 
@@ -728,13 +679,21 @@ class Dreadnode:
             A new Scorer object.
         """
 
-        def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-            return Scorer.from_callable(func, name=name, attributes=attributes)
+        if isinstance(func, Scorer):
+            return func
 
-        return make_scorer
+        def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
+            if isinstance(func, Scorer):
+                return func.with_(name=name, attributes=attributes)
+            return Scorer(func, name=name, attributes=attributes)
+
+        return make_scorer if func is None else make_scorer(func)
 
     async def score(
-        self, object: T, scorers: ScorersLike[T], step: int | None = None
+        self,
+        object: T,
+        scorers: ScorersLike[T],
+        step: int | None = None,
     ) -> list[Metric]:
         """
         Score an object using all the provided scorers.
@@ -797,7 +756,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
-            autolog: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
+            autolog: Automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
             attributes: Additional attributes to attach to the run span.
 
         Returns:

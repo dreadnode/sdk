@@ -1,0 +1,205 @@
+---
+title: dreadnode.optimization
+---
+
+{/*
+::: dreadnode.optimization.study
+::: dreadnode.optimization.trial
+::: dreadnode.optimization.events
+::: dreadnode.optimization.search
+*/}
+
+Study
+-----
+
+### run
+
+```python
+run() -> StudyEnd[CandidateT]
+```
+
+Execute the optimization study to completion and return final results.
+
+This is a convenience method that runs the full optimization process and
+returns only the final StudyEnd event containing the complete results.
+Use this when you want the final results without processing intermediate events.
+
+For real-time monitoring of the optimization process, use the stream() method instead.
+
+**Returns:**
+
+* `StudyEnd[CandidateT]`
+  –StudyEnd event containing the final optimization results including:
+* `StudyEnd[CandidateT]`
+  –+ best\_trial: The best trial found during optimization (or None)
+* `StudyEnd[CandidateT]`
+  –+ steps: Total number of optimization steps completed
+* `StudyEnd[CandidateT]`
+  –+ stop\_reason: Why the optimization terminated
+
+**Raises:**
+
+* `RuntimeError`
+  –If the evaluation fails to complete properly.
+
+<Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
+```python
+async def run(self) -> StudyEnd[CandidateT]:
+    """
+    Execute the optimization study to completion and return final results.
+
+    This is a convenience method that runs the full optimization process and
+    returns only the final StudyEnd event containing the complete results.
+    Use this when you want the final results without processing intermediate events.
+
+    For real-time monitoring of the optimization process, use the stream() method instead.
+
+    Returns:
+        StudyEnd event containing the final optimization results including:
+        - best_trial: The best trial found during optimization (or None)
+        - steps: Total number of optimization steps completed
+        - stop_reason: Why the optimization terminated
+
+    Raises:
+        RuntimeError: If the evaluation fails to complete properly.
+    """
+    async with self.stream() as stream:
+        async for event in stream:
+            if isinstance(event, StudyEnd):
+                return event
+        raise RuntimeError("Evaluation failed to complete")
+```
+
+
+</Accordion>
+
+### stream
+
+```python
+stream() -> t.AsyncIterator[
+    t.AsyncGenerator[StudyEvent[CandidateT], None]
+]
+```
+
+Create an async context manager for the optimization event stream.
+
+This provides a safe way to access the optimization event stream with proper
+resource cleanup. The context manager ensures the async generator is properly
+closed even if an exception occurs during iteration.
+
+Usage
+
+async with study.stream() as event\_stream:
+async for event in event\_stream:
+# Process optimization events
+pass
+
+**Yields:**
+
+* `AsyncIterator[AsyncGenerator[StudyEvent[CandidateT], None]]`
+  –An async generator that produces StudyEvent objects throughout the optimization.
+
+<Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
+```python
+@contextlib.asynccontextmanager
+async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:
+    """
+    Create an async context manager for the optimization event stream.
+
+    This provides a safe way to access the optimization event stream with proper
+    resource cleanup. The context manager ensures the async generator is properly
+    closed even if an exception occurs during iteration.
+
+    Usage:
+        async with study.stream() as event_stream:
+            async for event in event_stream:
+                # Process optimization events
+                pass
+
+    Yields:
+        An async generator that produces StudyEvent objects throughout the optimization.
+    """
+    async with contextlib.aclosing(self._stream()) as gen:
+        yield gen
+```
+
+
+</Accordion>
+Trial
+-----
+
+Represents a single, evaluated point in the search space.
+
+BeamSearch
+----------
+
+```python
+BeamSearch(
+    transform: TransformLike[CandidateT, CandidateT],
+    initial_candidate: CandidateT,
+    beam_width: int = 3,
+    branching_factor: int = 3,
+)
+```
+
+A stateful strategy for sequential beam search.
+
+<Accordion title="Source code in dreadnode/optimization/search.py" icon="code">
+```python
+def __init__(
+    self,
+    transform: TransformLike[CandidateT, CandidateT],
+    initial_candidate: CandidateT,
+    beam_width: int = 3,
+    branching_factor: int = 3,
+):
+    self.transform = transform if isinstance(transform, Transform) else Transform(transform)
+    self.initial_candidate = initial_candidate
+    self.beam_width = beam_width
+    self.branching_factor = branching_factor
+    self.beams: list[Trial[CandidateT]] = []
+```
+
+
+</Accordion>
+
+Search
+------
+
+Abstract base class for all optimization search strategies.
+
+### observe
+
+```python
+observe(trials: list[Trial[CandidateT]]) -> None
+```
+
+Informs the strategy of the results of recent trials.
+
+<Accordion title="Source code in dreadnode/optimization/search.py" icon="code">
+```python
+@abstractmethod
+def observe(self, trials: list[Trial[CandidateT]]) -> None:
+    """Informs the strategy of the results of recent trials."""
+```
+
+
+</Accordion>
+
+### suggest
+
+```python
+suggest(step: int) -> list[CandidateT]
+```
+
+Suggests the next batch of candidates.
+
+<Accordion title="Source code in dreadnode/optimization/search.py" icon="code">
+```python
+@abstractmethod
+async def suggest(self, step: int) -> list[CandidateT]:
+    """Suggests the next batch of candidates."""
+```
+
+
+</Accordion>

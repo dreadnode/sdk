@@ -119,6 +119,27 @@ def safe_repr(obj: t.Any) -> str:
         return "<unknown (repr failed)>"
 
 
+def get_obj_name(obj: t.Any, *, short: bool = False, clean: bool = False) -> str:
+    """
+    Return a best effort name for an object.
+    """
+    name = "unknown"
+    if hasattr(obj, "name"):
+        name = obj.name
+    elif hasattr(obj, "__name__"):
+        name = obj.__name__
+    elif hasattr(obj.__class__, "__name__"):
+        name = obj.__class__.__name__
+
+    if short:
+        name = name.split(".")[-1]
+
+    if clean:
+        name = clean_str(name)
+
+    return name
+
+
 def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> str:
     """
     Return a best-effort, comprehensive name for a callable object.

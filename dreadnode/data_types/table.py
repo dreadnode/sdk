@@ -46,7 +46,7 @@ class Table(DataType):
                 - A NumPy array
             caption: Optional caption for the table
             format: Optional format to use when saving (csv, parquet, json)
-            index: Whether to include index in the output
+            index: Include index in the output
         """
         self._data = data
         self._caption = caption

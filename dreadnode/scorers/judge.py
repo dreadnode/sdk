@@ -1,29 +1,26 @@
 import typing as t
 
-from rigging import GenerateParams, get_generator
-from rigging.generator import Generator
-from rigging.model import Model, element
-from rigging.prompt import prompt
+import rigging as rg
 
-from dreadnode.lookup import Lookup, resolve_lookup
+from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
 
-class JudgeInput(Model):
-    input: str | None = element(default=None)
-    expected_output: str | None = element(default=None)
-    output: str = element()
-    rubric: str = element()
+class JudgeInput(rg.Model):
+    input: str | None = rg.element(default=None)
+    expected_output: str | None = rg.element(default=None)
+    output: str = rg.element()
+    rubric: str = rg.element()
 
 
-class Judgement(Model):
-    reason: str = element()
-    passing: bool = element()
-    score: float = element()
+class Judgement(rg.Model):
+    reason: str = rg.element()
+    passing: bool = rg.element()
+    score: float = rg.element()
 
 
-@prompt()
+@rg.prompt()
 def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
     """
     You are grading output according to a user-specified rubric.
@@ -34,11 +31,11 @@ def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
 
 
 def llm_judge(
-    model: "str | Generator | Lookup",
-    rubric: str | Lookup,
+    model: str,
+    rubric: str,
     *,
-    expected_output: str | Lookup | None = None,
-    params: "GenerateParams | None" = None,
+    expected_output: str | None = None,
+    params: rg.GenerateParams | None = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
     max_score: float | None = None,
@@ -48,10 +45,9 @@ def llm_judge(
     Score the output of a task using an LLM to judge it against a rubric.
 
     Args:
-        model: The model to use for judging. Can be a string identifier (rigging), a Generator instance
-            or a Lookup that resolves to a string identifier.
-        rubric: The rubric to use for judging. Can be a string or a Lookup that resolves to a string.
-        expected_output: The expected output to compare against, if applicable. Can be a string or a Lookup that resolves to a string.
+        model: The model to use for judging.
+        rubric: The rubric to use for judging.
+        expected_output: The expected output to compare against, if applicable.
         params: Optional parameters for the generator.
         passing: Optional callback to determine if the score is passing based on the score value - overrides any model-specified value.
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
@@ -59,17 +55,15 @@ def llm_judge(
         name: The name of the scorer.
     """
 
-    async def evaluate(data: t.Any) -> list[Metric]:
-        nonlocal model, rubric, expected_output
+    async def evaluate(
+        data: t.Any, *, model: str = Config(model, help="The model to use for judging.")
+    ) -> list[Metric]:
+        nonlocal rubric, expected_output
 
-        model = str(resolve_lookup(model))
-        rubric = str(resolve_lookup(rubric))
-        expected_output = str(resolve_lookup(expected_output)) if expected_output else None
-
-        generator: Generator
+        generator: rg.Generator
         if isinstance(model, str):
-            generator = get_generator(model, params=params or GenerateParams())
-        elif isinstance(model, Generator):
+            generator = rg.get_generator(model, params=params or rg.GenerateParams())
+        elif isinstance(model, rg.Generator):
             generator = model
         else:
             raise TypeError("Model must be a string identifier or a Generator instance.")
@@ -102,4 +96,4 @@ def llm_judge(
 
         return [score_metric, pass_metric]
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

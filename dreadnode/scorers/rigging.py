@@ -74,4 +74,4 @@ def wrap_chat(
     if name is None:
         name = f"chat_{inner_scorer.name}"
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)

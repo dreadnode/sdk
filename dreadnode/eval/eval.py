@@ -18,7 +18,7 @@ from dreadnode.eval.dataset import (
     Sample,
     load_from_file,
 )
-from dreadnode.scorers.base import Scorer
+from dreadnode.scorers.base import Scorer, ScorersLike
 from dreadnode.task import Task
 from dreadnode.types import AnyDict
 from dreadnode.util import get_callable_name, shorten_string
@@ -39,9 +39,9 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
 
     preprocessor: InputDatasetProcessor | None = None
     """Optional preprocessor function to transform the dataset before evaluation."""
-    scorers: list[Scorer[OutputT]] | None = None
+    scorers: ScorersLike[OutputT] | None = None
     """Scorers to evaluate the task's output."""
-    assertions: list[Scorer[OutputT]] | None = None
+    assertions: ScorersLike[OutputT] | None = None
     """Assertions to validate the task's output (scores are resolved as truthy)."""
     label: str | None = None
     """Override the name-derived label for logging."""
@@ -61,11 +61,14 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
         ]
 
         if self.scorers:
-            scorers = ", ".join(get_callable_name(scorer, short=True) for scorer in self.scorers)
+            scorers = ", ".join(
+                get_callable_name(scorer, short=True) for scorer in Scorer.fit_like(self.scorers)
+            )
             parts.append(f"scorers=[{scorers}]")
         if self.assertions:
             assertions = ", ".join(
-                get_callable_name(assertion, short=True) for assertion in self.assertions
+                get_callable_name(assertion, short=True)
+                for assertion in Scorer.fit_like(self.assertions)
             )
             parts.append(f"assertions=[{assertions}]")
         if self.label:
@@ -78,6 +81,21 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
 
     @classmethod
     def _generic_types(cls) -> tuple[type[InputT], type[OutputT]]:
+        """
+        Extract the generic types (InputT, OutputT) from the class hierarchy.
+
+        This method traverses the Method Resolution Order (MRO) to find the first class
+        that has generic type arguments defined, either in Pydantic generic metadata
+        or in the class's __args__ attribute. This is used for type validation and
+        ensuring proper type safety throughout the evaluation framework.
+
+        Returns:
+            A tuple containing the input type and output type. If no generic types
+            are found in the class hierarchy, returns (Any, Any) as fallback types.
+
+        Example:
+            For a class like Eval[str, int], this would return (str, int).
+        """
         for c in cls.__mro__:
             metadata = getattr(c, "__pydantic_generic_metadata__", {})
             if len(args := (metadata.get("args", ()) or getattr(c, "__args__", ()))) == 2:  # noqa: PLR2004
@@ -86,6 +104,28 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
         return t.Any, t.Any  # type: ignore[return-value]
 
     async def _prepare(self) -> tuple[Task[[InputT], OutputT], list[AnyDict]]:
+        """
+        Prepare the task and dataset for evaluation by resolving and validating components.
+
+        This method performs several preprocessing steps:
+        1. Resolves the task if provided as a string reference
+        2. Loads the dataset from file if provided as a file path
+        3. Validates the dataset against the expected input type using type adapters
+        4. Applies optional preprocessing transformations to the dataset
+
+        The preparation ensures that both the task and dataset are properly typed
+        and validated before the evaluation begins, preventing runtime type errors
+        and ensuring data consistency.
+
+        Returns:
+            A tuple containing:
+            - The resolved and validated Task object
+            - The processed dataset as a list of dictionaries
+
+        Raises:
+            ValidationError: If the dataset doesn't match the expected input type
+            ValueError: If the task string reference cannot be resolved
+        """
         task = find(Task, self.task) if isinstance(self.task, str) else self.task
 
         dataset = self.dataset
@@ -106,6 +146,40 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
     ) -> t.AsyncIterator[
         t.AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]
     ]:
+        """
+        Create an async context manager for streaming evaluation results.
+
+        This method provides a streaming interface for running evaluations, yielding
+        individual Sample objects as they complete, followed by a final EvalResult.
+        The streaming approach allows for real-time processing and monitoring of
+        evaluation progress, especially useful for long-running evaluations.
+
+        The method handles:
+        - Task and dataset preparation via _prepare()
+        - Configuration of scorers and assertions
+        - Concurrent execution of tasks with optional concurrency limits
+        - Proper resource cleanup through async context management
+        - Telemetry and span tracking for observability
+
+        Yields:
+            An async generator that yields:
+            - Sample[InputT, OutputT]: Individual evaluation samples as they complete
+            - EvalResult[InputT, OutputT]: Final aggregated result containing all samples
+
+        Example:
+            ```python
+            async with eval_instance.stream() as stream:
+                async for item in stream:
+                    if isinstance(item, Sample):
+                        print(f"Completed sample: {item}")
+                    elif isinstance(item, EvalResult):
+                        print(f"Final result: {item}")
+            ```
+
+        Note:
+            The context manager ensures proper cleanup of async resources and
+            maintains consistent telemetry spans for the entire evaluation process.
+        """
         from dreadnode import task_span
 
         task, dataset = await self._prepare()
@@ -136,19 +210,6 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
     async def run(self) -> EvalResult[InputT, OutputT]:
         """
         Evaluate the task with the given arguments and return a list of Samples.
-
-        Args:
-            args: Either a flat list of the first positional argument, or a dict
-                    where each key is a parameter name and the value is either a single value
-                    or a list of values to map over.
-            scorers: A list of scorers to evaluate the task's output.
-            name: The name for the evaluation task.
-            label: The label for the evaluation task.
-            concurrency: The maximum number of tasks to run in parallel.
-                            If None, runs with unlimited concurrency.
-
-        Returns:
-            A list of Samples containing the evaluation results.
         """
         async with self.stream() as stream:
             async for sample_or_eval in stream:

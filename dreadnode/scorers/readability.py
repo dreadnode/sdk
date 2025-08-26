@@ -1,13 +1,12 @@
 import typing as t
 
-from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.util import warn_at_user_stacklevel
 
 
 def readability(
-    target_grade: float | Lookup = 8.0,
+    target_grade: float = 8.0,
     *,
     name: str = "readability",
 ) -> "Scorer[t.Any]":
@@ -35,12 +34,10 @@ def readability(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": textstat_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal target_grade
-
-        target_grade = float(resolve_lookup(target_grade))
 
         text = str(data)
         if not text.strip():
@@ -59,4 +56,4 @@ def readability(
             value=score, attributes={"calculated_grade": grade_level, "target_grade": target_grade}
         )
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)

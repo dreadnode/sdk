@@ -1,8 +1,7 @@
 import typing as t
 from difflib import SequenceMatcher
 
-from dreadnode.configurable import configurable
-from dreadnode.lookup import Lookup, resolve_lookup
+from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
@@ -15,7 +14,7 @@ if t.TYPE_CHECKING:
 
 
 def similarity(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = "ratio",
     case_sensitive: bool = False,
@@ -38,7 +37,6 @@ def similarity(
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         if not case_sensitive:
             candidate_text = candidate_text.lower()
@@ -55,11 +53,11 @@ def similarity(
 
         return Metric(value=score, attributes={"method": method})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def similarity_with_rapidfuzz(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: t.Literal[
         "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
@@ -81,8 +79,8 @@ def similarity_with_rapidfuzz(
     Args:
         reference: The reference text (static string).
         method: The RapidFuzz similarity method to use.
-        normalize: Whether to normalize the score to [0.0, 1.0].
-        preprocessor: Whether to use default preprocessing (lowercase, remove non-alphanumeric).
+        normalize: Normalize the score to [0.0, 1.0].
+        preprocessor: Use default preprocessing (lowercase, remove non-alphanumeric).
         score_cutoff: Optional score cutoff below which to return 0.0.
         name: Name of the scorer.
     """
@@ -98,14 +96,12 @@ def similarity_with_rapidfuzz(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
-
         processor = utils.default_process if preprocessor else None
 
         # Select the appropriate RapidFuzz method
@@ -151,11 +147,11 @@ def similarity_with_rapidfuzz(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def distance(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: t.Literal[
         "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
@@ -174,7 +170,7 @@ def distance(
     Args:
         reference: The reference text (static string).
         method: The distance metric to use.
-        normalize: Whether to normalize distances and convert to similarity scores.
+        normalize: Normalize distances and convert to similarity scores.
         name: Name of the scorer.
     """
     rapidfuzz_import_error_msg = (
@@ -189,13 +185,12 @@ def distance(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:  # noqa: PLR0912
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         # Select the appropriate distance method
         if method == "levenshtein":
@@ -228,10 +223,10 @@ def distance(
 
         return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
-def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity") -> "Scorer[t.Any]":
+def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scorer[t.Any]":
     """
     Scores semantic similarity using TF-IDF and cosine similarity.
 
@@ -258,7 +253,7 @@ def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity")
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": sklearn_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     vectorizer = TfidfVectorizer(stop_words="english")
 
@@ -266,24 +261,21 @@ def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity")
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
-
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference])
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 # A global model cache to avoid reloading on every call
 g_sentence_transformers_models: dict[str, "SentenceTransformer"] = {}
 
 
-@configurable(["model_name"])
 def similarity_with_sentence_transformers(
-    reference: str | Lookup,
+    reference: str,
     *,
-    model_name: str | Lookup = "all-MiniLM-L6-v2",
+    model_name: str = "all-MiniLM-L6-v2",
     name: str = "similarity",
 ) -> "Scorer[t.Any]":
     """
@@ -313,19 +305,17 @@ def similarity_with_sentence_transformers(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": sentence_transformers_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference, model_name
+    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
+        nonlocal reference
 
         # Lazily load and cache the model
-        model_name = str(resolve_lookup(model_name))
         if model_name not in g_sentence_transformers_models:
             g_sentence_transformers_models[model_name] = SentenceTransformer(model_name)
         model = g_sentence_transformers_models[model_name]
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         embeddings = model.encode([candidate_text, reference])
         sim_tensor = util.cos_sim(embeddings[0], embeddings[1])
@@ -336,13 +326,12 @@ def similarity_with_sentence_transformers(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
-@configurable(["model", "api_key", "api_base"])
 def similarity_with_litellm(
-    reference: str | Lookup,
-    model: str | Lookup,
+    reference: str,
+    model: str,
     *,
     api_key: str | None = None,
     api_base: str | None = None,
@@ -369,13 +358,16 @@ def similarity_with_litellm(
     """
     import litellm
 
-    async def evaluate(data: t.Any) -> Metric:
-        nonlocal reference, model
+    async def evaluate(
+        data: t.Any,
+        *,
+        model: str = Config(model),
+        api_key: str | None = Config(api_key),
+        api_base: str | None = Config(api_base),
+    ) -> Metric:
+        nonlocal reference
 
-        model = str(resolve_lookup(model))
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
-
         if not candidate_text.strip() or not reference.strip():
             return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
 
@@ -398,11 +390,11 @@ def similarity_with_litellm(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def bleu(
-    reference: str | Lookup,
+    reference: str,
     *,
     weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25),
     name: str = "bleu",
@@ -442,13 +434,12 @@ def bleu(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": nltk_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         if not reference or not candidate_text:
             return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})
@@ -459,4 +450,4 @@ def bleu(
         score = sentence_bleu([ref_tokens], cand_tokens, weights=weights)
         return Metric(value=score)
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)

@@ -1,7 +1,6 @@
 import typing as t
 
-from dreadnode.configurable import configurable
-from dreadnode.lookup import Lookup, resolve_lookup
+from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 from dreadnode.util import clean_str, warn_at_user_stacklevel
@@ -10,12 +9,11 @@ from dreadnode.util import clean_str, warn_at_user_stacklevel
 g_pipelines: dict[str, t.Any] = {}
 
 
-@configurable(["model_name"])
 def zero_shot_classification(
     labels: list[str],
     score_label: str,
     *,
-    model_name: str | Lookup = "facebook/bart-large-mnli",
+    model_name: str = "facebook/bart-large-mnli",
     name: str | None = None,
 ) -> "Scorer[t.Any]":
     """
@@ -47,18 +45,14 @@ def zero_shot_classification(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": transformers_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal model_name, labels, score_label
-
-        labels = resolve_lookup(labels)
-        score_label = str(resolve_lookup(score_label))
+    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
+        nonlocal labels, score_label
 
         if score_label not in labels:
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
-        model_name = str(resolve_lookup(model_name))
         pipeline_key = f"zero-shot-classification_{model_name}"
         if pipeline_key not in g_pipelines:
             g_pipelines[pipeline_key] = pipeline("zero-shot-classification", model=model_name)
@@ -81,7 +75,7 @@ def zero_shot_classification(
     if name is None:
         name = f"zero_shot_{clean_str(score_label)}"
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def detect_refusal_with_zero_shot(

@@ -27,12 +27,12 @@ from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
+from dreadnode.artifact.credential_manager import CredentialManager
 from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.constants import DEFAULT_MAX_INLINE_OBJECT_BYTES
 from dreadnode.convert import run_span_to_graph
-from dreadnode.credential_manager import CredentialManager
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize

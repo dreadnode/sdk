@@ -24,14 +24,25 @@ ScorerCallable
 
 ```python
 ScorerCallable = (
-    Callable[[T], Awaitable[ScorerResult]]
-    | Callable[[T], ScorerResult]
-    | Callable[[T], Awaitable[Sequence[ScorerResult]]]
-    | Callable[[T], Sequence[ScorerResult]]
+    Callable[[T], Awaitable[ScorerResult] | ScorerResult]
+    | Callable[
+        [T],
+        Awaitable[Sequence[ScorerResult]]
+        | Sequence[ScorerResult],
+    ]
+    | Callable[
+        Concatenate[T, ...],
+        Awaitable[ScorerResult] | ScorerResult,
+    ]
+    | Callable[
+        Concatenate[T, ...],
+        Awaitable[Sequence[ScorerResult]]
+        | Sequence[ScorerResult],
+    ]
 )
 ```
 
-A callable that takes an object of type T and returns a ScorerResult or a sequence of ScorerResults.
+A callable that takes an object and returns a compatible score result.
 
 ScorerResult
 ------------
@@ -47,20 +58,67 @@ Scorer
 
 ```python
 Scorer(
-    name: str,
     func: ScorerCallable[T],
-    attributes: JsonDict,
+    *,
+    name: str | None = None,
+    attributes: JsonDict | None = None,
+    catch: bool = False,
     step: int = 0,
     auto_increment_step: bool = False,
-    catch: bool = False,
     log_all: bool = False,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
 )
 ```
+
+A stateful, configurable, and composable wrapper for a scoring function.
+
+A Scorer is a specialized Component that evaluates an object and produces a Metric.
+It inherits the configuration and context-awareness of a Component, allowing
+scorers to be defined with `dn.Config` and `dn.Context` parameters.
+
+<Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
+```python
+def __init__(
+    self,
+    func: ScorerCallable[T],
+    *,
+    name: str | None = None,
+    attributes: JsonDict | None = None,
+    catch: bool = False,
+    step: int = 0,
+    auto_increment_step: bool = False,
+    log_all: bool = False,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
+):
+    super().__init__(func, config=config, context=context)
+
+    if name is None:
+        unwrapped = inspect.unwrap(func)
+        name = get_callable_name(unwrapped, short=True)
+
+    self.name = name
+    "The name of the scorer, used for reporting metrics."
+    self.attributes = attributes or {}
+    "A dictionary of attributes for metrics produced by this Scorer."
+    self.catch = catch
+    "Catch exceptions in the scorer function and return a 0 Metric with error information."
+    self.step = step
+    "The step value to attach to metrics produced by this Scorer."
+    self.auto_increment_step = auto_increment_step
+    "Automatically increment an internal step counter every time this scorer is called."
+    self.log_all = log_all
+    "Log all sub-metrics from nested composition, or just the final resulting metric."
+```
+
+
+</Accordion>
 
 ### attributes
 
 ```python
-attributes: JsonDict
+attributes = attributes or {}
 ```
 
 A dictionary of attributes for metrics produced by this Scorer.
@@ -68,39 +126,31 @@ A dictionary of attributes for metrics produced by this Scorer.
 ### auto\_increment\_step
 
 ```python
-auto_increment_step: bool = False
+auto_increment_step = auto_increment_step
 ```
 
-Whether to automatically increment the step for each time this scorer is called.
+Automatically increment an internal step counter every time this scorer is called.
 
 ### catch
 
 ```python
-catch: bool = False
+catch = catch
 ```
 
-Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-
-### func
-
-```python
-func: ScorerCallable[T]
-```
-
-The function to call to get the metric.
+Catch exceptions in the scorer function and return a 0 Metric with error information.
 
 ### log\_all
 
 ```python
-log_all: bool = False
+log_all = log_all
 ```
 
-Whether to log all sub-metrics from nested composition, or just the final resulting metric.
+Log all sub-metrics from nested composition, or just the final resulting metric.
 
 ### name
 
 ```python
-name: str
+name = name
 ```
 
 The name of the scorer, used for reporting metrics.
@@ -108,49 +158,68 @@ The name of the scorer, used for reporting metrics.
 ### step
 
 ```python
-step: int = 0
+step = step
 ```
 
 The step value to attach to metrics produced by this Scorer.
 
-### \_\_call\_\_
+### adapt
 
 ```python
-__call__(object: T) -> Metric
+adapt(
+    adapt: Callable[[OuterT], T], name: str | None = None
+) -> Scorer[OuterT]
 ```
 
-Execute the scorer and return the metric. If the scorer is a composition of other scorers,
-it will return the "highest-priority" metric, typically the first in the list.
+Adapts a scorer to operate with some other type
 
-Any output value will be converted to a Metric object if not already one.
+This is a powerful wrapper that allows a generic scorer (e.g., one that
+refines a string) to be used with a complex candidate object (e.g., a
+Pydantic model containing that string).
 
 **Parameters:**
 
-* **`object`**
-  (`T`)
-  –The object to score.
+* **`adapt`**
+  (`Callable[[OuterT], T]`)
+  –A function to extract the `T` from the `OuterT`.
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –An optional new name for the adapted scorer.
 
 **Returns:**
 
-* `Metric`
-  –A Metric object.
+* `Scorer[OuterT]`
+  –A new Scorer instance that operates on the `OuterT`.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
-async def __call__(self, object: T) -> Metric:
+def adapt(
+    self: "Scorer[T]",
+    adapt: t.Callable[[OuterT], T],
+    name: str | None = None,
+) -> "Scorer[OuterT]":
     """
-    Execute the scorer and return the metric. If the scorer is a composition of other scorers,
-    it will return the "highest-priority" metric, typically the first in the list.
+    Adapts a scorer to operate with some other type
 
-    Any output value will be converted to a Metric object if not already one.
+    This is a powerful wrapper that allows a generic scorer (e.g., one that
+    refines a string) to be used with a complex candidate object (e.g., a
+    Pydantic model containing that string).
 
     Args:
-        object: The object to score.
+        adapt: A function to extract the `T` from the `OuterT`.
+        name: An optional new name for the adapted scorer.
 
     Returns:
-        A Metric object.
+        A new Scorer instance that operates on the `OuterT`.
     """
-    return await self.score(object)
+    original = self
+
+    async def evaluate(object: OuterT, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        return await original.normalize_and_score(adapt(object), *args, **kwargs)
+
+    return Scorer(evaluate, name=name or self.name)
 ```
 
 
@@ -164,151 +233,98 @@ clone() -> Scorer[T]
 
 Clone the scorer.
 
-**Returns:**
-
-* `Scorer[T]`
-  –A new Scorer.
-
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def clone(self) -> "Scorer[T]":
-    """
-    Clone the scorer.
-
-    Returns:
-        A new Scorer.
-    """
-    return clone_config_attrs(
-        self,
-        Scorer(
-            name=self.name,
-            attributes=self.attributes,
-            func=self.func,
-            step=self.step,
-            auto_increment_step=self.auto_increment_step,
-            log_all=self.log_all,
-            catch=self.catch,
-        ),
+    """Clone the scorer."""
+    return Scorer(
+        func=self.func,
+        name=self.name,
+        attributes=self.attributes.copy(),
+        catch=self.catch,
+        step=self.step,
+        auto_increment_step=self.auto_increment_step,
+        log_all=self.log_all,
+        config=deepcopy(self.__dn_param_config__),
+        context=deepcopy(self.__dn_context__),
     )
 ```
 
 
 </Accordion>
 
-### from\_callable
+### fit\_like
 
 ```python
-from_callable(
-    func: ScorerCallable[T] | Scorer[T],
+fit_like(
+    scorers: ScorersLike[T] | None,
     *,
-    name: str | None = None,
     attributes: JsonDict | None = None,
-    catch: bool = False,
-    auto_increment_step: bool = False,
-    log_all: bool = False,
-) -> Scorer[T]
+) -> list[Scorer[T]]
 ```
 
-Create a scorer from a callable function.
+Convert a collection of scorer-like objects into a list of Scorer instances.
+
+This method provides a flexible way to handle different input formats for scorers,
+automatically converting callables to Scorer objects and applying consistent naming
+and attributes across all scorers.
 
 **Parameters:**
 
-* **`func`**
-  (`ScorerCallable[T] | Scorer[T]`)
-  –The function to call to get the metric.
-* **`name`**
-  (`str | None`, default:
-  `None`
-  )
-  –The name of the scorer, used for reporting metrics.
+* **`scorers`**
+  (`ScorersLike[T] | None`)
+  –A collection of scorer-like objects. Can be:
+  - A dictionary mapping names to scorer objects or callables
+  - A sequence of scorer objects or callables
+  - None (returns empty list)
 * **`attributes`**
   (`JsonDict | None`, default:
   `None`
   )
-  –A dictionary of attributes to attach to the metric.
-* **`catch`**
-  (`bool`, default:
-  `False`
-  )
-  –Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-* **`auto_increment_step`**
-  (`bool`, default:
-  `False`
-  )
-  –Whether to automatically increment the step for each time this scorer is called.
-* **`log_all`**
-  (`bool`, default:
-  `False`
-  )
-  –Whether to log all sub-metrics from nested composition, or just the final resulting metric.
+  –Optional attributes to apply to all resulting scorers.
 
 **Returns:**
 
-* `Scorer[T]`
-  –A Scorer object.
+* `list[Scorer[T]]`
+  –A list of Scorer instances with consistent configuration.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 @classmethod
-def from_callable(
-    cls,
-    func: "ScorerCallable[T] | Scorer[T]",
-    *,
-    name: str | None = None,
-    attributes: JsonDict | None = None,
-    catch: bool = False,
-    auto_increment_step: bool = False,
-    log_all: bool = False,
-) -> "Scorer[T]":
+def fit_like(
+    cls, scorers: "ScorersLike[T] | None", *, attributes: JsonDict | None = None
+) -> list["Scorer[T]"]:
     """
-    Create a scorer from a callable function.
+    Convert a collection of scorer-like objects into a list of Scorer instances.
+
+    This method provides a flexible way to handle different input formats for scorers,
+    automatically converting callables to Scorer objects and applying consistent naming
+    and attributes across all scorers.
 
     Args:
-        func: The function to call to get the metric.
-        name: The name of the scorer, used for reporting metrics.
-        attributes: A dictionary of attributes to attach to the metric.
-        catch: Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-        auto_increment_step: Whether to automatically increment the step for each time this scorer is called.
-        log_all: Whether to log all sub-metrics from nested composition, or just the final resulting metric.
+        scorers: A collection of scorer-like objects. Can be:
+            - A dictionary mapping names to scorer objects or callables
+            - A sequence of scorer objects or callables
+            - None (returns empty list)
+        attributes: Optional attributes to apply to all resulting scorers.
 
     Returns:
-        A Scorer object.
+        A list of Scorer instances with consistent configuration.
     """
-    if isinstance(func, Scorer):
-        return func
+    if isinstance(scorers, dict):
+        return [
+            scorer.with_(name=name, attributes=attributes)
+            if isinstance(scorer, Scorer)
+            else cls(scorer, name=name, attributes=attributes)
+            for name, scorer in scorers.items()
+        ]
 
-    # if isinstance(func, Task):
-    #     raise TypeError(
-    #         f"Cannot create a Scorer from a @dn.task object ('{func.name}'). "
-    #         "Scorer functions should be simple, undecorated callables. "
-    #         "If you need to configure your scorer, create a factory function that returns a Scorer object."
-    #     )
-
-    # if inspect.iscoroutine(func):
-    #     raise TypeError(
-    #         "Received a coroutine when creating a Scorer. This can happen if you apply "
-    #         "@dn.task to a scorer factory function. Please remove the @dn.task decorator "
-    #         "from your scorer factory."
-    #     )
-
-    unwrapped = inspect.unwrap(func)
-    func_name = getattr(
-        unwrapped,
-        "__qualname__",
-        getattr(func, "__name__", safe_repr(unwrapped)),
-    )
-    name = name or func_name
-    return clone_config_attrs(
-        func,
-        cls(
-            name=name,
-            func=func,
-            catch=catch,
-            auto_increment_step=auto_increment_step,
-            log_all=log_all,
-            attributes=attributes or {},
-        ),
-    )
+    return [
+        scorer.with_(attributes=attributes)
+        if isinstance(scorer, Scorer)
+        else cls(scorer, attributes=attributes)
+        for scorer in scorers or []
+    ]
 ```
 
 
@@ -317,7 +333,9 @@ def from_callable(
 ### normalize\_and\_score
 
 ```python
-normalize_and_score(object: T) -> list[Metric]
+normalize_and_score(
+    object: T, *args: Any, **kwargs: Any
+) -> list[Metric]
 ```
 
 Executes the scorer and returns all generated metrics,
@@ -336,7 +354,7 @@ including from nested compositions.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
-async def normalize_and_score(self, object: T) -> list[Metric]:
+async def normalize_and_score(self, object: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
     """
     Executes the scorer and returns all generated metrics,
     including from nested compositions.
@@ -355,7 +373,8 @@ async def normalize_and_score(self, object: T) -> list[Metric]:
     )
 
     try:
-        result = self.func(object)
+        bound_args = self._bind_args(object, *args, **kwargs)
+        result = self.func(*bound_args.args, **bound_args.kwargs)
         if inspect.isawaitable(result):
             result = await result
     except Exception as e:
@@ -445,7 +464,7 @@ def rename(self, new_name: str) -> "Scorer[T]":
 ### score
 
 ```python
-score(obj: T) -> Metric
+score(object: T, *args: Any, **kwargs: Any) -> Metric
 ```
 
 Execute the scorer and return the metric. If the scorer is a composition of other scorers,
@@ -455,7 +474,7 @@ Any output value will be converted to a Metric object if not already one.
 
 **Parameters:**
 
-* **`obj`**
+* **`object`**
   (`T`)
   –The object to score.
 
@@ -466,7 +485,7 @@ Any output value will be converted to a Metric object if not already one.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
-async def score(self, obj: T) -> Metric:
+async def score(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:
     """
     Execute the scorer and return the metric. If the scorer is a composition of other scorers,
     it will return the "highest-priority" metric, typically the first in the list.
@@ -474,12 +493,12 @@ async def score(self, obj: T) -> Metric:
     Any output value will be converted to a Metric object if not already one.
 
     Args:
-        obj: The object to score.
+        object: The object to score.
 
     Returns:
         A Metric object.
     """
-    all_metrics = await self.normalize_and_score(obj)
+    all_metrics = await self.normalize_and_score(object, *args, **kwargs)
     return all_metrics[0]
 ```
 
@@ -489,7 +508,9 @@ async def score(self, obj: T) -> Metric:
 ### score\_composite
 
 ```python
-score_composite(object: T) -> tuple[Metric, list[Metric]]
+score_composite(
+    object: T, *args: Any, **kwargs: Any
+) -> tuple[Metric, list[Metric]]
 ```
 
 Executes the scorer and returns both the primary Metric and a list of any
@@ -508,7 +529,9 @@ additional metrics from nested compositions.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
-async def score_composite(self, object: T) -> tuple[Metric, list[Metric]]:
+async def score_composite(
+    self, object: T, *args: t.Any, **kwargs: t.Any
+) -> tuple[Metric, list[Metric]]:
     """
     Executes the scorer and returns both the primary Metric and a list of any
     additional metrics from nested compositions.
@@ -519,7 +542,7 @@ async def score_composite(self, object: T) -> tuple[Metric, list[Metric]]:
     Returns:
         A tuple of the primary Metric and a list of all metrics generated.
     """
-    metrics = await self.normalize_and_score(object)
+    metrics = await self.normalize_and_score(object, *args, **kwargs)
     return metrics[0], metrics[1:]
 ```
 
@@ -562,17 +585,17 @@ Create a new Scorer with updated properties.
   (`bool | None`, default:
   `None`
   )
-  –Whether to auto-increment the step.
+  –Automatically increment the step for each time this scorer is called.
 * **`catch`**
   (`bool | None`, default:
   `None`
   )
-  –Whether to catch exceptions in the scorer function.
+  –Catch exceptions in the scorer function.
 * **`log_all`**
   (`bool | None`, default:
   `None`
   )
-  –Whether to log all sub-metrics from nested composition.
+  –Log all sub-metrics from nested composition.
 
 **Returns:**
 
@@ -597,9 +620,9 @@ def with_(
         name: New name for the scorer.
         attributes: New attributes for the scorer.
         step: New step value for the scorer.
-        auto_increment_step: Whether to auto-increment the step.
-        catch: Whether to catch exceptions in the scorer function.
-        log_all: Whether to log all sub-metrics from nested composition.
+        auto_increment_step: Automatically increment the step for each time this scorer is called.
+        catch: Catch exceptions in the scorer function.
+        log_all: Log all sub-metrics from nested composition.
 
     Returns:
         A new Scorer with the updated properties
@@ -633,26 +656,36 @@ add(
 ) -> Scorer[T]
 ```
 
-Add two scorers together.
+Create a scorer that adds the values of two scorers together.
+
+This composition performs arithmetic addition of the two scorer values,
+with an optional averaging mode.
 
 **Parameters:**
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The first Scorer instance.
+  –The first Scorer instance to combine.
 * **`other`**
   (`Scorer[T]`)
-  –The second Scorer instance.
+  –The second Scorer instance to combine.
 * **`average`**
   (`bool`, default:
   `False`
   )
-  –If True, the average of the two scores will be divided by 2.
+  –If True, divides the sum by 2 to compute the average instead
+  of the raw sum. Defaults to False.
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+  –Optional name for the composed scorer. If None, combines the names
+  of the input scorers as "scorer\_name\_add\_other\_name".
+
+**Returns:**
+
+* `Scorer[T]`
+  –A new Scorer that adds (or averages) the values of the two input scorers.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
@@ -660,13 +693,21 @@ def add(
     scorer: Scorer[T], other: Scorer[T], *, average: bool = False, name: str | None = None
 ) -> Scorer[T]:
     """
-    Add two scorers together.
+    Create a scorer that adds the values of two scorers together.
+
+    This composition performs arithmetic addition of the two scorer values,
+    with an optional averaging mode.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        average: If True, the average of the two scores will be divided by 2.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The first Scorer instance to combine.
+        other: The second Scorer instance to combine.
+        average: If True, divides the sum by 2 to compute the average instead
+            of the raw sum. Defaults to False.
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_add_other_name".
+
+    Returns:
+        A new Scorer that adds (or averages) the values of the two input scorers.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -680,7 +721,7 @@ def add(
         )
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_add_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}")
 ```
 
 
@@ -698,32 +739,48 @@ and_(
 ) -> Scorer[T]
 ```
 
-Apply a logical AND operation between two scorers - testing their values as truthy (non-zero).
+Create a scorer that performs logical AND between two scorers.
+
+The resulting scorer returns 1.0 if both input scorers produce truthy values
+(greater than 0), and 0.0 otherwise.
 
 **Parameters:**
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The first Scorer instance.
+  –The first Scorer instance to combine.
 * **`other`**
   (`Scorer[T]`)
-  –The second Scorer instance.
+  –The second Scorer instance to combine.
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+  –Optional name for the composed scorer. If None, combines the names
+  of the input scorers as "scorer\_name\_and\_other\_name".
+
+**Returns:**
+
+* `Scorer[T]`
+  –A new Scorer that applies logical AND to the two input scorers.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
     """
-    Apply a logical AND operation between two scorers - testing their values as truthy (non-zero).
+    Create a scorer that performs logical AND between two scorers.
+
+    The resulting scorer returns 1.0 if both input scorers produce truthy values
+    (greater than 0), and 0.0 otherwise.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The first Scorer instance to combine.
+        other: The second Scorer instance to combine.
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_and_other_name".
+
+    Returns:
+        A new Scorer that applies logical AND to the two input scorers.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -734,7 +791,7 @@ def and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Sco
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_and_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_and_{other.name}")
 ```
 
 
@@ -802,24 +859,35 @@ clip(
 ) -> Scorer[T]
 ```
 
-Clip the result of a scorer to a specified range.
+Create a scorer that clips the output of another scorer to a specified range.
+
+This composition constrains the scorer's output to lie within [min\_val, max\_val],
+clamping values that exceed the bounds. This is useful for ensuring scores
+remain within expected ranges, preventing outliers from skewing results,
+or enforcing score normalization bounds.
 
 **Parameters:**
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The Scorer instance to wrap.
+  –The Scorer instance to clip.
 * **`min_val`**
   (`float`)
-  –The minimum value to clip to.
+  –The minimum value to clip to. Values below this will be set to min\_val.
 * **`max_val`**
   (`float`)
-  –The maximum value to clip to.
+  –The maximum value to clip to. Values above this will be set to max\_val.
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the original scorer's name.
+  –Optional name for the clipped scorer. If None, derives the name
+  from the original scorer as "scorer\_name\_clipped".
+
+**Returns:**
+
+* `Scorer[T]`
+  –A new Scorer that returns the clipped value of the input scorer.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
@@ -831,22 +899,31 @@ def clip(
     name: str | None = None,
 ) -> Scorer[T]:
     """
-    Clip the result of a scorer to a specified range.
+    Create a scorer that clips the output of another scorer to a specified range.
+
+    This composition constrains the scorer's output to lie within [min_val, max_val],
+    clamping values that exceed the bounds. This is useful for ensuring scores
+    remain within expected ranges, preventing outliers from skewing results,
+    or enforcing score normalization bounds.
 
     Args:
-        scorer: The Scorer instance to wrap.
-        min_val: The minimum value to clip to.
-        max_val: The maximum value to clip to.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
+        scorer: The Scorer instance to clip.
+        min_val: The minimum value to clip to. Values below this will be set to min_val.
+        max_val: The maximum value to clip to. Values above this will be set to max_val.
+        name: Optional name for the clipped scorer. If None, derives the name
+            from the original scorer as "scorer_name_clipped".
+
+    Returns:
+        A new Scorer that returns the clipped value of the input scorer.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         clipped_value = max(min_val, min(max_val, original.value))
         metric = Metric(clipped_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_clipped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_clipped")
 ```
 
 
@@ -867,6 +944,17 @@ invert(
 Invert the result of a scorer.
 
 The new score is calculated as `max_value - original_score`.
+
+**Examples:**
+
+```python
+@scorer
+def harmful(data: T) -> float:
+    ... # 0 (safe) to 1 (harmful)
+
+safety = invert(harmful)
+# 0 (harmful) to 1 (safe)
+```
 
 **Parameters:**
 
@@ -892,18 +980,28 @@ def invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None
 
     The new score is calculated as `max_value - original_score`.
 
+    Examples:
+        ~~~
+        @scorer
+        def harmful(data: T) -> float:
+            ... # 0 (safe) to 1 (harmful)
+
+        safety = invert(harmful)
+        # 0 (harmful) to 1 (safe)
+        ~~~
+
     Args:
         scorer: The Scorer instance to wrap.
         known_max: The maximum value of the original score, used for inversion.
         name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
     """
 
-    async def evaluate(data: t.Any) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         metric = Metric(max(0, known_max - original.value), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_inverted")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_inverted")
 ```
 
 
@@ -968,6 +1066,17 @@ Normalize the output of a scorer to a range of [0.0, 1.0].
 
 Uses `remap_range` internally.
 
+**Examples:**
+
+```python
+@scorer
+def confidence(data: T) -> float:
+    ... # 0 (low) to 50 (high)
+
+normalized = normalize(confidence, known_max=50)
+# 0 (low) to 1 (high)
+```
+
 **Parameters:**
 
 * **`scorer`**
@@ -996,6 +1105,16 @@ def normalize(
     Normalize the output of a scorer to a range of [0.0, 1.0].
 
     Uses `remap_range` internally.
+
+    Examples:
+        ~~~
+        @scorer
+        def confidence(data: T) -> float:
+            ... # 0 (low) to 50 (high)
+
+        normalized = normalize(confidence, known_max=50)
+        # 0 (low) to 1 (high)
+        ~~~
 
     Args:
         scorer: The Scorer instance to wrap.
@@ -1049,13 +1168,13 @@ def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
         name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         passed = original.value <= 0
         metric = Metric(float(passed), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"not_{scorer.name}")
+    return Scorer[T](evaluate, name=name or f"not_{scorer.name}")
 ```
 
 
@@ -1073,32 +1192,48 @@ or_(
 ) -> Scorer[T]
 ```
 
-Apply a logical OR operation between two scorers - testing their values as truthy (non-zero).
+Create a scorer that performs logical OR between two scorers.
+
+The resulting scorer returns 1.0 if either input scorer produces a truthy value
+(greater than 0), and 0.0 only if both scorers produce falsy values (0 or negative).
 
 **Parameters:**
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The first Scorer instance.
+  –The first Scorer instance to combine.
 * **`other`**
   (`Scorer[T]`)
-  –The second Scorer instance.
+  –The second Scorer instance to combine.
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+  –Optional name for the composed scorer. If None, combines the names
+  of the input scorers as "scorer\_name\_or\_other\_name".
+
+**Returns:**
+
+* `Scorer[T]`
+  –A new Scorer that applies logical OR to the two input scorers.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
     """
-    Apply a logical OR operation between two scorers - testing their values as truthy (non-zero).
+    Create a scorer that performs logical OR between two scorers.
+
+    The resulting scorer returns 1.0 if either input scorer produces a truthy value
+    (greater than 0), and 0.0 only if both scorers produce falsy values (0 or negative).
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The first Scorer instance to combine.
+        other: The second Scorer instance to combine.
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_or_other_name".
+
+    Returns:
+        A new Scorer that applies logical OR to the two input scorers.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -1109,7 +1244,7 @@ def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scor
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_or_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_or_{other.name}")
 ```
 
 
@@ -1131,6 +1266,21 @@ remap_range(
 ```
 
 Remap the output of a scorer from one range to another.
+
+**Examples:**
+
+```python
+@scorer
+def harmful(data: T) -> float:
+    ... # 0 (safe) to 1 (harmful)
+
+remapped = remap_range(
+    harmful,
+    known_min=0, known_max=1,
+    new_min=0, new_max=100
+)
+# 0 (safe) to 100 (harmful)
+```
 
 **Parameters:**
 
@@ -1169,6 +1319,20 @@ def remap_range(
     """
     Remap the output of a scorer from one range to another.
 
+    Examples:
+        ~~~
+        @scorer
+        def harmful(data: T) -> float:
+            ... # 0 (safe) to 1 (harmful)
+
+        remapped = remap_range(
+            harmful,
+            known_min=0, known_max=1,
+            new_min=0, new_max=100
+        )
+        # 0 (safe) to 100 (harmful)
+        ~~~
+
     Args:
         scorer: The Scorer instance to wrap.
         known_min: The assumed minimum of the original score
@@ -1183,8 +1347,8 @@ def remap_range(
     original_range = known_max - known_min
     new_range = new_max - new_min
 
-    async def evaluate(data: t.Any) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
 
         if original.value > known_max:
             warn_at_user_stacklevel(
@@ -1211,7 +1375,7 @@ def remap_range(
         metric = Metric(value=final_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_remapped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_remapped")
 ```
 
 
@@ -1229,40 +1393,62 @@ scale(
 ) -> Scorer[T]
 ```
 
-Scale the output of a scorer by some factor.
+Create a scorer that scales the output of another scorer by a constant factor.
+
+This composition multiplies the scorer's output by the specified factor,
+which is useful for adjusting score ranges, applying importance weights,
+or inverting scores (with negative factors). The original metric is
+preserved alongside the scaled result.
 
 **Parameters:**
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The Scorer instance to wrap.
+  –The Scorer instance to scale.
 * **`factor`**
   (`float`)
-  –The factor to scale the score by.
+  –The multiplier to apply to the scorer's output. Can be positive,
+  negative, or fractional.
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the original scorer's name.
+  –Optional name for the scaled scorer. If None, derives the name
+  from the original scorer as "scorer\_name\_scaled".
+
+**Returns:**
+
+* `Scorer[T]`
+  –A new Scorer that returns the scaled value of the input scorer.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def scale(scorer: Scorer[T], factor: float, *, name: str | None = None) -> Scorer[T]:
     """
-    Scale the output of a scorer by some factor.
+    Create a scorer that scales the output of another scorer by a constant factor.
+
+    This composition multiplies the scorer's output by the specified factor,
+    which is useful for adjusting score ranges, applying importance weights,
+    or inverting scores (with negative factors). The original metric is
+    preserved alongside the scaled result.
 
     Args:
-        scorer: The Scorer instance to wrap.
-        factor: The factor to scale the score by.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
+        scorer: The Scorer instance to scale.
+        factor: The multiplier to apply to the scorer's output. Can be positive,
+            negative, or fractional.
+        name: Optional name for the scaled scorer. If None, derives the name
+            from the original scorer as "scorer_name_scaled".
+
+    Returns:
+        A new Scorer that returns the scaled value of the input scorer.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         metric = Metric(original.value * factor, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_scaled")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_scaled")
 ```
 
 
@@ -1280,32 +1466,48 @@ subtract(
 ) -> Scorer[T]
 ```
 
-Subtract one scorer from another.
+Create a scorer that subtracts one scorer's value from another's.
+
+This composition performs arithmetic subtraction (scorer - other), which can be
+useful for penalty systems, relative scoring, or creating difference metrics.
 
 **Parameters:**
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The first Scorer instance.
+  –The Scorer instance to subtract from (minuend).
 * **`other`**
   (`Scorer[T]`)
-  –The second Scorer instance.
+  –The Scorer instance to subtract (subtrahend).
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+  –Optional name for the composed scorer. If None, combines the names
+  of the input scorers as "scorer\_name\_sub\_other\_name".
+
+**Returns:**
+
+* `Scorer[T]`
+  –A new Scorer that subtracts the second scorer's value from the first.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
     """
-    Subtract one scorer from another.
+    Create a scorer that subtracts one scorer's value from another's.
+
+    This composition performs arithmetic subtraction (scorer - other), which can be
+    useful for penalty systems, relative scoring, or creating difference metrics.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
-        name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
+        scorer: The Scorer instance to subtract from (minuend).
+        other: The Scorer instance to subtract (subtrahend).
+        name: Optional name for the composed scorer. If None, combines the names
+            of the input scorers as "scorer_name_sub_other_name".
+
+    Returns:
+        A new Scorer that subtracts the second scorer's value from the first.
     """
 
     async def evaluate(data: T) -> list[Metric]:
@@ -1316,7 +1518,7 @@ def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) ->
         metric = Metric(value, step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}_sub_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}")
 ```
 
 
@@ -1342,6 +1544,17 @@ threshold(
 ```
 
 Perform a threshold check on the output of a scorer and treat the result as a binary pass/fail.
+
+**Examples:**
+
+```python
+@scorer
+def confidence(data: T) -> float:
+    ... # 0 (low) to 50 (high)
+
+strong_confidence = threshold(confidence, gte=40)
+# 0.0 (weak) and 1.0 (strong)
+```
 
 **Parameters:**
 
@@ -1412,6 +1625,16 @@ def threshold(
     """
     Perform a threshold check on the output of a scorer and treat the result as a binary pass/fail.
 
+    Examples:
+        ~~~
+        @scorer
+        def confidence(data: T) -> float:
+            ... # 0 (low) to 50 (high)
+
+        strong_confidence = threshold(confidence, gte=40)
+        # 0.0 (weak) and 1.0 (strong)
+        ~~~
+
     Args:
         scorer: The Scorer instance to wrap.
         gt: Passes if score is greater than this value.
@@ -1425,8 +1648,8 @@ def threshold(
         name: Optional name for the new scorer. If None, it will be derived from the original scorer's name.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
-        original, others = await scorer.score_composite(data)
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
+        original, others = await scorer.score_composite(data, *args, **kwargs)
         score = original.value
 
         passed = False
@@ -1457,7 +1680,7 @@ def threshold(
     operators = [op for op in operators if op]
     operator_str = ("_" + "_".join(operators)) if operators else ""
 
-    return Scorer[T].from_callable(evaluate, name=name or f"{scorer.name}{operator_str}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}{operator_str}")
 ```
 
 
@@ -1473,7 +1696,23 @@ weighted_avg(
 ) -> Scorer[T]
 ```
 
-Combine multiple scorers with specified weights.
+Create a scorer that computes a weighted average of multiple scorers.
+
+This composition allows for sophisticated scoring schemes where different
+metrics have different importance levels. The final score is calculated as
+the sum of (score \* weight) for each scorer, divided by the total weight.
+
+**Examples:**
+
+```python
+# Safety is most important, then accuracy, then speed
+composite = weighted_avg(
+    (safety, 1.0),
+    (accuracy, 0.7),
+    (speed, 0.3)
+)
+# (safety * 1.0 + accuracy * 0.7 + speed * 0.3) / 2.0
+```
 
 **Parameters:**
 
@@ -1481,30 +1720,41 @@ Combine multiple scorers with specified weights.
   (`tuple[Scorer[T], float]`, default:
   `()`
   )
-  –A variable number of tuples, each containing a Scorer and its weight.
+  –Variable number of (Scorer, weight) tuples. Each tuple contains
+  a Scorer instance and its corresponding weight (float). At least one
+  scorer must be provided.
 * **`name`**
   (`str | None`, default:
   `None`
   )
-  –Optional name for the new scorer. If None, it will be derived from the names of the scorers.
-
-**Returns:**
-
-* `Scorer[T]`
-  –A new Scorer that combines the weighted scores of the input scorers.
+  –Optional name for the composed scorer. Defaults to "weighted\_avg".
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> Scorer[T]:
     """
-    Combine multiple scorers with specified weights.
+    Create a scorer that computes a weighted average of multiple scorers.
+
+    This composition allows for sophisticated scoring schemes where different
+    metrics have different importance levels. The final score is calculated as
+    the sum of (score * weight) for each scorer, divided by the total weight.
+
+    Examples:
+        ~~~
+        # Safety is most important, then accuracy, then speed
+        composite = weighted_avg(
+            (safety, 1.0),
+            (accuracy, 0.7),
+            (speed, 0.3)
+        )
+        # (safety * 1.0 + accuracy * 0.7 + speed * 0.3) / 2.0
+        ~~~
 
     Args:
-        *scorers: A variable number of tuples, each containing a Scorer and its weight.
-        name: Optional name for the new scorer. If None, it will be derived from the names of the scorers.
-
-    Returns:
-        A new Scorer that combines the weighted scores of the input scorers.
+        *scorers: Variable number of (Scorer, weight) tuples. Each tuple contains
+            a Scorer instance and its corresponding weight (float). At least one
+            scorer must be provided.
+        name: Optional name for the composed scorer. Defaults to "weighted_avg".
     """
 
     if not scorers:
@@ -1525,7 +1775,7 @@ def weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> 
         metric = Metric(weighted_avg_value, step=max(m.step for m in all_metrics))
         return [metric, *all_metrics]
 
-    return Scorer[T].from_callable(evaluate, name=name or "weighted_avg")
+    return Scorer[T](evaluate, name=name or "weighted_avg")
 ```
 
 
@@ -1583,7 +1833,7 @@ zero_shot_classification(
     labels: list[str],
     score_label: str,
     *,
-    model_name: str | Lookup = "facebook/bart-large-mnli",
+    model_name: str = "facebook/bart-large-mnli",
     name: str | None = None,
 ) -> Scorer[t.Any]
 ```
@@ -1604,7 +1854,7 @@ Requires `transformers`, see https://huggingface.co/docs/transformers.
   (`str`)
   –The specific label whose score should be returned as the metric's value.
 * **`model_name`**
-  (`str | Lookup`, default:
+  (`str`, default:
   `'facebook/bart-large-mnli'`
   )
   –The name of the zero-shot model from Hugging Face Hub.
@@ -1616,12 +1866,11 @@ Requires `transformers`, see https://huggingface.co/docs/transformers.
 
 <Accordion title="Source code in dreadnode/scorers/classification.py" icon="code">
 ```python
-@configurable(["model_name"])
 def zero_shot_classification(
     labels: list[str],
     score_label: str,
     *,
-    model_name: str | Lookup = "facebook/bart-large-mnli",
+    model_name: str = "facebook/bart-large-mnli",
     name: str | None = None,
 ) -> "Scorer[t.Any]":
     """
@@ -1653,18 +1902,14 @@ def zero_shot_classification(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": transformers_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal model_name, labels, score_label
-
-        labels = resolve_lookup(labels)
-        score_label = str(resolve_lookup(score_label))
+    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
+        nonlocal labels, score_label
 
         if score_label not in labels:
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
-        model_name = str(resolve_lookup(model_name))
         pipeline_key = f"zero-shot-classification_{model_name}"
         if pipeline_key not in g_pipelines:
             g_pipelines[pipeline_key] = pipeline("zero-shot-classification", model=model_name)
@@ -1687,7 +1932,7 @@ def zero_shot_classification(
     if name is None:
         name = f"zero_shot_{clean_str(score_label)}"
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -1697,7 +1942,7 @@ character\_consistency
 
 ```python
 character_consistency(
-    reference: str | Lookup,
+    reference: str,
     *,
     max_ratio_diff: float = 2.0,
     name: str = "char_consistency",
@@ -1712,8 +1957,8 @@ A score of 1.0 indicates identical distributions.
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
-  –The reference text (e.g., the prompt) or a Lookup.
+  (`str`)
+  –The reference text.
 * **`max_ratio_diff`**
   (`float`, default:
   `2.0`
@@ -1728,7 +1973,7 @@ A score of 1.0 indicates identical distributions.
 <Accordion title="Source code in dreadnode/scorers/consistency.py" icon="code">
 ```python
 def character_consistency(
-    reference: str | Lookup,
+    reference: str,
     *,
     max_ratio_diff: float = 2.0,
     name: str = "char_consistency",
@@ -1740,7 +1985,7 @@ def character_consistency(
     A score of 1.0 indicates identical distributions.
 
     Args:
-        reference: The reference text (e.g., the prompt) or a Lookup.
+        reference: The reference text.
         max_ratio_diff: The denominator for normalizing ratio differences.
         name: Name of the scorer.
     """
@@ -1749,7 +1994,6 @@ def character_consistency(
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         candidate_chars = _analyze_text(candidate_text)
         reference_chars = _analyze_text(reference)
@@ -1772,7 +2016,7 @@ def character_consistency(
 
         return Metric.from_many([(name, score, 1.0) for name, score in scores.items()])
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -1782,7 +2026,7 @@ contains
 
 ```python
 contains(
-    pattern: str | Pattern[str] | Lookup,
+    pattern: str | Pattern[str],
     *,
     case_sensitive: bool = False,
     exact: bool = False,
@@ -1796,7 +2040,7 @@ Score based on whether the data contains a specific string or regex pattern.
 **Parameters:**
 
 * **`pattern`**
-  (`str | Pattern[str] | Lookup`)
+  (`str | Pattern[str]`)
   –String to search for or compiled regex pattern
 * **`name`**
   (`str`, default:
@@ -1822,7 +2066,7 @@ Score based on whether the data contains a specific string or regex pattern.
 <Accordion title="Source code in dreadnode/scorers/contains.py" icon="code">
 ```python
 def contains(
-    pattern: str | re.Pattern[str] | Lookup,
+    pattern: str | re.Pattern[str],
     *,
     case_sensitive: bool = False,
     exact: bool = False,
@@ -1843,7 +2087,6 @@ def contains(
     def evaluate(data: t.Any) -> Metric:
         nonlocal pattern
 
-        pattern = str(resolve_lookup(pattern))
         text = str(data)
         contains = False
 
@@ -1867,7 +2110,7 @@ def contains(
 
         return Metric(value=float(contains), attributes=metadata)
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -2232,7 +2475,7 @@ def is_json(*, name: str = "is_json") -> "Scorer[t.Any]":
         except json.JSONDecodeError as e:
             return Metric(value=0.0, attributes={"error": str(e)})
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -2285,7 +2528,7 @@ def is_xml(*, name: str = "is_xml") -> "Scorer[t.Any]":
         except ET.ParseError as e:
             return Metric(value=0.0, attributes={"error": str(e)})
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -2297,9 +2540,7 @@ detect\_harm\_with\_openai
 detect_harm_with_openai(
     *,
     api_key: str | None = None,
-    model: Literal[
-        "text-moderation-stable", "text-moderation-latest"
-    ] = "text-moderation-stable",
+    model: str = "text-moderation-stable",
     client: AsyncOpenAI | None = None,
     name: str = "openai_harm",
 ) -> Scorer[t.Any]
@@ -2325,7 +2566,7 @@ Requires `openai`, see https://github.com/openai/openai-python.
   –Your OpenAI API key. If not provided, it will be sourced from the
   `OPENAI_API_KEY` environment variable.
 * **`model`**
-  (`Literal['text-moderation-stable', 'text-moderation-latest']`, default:
+  (`str`, default:
   `'text-moderation-stable'`
   )
   –The moderation model to use.
@@ -2337,11 +2578,10 @@ Requires `openai`, see https://github.com/openai/openai-python.
 
 <Accordion title="Source code in dreadnode/scorers/harm.py" icon="code">
 ```python
-@configurable(["api_key", "model"])
 def detect_harm_with_openai(
     *,
     api_key: str | None = None,
-    model: t.Literal["text-moderation-stable", "text-moderation-latest"] = "text-moderation-stable",
+    model: str = "text-moderation-stable",
     client: "openai.AsyncOpenAI | None" = None,
     name: str = "openai_harm",
 ) -> "Scorer[t.Any]":
@@ -2365,7 +2605,9 @@ def detect_harm_with_openai(
     """
     import openai
 
-    async def evaluate(data: t.Any) -> Metric:
+    async def evaluate(
+        data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)
+    ) -> Metric:
         text = str(data)
         _client = client or openai.AsyncOpenAI(api_key=api_key)
 
@@ -2386,7 +2628,7 @@ def detect_harm_with_openai(
         }
         return Metric(value=max_score, attributes=attributes)
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -2405,7 +2647,7 @@ Assign a score based on the rubric, where applicable, otherwise 1.0 for passing 
 
 <Accordion title="Source code in dreadnode/scorers/judge.py" icon="code">
 ```python
-@prompt()
+@rg.prompt()
 def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
     """
     You are grading output according to a user-specified rubric.
@@ -2423,10 +2665,10 @@ llm\_judge
 
 ```python
 llm_judge(
-    model: str | Generator | Lookup,
-    rubric: str | Lookup,
+    model: str,
+    rubric: str,
     *,
-    expected_output: str | Lookup | None = None,
+    expected_output: str | None = None,
     params: GenerateParams | None = None,
     passing: Callable[[float], bool] | None = None,
     min_score: float | None = None,
@@ -2440,17 +2682,16 @@ Score the output of a task using an LLM to judge it against a rubric.
 **Parameters:**
 
 * **`model`**
-  (`str | Generator | Lookup`)
-  –The model to use for judging. Can be a string identifier (rigging), a Generator instance
-  or a Lookup that resolves to a string identifier.
+  (`str`)
+  –The model to use for judging.
 * **`rubric`**
-  (`str | Lookup`)
-  –The rubric to use for judging. Can be a string or a Lookup that resolves to a string.
+  (`str`)
+  –The rubric to use for judging.
 * **`expected_output`**
-  (`str | Lookup | None`, default:
+  (`str | None`, default:
   `None`
   )
-  –The expected output to compare against, if applicable. Can be a string or a Lookup that resolves to a string.
+  –The expected output to compare against, if applicable.
 * **`params`**
   (`GenerateParams | None`, default:
   `None`
@@ -2480,11 +2721,11 @@ Score the output of a task using an LLM to judge it against a rubric.
 <Accordion title="Source code in dreadnode/scorers/judge.py" icon="code">
 ```python
 def llm_judge(
-    model: "str | Generator | Lookup",
-    rubric: str | Lookup,
+    model: str,
+    rubric: str,
     *,
-    expected_output: str | Lookup | None = None,
-    params: "GenerateParams | None" = None,
+    expected_output: str | None = None,
+    params: rg.GenerateParams | None = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
     max_score: float | None = None,
@@ -2494,10 +2735,9 @@ def llm_judge(
     Score the output of a task using an LLM to judge it against a rubric.
 
     Args:
-        model: The model to use for judging. Can be a string identifier (rigging), a Generator instance
-            or a Lookup that resolves to a string identifier.
-        rubric: The rubric to use for judging. Can be a string or a Lookup that resolves to a string.
-        expected_output: The expected output to compare against, if applicable. Can be a string or a Lookup that resolves to a string.
+        model: The model to use for judging.
+        rubric: The rubric to use for judging.
+        expected_output: The expected output to compare against, if applicable.
         params: Optional parameters for the generator.
         passing: Optional callback to determine if the score is passing based on the score value - overrides any model-specified value.
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
@@ -2505,17 +2745,15 @@ def llm_judge(
         name: The name of the scorer.
     """
 
-    async def evaluate(data: t.Any) -> list[Metric]:
-        nonlocal model, rubric, expected_output
+    async def evaluate(
+        data: t.Any, *, model: str = Config(model, help="The model to use for judging.")
+    ) -> list[Metric]:
+        nonlocal rubric, expected_output
 
-        model = str(resolve_lookup(model))
-        rubric = str(resolve_lookup(rubric))
-        expected_output = str(resolve_lookup(expected_output)) if expected_output else None
-
-        generator: Generator
+        generator: rg.Generator
         if isinstance(model, str):
-            generator = get_generator(model, params=params or GenerateParams())
-        elif isinstance(model, Generator):
+            generator = rg.get_generator(model, params=params or rg.GenerateParams())
+        elif isinstance(model, rg.Generator):
             generator = model
         else:
             raise TypeError("Model must be a string identifier or a Generator instance.")
@@ -2548,7 +2786,7 @@ def llm_judge(
 
         return [score_metric, pass_metric]
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -2558,8 +2796,8 @@ length\_in\_range
 
 ```python
 length_in_range(
-    min_length: int | Lookup = 0,
-    max_length: float | Lookup = float("inf"),
+    min_length: int = 0,
+    max_length: float = float("inf"),
     *,
     name: str = "length_in_range",
 ) -> Scorer[t.Any]
@@ -2573,12 +2811,12 @@ the score degrades towards 0.0. A score of 0.0 is returned for empty text.
 **Parameters:**
 
 * **`min_length`**
-  (`int | Lookup`, default:
+  (`int`, default:
   `0`
   )
   –The minimum acceptable character length.
 * **`max_length`**
-  (`float | Lookup`, default:
+  (`float`, default:
   `float('inf')`
   )
   –The maximum acceptable character length.
@@ -2591,8 +2829,8 @@ the score degrades towards 0.0. A score of 0.0 is returned for empty text.
 <Accordion title="Source code in dreadnode/scorers/length.py" icon="code">
 ```python
 def length_in_range(
-    min_length: int | Lookup = 0,
-    max_length: float | Lookup = float("inf"),
+    min_length: int = 0,
+    max_length: float = float("inf"),
     *,
     name: str = "length_in_range",
 ) -> "Scorer[t.Any]":
@@ -2610,9 +2848,6 @@ def length_in_range(
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal min_length, max_length
-
-        min_length = int(resolve_lookup(min_length))
-        max_length = int(resolve_lookup(max_length))
 
         if min_length < 0 or max_length < min_length:
             raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
@@ -2639,7 +2874,7 @@ def length_in_range(
             attributes={"length": text_len, "min": min_length, "max": max_length},
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -2650,7 +2885,7 @@ length\_ratio
 
 ```python
 length_ratio(
-    reference: str | Lookup,
+    reference: str,
     *,
     min_ratio: float = 0.1,
     max_ratio: float = 5.0,
@@ -2666,7 +2901,7 @@ The score is 1.0 if the ratio (candidate/reference) is within the
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (static string).
 * **`min_ratio`**
   (`float`, default:
@@ -2687,7 +2922,7 @@ The score is 1.0 if the ratio (candidate/reference) is within the
 <Accordion title="Source code in dreadnode/scorers/length.py" icon="code">
 ```python
 def length_ratio(
-    reference: str | Lookup,
+    reference: str,
     *,
     min_ratio: float = 0.1,
     max_ratio: float = 5.0,
@@ -2712,7 +2947,6 @@ def length_ratio(
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         if not reference:
             raise ValueError("Reference text must not be empty.")
@@ -2728,7 +2962,7 @@ def length_ratio(
 
         return Metric(value=score, attributes={"ratio": round(ratio, 4)})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -2739,9 +2973,7 @@ length\_target
 
 ```python
 length_target(
-    target_length: int | Lookup,
-    *,
-    name: str = "length_target",
+    target_length: int, *, name: str = "length_target"
 ) -> Scorer[t.Any]
 ```
 
@@ -2753,7 +2985,7 @@ as the length deviates from the target. A score of 0.0 is returned for empty tex
 **Parameters:**
 
 * **`target_length`**
-  (`int | Lookup`)
+  (`int`)
   –The target character length to score against.
 * **`name`**
   (`str`, default:
@@ -2764,7 +2996,7 @@ as the length deviates from the target. A score of 0.0 is returned for empty tex
 <Accordion title="Source code in dreadnode/scorers/length.py" icon="code">
 ```python
 def length_target(
-    target_length: int | Lookup,
+    target_length: int,
     *,
     name: str = "length_target",
 ) -> "Scorer[t.Any]":
@@ -2782,7 +3014,6 @@ def length_target(
     def evaluate(data: t.Any) -> Metric:
         nonlocal target_length
 
-        target_length = int(resolve_lookup(target_length))
         if target_length < 0:
             raise ValueError("Target length must be non-negative.")
 
@@ -2804,7 +3035,7 @@ def length_target(
 
         return Metric(value=final_score, attributes={"length": text_len, "target": target_length})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -2814,7 +3045,7 @@ type\_token\_ratio
 
 ```python
 type_token_ratio(
-    target_ratio: float | Lookup | None = None,
+    target_ratio: float | None = None,
     *,
     name: str = "type_token_ratio",
 ) -> Scorer[t.Any]
@@ -2832,7 +3063,7 @@ A higher TTR indicates greater lexical diversity.
 **Parameters:**
 
 * **`target_ratio`**
-  (`float | Lookup | None`, default:
+  (`float | None`, default:
   `None`
   )
   –An optional ideal TTR to score against.
@@ -2845,7 +3076,7 @@ A higher TTR indicates greater lexical diversity.
 <Accordion title="Source code in dreadnode/scorers/lexical.py" icon="code">
 ```python
 def type_token_ratio(
-    target_ratio: float | Lookup | None = None,
+    target_ratio: float | None = None,
     *,
     name: str = "type_token_ratio",
 ) -> "Scorer[t.Any]":
@@ -2867,7 +3098,6 @@ def type_token_ratio(
     def evaluate(data: t.Any) -> Metric:
         nonlocal target_ratio
 
-        target_ratio = float(resolve_lookup(target_ratio)) if target_ratio is not None else None
         if target_ratio is not None and not (0.0 <= target_ratio <= 1.0):
             raise ValueError("target_ratio must be between 0.0 and 1.0.")
 
@@ -2904,7 +3134,7 @@ def type_token_ratio(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3078,7 +3308,7 @@ def detect_pii_with_presidio(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": presidio_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         analyzer = _get_presidio_analyzer()
@@ -3111,7 +3341,7 @@ def detect_pii_with_presidio(
 
         return Metric(value=final_score, attributes=metadata)
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3121,9 +3351,7 @@ readability
 
 ```python
 readability(
-    target_grade: float | Lookup = 8.0,
-    *,
-    name: str = "readability",
+    target_grade: float = 8.0, *, name: str = "readability"
 ) -> Scorer[t.Any]
 ```
 
@@ -3137,7 +3365,7 @@ Requires `textstat`, see https://github.com/textstat/textstat
 **Parameters:**
 
 * **`target_grade`**
-  (`float | Lookup`, default:
+  (`float`, default:
   `8.0`
   )
   –The ideal reading grade level (e.g., 8.0 for 8th grade).
@@ -3150,7 +3378,7 @@ Requires `textstat`, see https://github.com/textstat/textstat
 <Accordion title="Source code in dreadnode/scorers/readability.py" icon="code">
 ```python
 def readability(
-    target_grade: float | Lookup = 8.0,
+    target_grade: float = 8.0,
     *,
     name: str = "readability",
 ) -> "Scorer[t.Any]":
@@ -3178,12 +3406,10 @@ def readability(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": textstat_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal target_grade
-
-        target_grade = float(resolve_lookup(target_grade))
 
         text = str(data)
         if not text.strip():
@@ -3202,7 +3428,7 @@ def readability(
             value=score, attributes={"calculated_grade": grade_level, "target_grade": target_grade}
         )
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3317,7 +3543,7 @@ def wrap_chat(
     if name is None:
         name = f"chat_{inner_scorer.name}"
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3327,7 +3553,7 @@ sentiment
 
 ```python
 sentiment(
-    target: Sentiment | Lookup = "neutral",
+    target: Sentiment = "neutral",
     name: str = "score_sentiment",
 ) -> Scorer[t.Any]
 ```
@@ -3344,7 +3570,7 @@ Requires `textblob`, see https://textblob.readthedocs.io.
 **Parameters:**
 
 * **`target`**
-  (`Sentiment | Lookup`, default:
+  (`Sentiment`, default:
   `'neutral'`
   )
   –The desired sentiment to score against.
@@ -3357,7 +3583,7 @@ Requires `textblob`, see https://textblob.readthedocs.io.
 <Accordion title="Source code in dreadnode/scorers/sentiment.py" icon="code">
 ```python
 def sentiment(
-    target: Sentiment | Lookup = "neutral",
+    target: Sentiment = "neutral",
     name: str = "score_sentiment",
 ) -> "Scorer[t.Any]":
     """
@@ -3384,12 +3610,11 @@ def sentiment(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": textblob_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal target
 
-        target = t.cast("Sentiment", str(resolve_lookup(target)).lower())
         if target not in {"positive", "negative", "neutral"}:
             target = "neutral"  # Default to neutral if invalid
             warn_at_user_stacklevel(
@@ -3417,7 +3642,7 @@ def sentiment(
 
         return Metric(value=score, attributes={"polarity": polarity, "target": target})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3459,7 +3684,6 @@ Returns a float score between 0.0 and 1.0 indicating the level of the attribute 
 
 <Accordion title="Source code in dreadnode/scorers/sentiment.py" icon="code">
 ```python
-@configurable(["api_key"])
 def sentiment_with_perspective(
     *,
     api_key: str | None = None,
@@ -3483,7 +3707,7 @@ def sentiment_with_perspective(
             "API key must be provided or set in the PERSPECTIVE_API_KEY environment variable."
         )
 
-    async def evaluate(data: t.Any) -> float:
+    async def evaluate(data: t.Any, *, api_key: str | None = Config(api_key)) -> float:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze",
@@ -3503,7 +3727,7 @@ def sentiment_with_perspective(
     if name is None:
         name = f"perspective_{attribute.lower()}"
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3513,7 +3737,7 @@ bleu
 
 ```python
 bleu(
-    reference: str | Lookup,
+    reference: str,
     *,
     weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25),
     name: str = "bleu",
@@ -3529,7 +3753,7 @@ Requires `nltk`, see https://www.nltk.org.
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (e.g., the prompt).
 * **`weights`**
   (`tuple[float, ...]`, default:
@@ -3545,7 +3769,7 @@ Requires `nltk`, see https://www.nltk.org.
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
 def bleu(
-    reference: str | Lookup,
+    reference: str,
     *,
     weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25),
     name: str = "bleu",
@@ -3585,13 +3809,12 @@ def bleu(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": nltk_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         if not reference or not candidate_text:
             return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})
@@ -3602,7 +3825,7 @@ def bleu(
         score = sentence_bleu([ref_tokens], cand_tokens, weights=weights)
         return Metric(value=score)
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3613,7 +3836,7 @@ distance
 
 ```python
 distance(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: Literal[
         "levenshtein",
@@ -3637,7 +3860,7 @@ Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (static string).
 * **`method`**
   (`Literal['levenshtein', 'hamming', 'jaro', 'jaro_winkler', 'damerau_levenshtein']`, default:
@@ -3648,7 +3871,7 @@ Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
   (`bool`, default:
   `True`
   )
-  –Whether to normalize distances and convert to similarity scores.
+  –Normalize distances and convert to similarity scores.
 * **`name`**
   (`str`, default:
   `'distance'`
@@ -3658,7 +3881,7 @@ Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
 def distance(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: t.Literal[
         "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
@@ -3677,7 +3900,7 @@ def distance(
     Args:
         reference: The reference text (static string).
         method: The distance metric to use.
-        normalize: Whether to normalize distances and convert to similarity scores.
+        normalize: Normalize distances and convert to similarity scores.
         name: Name of the scorer.
     """
     rapidfuzz_import_error_msg = (
@@ -3692,13 +3915,12 @@ def distance(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:  # noqa: PLR0912
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         # Select the appropriate distance method
         if method == "levenshtein":
@@ -3731,7 +3953,7 @@ def distance(
 
         return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3742,7 +3964,7 @@ similarity
 
 ```python
 similarity(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: Literal[
         "ratio", "quick_ratio", "real_quick_ratio"
@@ -3760,7 +3982,7 @@ based on `difflib.SequenceMatcher`.
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (static string).
 * **`method`**
   (`Literal['ratio', 'quick_ratio', 'real_quick_ratio']`, default:
@@ -3781,7 +4003,7 @@ based on `difflib.SequenceMatcher`.
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
 def similarity(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = "ratio",
     case_sensitive: bool = False,
@@ -3804,7 +4026,6 @@ def similarity(
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         if not case_sensitive:
             candidate_text = candidate_text.lower()
@@ -3821,7 +4042,7 @@ def similarity(
 
         return Metric(value=score, attributes={"method": method})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3832,8 +4053,8 @@ similarity\_with\_litellm
 
 ```python
 similarity_with_litellm(
-    reference: str | Lookup,
-    model: str | Lookup,
+    reference: str,
+    model: str,
     *,
     api_key: str | None = None,
     api_base: str | None = None,
@@ -3852,10 +4073,10 @@ Requires `litellm`, see https://docs.litellm.ai/docs/
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (e.g., expected output).
 * **`model`**
-  (`str | Lookup`)
+  (`str`)
   –The model string recognised by litellm (e.g., "text-embedding-ada-002",
   "cohere/embed-english-v3.0").
 * **`api_key`**
@@ -3878,10 +4099,9 @@ Requires `litellm`, see https://docs.litellm.ai/docs/
 
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
-@configurable(["model", "api_key", "api_base"])
 def similarity_with_litellm(
-    reference: str | Lookup,
-    model: str | Lookup,
+    reference: str,
+    model: str,
     *,
     api_key: str | None = None,
     api_base: str | None = None,
@@ -3908,13 +4128,16 @@ def similarity_with_litellm(
     """
     import litellm
 
-    async def evaluate(data: t.Any) -> Metric:
-        nonlocal reference, model
+    async def evaluate(
+        data: t.Any,
+        *,
+        model: str = Config(model),
+        api_key: str | None = Config(api_key),
+        api_base: str | None = Config(api_base),
+    ) -> Metric:
+        nonlocal reference
 
-        model = str(resolve_lookup(model))
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
-
         if not candidate_text.strip() or not reference.strip():
             return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
 
@@ -3937,7 +4160,7 @@ def similarity_with_litellm(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -3948,7 +4171,7 @@ similarity\_with\_rapidfuzz
 
 ```python
 similarity_with_rapidfuzz(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: Literal[
         "ratio",
@@ -3976,7 +4199,7 @@ Requires `rapidfuzz`, see https://github.com/rapidfuzz/RapidFuzz
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (static string).
 * **`method`**
   (`Literal['ratio', 'partial_ratio', 'token_sort_ratio', 'token_set_ratio', 'WRatio', 'QRatio']`, default:
@@ -3987,12 +4210,12 @@ Requires `rapidfuzz`, see https://github.com/rapidfuzz/RapidFuzz
   (`bool`, default:
   `True`
   )
-  –Whether to normalize the score to [0.0, 1.0].
+  –Normalize the score to [0.0, 1.0].
 * **`preprocessor`**
   (`bool`, default:
   `True`
   )
-  –Whether to use default preprocessing (lowercase, remove non-alphanumeric).
+  –Use default preprocessing (lowercase, remove non-alphanumeric).
 * **`score_cutoff`**
   (`float | None`, default:
   `None`
@@ -4007,7 +4230,7 @@ Requires `rapidfuzz`, see https://github.com/rapidfuzz/RapidFuzz
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
 def similarity_with_rapidfuzz(
-    reference: str | Lookup,
+    reference: str,
     *,
     method: t.Literal[
         "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
@@ -4029,8 +4252,8 @@ def similarity_with_rapidfuzz(
     Args:
         reference: The reference text (static string).
         method: The RapidFuzz similarity method to use.
-        normalize: Whether to normalize the score to [0.0, 1.0].
-        preprocessor: Whether to use default preprocessing (lowercase, remove non-alphanumeric).
+        normalize: Normalize the score to [0.0, 1.0].
+        preprocessor: Use default preprocessing (lowercase, remove non-alphanumeric).
         score_cutoff: Optional score cutoff below which to return 0.0.
         name: Name of the scorer.
     """
@@ -4046,14 +4269,12 @@ def similarity_with_rapidfuzz(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
-
         processor = utils.default_process if preprocessor else None
 
         # Select the appropriate RapidFuzz method
@@ -4099,7 +4320,7 @@ def similarity_with_rapidfuzz(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -4110,9 +4331,9 @@ similarity\_with\_sentence\_transformers
 
 ```python
 similarity_with_sentence_transformers(
-    reference: str | Lookup,
+    reference: str,
     *,
-    model_name: str | Lookup = "all-MiniLM-L6-v2",
+    model_name: str = "all-MiniLM-L6-v2",
     name: str = "similarity",
 ) -> Scorer[t.Any]
 ```
@@ -4128,10 +4349,10 @@ Requires `sentence-transformers`, see https://huggingface.co/sentence-transforme
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (e.g., expected output).
 * **`model_name`**
-  (`str | Lookup`, default:
+  (`str`, default:
   `'all-MiniLM-L6-v2'`
   )
   –The name of the sentence-transformer model to use.
@@ -4143,11 +4364,10 @@ Requires `sentence-transformers`, see https://huggingface.co/sentence-transforme
 
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
-@configurable(["model_name"])
 def similarity_with_sentence_transformers(
-    reference: str | Lookup,
+    reference: str,
     *,
-    model_name: str | Lookup = "all-MiniLM-L6-v2",
+    model_name: str = "all-MiniLM-L6-v2",
     name: str = "similarity",
 ) -> "Scorer[t.Any]":
     """
@@ -4177,19 +4397,17 @@ def similarity_with_sentence_transformers(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": sentence_transformers_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference, model_name
+    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
+        nonlocal reference
 
         # Lazily load and cache the model
-        model_name = str(resolve_lookup(model_name))
         if model_name not in g_sentence_transformers_models:
             g_sentence_transformers_models[model_name] = SentenceTransformer(model_name)
         model = g_sentence_transformers_models[model_name]
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         embeddings = model.encode([candidate_text, reference])
         sim_tensor = util.cos_sim(embeddings[0], embeddings[1])
@@ -4200,7 +4418,7 @@ def similarity_with_sentence_transformers(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 
@@ -4211,7 +4429,7 @@ similarity\_with\_tf\_idf
 
 ```python
 similarity_with_tf_idf(
-    reference: str | Lookup, *, name: str = "similarity"
+    reference: str, *, name: str = "similarity"
 ) -> Scorer[t.Any]
 ```
 
@@ -4222,7 +4440,7 @@ Requires `scikit-learn`, see https://scikit-learn.org
 **Parameters:**
 
 * **`reference`**
-  (`str | Lookup`)
+  (`str`)
   –The reference text (e.g., expected output).
 * **`name`**
   (`str`, default:
@@ -4232,7 +4450,7 @@ Requires `scikit-learn`, see https://scikit-learn.org
 
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
-def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity") -> "Scorer[t.Any]":
+def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scorer[t.Any]":
     """
     Scores semantic similarity using TF-IDF and cosine similarity.
 
@@ -4259,7 +4477,7 @@ def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity")
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": sklearn_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
     vectorizer = TfidfVectorizer(stop_words="english")
 
@@ -4267,13 +4485,11 @@ def similarity_with_tf_idf(reference: str | Lookup, *, name: str = "similarity")
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
-
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference])
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 ```
 
 

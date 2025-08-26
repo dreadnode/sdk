@@ -1,12 +1,11 @@
 import typing as t
 
-from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
 
 def length_ratio(
-    reference: str | Lookup,
+    reference: str,
     *,
     min_ratio: float = 0.1,
     max_ratio: float = 5.0,
@@ -31,7 +30,6 @@ def length_ratio(
         nonlocal reference
 
         candidate_text = str(data)
-        reference = str(resolve_lookup(reference))
 
         if not reference:
             raise ValueError("Reference text must not be empty.")
@@ -47,12 +45,12 @@ def length_ratio(
 
         return Metric(value=score, attributes={"ratio": round(ratio, 4)})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def length_in_range(
-    min_length: int | Lookup = 0,
-    max_length: float | Lookup = float("inf"),
+    min_length: int = 0,
+    max_length: float = float("inf"),
     *,
     name: str = "length_in_range",
 ) -> "Scorer[t.Any]":
@@ -70,9 +68,6 @@ def length_in_range(
 
     def evaluate(data: t.Any) -> Metric:
         nonlocal min_length, max_length
-
-        min_length = int(resolve_lookup(min_length))
-        max_length = int(resolve_lookup(max_length))
 
         if min_length < 0 or max_length < min_length:
             raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
@@ -99,11 +94,11 @@ def length_in_range(
             attributes={"length": text_len, "min": min_length, "max": max_length},
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def length_target(
-    target_length: int | Lookup,
+    target_length: int,
     *,
     name: str = "length_target",
 ) -> "Scorer[t.Any]":
@@ -121,7 +116,6 @@ def length_target(
     def evaluate(data: t.Any) -> Metric:
         nonlocal target_length
 
-        target_length = int(resolve_lookup(target_length))
         if target_length < 0:
             raise ValueError("Target length must be non-negative.")
 
@@ -143,4 +137,4 @@ def length_target(
 
         return Metric(value=final_score, attributes={"length": text_len, "target": target_length})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

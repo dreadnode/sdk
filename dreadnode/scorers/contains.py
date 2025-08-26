@@ -1,13 +1,12 @@
 import re
 import typing as t
 
-from dreadnode.lookup import Lookup, resolve_lookup
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
 
 def contains(
-    pattern: str | re.Pattern[str] | Lookup,
+    pattern: str | re.Pattern[str],
     *,
     case_sensitive: bool = False,
     exact: bool = False,
@@ -28,7 +27,6 @@ def contains(
     def evaluate(data: t.Any) -> Metric:
         nonlocal pattern
 
-        pattern = str(resolve_lookup(pattern))
         text = str(data)
         contains = False
 
@@ -52,7 +50,7 @@ def contains(
 
         return Metric(value=float(contains), attributes=metadata)
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 
 
 def detect_refusal(

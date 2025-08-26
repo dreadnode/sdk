@@ -2,6 +2,8 @@ import asyncio
 import typing as t
 from abc import ABC, abstractmethod
 
+from dreadnode.transforms import Transform, TransformLike
+
 from .trial import CandidateT, Trial
 
 
@@ -22,12 +24,12 @@ class BeamSearch(Search[CandidateT]):
 
     def __init__(
         self,
-        mutate_fn: t.Callable[[CandidateT], t.Awaitable[CandidateT]],
+        transform: TransformLike[CandidateT, CandidateT],
         initial_candidate: CandidateT,
         beam_width: int = 3,
         branching_factor: int = 3,
     ):
-        self.mutate_fn = mutate_fn
+        self.transform = transform if isinstance(transform, Transform) else Transform(transform)
         self.initial_candidate = initial_candidate
         self.beam_width = beam_width
         self.branching_factor = branching_factor
@@ -39,7 +41,7 @@ class BeamSearch(Search[CandidateT]):
 
         candidates = []
         for beam in self.beams:
-            coroutines = [self.mutate_fn(beam.candidate) for _ in range(self.branching_factor)]
+            coroutines = [self.transform(beam.candidate) for _ in range(self.branching_factor)]
             candidates.extend(await asyncio.gather(*coroutines))
 
         return candidates

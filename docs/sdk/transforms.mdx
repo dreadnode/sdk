@@ -1,0 +1,2503 @@
+---
+title: dreadnode.transforms
+---
+
+{/*
+::: dreadnode.transforms.ascii_art
+::: dreadnode.transforms.base
+::: dreadnode.transforms.cipher
+::: dreadnode.transforms.encoding
+::: dreadnode.transforms.llm_refine
+::: dreadnode.transforms.perturbation
+::: dreadnode.transforms.string
+::: dreadnode.transforms.substitution
+::: dreadnode.transforms.swap
+*/}
+
+ascii\_art
+----------
+
+```python
+ascii_art(
+    font: str = "rand", *, name: str = "ascii_art"
+) -> Transform[str, str]
+```
+
+Converts text into ASCII art using the 'art' library.
+
+<Accordion title="Source code in dreadnode/transforms/ascii_art.py" icon="code">
+```python
+def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, str]:
+    """Converts text into ASCII art using the 'art' library."""
+
+    try:
+        from art import text2art  # type: ignore[import-not-found,unused-ignore,import-untyped]
+    except ImportError as e:
+        raise ImportError("ascii_art requires 'art'. Install with: pip install art") from e
+
+    def transform(text: str, *, font: str = Config(font, help="The font to use")) -> str:
+        return str(text2art(text, font=font))
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+TransformCallable
+-----------------
+
+```python
+TransformCallable = (
+    Callable[[In], Awaitable[Out] | Out]
+    | Callable[Concatenate[In, ...], Awaitable[Out] | Out]
+)
+```
+
+A callable that takes an object and returns a compatible transform result.
+
+Transform
+---------
+
+```python
+Transform(
+    func: TransformCallable[In, Out],
+    *,
+    name: str | None = None,
+    catch: bool = False,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
+)
+```
+
+Represents a transformation operation that modifies the input data.
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+def __init__(
+    self,
+    func: TransformCallable[In, Out],
+    *,
+    name: str | None = None,
+    catch: bool = False,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
+):
+    super().__init__(t.cast("t.Callable[[In], Out]", func), config=config, context=context)
+
+    if name is None:
+        unwrapped = inspect.unwrap(func)
+        name = get_callable_name(unwrapped, short=True)
+
+    self.name = name
+    "The name of the transform, used for reporting and logging."
+    self.catch = catch
+    """
+    If True, catches exceptions during the transform and attempts to return the original,
+    unmodified object from the input. If False, exceptions are raised.
+    """
+```
+
+
+</Accordion>
+
+### catch
+
+```python
+catch = catch
+```
+
+If True, catches exceptions during the transform and attempts to return the original,
+unmodified object from the input. If False, exceptions are raised.
+
+### name
+
+```python
+name = name
+```
+
+The name of the transform, used for reporting and logging.
+
+### adapt
+
+```python
+adapt(
+    adapt_in: Callable[[OuterIn], In],
+    adapt_out: Callable[[Out], OuterOut],
+    name: str | None = None,
+) -> Transform[OuterIn, OuterOut]
+```
+
+Adapts a transform to operate with some other in/out types.
+
+This is a powerful wrapper that allows a generic transform (e.g., one that
+refines a string) to be used with a complex candidate object (e.g., a
+Pydantic model containing that string).
+
+**Parameters:**
+
+* **`adapt`**
+  –A function to extract the `T` from the `OuterT`.
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –An optional new name for the adapted scorer.
+
+**Returns:**
+
+* `Transform[OuterIn, OuterOut]`
+  –A new Scorer instance that operates on the `OuterT`.
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+def adapt(
+    self: "Transform[In, Out]",
+    adapt_in: t.Callable[[OuterIn], In],
+    adapt_out: t.Callable[[Out], OuterOut],
+    name: str | None = None,
+) -> "Transform[OuterIn, OuterOut]":
+    """
+    Adapts a transform to operate with some other in/out types.
+
+    This is a powerful wrapper that allows a generic transform (e.g., one that
+    refines a string) to be used with a complex candidate object (e.g., a
+    Pydantic model containing that string).
+
+    Args:
+        adapt: A function to extract the `T` from the `OuterT`.
+        name: An optional new name for the adapted scorer.
+
+    Returns:
+        A new Scorer instance that operates on the `OuterT`.
+    """
+    original = self
+
+    async def transform(object: OuterIn, *args: t.Any, **kwargs: t.Any) -> OuterOut:
+        adapted = adapt_in(object)
+        result = await original.transform(adapted, *args, **kwargs)
+        return adapt_out(result)
+
+    return Transform(transform, name=name or self.name)
+```
+
+
+</Accordion>
+
+### clone
+
+```python
+clone() -> Transform[In, Out]
+```
+
+Clone the transform.
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+def clone(self) -> "Transform[In, Out]":
+    """Clone the transform."""
+    return Transform(
+        func=self.func,
+        name=self.name,
+        catch=self.catch,
+        config=deepcopy(self.__dn_param_config__),
+        context=deepcopy(self.__dn_context__),
+    )
+```
+
+
+</Accordion>
+
+### rename
+
+```python
+rename(new_name: str) -> Transform[In, Out]
+```
+
+Rename the transform.
+
+**Parameters:**
+
+* **`new_name`**
+  (`str`)
+  –The new name for the transform.
+
+**Returns:**
+
+* `Transform[In, Out]`
+  –A new Transform with the updated name.
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+def rename(self, new_name: str) -> "Transform[In, Out]":
+    """
+    Rename the transform.
+
+    Args:
+        new_name: The new name for the transform.
+
+    Returns:
+        A new Transform with the updated name.
+    """
+    return self.with_(name=new_name)
+```
+
+
+</Accordion>
+
+### transform
+
+```python
+transform(object: In, *args: Any, **kwargs: Any) -> Out
+```
+
+Perform a transform from In to Out.
+
+**Parameters:**
+
+* **`object`**
+  (`In`)
+  –The input object to transform.
+
+**Returns:**
+
+* `Out`
+  –The transformed output object.
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+async def transform(self, object: In, *args: t.Any, **kwargs: t.Any) -> Out:
+    """
+    Perform a transform from In to Out.
+
+    Args:
+        object: The input object to transform.
+
+    Returns:
+        The transformed output object.
+    """
+    try:
+        bound_args = self._bind_args(object, *args, **kwargs)
+        result = t.cast(
+            "Out | t.Awaitable[Out]", self.func(*bound_args.args, **bound_args.kwargs)
+        )
+        if inspect.isawaitable(result):
+            result = await result
+
+    except Exception as e:
+        if not self.catch:
+            raise
+
+        # As a fallback, attempt to return the original object
+        warn_at_user_stacklevel(
+            f"Error executing transformation {self.name!r} for object {object!r}: {e}",
+            TransformWarning,
+        )
+        return t.cast("Out", object)
+
+    return result
+```
+
+
+</Accordion>
+
+### with\_
+
+```python
+with_(
+    *, name: str | None = None, catch: bool | None = None
+) -> Transform[In, Out]
+```
+
+Create a new Transform with updated properties.
+
+**Parameters:**
+
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –New name for the transform.
+* **`catch`**
+  (`bool | None`, default:
+  `None`
+  )
+  –Catch exceptions in the transform function.
+
+**Returns:**
+
+* `Transform[In, Out]`
+  –A new Transform with the updated properties
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+def with_(
+    self,
+    *,
+    name: str | None = None,
+    catch: bool | None = None,
+) -> "Transform[In, Out]":
+    """
+    Create a new Transform with updated properties.
+
+    Args:
+        name: New name for the transform.
+        catch: Catch exceptions in the transform function.
+
+    Returns:
+        A new Transform with the updated properties
+    """
+    new = self.clone()
+    new.name = name or self.name
+    new.catch = catch or self.catch
+    return new
+```
+
+
+</Accordion>
+
+TransformWarning
+----------------
+
+Warning issued for non-critical issues during transformations.
+atbash\_cipher
+--------------
+
+```python
+atbash_cipher(
+    *, name: str = "atbash"
+) -> Transform[str, str]
+```
+
+Encodes text using the Atbash cipher.
+
+<Accordion title="Source code in dreadnode/transforms/cipher.py" icon="code">
+```python
+def atbash_cipher(*, name: str = "atbash") -> Transform[str, str]:
+    """Encodes text using the Atbash cipher."""
+
+    def reverse(alphabet: str) -> str:
+        return alphabet[::-1]
+
+    def transform(text: str) -> str:
+        alphabet = (string.ascii_lowercase, string.ascii_uppercase, string.digits)
+        reversed_alphabet = tuple(map(reverse, alphabet))
+        translation_table = str.maketrans("".join(alphabet), "".join(reversed_alphabet))
+        return text.translate(translation_table)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+caesar\_cipher
+--------------
+
+```python
+caesar_cipher(
+    offset: int, *, name: str = "caesar"
+) -> Transform[str, str]
+```
+
+Encodes text using the Caesar cipher.
+
+<Accordion title="Source code in dreadnode/transforms/cipher.py" icon="code">
+```python
+def caesar_cipher(offset: int, *, name: str = "caesar") -> Transform[str, str]:
+    """Encodes text using the Caesar cipher."""
+
+    if not -25 <= offset <= 25:  # noqa: PLR2004
+        raise ValueError("Caesar offset must be between -25 and 25.")
+
+    def transform(
+        text: str, *, offset: int = Config(offset, ge=-25, le=25, help="The cipher offset")
+    ) -> str:
+        def shift(alphabet: str) -> str:
+            return alphabet[offset:] + alphabet[:offset]
+
+        alphabet = (string.ascii_lowercase, string.ascii_uppercase, string.digits)
+        shifted_alphabet = tuple(map(shift, alphabet))
+        translation_table = str.maketrans("".join(alphabet), "".join(shifted_alphabet))
+        return text.translate(translation_table)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+rot13\_cipher
+-------------
+
+```python
+rot13_cipher(*, name: str = 'rot13') -> Transform[str, str]
+```
+
+Encodes text using the ROT13 cipher.
+
+<Accordion title="Source code in dreadnode/transforms/cipher.py" icon="code">
+```python
+def rot13_cipher(*, name: str = "rot13") -> Transform[str, str]:
+    """Encodes text using the ROT13 cipher."""
+
+    def transform(text: str) -> str:
+        return codecs.encode(text, "rot13")
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+rot47\_cipher
+-------------
+
+```python
+rot47_cipher(*, name: str = 'rot47') -> Transform[str, str]
+```
+
+Encodes text using the ROT47 cipher.
+
+<Accordion title="Source code in dreadnode/transforms/cipher.py" icon="code">
+```python
+def rot47_cipher(*, name: str = "rot47") -> Transform[str, str]:
+    """Encodes text using the ROT47 cipher."""
+
+    def transform(text: str) -> str:
+        transformed = []
+        for char in text:
+            char_ord = ord(char)
+            if 33 <= char_ord <= 126:  # noqa: PLR2004
+                shifted_ord = char_ord + 47
+                if shifted_ord > 126:  # noqa: PLR2004
+                    shifted_ord -= 94
+                transformed.append(chr(shifted_ord))
+            else:
+                transformed.append(char)
+        return "".join(transformed)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+ascii85\_encode
+---------------
+
+```python
+ascii85_encode(
+    *, name: str = "ascii85"
+) -> Transform[str, str]
+```
+
+Encodes text to ASCII85.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def ascii85_encode(*, name: str = "ascii85") -> Transform[str, str]:
+    """Encodes text to ASCII85."""
+
+    def transform(text: str) -> str:
+        return base64.a85encode(text.encode("utf-8")).decode("ascii")
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+base32\_encode
+--------------
+
+```python
+base32_encode(
+    *, name: str = "base32"
+) -> Transform[str, str]
+```
+
+Encodes text to Base32.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def base32_encode(*, name: str = "base32") -> Transform[str, str]:
+    """Encodes text to Base32."""
+
+    def transform(text: str) -> str:
+        return base64.b32encode(text.encode("utf-8")).decode("ascii")
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+base64\_encode
+--------------
+
+```python
+base64_encode(
+    *, name: str = "base64"
+) -> Transform[str, str]
+```
+
+Encodes text to Base64.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def base64_encode(*, name: str = "base64") -> Transform[str, str]:
+    """Encodes text to Base64."""
+
+    def transform(text: str) -> str:
+        return base64.b64encode(text.encode("utf-8")).decode("utf-8")
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+binary\_encode
+--------------
+
+```python
+binary_encode(
+    bits_per_char: int = 16, *, name: str = "binary"
+) -> Transform[str, str]
+```
+
+Converts text into its binary representation.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def binary_encode(bits_per_char: int = 16, *, name: str = "binary") -> Transform[str, str]:
+    """Converts text into its binary representation."""
+
+    def transform(
+        text: str,
+        *,
+        bits_per_char: int = Config(bits_per_char, help="The number of bits per character"),
+    ) -> str:
+        max_code_point = max((ord(char) for char in text), default=0)
+        min_bits_required = max_code_point.bit_length()
+        if bits_per_char < min_bits_required:
+            raise ValueError(
+                f"bits_per_char={bits_per_char} is too small. Minimum required: {min_bits_required}."
+            )
+        return " ".join(format(ord(char), f"0{bits_per_char}b") for char in text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+hex\_encode
+-----------
+
+```python
+hex_encode(*, name: str = 'hex') -> Transform[str, str]
+```
+
+Encodes text to its hexadecimal representation.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def hex_encode(*, name: str = "hex") -> Transform[str, str]:
+    """Encodes text to its hexadecimal representation."""
+
+    def transform(text: str) -> str:
+        return text.encode("utf-8").hex().upper()
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+html\_escape
+------------
+
+```python
+html_escape(
+    *, name: str = "html_escape"
+) -> Transform[str, str]
+```
+
+Converts special characters to their HTML entities.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def html_escape(*, name: str = "html_escape") -> Transform[str, str]:
+    """Converts special characters to their HTML entities."""
+
+    def transform(text: str) -> str:
+        return html.escape(text, quote=True)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+url\_encode
+-----------
+
+```python
+url_encode(
+    *, name: str = "url_encode"
+) -> Transform[str, str]
+```
+
+URL-encodes text.
+
+<Accordion title="Source code in dreadnode/transforms/encoding.py" icon="code">
+```python
+def url_encode(*, name: str = "url_encode") -> Transform[str, str]:
+    """URL-encodes text."""
+
+    def transform(text: str) -> str:
+        return urllib.parse.quote(text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+llm\_refine
+-----------
+
+```python
+llm_refine(
+    model: str,
+    guidance: str,
+    *,
+    model_params: AnyDict | None = None,
+    name: str = "llm_refine",
+) -> Transform[str]
+```
+
+A generic transform that uses an LLM to refine a candidate.
+
+**Parameters:**
+
+* **`model`**
+  (`str`)
+  –The model to use for refining the candidate.
+* **`guidance`**
+  (`str`)
+  –The guidance to use for refining the candidate. Can be a string or a Lookup that resolves to a string.
+* **`model_params`**
+  (`AnyDict | None`, default:
+  `None`
+  )
+  –Optional model parameters (e.g. temperature, max\_tokens)
+* **`name`**
+  (`str`, default:
+  `'llm_refine'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/llm_refine.py" icon="code">
+```python
+def llm_refine(
+    model: str,
+    guidance: str,
+    *,
+    model_params: AnyDict | None = None,
+    name: str = "llm_refine",
+) -> Transform[str]:
+    """
+    A generic transform that uses an LLM to refine a candidate.
+
+    Args:
+        model: The model to use for refining the candidate.
+        guidance: The guidance to use for refining the candidate. Can be a string or a Lookup that resolves to a string.
+        model_params: Optional model parameters (e.g. temperature, max_tokens)
+        name: The name of the transform.
+    """
+
+    async def transform(object: str, *, model: str = Config(model, help="The model to use")) -> str:
+        nonlocal guidance
+
+        generator: rg.Generator
+        if isinstance(model, str):
+            generator = rg.get_generator(
+                model, params=rg.GenerateParams.model_validate(model_params) or rg.GenerateParams()
+            )
+        elif isinstance(model, rg.Generator):
+            generator = model
+        else:
+            raise TypeError("Model must be a string identifier or a Generator instance.")
+
+        refiner_input = Input(context=str(object), guidance=guidance)
+        refinement = await refine.bind(generator)(refiner_input)
+        return refinement.prompt
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+refine
+------
+
+```python
+refine(input: Input) -> Refinement
+```
+
+You will improve, refine, and create an updated prompt based on context and guidance.
+
+<Accordion title="Source code in dreadnode/transforms/llm_refine.py" icon="code">
+```python
+@rg.prompt
+def refine(input: Input) -> Refinement:  # type: ignore [empty-body]
+    """
+    You will improve, refine, and create an updated prompt based on context and guidance.
+    """
+```
+
+
+</Accordion>
+character\_space
+----------------
+
+```python
+character_space(
+    *, name: str = "character_space"
+) -> Transform[str, str]
+```
+
+Spaces out all characters and removes common punctuation.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def character_space(*, name: str = "character_space") -> Transform[str, str]:
+    """Spaces out all characters and removes common punctuation."""
+
+    def transform(text: str) -> str:
+        punctuation_to_remove = str.maketrans("", "", "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+        text_no_punc = text.translate(punctuation_to_remove)
+        return " ".join(text_no_punc)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+diacritic
+---------
+
+```python
+diacritic(
+    target_chars: str = "aeiou",
+    accent: Literal[
+        "acute", "grave", "tilde", "umlaut"
+    ] = "acute",
+    *,
+    name: str = "diacritic",
+) -> Transform[str, str]
+```
+
+Applies diacritics (accent marks) to specified characters in text.
+
+**Parameters:**
+
+* **`target_chars`**
+  (`str`, default:
+  `'aeiou'`
+  )
+  –The characters to apply diacritics to.
+* **`accent`**
+  (`Literal['acute', 'grave', 'tilde', 'umlaut']`, default:
+  `'acute'`
+  )
+  –The type of accent to apply.
+* **`name`**
+  (`str`, default:
+  `'diacritic'`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def diacritic(
+    target_chars: str = "aeiou",
+    accent: t.Literal["acute", "grave", "tilde", "umlaut"] = "acute",
+    *,
+    name: str = "diacritic",
+) -> Transform[str, str]:
+    """
+    Applies diacritics (accent marks) to specified characters in text.
+
+    Args:
+        target_chars: The characters to apply diacritics to.
+        accent: The type of accent to apply.
+        name: Name of the transform.
+    """
+    diacritics = {"acute": "\u0301", "grave": "\u0300", "tilde": "\u0303", "umlaut": "\u0308"}
+
+    def transform(
+        text: str,
+        *,
+        target_chars: str = Config(target_chars, help="The characters to apply diacritics to"),
+        accent: str = Config(accent, help="The type of accent to apply"),
+    ) -> str:
+        accent_mark = diacritics[accent]
+        target_set = set(target_chars.lower())
+        return "".join(
+            # Normalize with NFC to correctly combine characters and accents
+            unicodedata.normalize("NFC", char + accent_mark) if char.lower() in target_set else char
+            for char in text
+        )
+
+    return Transform(transform, name=name or f"diacritic_{accent}")
+```
+
+
+</Accordion>
+
+insert\_punctuation
+-------------------
+
+```python
+insert_punctuation(
+    *,
+    ratio: float = 0.2,
+    punctuations: list[str] | None = None,
+    seed: int | None = None,
+    name: str = "insert_punctuation",
+) -> Transform[str, str]
+```
+
+Inserts punctuation randomly between words in text.
+
+**Parameters:**
+
+* **`ratio`**
+  (`float`, default:
+  `0.2`
+  )
+  –The ratio of word pairs to insert punctuation between (0.0 to 1.0).
+* **`punctuations`**
+  (`list[str] | None`, default:
+  `None`
+  )
+  –A list of custom punctuation characters to use (default: all ASCII punctuation).
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Random seed for reproducibility.
+* **`name`**
+  (`str`, default:
+  `'insert_punctuation'`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def insert_punctuation(
+    *,
+    ratio: float = 0.2,
+    punctuations: list[str] | None = None,
+    seed: int | None = None,
+    name: str = "insert_punctuation",
+) -> Transform[str, str]:
+    """
+    Inserts punctuation randomly between words in text.
+
+    Args:
+        ratio: The ratio of word pairs to insert punctuation between (0.0 to 1.0).
+        punctuations: A list of custom punctuation characters to use (default: all ASCII punctuation).
+        seed: Random seed for reproducibility.
+        name: Name of the transform.
+    """
+
+    if not 0.0 < ratio <= 1.0:
+        raise ValueError("Insertion ratio must be between 0.0 and 1.0.")
+
+    rand = random.Random(seed)  # noqa: S311  # nosec
+    punctuations = punctuations or list(string.punctuation)
+
+    def transform(
+        text: str,
+        *,
+        ratio: float = Config(
+            ratio, ge=0.0, le=1.0, help="The ratio of word pairs to insert punctuation between"
+        ),
+    ) -> str:
+        words = text.split()
+        if not words:
+            return text
+        num_to_insert = max(1, round(len(words) * ratio))
+        indices = rand.sample(range(len(words)), k=min(len(words), num_to_insert))
+
+        for i in sorted(indices, reverse=True):
+            punc = rand.choice(punctuations)
+            if rand.choice([True, False]):
+                words[i] = punc + words[i]
+            else:
+                words[i] = words[i] + punc
+        return " ".join(words)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+random\_capitalization
+----------------------
+
+```python
+random_capitalization(
+    *,
+    ratio: float = 0.2,
+    seed: int | None = None,
+    name: str = "random_capitalization",
+) -> Transform[str, str]
+```
+
+Randomly capitalizes a ratio of lowercase letters in text.
+
+**Parameters:**
+
+* **`ratio`**
+  (`float`, default:
+  `0.2`
+  )
+  –The ratio of lowercase letters to capitalize (0.0 to 1.0).
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Random seed for reproducibility.
+* **`name`**
+  (`str`, default:
+  `'random_capitalization'`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def random_capitalization(
+    *,
+    ratio: float = 0.2,
+    seed: int | None = None,
+    name: str = "random_capitalization",
+) -> Transform[str, str]:
+    """
+    Randomly capitalizes a ratio of lowercase letters in text.
+
+    Args:
+        ratio: The ratio of lowercase letters to capitalize (0.0 to 1.0).
+        seed: Random seed for reproducibility.
+        name: Name of the transform.
+    """
+
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError("Capitalization ratio must be between 0.0 and 1.0.")
+
+    rand = random.Random(seed)  # noqa: S311  # nosec
+
+    def transform(
+        text: str,
+        *,
+        ratio: float = Config(
+            ratio, ge=0.0, le=1.0, help="The ratio of lowercase letters to capitalize"
+        ),
+    ) -> str:
+        chars = list(text)
+        indices = [i for i, char in enumerate(chars) if "a" <= char <= "z"]
+        num_to_capitalize = int(len(indices) * ratio)
+        indices_to_capitalize = rand.sample(indices, k=num_to_capitalize)
+        for i in indices_to_capitalize:
+            chars[i] = chars[i].upper()
+        return "".join(chars)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+underline
+---------
+
+```python
+underline(
+    *, name: str = "underline"
+) -> Transform[str, str]
+```
+
+Adds an underline effect to each character using Unicode combining characters.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def underline(*, name: str = "underline") -> Transform[str, str]:
+    """Adds an underline effect to each character using Unicode combining characters."""
+
+    def transform(text: str) -> str:
+        return "".join(char + "\u0332" for char in text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+unicode\_confusable
+-------------------
+
+```python
+unicode_confusable(
+    *,
+    ratio: float = 1.0,
+    deterministic: bool = False,
+    seed: int | None = None,
+    name: str = "unicode_confusable",
+) -> Transform[str, str]
+```
+
+Replaces characters with visually similar Unicode characters (homoglyphs).
+
+**Parameters:**
+
+* **`ratio`**
+  (`float`, default:
+  `1.0`
+  )
+  –The ratio of characters to apply the effect to (0.0-1.0).
+* **`deterministic`**
+  (`bool`, default:
+  `False`
+  )
+  –Whether to use a deterministic random seed.
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Random seed for reproducibility.
+* **`name`**
+  (`str`, default:
+  `'unicode_confusable'`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def unicode_confusable(
+    *,
+    ratio: float = 1.0,
+    deterministic: bool = False,
+    seed: int | None = None,
+    name: str = "unicode_confusable",
+) -> Transform[str, str]:
+    """
+    Replaces characters with visually similar Unicode characters (homoglyphs).
+
+    Args:
+        ratio: The ratio of characters to apply the effect to (0.0-1.0).
+        deterministic: Whether to use a deterministic random seed.
+        seed: Random seed for reproducibility.
+        name: Name of the transform.
+    """
+
+    try:
+        from confusables import (  # type: ignore[import-not-found,unused-ignore,import-untyped]
+            confusable_characters,
+        )
+    except ImportError as e:
+        raise ImportError(
+            "unicode_confusable requires 'confusables'. Install with: pip install confusables"
+        ) from e
+
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError("Application ratio must be between 0.0 and 1.0.")
+
+    rand = random.Random(seed)  # noqa: S311  # nosec
+
+    def transform(
+        text: str,
+        *,
+        ratio: float = Config(
+            ratio, ge=0.0, le=1.0, help="The ratio of characters to apply the effect to"
+        ),
+        deterministic: bool = Config(
+            deterministic, help="Whether to always take the first replacement option"
+        ),
+    ) -> str:
+        chars = list(text)
+        eligible_indices = [i for i, char in enumerate(chars) if confusable_characters(char)]
+        num_to_apply = int(len(eligible_indices) * ratio)
+        indices_to_apply = rand.sample(eligible_indices, k=num_to_apply)
+
+        for i in indices_to_apply:
+            options = confusable_characters(chars[i])
+            if options:
+                # The original character is the first in the list
+                replacement_options = options[1:]
+                if replacement_options:
+                    if deterministic:
+                        chars[i] = replacement_options[0]
+                    else:
+                        chars[i] = rand.choice(replacement_options)
+        return "".join(chars)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+unicode\_replacement
+--------------------
+
+```python
+unicode_replacement(
+    *,
+    encode_spaces: bool = False,
+    name: str = "unicode_replacement",
+) -> Transform[str, str]
+```
+
+Converts text to its Unicode escape sequence representation (e.g., 'A' -> '\u0041').
+
+**Parameters:**
+
+* **`encode_spaces`**
+  (`bool`, default:
+  `False`
+  )
+  –Whether to encode spaces as Unicode escape sequences.
+* **`name`**
+  (`str`, default:
+  `'unicode_replacement'`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def unicode_replacement(
+    *, encode_spaces: bool = False, name: str = "unicode_replacement"
+) -> Transform[str, str]:
+    """
+    Converts text to its Unicode escape sequence representation (e.g., 'A' -> '\\u0041').
+
+    Args:
+        encode_spaces: Whether to encode spaces as Unicode escape sequences.
+        name: Name of the transform.
+    """
+
+    def transform(text: str) -> str:
+        result = "".join(f"\\u{ord(ch):04x}" for ch in text)
+        if not encode_spaces:
+            result = result.replace("\\u0020", " ")
+        return result
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+unicode\_substitution
+---------------------
+
+```python
+unicode_substitution(
+    *,
+    start_value: int = 917504,
+    name: str = "unicode_substitution",
+) -> Transform[str, str]
+```
+
+Substitutes characters with Unicode characters from a specified private use area.
+
+**Parameters:**
+
+* **`start_value`**
+  (`int`, default:
+  `917504`
+  )
+  –The starting Unicode code point for the substitution.
+* **`name`**
+  (`str`, default:
+  `'unicode_substitution'`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def unicode_substitution(
+    *, start_value: int = 0xE0000, name: str = "unicode_substitution"
+) -> Transform[str, str]:
+    """
+    Substitutes characters with Unicode characters from a specified private use area.
+
+    Args:
+        start_value: The starting Unicode code point for the substitution.
+        name: Name of the transform.
+    """
+
+    def transform(text: str) -> str:
+        return "".join(chr(start_value + ord(ch)) for ch in text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+zalgo
+-----
+
+```python
+zalgo(
+    intensity: int = 10,
+    *,
+    ratio: float = 1.0,
+    seed: int | None = None,
+    name: str | None = None,
+) -> Transform[str, str]
+```
+
+Converts text into 'zalgo' text by adding random combining characters.
+
+**Parameters:**
+
+* **`intensity`**
+  (`int`, default:
+  `10`
+  )
+  –The intensity of the zalgo effect (0-100).
+* **`ratio`**
+  (`float`, default:
+  `1.0`
+  )
+  –The ratio of characters to apply the effect to (0.0-1.0).
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Random seed for reproducibility.
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –Name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def zalgo(
+    intensity: int = 10,
+    *,
+    ratio: float = 1.0,
+    seed: int | None = None,
+    name: str | None = None,
+) -> Transform[str, str]:
+    """
+    Converts text into 'zalgo' text by adding random combining characters.
+
+    Args:
+        intensity: The intensity of the zalgo effect (0-100).
+        ratio: The ratio of characters to apply the effect to (0.0-1.0).
+        seed: Random seed for reproducibility.
+        name: Name of the transform.
+    """
+    if not 0 <= intensity <= 100:  # noqa: PLR2004
+        raise ValueError("Intensity must be between 0 and 100.")
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError("Application ratio must be between 0.0 and 1.0.")
+
+    # Unicode combining diacritical marks range
+    zalgo_marks = [chr(code) for code in range(0x0300, 0x036F + 1)]
+    rand = random.Random(seed)  # noqa: S311  # nosec
+
+    def transform(
+        text: str,
+        *,
+        intensity: int = Config(intensity, ge=0, le=100, help="The intensity of the zalgo effect"),
+        ratio: float = Config(
+            ratio, ge=0.0, le=1.0, help="The ratio of characters to apply the effect to"
+        ),
+    ) -> str:
+        if intensity == 0 or ratio == 0.0:
+            return text
+
+        chars = list(text)
+        # Identify indices of alphanumeric characters eligible for zalgo
+        eligible_indices = [i for i, char in enumerate(chars) if char.isalnum()]
+        num_to_apply = int(len(eligible_indices) * ratio)
+        indices_to_apply = rand.sample(eligible_indices, k=num_to_apply)
+
+        for i in indices_to_apply:
+            num_marks = rand.randint(1, intensity)
+            zalgo_chars = "".join(rand.choices(zalgo_marks, k=num_marks))
+            chars[i] += zalgo_chars
+
+        return "".join(chars)
+
+    return Transform(transform, name=name or f"zalgo_{intensity}")
+```
+
+
+</Accordion>
+
+zero\_width
+-----------
+
+```python
+zero_width(
+    *, name: str = "zero_width"
+) -> Transform[str, str]
+```
+
+Injects zero-width spaces between every character in the text.
+
+<Accordion title="Source code in dreadnode/transforms/perturbation.py" icon="code">
+```python
+def zero_width(*, name: str = "zero_width") -> Transform[str, str]:
+    """Injects zero-width spaces between every character in the text."""
+
+    def transform(text: str) -> str:
+        return "\u200b".join(text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+affix
+-----
+
+```python
+affix(
+    text_to_add: str,
+    *,
+    position: Literal["prefix", "suffix"] = "prefix",
+    delimiter: str = " ",
+    name: str = "affix",
+) -> Transform[str, str]
+```
+
+Adds text as a prefix or suffix to the input string.
+
+**Parameters:**
+
+* **`text_to_add`**
+  (`str`)
+  –The string to be added.
+* **`position`**
+  (`Literal['prefix', 'suffix']`, default:
+  `'prefix'`
+  )
+  –'prefix' to add to the beginning, 'suffix' to add to the end.
+* **`delimiter`**
+  (`str`, default:
+  `' '`
+  )
+  –The string used to join the original and new text. Use "" for none.
+* **`name`**
+  (`str`, default:
+  `'affix'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def affix(
+    text_to_add: str,
+    *,
+    position: t.Literal["prefix", "suffix"] = "prefix",
+    delimiter: str = " ",
+    name: str = "affix",
+) -> Transform[str, str]:
+    """
+    Adds text as a prefix or suffix to the input string.
+
+    Args:
+        text_to_add: The string to be added.
+        position: 'prefix' to add to the beginning, 'suffix' to add to the end.
+        delimiter: The string used to join the original and new text. Use "" for none.
+        name: The name of the transform.
+    """
+    if not text_to_add:
+        raise ValueError("Text to add cannot be empty.")
+
+    def transform(
+        text: str,
+        *,
+        delimiter: str = Config(
+            delimiter, help="The string used to join the original and new text"
+        ),
+        position: t.Literal["prefix", "suffix"] = Config(
+            position, help="The position to add the text"
+        ),
+    ) -> str:
+        if position == "prefix":
+            return text_to_add + delimiter + text
+        return text + delimiter + text_to_add
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+char\_join
+----------
+
+```python
+char_join(
+    delimiter: str = "-", *, name: str = "char_join"
+) -> Transform[str, str]
+```
+
+Joins each character of a string with a delimiter.
+
+**Parameters:**
+
+* **`delimiter`**
+  (`str`, default:
+  `'-'`
+  )
+  –The string to insert between each character.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def char_join(delimiter: str = "-", *, name: str = "char_join") -> Transform[str, str]:
+    """
+    Joins each character of a string with a delimiter.
+
+    Args:
+        delimiter: The string to insert between each character.
+    """
+    return join(delimiter, unit="char", name=name)
+```
+
+
+</Accordion>
+
+join
+----
+
+```python
+join(
+    delimiter: str,
+    *,
+    unit: Literal["char", "word"] = "char",
+    name: str = "join",
+) -> Transform[str, str]
+```
+
+Joins the units (characters or words) of a string with a delimiter.
+
+**Parameters:**
+
+* **`delimiter`**
+  (`str`)
+  –The string to insert between each unit.
+* **`unit`**
+  (`Literal['char', 'word']`, default:
+  `'char'`
+  )
+  –The unit of text to operate on ('char' or 'word').
+* **`name`**
+  (`str`, default:
+  `'join'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def join(
+    delimiter: str,
+    *,
+    unit: t.Literal["char", "word"] = "char",
+    name: str = "join",
+) -> Transform[str, str]:
+    """
+    Joins the units (characters or words) of a string with a delimiter.
+
+    Args:
+        delimiter: The string to insert between each unit.
+        unit: The unit of text to operate on ('char' or 'word').
+        name: The name of the transform.
+    """
+
+    def transform(
+        text: str,
+        *,
+        delimiter: str = Config(delimiter, help="The string to insert between each unit"),
+    ) -> str:
+        items = list(text) if unit == "char" else text.split()
+        return delimiter.join(items)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+prefix
+------
+
+```python
+prefix(
+    text: str, *, name: str = "prefix"
+) -> Transform[str, str]
+```
+
+Prepends a specified prefix to the input text with a space.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def prefix(text: str, *, name: str = "prefix") -> Transform[str, str]:
+    """Prepends a specified prefix to the input text with a space."""
+    return affix(text, position="prefix", delimiter=" ", name=name)
+```
+
+
+</Accordion>
+
+reverse
+-------
+
+```python
+reverse(*, name: str = 'reverse') -> Transform[str, str]
+```
+
+Reverses the order of characters in a string.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def reverse(*, name: str = "reverse") -> Transform[str, str]:
+    """Reverses the order of characters in a string."""
+
+    def transform(text: str) -> str:
+        return text[::-1]
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+search\_replace
+---------------
+
+```python
+search_replace(
+    pattern: str | Pattern[str],
+    replacement: str | list[str],
+    *,
+    regex: bool = False,
+    case_sensitive: bool = False,
+    seed: int | None = None,
+    deterministic: bool = False,
+    name: str = "search_replace",
+) -> Transform[str, str]
+```
+
+Replaces text matching a literal string or a regex pattern.
+
+**Parameters:**
+
+* **`pattern`**
+  (`str | Pattern[str]`)
+  –String or compiled regex pattern to search for.
+* **`replacement`**
+  (`str | list[str]`)
+  –The string or list of strings to use for replacement.
+* **`regex`**
+  (`bool`, default:
+  `False`
+  )
+  –If True, the string `pattern` is treated as a regex.
+  This is ignored if `pattern` is already a compiled re.Pattern.
+* **`case_sensitive`**
+  (`bool`, default:
+  `False`
+  )
+  –If False, matching is case-insensitive.
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Seed for the random number generator for reproducibility.
+* **`deterministic`**
+  (`bool`, default:
+  `False`
+  )
+  –If True, always picks the first replacement option from a list.
+* **`name`**
+  (`str`, default:
+  `'search_replace'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def search_replace(
+    pattern: str | re.Pattern[str],
+    replacement: str | list[str],
+    *,
+    regex: bool = False,
+    case_sensitive: bool = False,
+    seed: int | None = None,
+    deterministic: bool = False,
+    name: str = "search_replace",
+) -> Transform[str, str]:
+    """
+    Replaces text matching a literal string or a regex pattern.
+
+    Args:
+        pattern: String or compiled regex pattern to search for.
+        replacement: The string or list of strings to use for replacement.
+        regex: If True, the string `pattern` is treated as a regex.
+               This is ignored if `pattern` is already a compiled re.Pattern.
+        case_sensitive: If False, matching is case-insensitive.
+        seed: Seed for the random number generator for reproducibility.
+        deterministic: If True, always picks the first replacement option from a list.
+        name: The name of the transform.
+    """
+    rand = random.Random(seed)  # noqa: S311  # nosec
+    replace_list = [replacement] if isinstance(replacement, str) else replacement
+
+    def transform(text: str) -> str:
+        if deterministic or len(replace_list) == 1:
+            chosen_replacement = replace_list[0]
+        else:
+            chosen_replacement = rand.choice(replace_list)
+
+        is_regex_mode = regex or isinstance(pattern, re.Pattern)
+
+        if is_regex_mode:
+            re_flags = 0 if case_sensitive else re.IGNORECASE
+            return re.sub(pattern, chosen_replacement, text, flags=re_flags)
+
+        if case_sensitive:
+            return text.replace(t.cast("str", pattern), chosen_replacement)
+
+        return re.sub(
+            re.escape(t.cast("str", pattern)),
+            chosen_replacement,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+suffix
+------
+
+```python
+suffix(
+    text: str, *, name: str = "suffix"
+) -> Transform[str, str]
+```
+
+Appends a specified suffix to the input text with a space.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def suffix(text: str, *, name: str = "suffix") -> Transform[str, str]:
+    """Appends a specified suffix to the input text with a space."""
+    return affix(text, position="suffix", delimiter=" ", name=name)
+```
+
+
+</Accordion>
+
+word\_join
+----------
+
+```python
+word_join(
+    delimiter: str = "-", *, name: str = "word_join"
+) -> Transform[str, str]
+```
+
+Joins each word of a string with a delimiter.
+
+**Parameters:**
+
+* **`delimiter`**
+  (`str`, default:
+  `'-'`
+  )
+  –The string to insert between each word.
+
+<Accordion title="Source code in dreadnode/transforms/string.py" icon="code">
+```python
+def word_join(delimiter: str = "-", *, name: str = "word_join") -> Transform[str, str]:
+    """
+    Joins each word of a string with a delimiter.
+
+    Args:
+        delimiter: The string to insert between each word.
+    """
+    return join(delimiter, unit="word", name=name)
+```
+
+
+</Accordion>
+braille
+-------
+
+```python
+braille(*, name: str = 'braille') -> Transform[str, str]
+```
+
+Converts ASCII text to Grade 1 Braille.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def braille(*, name: str = "braille") -> Transform[str, str]:
+    """Converts ASCII text to Grade 1 Braille."""
+
+    def transform(text: str) -> str:
+        result = []
+        for char in text:
+            if "A" <= char <= "Z":
+                result.append(BRAILLE_CAPITAL_INDICATOR)
+                result.append(BRAILLE_MAP.get(char.lower(), char.lower()))
+            else:
+                result.append(BRAILLE_MAP.get(char, char))
+        return "".join(result)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+bubble\_text
+------------
+
+```python
+bubble_text(
+    *, name: str = "bubble_text"
+) -> Transform[str, str]
+```
+
+Converts alphanumeric characters to their Unicode bubble equivalents.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def bubble_text(*, name: str = "bubble_text") -> Transform[str, str]:
+    """Converts alphanumeric characters to their Unicode bubble equivalents."""
+
+    return substitute(
+        mapping=BUBBLE_MAP,
+        unit="char",
+        name=name,
+    )
+```
+
+
+</Accordion>
+
+cursive
+-------
+
+```python
+cursive(*, name: str = 'cursive') -> Transform[str, str]
+```
+
+Converts text to a cursive style using Unicode.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def cursive(*, name: str = "cursive") -> Transform[str, str]:
+    """Converts text to a cursive style using Unicode."""
+
+    return substitute(
+        mapping=CURSIVE_MAP,
+        unit="char",
+        name=name,
+    )
+```
+
+
+</Accordion>
+
+double\_struck
+--------------
+
+```python
+double_struck(
+    *, name: str = "double_struck"
+) -> Transform[str, str]
+```
+
+Converts text to a double-struck (blackboard bold) style.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def double_struck(*, name: str = "double_struck") -> Transform[str, str]:
+    """Converts text to a double-struck (blackboard bold) style."""
+
+    return substitute(
+        mapping=DOUBLE_STRUCK_MAP,
+        unit="char",
+        name=name,
+    )
+```
+
+
+</Accordion>
+
+elder\_futhark
+--------------
+
+```python
+elder_futhark(
+    *, name: str = "elder_futhark"
+) -> Transform[str, str]
+```
+
+Converts Latin text to Elder Futhark runes.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def elder_futhark(*, name: str = "elder_futhark") -> Transform[str, str]:
+    """Converts Latin text to Elder Futhark runes."""
+
+    sorted_map_keys = sorted(ELDER_FUTHARK_MAP.keys(), key=len, reverse=True)
+
+    def transform(text: str) -> str:
+        upper_text = text.upper()
+        result = []
+        i = 0
+        while i < len(upper_text):
+            for key in sorted_map_keys:
+                if upper_text.startswith(key, i):
+                    result.append(ELDER_FUTHARK_MAP[key])
+                    i += len(key)
+                    break
+            else:
+                result.append(upper_text[i])
+                i += 1
+        return "".join(result)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+greek\_letters
+--------------
+
+```python
+greek_letters(
+    *, name: str = "greek_letters"
+) -> Transform[str, str]
+```
+
+Replaces Latin letters with visually similar Greek letters.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def greek_letters(*, name: str = "greek_letters") -> Transform[str, str]:
+    """Replaces Latin letters with visually similar Greek letters."""
+
+    sorted_map_keys = sorted(GREEK_MAP.keys(), key=len, reverse=True)
+
+    def transform(text: str) -> str:
+        result = ""
+        i = 0
+        while i < len(text):
+            for key in sorted_map_keys:
+                if text.startswith(key, i):
+                    result += GREEK_MAP[key]
+                    i += len(key)
+                    break
+            else:
+                result += text[i]
+                i += 1
+        return result
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+leet\_speak
+-----------
+
+```python
+leet_speak(
+    *,
+    deterministic: bool = False,
+    seed: int | None = None,
+    name: str = "leet_speak",
+) -> Transform[str, str]
+```
+
+Converts text to leetspeak.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def leet_speak(
+    *,
+    deterministic: bool = False,
+    seed: int | None = None,
+    name: str = "leet_speak",
+) -> Transform[str, str]:
+    """Converts text to leetspeak."""
+    return substitute(
+        mapping=LEET_SPEAK_MAP,
+        unit="char",
+        case_sensitive=False,
+        deterministic=deterministic,
+        seed=seed,
+        name=name,
+    )
+```
+
+
+</Accordion>
+
+medieval
+--------
+
+```python
+medieval(*, name: str = 'medieval') -> Transform[str, str]
+```
+
+Converts text to a Medieval (Fraktur/Blackletter) style.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def medieval(*, name: str = "medieval") -> Transform[str, str]:
+    """Converts text to a Medieval (Fraktur/Blackletter) style."""
+
+    return substitute(
+        mapping=FRAKTUR_MAP,
+        unit="char",
+        name=name,
+    )
+```
+
+
+</Accordion>
+
+mirror
+------
+
+```python
+mirror(*, name: str = 'mirror') -> Transform[str, str]
+```
+
+Mirrors text horizontally using reversed string and Unicode counterparts.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def mirror(*, name: str = "mirror") -> Transform[str, str]:
+    """Mirrors text horizontally using reversed string and Unicode counterparts."""
+
+    def transform(text: str) -> str:
+        reversed_text = text[::-1]
+        return "".join(MIRROR_MAP.get(char, char) for char in reversed_text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+monospace
+---------
+
+```python
+monospace(
+    *, name: str = "monospace"
+) -> Transform[str, str]
+```
+
+Converts text to a Monospace style using Unicode.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def monospace(*, name: str = "monospace") -> Transform[str, str]:
+    """Converts text to a Monospace style using Unicode."""
+
+    return substitute(
+        mapping=MONOSPACE_MAP,
+        unit="char",
+        name=name,
+    )
+```
+
+
+</Accordion>
+
+morse\_code
+-----------
+
+```python
+morse_code(
+    *, name: str = "morse_code"
+) -> Transform[str, str]
+```
+
+Converts text to Morse code.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def morse_code(*, name: str = "morse_code") -> Transform[str, str]:
+    """Converts text to Morse code."""
+
+    def transform(text: str) -> str:
+        text_clean = " ".join([line.strip() for line in str.splitlines(text)])
+        return " ".join([MORSE_MAP.get(char, MORSE_ERROR) for char in text_clean.upper()])
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+nato\_phonetic
+--------------
+
+```python
+nato_phonetic(
+    *, name: str = "nato_phonetic"
+) -> Transform[str, str]
+```
+
+Converts a string to the NATO phonetic alphabet.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def nato_phonetic(*, name: str = "nato_phonetic") -> Transform[str, str]:
+    """Converts a string to the NATO phonetic alphabet."""
+
+    def transform(text: str) -> str:
+        return " ".join(NATO_MAP.get(char.upper(), char) for char in text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+pig\_latin
+----------
+
+```python
+pig_latin(
+    *, name: str = "pig_latin"
+) -> Transform[str, str]
+```
+
+Converts text to Pig Latin.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def pig_latin(*, name: str = "pig_latin") -> Transform[str, str]:
+    """Converts text to Pig Latin."""
+
+    def _to_pig_latin_word(word: str) -> str:
+        if not word or not word.isalpha():
+            return word
+        vowels = "aeiouAEIOU"
+        if word[0] in vowels:
+            return word + "way"
+        for i, char in enumerate(word):
+            if char in vowels:
+                return word[i:] + word[:i] + "ay"
+        return word + "ay"
+
+    def transform(text: str) -> str:
+        words = re.findall(r"\w+|[^\w\s]", text)
+        return "".join(_to_pig_latin_word(word) for word in words)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+small\_caps
+-----------
+
+```python
+small_caps(
+    *, name: str = "small_caps"
+) -> Transform[str, str]
+```
+
+Converts lowercase letters to Unicode small caps.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def small_caps(*, name: str = "small_caps") -> Transform[str, str]:
+    """Converts lowercase letters to Unicode small caps."""
+
+    def transform(text: str) -> str:
+        return "".join(SMALL_CAPS_MAP.get(char.lower(), char) for char in text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+substitute
+----------
+
+```python
+substitute(
+    mapping: Mapping[str, str | list[str]],
+    *,
+    unit: Literal["char", "word"] = "word",
+    case_sensitive: bool = False,
+    deterministic: bool = False,
+    seed: int | None = None,
+    name: str = "substitute",
+) -> Transform[str, str]
+```
+
+Substitutes characters or words based on a provided mapping.
+
+**Parameters:**
+
+* **`mapping`**
+  (`Mapping[str, str | list[str]]`)
+  –A dictionary where keys are units to be replaced and
+  values are a list of possible replacements.
+* **`unit`**
+  (`Literal['char', 'word']`, default:
+  `'word'`
+  )
+  –The unit of text to operate on ('char' or 'word').
+* **`case_sensitive`**
+  (`bool`, default:
+  `False`
+  )
+  –If False, matching is case-insensitive.
+* **`deterministic`**
+  (`bool`, default:
+  `False`
+  )
+  –If True, always picks the first replacement option.
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Seed for the random number generator for reproducibility.
+* **`name`**
+  (`str`, default:
+  `'substitute'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def substitute(
+    mapping: t.Mapping[str, str | list[str]],
+    *,
+    unit: t.Literal["char", "word"] = "word",
+    case_sensitive: bool = False,
+    deterministic: bool = False,
+    seed: int | None = None,
+    name: str = "substitute",
+) -> Transform[str, str]:
+    """
+    Substitutes characters or words based on a provided mapping.
+
+    Args:
+        mapping: A dictionary where keys are units to be replaced and
+                 values are a list of possible replacements.
+        unit: The unit of text to operate on ('char' or 'word').
+        case_sensitive: If False, matching is case-insensitive.
+        deterministic: If True, always picks the first replacement option.
+        seed: Seed for the random number generator for reproducibility.
+        name: The name of the transform.
+    """
+
+    rand = random.Random(seed)  # noqa: S311  # nosec
+
+    def transform(text: str) -> str:
+        # Normalize mapping keys for case-insensitive matching if needed
+        lookup_map = mapping if case_sensitive else {k.lower(): v for k, v in mapping.items()}
+
+        def get_replacement(item: str) -> str:
+            key = item if case_sensitive else item.lower()
+            if key in lookup_map:
+                options = lookup_map[key]
+                if isinstance(options, str):
+                    return options
+                if deterministic:
+                    return options[0]
+                return rand.choice(options)
+            return item
+
+        if unit == "char":
+            return "".join(get_replacement(char) for char in text)
+
+        # For 'word' unit, we use regex to preserve punctuation and spacing
+        words = re.findall(r"\w+|\S+", text)
+        substituted_words = [get_replacement(word) for word in words]
+
+        # Rejoin intelligently to handle spacing around punctuation
+        result = " ".join(substituted_words)
+        return re.sub(r'\s([?.!,"\'`])', r"\1", result).strip()
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+
+wingdings
+---------
+
+```python
+wingdings(
+    *, name: str = "wingdings"
+) -> Transform[str, str]
+```
+
+Converts text to Wingdings-like symbols using a best-effort Unicode mapping.
+
+<Accordion title="Source code in dreadnode/transforms/substitution.py" icon="code">
+```python
+def wingdings(*, name: str = "wingdings") -> Transform[str, str]:
+    """Converts text to Wingdings-like symbols using a best-effort Unicode mapping."""
+
+    def transform(text: str) -> str:
+        return "".join(WINGDINGS_MAP.get(char.upper(), char) for char in text)
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>
+adjacent\_char\_swap
+--------------------
+
+```python
+adjacent_char_swap(
+    *,
+    ratio: float = 0.1,
+    seed: int | None = None,
+    name: str = "adjacent_char_swap",
+) -> Transform[str, str]
+```
+
+Perturbs text by swapping a ratio of adjacent characters.
+
+**Parameters:**
+
+* **`ratio`**
+  (`float`, default:
+  `0.1`
+  )
+  –The proportion of characters to swap (0.0 to 1.0).
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Seed for the random number generator.
+* **`name`**
+  (`str`, default:
+  `'adjacent_char_swap'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/swap.py" icon="code">
+```python
+def adjacent_char_swap(
+    *,
+    ratio: float = 0.1,
+    seed: int | None = None,
+    name: str = "adjacent_char_swap",
+) -> Transform[str, str]:
+    """
+    Perturbs text by swapping a ratio of adjacent characters.
+
+    Args:
+        ratio: The proportion of characters to swap (0.0 to 1.0).
+        seed: Seed for the random number generator.
+        name: The name of the transform.
+    """
+    return swap(unit="char", mode="adjacent", ratio=ratio, seed=seed, name=name)
+```
+
+
+</Accordion>
+
+random\_word\_reorder
+---------------------
+
+```python
+random_word_reorder(
+    *,
+    ratio: float = 0.1,
+    seed: int | None = None,
+    name: str = "random_word_reorder",
+) -> Transform[str, str]
+```
+
+Randomly reorders a ratio of words within the text.
+
+**Parameters:**
+
+* **`ratio`**
+  (`float`, default:
+  `0.1`
+  )
+  –The proportion of words to reorder (0.0 to 1.0).
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Seed for the random number generator.
+* **`name`**
+  (`str`, default:
+  `'random_word_reorder'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/swap.py" icon="code">
+```python
+def random_word_reorder(
+    *,
+    ratio: float = 0.1,
+    seed: int | None = None,
+    name: str = "random_word_reorder",
+) -> Transform[str, str]:
+    """
+    Randomly reorders a ratio of words within the text.
+
+    Args:
+        ratio: The proportion of words to reorder (0.0 to 1.0).
+        seed: Seed for the random number generator.
+        name: The name of the transform.
+    """
+    return swap(unit="word", mode="random", ratio=ratio, seed=seed, name=name)
+```
+
+
+</Accordion>
+
+swap
+----
+
+```python
+swap(
+    *,
+    unit: Literal["char", "word"] = "char",
+    mode: Literal["adjacent", "random"] = "adjacent",
+    ratio: float = 0.1,
+    seed: int | None = None,
+    name: str = "general_swap",
+) -> Transform[str, str]
+```
+
+Swaps text units (characters or words) in a string.
+
+**Parameters:**
+
+* **`unit`**
+  (`Literal['char', 'word']`, default:
+  `'char'`
+  )
+  –The unit of text to operate on ('char' or 'word').
+* **`mode`**
+  (`Literal['adjacent', 'random']`, default:
+  `'adjacent'`
+  )
+  –'adjacent' swaps with neighbors, 'random' swaps with any other unit.
+* **`ratio`**
+  (`float`, default:
+  `0.1`
+  )
+  –The proportion of units to select for swapping (0.0 to 1.0).
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –Seed for the random number generator.
+* **`name`**
+  (`str`, default:
+  `'general_swap'`
+  )
+  –The name of the transform.
+
+<Accordion title="Source code in dreadnode/transforms/swap.py" icon="code">
+```python
+def swap(
+    *,
+    unit: t.Literal["char", "word"] = "char",
+    mode: t.Literal["adjacent", "random"] = "adjacent",
+    ratio: float = 0.1,
+    seed: int | None = None,
+    name: str = "general_swap",
+) -> Transform[str, str]:
+    """
+    Swaps text units (characters or words) in a string.
+
+    Args:
+        unit: The unit of text to operate on ('char' or 'word').
+        mode: 'adjacent' swaps with neighbors, 'random' swaps with any other unit.
+        ratio: The proportion of units to select for swapping (0.0 to 1.0).
+        seed: Seed for the random number generator.
+        name: The name of the transform.
+    """
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError("Ratio must be between 0.0 and 1.0.")
+
+    rand = random.Random(seed)  # noqa: S311 # nosec
+
+    def transform(
+        text: str,
+        *,
+        ratio: float = Config(
+            ratio,
+            ge=0.0,
+            le=1.0,
+            help="The proportion of words/chars to select for swapping (0.0 to 1.0).",
+        ),
+    ) -> str:
+        items = list(text) if unit == "char" else re.findall(r"\w+|\S+", text)
+        if len(items) < 2:  # noqa: PLR2004
+            return text
+
+        num_to_swap = int(len(items) * ratio)
+        indices_to_swap = rand.sample(range(len(items)), k=num_to_swap)
+
+        for i in indices_to_swap:
+            if mode == "adjacent":
+                # Swap with the next item, wrapping around at the end
+                neighbor_idx = (i + 1) % len(items)
+                items[i], items[neighbor_idx] = items[neighbor_idx], items[i]
+            elif mode == "random":
+                # Swap with any other random item
+                swap_with_idx = rand.choice([j for j in range(len(items)) if i != j])
+                items[i], items[swap_with_idx] = items[swap_with_idx], items[i]
+
+        separator = "" if unit == "char" else " "
+        result = separator.join(items)
+        if unit == "word":
+            return re.sub(r'\s([?.!,"\'`])', r"\1", result).strip()
+        return result
+
+    return Transform(transform, name=name)
+```
+
+
+</Accordion>

@@ -207,12 +207,12 @@ in the following order:
   (`ConsoleOptions | bool | None`, default:
   `None`
   )
-  –Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
+  –Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
 * **`send_to_logfire`**
   (`bool | Literal['if-token-present']`, default:
   `False`
   )
-  –Whether to send data to Logfire.
+  –Send data to Logfire.
 * **`otel_scope`**
   (`str`, default:
   `'dreadnode'`
@@ -259,8 +259,8 @@ def configure(
         project: The default project name to associate all runs with.
         service_name: The service name to use for OpenTelemetry.
         service_version: The service version to use for OpenTelemetry.
-        console: Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
-        send_to_logfire: Whether to send data to Logfire.
+        console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
+        send_to_logfire: Send data to Logfire.
         otel_scope: The OpenTelemetry scope name.
     """
 
@@ -1796,7 +1796,7 @@ with dreadnode.run("my_run"):
   (`bool`, default:
   `True`
   )
-  –Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
+  –Automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
 * **`attributes`**
   (`AnyDict | None`, default:
   `None`
@@ -1845,7 +1845,7 @@ def run(
         project: The project name to associate the run with. If not provided,
             the project passed to `configure()` will be used, or the
             run will be associated with a default project.
-        autolog: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
+        autolog: Automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
         attributes: Additional attributes to attach to the run span.
 
     Returns:
@@ -1902,7 +1902,10 @@ Score an object using all the provided scorers.
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
 async def score(
-    self, object: T, scorers: ScorersLike[T], step: int | None = None
+    self,
+    object: T,
+    scorers: ScorersLike[T],
+    step: int | None = None,
 ) -> list[Metric]:
     """
     Score an object using all the provided scorers.
@@ -1940,10 +1943,25 @@ async def score(
 
 ```python
 scorer(
+    func: None = None,
+    /,
     *,
     name: str | None = None,
     attributes: AnyDict | None = None,
 ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]
+```
+
+```python
+scorer(func: ScorerCallable[T]) -> Scorer[T]
+```
+
+```python
+scorer(
+    func: ScorerCallable[T] | None = None,
+    *,
+    name: str | None = None,
+    attributes: AnyDict | None = None,
+) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]
 ```
 
 Make a scorer from a callable function.
@@ -1954,7 +1972,7 @@ or add additional attributes to it.
 Example
 
 ```python
-@dreadnode.scorer(name="my_scorer")
+@dreadnode.scorer
 async def my_scorer(x: int) -> float:
     return x * 2
 
@@ -1980,17 +1998,18 @@ await my_task(2)
 
 **Returns:**
 
-* `Callable[[ScorerCallable[T]], Scorer[T]]`
+* `Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]`
   –A new Scorer object.
 
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
 def scorer(
     self,
+    func: ScorerCallable[T] | None = None,
     *,
     name: str | None = None,
     attributes: AnyDict | None = None,
-) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
+) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]:
     """
     Make a scorer from a callable function.
 
@@ -1999,7 +2018,7 @@ def scorer(
 
     Example:
         ~~~
-        @dreadnode.scorer(name="my_scorer")
+        @dreadnode.scorer
         async def my_scorer(x: int) -> float:
             return x * 2
 
@@ -2018,10 +2037,15 @@ def scorer(
         A new Scorer object.
     """
 
-    def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-        return Scorer.from_callable(func, name=name, attributes=attributes)
+    if isinstance(func, Scorer):
+        return func
 
-    return make_scorer
+    def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
+        if isinstance(func, Scorer):
+            return func.with_(name=name, attributes=attributes)
+        return Scorer(func, name=name, attributes=attributes)
+
+    return make_scorer if func is None else make_scorer(func)
 ```
 
 
@@ -2220,6 +2244,8 @@ def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
 
 ```python
 task(
+    func: None = None,
+    /,
     *,
     scorers: None = None,
     name: str | None = None,
@@ -2231,12 +2257,13 @@ task(
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
     attributes: AnyDict | None = None,
-    configurable: list[str] | bool = True,
 ) -> TaskDecorator
 ```
 
 ```python
 task(
+    func: None = None,
+    /,
     *,
     scorers: ScorersLike[R],
     name: str | None = None,
@@ -2248,12 +2275,21 @@ task(
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
     attributes: AnyDict | None = None,
-    configurable: list[str] | bool = True,
 ) -> ScoredTaskDecorator[R]
 ```
 
 ```python
 task(
+    func: Callable[P, Awaitable[R]] | Callable[P, R],
+) -> Task[P, R]
+```
+
+```python
+task(
+    func: Callable[P, Awaitable[R]]
+    | Callable[P, R]
+    | None = None,
+    /,
     *,
     scorers: ScorersLike[Any] | None = None,
     name: str | None = None,
@@ -2265,8 +2301,7 @@ task(
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
     attributes: AnyDict | None = None,
-    configurable: list[str] | bool = True,
-) -> TaskDecorator
+) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]
 ```
 
 Create a new task from a function.
@@ -2274,7 +2309,7 @@ Create a new task from a function.
 Example
 
 ```python
-@dreadnode.task(name="my_task")
+@dreadnode.task
 async def my_task(x: int) -> int:
     return x * 2
 
@@ -2324,21 +2359,18 @@ await my_task(2)
   `None`
   )
   –A dictionary of attributes to attach to the task span.
-* **`configurable`**
-  (`list[str] | bool`, default:
-  `True`
-  )
-  –A list of task arguments (keyword-only) to expose to the CLI.
 
 **Returns:**
 
-* `TaskDecorator`
+* `TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]`
   –A new Task object.
 
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
 def task(
     self,
+    func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R] | None = None,
+    /,
     *,
     scorers: ScorersLike[t.Any] | None = None,
     name: str | None = None,
@@ -2348,14 +2380,13 @@ def task(
     log_execution_metrics: bool = False,
     tags: t.Sequence[str] | None = None,
     attributes: AnyDict | None = None,
-    configurable: list[str] | bool = True,
-) -> TaskDecorator:
+) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]:
     """
     Create a new task from a function.
 
     Example:
         ~~~
-        @dreadnode.task(name="my_task")
+        @dreadnode.task
         async def my_task(x: int) -> int:
             return x * 2
 
@@ -2372,11 +2403,13 @@ def task(
         log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
         tags: A list of tags to attach to the task span.
         attributes: A dictionary of attributes to attach to the task span.
-        configurable: A list of task arguments (keyword-only) to expose to the CLI.
 
     Returns:
         A new Task object.
     """
+
+    if isinstance(func, Task):
+        return func
 
     def make_task(
         func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
@@ -2393,58 +2426,24 @@ def task(
                 append=True,
             )
 
-        unwrapped = inspect.unwrap(func)
-
-        if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
-            unwrapped,
-        ):
-            raise TypeError("@task cannot be applied to generators")
-
-        config_fields = t.cast(
-            "list[str] | bool", getattr(func, CONFIGURABLE_FIELDS_ATTR, None)
-        )
-        config_fields = configurable or config_fields
-
-        func_name = getattr(
-            unwrapped,
-            "__qualname__",
-            getattr(func, "__name__", safe_repr(func)),
-        )
-
-        _name = name or func_name
-        _label = label or _name
-
-        # conform our label for sanity
-        _label = clean_str(_label)
-
-        _attributes = attributes or {}
-        _attributes["code.function"] = func_name
-        with contextlib.suppress(Exception):
-            _attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
-        with contextlib.suppress(Exception):
-            _attributes.update(
-                get_filepath_attribute(
-                    inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
-                ),
-            )
-
         return Task(
-            tracer=self._get_tracer(),
-            name=_name,
-            attributes=_attributes,
             func=t.cast("t.Callable[P, R]", func),
-            scorers=Scorer.fit_like(scorers),
-            tags=list(tags or []),
-            log_inputs=log_inputs
-            if isinstance(log_inputs, bool | Inherited)
-            else list(log_inputs),
+            tracer=self._get_tracer(),
+            name=name,
+            label=label,
+            scorers=scorers,
+            log_inputs=log_inputs,
             log_output=log_output,
             log_execution_metrics=log_execution_metrics,
-            label=_label,
-            configurable=config_fields,
+            tags=tags,
+            attributes=attributes,
         )
 
-    return make_task
+    return (
+        t.cast("TaskDecorator | ScoredTaskDecorator[R]", make_task)
+        if func is None
+        else make_task(func)
+    )
 ```
 
 

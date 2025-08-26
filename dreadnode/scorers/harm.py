@@ -1,6 +1,6 @@
 import typing as t
 
-from dreadnode.configurable import configurable
+from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
@@ -11,11 +11,10 @@ if t.TYPE_CHECKING:
     import openai
 
 
-@configurable(["api_key", "model"])
 def detect_harm_with_openai(
     *,
     api_key: str | None = None,
-    model: t.Literal["text-moderation-stable", "text-moderation-latest"] = "text-moderation-stable",
+    model: str = "text-moderation-stable",
     client: "openai.AsyncOpenAI | None" = None,
     name: str = "openai_harm",
 ) -> "Scorer[t.Any]":
@@ -39,7 +38,9 @@ def detect_harm_with_openai(
     """
     import openai
 
-    async def evaluate(data: t.Any) -> Metric:
+    async def evaluate(
+        data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)
+    ) -> Metric:
         text = str(data)
         _client = client or openai.AsyncOpenAI(api_key=api_key)
 
@@ -60,4 +61,4 @@ def detect_harm_with_openai(
         }
         return Metric(value=max_score, attributes=attributes)
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

@@ -11,17 +11,21 @@ Task
 
 ```python
 Task(
-    tracer: Tracer,
-    name: str,
-    label: str,
-    attributes: dict[str, Any],
     func: Callable[P, R],
-    scorers: list[Scorer[R]],
-    tags: list[str],
-    configurable: list[str] | bool = True,
-    log_inputs: list[str] | bool | Inherited = INHERITED,
+    tracer: Tracer,
+    *,
+    name: str | None = None,
+    label: str | None = None,
+    scorers: ScorersLike[R] | None = None,
+    log_inputs: Sequence[str]
+    | bool
+    | Inherited = INHERITED,
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
+    tags: Sequence[str] | None = None,
+    attributes: AnyDict | None = None,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
 )
 ```
 
@@ -29,36 +33,86 @@ Structured task wrapper for a function that can be executed within a run.
 
 Tasks allow you to associate metadata, inputs, outputs, and metrics for a unit of work.
 
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+def __init__(
+    self,
+    func: t.Callable[P, R],
+    tracer: Tracer,
+    *,
+    name: str | None = None,
+    label: str | None = None,
+    scorers: ScorersLike[R] | None = None,
+    log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+    log_output: bool | Inherited = INHERITED,
+    log_execution_metrics: bool = False,
+    tags: t.Sequence[str] | None = None,
+    attributes: AnyDict | None = None,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
+) -> None:
+    unwrapped = inspect.unwrap(func)
+    if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
+        unwrapped,
+    ):
+        raise TypeError("@task cannot be applied to generators")
+
+    func_name = get_callable_name(unwrapped, short=True)
+    name = name or func_name
+    label = clean_str(label or name)
+
+    attributes = attributes or {}
+    attributes["code.function"] = func_name
+    with contextlib.suppress(Exception):
+        attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
+    with contextlib.suppress(Exception):
+        attributes.update(
+            get_filepath_attribute(
+                inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
+            ),
+        )
+
+    super().__init__(func, config=config, context=context)
+
+    self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
+
+    self._tracer = tracer
+
+    self.name = name
+    "The name of the task. This is used for logging and tracing."
+    self.label = label
+    "The label of the task - used to group associated metrics and data together."
+    self.scorers = Scorer.fit_like(scorers)
+    "A list of scorers to evaluate the task's output."
+    self.tags = list(tags or [])
+    "A list of tags to attach to the task span."
+    self.attributes = attributes
+    "A dictionary of attributes to attach to the task span."
+    self.log_inputs = (
+        log_inputs if isinstance(log_inputs, bool | Inherited) else list(log_inputs)
+    )
+    "Log all, or specific, incoming arguments to the function as inputs."
+    self.log_output = log_output
+    "Log the result of the function as an output."
+    self.log_execution_metrics = log_execution_metrics
+    "Track execution metrics such as success rate and run count."
+```
+
+
+</Accordion>
+
 ### attributes
 
 ```python
-attributes: dict[str, Any]
+attributes = attributes
 ```
 
 A dictionary of attributes to attach to the task span.
 
-### configurable
-
-```python
-configurable: list[str] | bool = True
-```
-
-A list of task parameters to expose to the CLI.
-- If True, all keyword parameters are exposed.
-- If None, no parameters are exposed.
-
-### func
-
-```python
-func: Callable[P, R]
-```
-
-The function to execute as the task.
-
 ### label
 
 ```python
-label: str
+label = label
 ```
 
 The label of the task - used to group associated metrics and data together.
@@ -66,7 +120,7 @@ The label of the task - used to group associated metrics and data together.
 ### log\_execution\_metrics
 
 ```python
-log_execution_metrics: bool = False
+log_execution_metrics = log_execution_metrics
 ```
 
 Track execution metrics such as success rate and run count.
@@ -74,7 +128,11 @@ Track execution metrics such as success rate and run count.
 ### log\_inputs
 
 ```python
-log_inputs: list[str] | bool | Inherited = INHERITED
+log_inputs = (
+    log_inputs
+    if isinstance(log_inputs, bool | Inherited)
+    else list(log_inputs)
+)
 ```
 
 Log all, or specific, incoming arguments to the function as inputs.
@@ -82,7 +140,7 @@ Log all, or specific, incoming arguments to the function as inputs.
 ### log\_output
 
 ```python
-log_output: bool | Inherited = INHERITED
+log_output = log_output
 ```
 
 Log the result of the function as an output.
@@ -90,7 +148,7 @@ Log the result of the function as an output.
 ### name
 
 ```python
-name: str
+name = name
 ```
 
 The name of the task. This is used for logging and tracing.
@@ -98,7 +156,7 @@ The name of the task. This is used for logging and tracing.
 ### scorers
 
 ```python
-scorers: list[Scorer[R]]
+scorers = fit_like(scorers)
 ```
 
 A list of scorers to evaluate the task's output.
@@ -106,7 +164,7 @@ A list of scorers to evaluate the task's output.
 ### tags
 
 ```python
-tags: list[str]
+tags = list(tags or [])
 ```
 
 A list of tags to attach to the task span.
@@ -133,21 +191,19 @@ def clone(self) -> "Task[P, R]":
     Returns:
         A new Task instance with the same attributes as this one.
     """
-    return clone_config_attrs(
-        self,
-        Task(
-            tracer=self.tracer,
-            name=self.name,
-            label=self.label,
-            attributes=self.attributes.copy(),
-            func=self.func,
-            scorers=self.scorers.copy(),
-            tags=self.tags.copy(),
-            log_inputs=self.log_inputs,
-            log_output=self.log_output,
-            log_execution_metrics=self.log_execution_metrics,
-            configurable=self.configurable,
-        ),
+    return Task(
+        func=self.func,
+        tracer=self._tracer,
+        name=self.name,
+        label=self.label,
+        scorers=self.scorers.copy(),
+        log_inputs=self.log_inputs,
+        log_output=self.log_output,
+        log_execution_metrics=self.log_execution_metrics,
+        tags=self.tags.copy(),
+        attributes=self.attributes.copy(),
+        config=deepcopy(self.__dn_param_config__),
+        context=deepcopy(self.__dn_context__),
     )
 ```
 
@@ -397,11 +453,12 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
     )
 
     bound_args = self._bind_args(*args, **kwargs)
+    bound_args_dict = dict(bound_args.arguments)
 
     inputs_to_log = (
-        bound_args
+        bound_args_dict
         if log_inputs is True
-        else {k: v for k, v in bound_args.items() if k in log_inputs}
+        else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
         if log_inputs is not False
         else {}
     )
@@ -417,7 +474,7 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         attributes=self.attributes,
         tags=self.tags,
         run_id=run.run_id if run else "",
-        tracer=self.tracer,
+        tracer=self._tracer,
         arguments=Arguments(args, kwargs),
     )
 
@@ -442,7 +499,9 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         ]
 
         try:
-            output = t.cast("R | t.Awaitable[R]", self.func(*args, **kwargs))
+            output = t.cast(
+                "R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs)
+            )
             if inspect.isawaitable(output):
                 output = await output
         except Exception:
@@ -805,7 +864,6 @@ with_(
     log_execution_metrics: bool | None = None,
     append: bool = False,
     attributes: AnyDict | None = None,
-    configurable: Sequence[str] | None | Unset = UNSET,
 ) -> Task[P, R]
 ```
 
@@ -858,13 +916,6 @@ Clone a task and modify its attributes.
   `None`
   )
   –Additional attributes to set or update in the task.
-* **`configurable`**
-  (`Sequence[str] | None | Unset`, default:
-  `UNSET`
-  )
-  –A list of task parameters to expose to the CLI.
-  - If None, all keyword parameters are exposed.
-  - If [], all parameters are exposed.
 
 **Returns:**
 
@@ -885,7 +936,6 @@ def with_(
     log_execution_metrics: bool | None = None,
     append: bool = False,
     attributes: AnyDict | None = None,
-    configurable: t.Sequence[str] | None | Unset = UNSET,
 ) -> "Task[P, R]":
     """
     Clone a task and modify its attributes.
@@ -900,9 +950,6 @@ def with_(
         log_execution_metrics: Log execution metrics such as success rate and run count.
         append: If True, appends the new scorers and tags to the existing ones. If False, replaces them.
         attributes: Additional attributes to set or update in the task.
-        configurable: A list of task parameters to expose to the CLI.
-            - If None, all keyword parameters are exposed.
-            - If [], all parameters are exposed.
 
     Returns:
         A new Task instance with the modified attributes.
@@ -923,15 +970,8 @@ def with_(
         if log_execution_metrics is not None
         else task.log_execution_metrics
     )
-    task.configurable = (
-        configurable
-        if isinstance(configurable, bool)
-        else list(configurable or [])
-        if not isinstance(configurable, Unset)
-        else task.configurable
-    )
 
-    new_scorers = [Scorer.from_callable(scorer) for scorer in (scorers or [])]
+    new_scorers = [Scorer(scorer) for scorer in (scorers or [])]
     new_tags = list(tags or [])
 
     if append:
