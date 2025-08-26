@@ -68,7 +68,7 @@ class GrepMatch:
 
 
 @dataclass
-class FilesystemTools(Toolset):
+class FilesystemTool(Toolset):
     path: UPath
     mode: FilesystemMode = "read-only"
 

@@ -11,7 +11,7 @@ import httpx
 from dreadnode.agent.tools.base import Toolset, tool_method
 
 
-class Skopeo(Toolset):
+class SkopeoTool(Toolset):
     """
     Tools for inspecting Microsoft Container Registry images via skopeo + httpx.
     """

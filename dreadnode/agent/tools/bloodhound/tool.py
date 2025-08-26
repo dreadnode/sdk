@@ -19,7 +19,7 @@ BLOODHOUND_NEO4J_PASSWORD = os.getenv("BLOODHOUND_NEO4J_PASSWORD", "bloodhoundco
 console = Console()
 
 
-class Bloodhound(Toolset):
+class BloodhoundTool(Toolset):
     """Agent Tool API for BloodHound Server"""
 
     def __init__(

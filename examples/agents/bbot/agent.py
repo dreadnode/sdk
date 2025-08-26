@@ -7,16 +7,15 @@ from dreadnode.agent.tools.bbot.tool import BBotTool
 
 console = Console()
 
+
 agent = Agent(
     name="bbot-agent",
     description="An agent that uses BBOT to perform various tasks.",
     model="gpt-4",
-    tools=[BBotTool()],
 )
 
 
 async def main() -> None:
-    # Try creating with minimal arguments first
     agent = await BBotTool.create()
     agent.get_presets()
     agent.get_modules()
