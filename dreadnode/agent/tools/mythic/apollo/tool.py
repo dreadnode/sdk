@@ -15,7 +15,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 
 
 @dataclass
-class Apollo(Toolset):
+class ApolloTool(Toolset):
     _client: Mythic = None
     _callback_id: int | None = None
     _intialized: bool = False
