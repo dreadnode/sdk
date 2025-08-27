@@ -19,6 +19,7 @@ from dreadnode.api.models import (
     Project,
     RawRun,
     RawTask,
+    RegistryImageDetails,
     Run,
     RunSummary,
     StatusFilter,
@@ -550,5 +551,23 @@ class ApiClient:
         Returns:
             The container registry credentials object.
         """
-        response = self._request("GET", "/platform/container-registry/credentials")
+        response = self.request("POST", "/platform/registry-token")
         return ContainerRegistryCredentials(**response.json())
+
+    def get_platform_releases(
+        self, arch: str, tag: str, services: list[str], cli_version: str
+    ) -> RegistryImageDetails:
+        """
+        Resolves the platform releases for the current project.
+
+        Returns:
+            The resolved platform releases as a ResolveReleasesResponse object.
+        """
+        payload = {
+            "arch": arch,
+            "tag": tag,
+            "services": services,
+            "cli_version": cli_version,
+        }
+        response = self.request("POST", "/platform/get-releases", json_data=payload)
+        return RegistryImageDetails(**response.json())

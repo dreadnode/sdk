@@ -50,6 +50,22 @@ class ContainerRegistryCredentials(BaseModel):
     expires_at: datetime
 
 
+class PlatformImage(BaseModel):
+    service: str
+    uri: str
+    digest: str
+    version: str
+
+    @property
+    def full_uri(self) -> str:
+        return f"{self.uri}@{self.digest}"
+
+
+class RegistryImageDetails(BaseModel):
+    version: str
+    images: list[PlatformImage]
+
+
 # Auth
 
 

@@ -1,0 +1,154 @@
+---
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      - POSTGRES_USER=${DATABASE_USER?Variable not set}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD?Variable not set}
+      - POSTGRES_DB=${DATABASE_NAME?Variable not set}
+    ports:
+      - ${DATABASE_PORT:-5432}:5432
+    volumes:
+      - ${DATABASE_VOLUME:-postgres-data}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - ${CLICKHOUSE_HTTP_PORT:-8123}:8123
+      - ${CLICKHOUSE_TCP_PORT:-9000}:9000
+    volumes:
+      - ${CLICKHOUSE_VOLUME:-clickhouse-data}:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    cap_add:
+      - SYS_NICE
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_PTRACE
+    environment:
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+      - CLICKHOUSE_USER=${STRIKES_CLICKHOUSE_USER?Variable not set}
+      - CLICKHOUSE_PASSWORD=${STRIKES_CLICKHOUSE_PASSWORD?Variable not set}
+      - CLICKHOUSE_DB=${STRIKES_CLICKHOUSE_DATABASE?Variable not set}
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - ${MINIO_PORT:-9000}:9000
+      - ${MINIO_CONSOLE_PORT:-9001}:9001
+    volumes:
+      - ${MINIO_VOLUME:-minio-data}:/data
+    environment:
+      - MINIO_ROOT_USER=${S3_AWS_ACCESS_KEY_ID?Variable not set}
+      - MINIO_ROOT_PASSWORD=${S3_AWS_SECRET_ACCESS_KEY?Variable not set}
+    command: server /data --console-address ":9001"
+
+  create-s3-buckets:
+    image: minio/mc:latest
+    profiles: [create-s3-buckets]
+    environment:
+      MC_HOST_minio: http://${S3_AWS_ACCESS_KEY_ID}:${S3_AWS_SECRET_ACCESS_KEY}@minio:${MINIO_PORT:-9000}
+      BUCKETS: ${REQUIRED_BUCKETS?Variable not set}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until mc ls minio > /dev/null 2>&1; do
+          sleep 0.5
+        done
+
+        for bucket in $$BUCKETS; do
+          if mc ls minio/$$bucket > /dev/null 2>&1; then
+            echo "Bucket $$bucket already exists, skipping..."
+          else
+            mc mb minio/$$bucket && echo "Created bucket: $$bucket"
+          fi
+        done
+
+        echo "All buckets processed successfully"
+        exit 0
+
+  traefik:
+    image: traefik:v3.4
+    profiles: [run, run-api, run-ui]
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "${PROXY_PORT:-80}:80"
+      - "${PROXY_DASHBOARD_PORT:-8118}:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    restart: unless-stopped
+
+  platform-api:
+    profiles: [run, run-api]
+    container_name: api
+    image: {{ api_image_digest }}
+    env_file: .api.env
+    environment:
+      - SKIP_DB_UPGRADE=0
+      # User the Docker service name as the host for inter-service communication
+      - DATABASE_HOST=postgres
+      - STRIKES_CLICKHOUSE_HOST=clickhouse
+      - DYNAMODB_URL=http://dynamodb:8000
+      - S3_AWS_ENDPOINT_URL=http://minio:9000
+      - S3_AWS_ACCESS_KEY_ID=${S3_AWS_ACCESS_KEY_ID?Variable not set}
+      - S3_AWS_SECRET_ACCESS_KEY=${S3_AWS_SECRET_ACCESS_KEY?Variable not set}
+      - S3_AWS_EXTERNAL_ENDPOINT_URL=http://${PROXY_HOST:-localhost}:9000
+
+    ports:
+      - ${API_PORT:-8000}:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.api.priority=10"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  platform-ui:
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    profiles: [run, run-ui]
+    container_name: ui
+    image: {{ ui_image_digest }}
+    pull_policy: never
+    ports:
+      - ${UI_PORT:-5173}:3000
+    env_file: .ui.env
+    environment:
+      - NODE_ENV=production
+      - API_BASE_URL=http://api:8000
+      - ORIGIN=${PROXY_PROTOCOL:-http}://${PROXY_HOST:-localhost:80}
+      - ALLOWED_HOSTS=${PROXY_HOST:-localhost}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ui.rule=PathPrefix(`/`) && !PathPrefix(`/api`)"
+      - "traefik.http.routers.ui.priority=1"
+      - "traefik.http.routers.ui.entrypoints=web"
+      - "traefik.http.services.ui.loadbalancer.server.port=3000"
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  minio-data:

@@ -5,6 +5,8 @@ import pathlib
 # Defaults
 #
 
+# name of the default local storage path
+DEFAULT_LOCAL_STORAGE_DIR = ".dreadnode"
 # name of the default server profile
 DEFAULT_PROFILE_NAME = "main"
 # default poll interval for the authentication flow
