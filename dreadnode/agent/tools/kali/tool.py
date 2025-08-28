@@ -17,7 +17,7 @@ class KaliTool(Toolset):
         "A collection of Kali Linux tools for penetration testing and security assessments."
     )
 
-    @tool_method
+    @tool_method()
     def nmap_scan(self, target: str) -> str:
         """
         Scans target IPs to classify them as Domain Controllers or Member Servers.
@@ -52,7 +52,7 @@ class KaliTool(Toolset):
             logger.error(f"Scan failed: {e!s}")
             return f"Scan failed: {e!s}"
 
-    @tool_method
+    @tool_method()
     def enumerate_users_netexec(
         self,
         target: str,
@@ -104,7 +104,7 @@ class KaliTool(Toolset):
 
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def enumerate_shares_netexec(
         self,
         target: str,
@@ -156,7 +156,7 @@ class KaliTool(Toolset):
 
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def enumerate_share_files(
         self,
         target: str,
@@ -204,7 +204,7 @@ class KaliTool(Toolset):
 
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def download_file_content(
         self,
         target: str,
@@ -261,7 +261,7 @@ class KaliTool(Toolset):
         logger.info(f"[*] File download completed for {file_path} result: {content}")
         return content
 
-    @tool_method
+    @tool_method()
     def secretsdump(
         self,
         target: str,
@@ -338,7 +338,7 @@ class KaliTool(Toolset):
         )
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def kerberoast(
         self,
         domain: str,
@@ -378,7 +378,7 @@ class KaliTool(Toolset):
         else:
             return result.stdout
 
-    @tool_method
+    @tool_method()
     def asrep_roast(
         self,
         domain: str,
@@ -432,7 +432,7 @@ class KaliTool(Toolset):
         else:
             return result.stdout
 
-    @tool_method
+    @tool_method()
     def hashcat(
         self,
         hash_value: str,
@@ -612,7 +612,7 @@ class KaliTool(Toolset):
         else:
             return result.stdout
 
-    @tool_method
+    @tool_method()
     def generate_golden_ticket(
         self,
         krbtgt_hash: str,
