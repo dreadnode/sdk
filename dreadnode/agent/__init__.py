@@ -8,6 +8,6 @@ from dreadnode.agent.thread import Thread
 Agent.model_rebuild()
 Thread.model_rebuild()
 
-rebuild_event_models()
+# rebuild_event_models()
 
 rebuild_dataclass(AgentResult)  # type: ignore[arg-type]

@@ -13,7 +13,6 @@ if t.TYPE_CHECKING:
     from dreadnode.agent.result import AgentResult
     from dreadnode.agent.thread import Thread
 
-
 EventT = t.TypeVar("EventT", bound="Event")
 
 
