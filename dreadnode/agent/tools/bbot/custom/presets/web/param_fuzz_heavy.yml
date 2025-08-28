@@ -3,6 +3,8 @@ description: Run all WEB_PARAMETER modules for parameter tampering and pollution
 # Recommended to run after an initial lightfuzz-heavy module run with a list of URLs to check params
 
 # Usage
+# uv run python examples/agents/bbot/agent.py presets
+# uv run python examples/agents/bbot/agent.py scan --targets /path/to/file.txt --presets web-thorough --presets param_fuzz_heavy
 
 include:
   - spider-intense
