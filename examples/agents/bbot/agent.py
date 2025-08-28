@@ -61,13 +61,19 @@ async def scan(
         return
 
     tool = await BBotTool.create()
-    await tool.run(
+    events = tool.run(
         targets=targets,
         presets=presets,
         modules=modules,
         flags=flags,
         config=config,
     )
+
+    async for event in events:
+        console.print(event)
+        # Add your agent logic here to process events
+        # if event == "FINDING":
+        #     await agent.run(...)
 
 
 # Usage

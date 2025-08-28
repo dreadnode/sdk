@@ -19,13 +19,13 @@ from rigging.transform import (
 )
 
 from dreadnode.agent.configurable import configurable
-from dreadnode.agent.dispatcher import Dispatcher
 from dreadnode.agent.events import Event
+from dreadnode.agent.handler import AgentEventHandler
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
+from dreadnode.agent.state import State
 from dreadnode.agent.stop import StopCondition
-from dreadnode.agent.thread import Thread
-from dreadnode.agent.tools.base import AnyTool, Tool, Toolset
+from dreadnode.agent.tools import AnyTool, Tool, Toolset
 from dreadnode.agent.types import Message
 from dreadnode.util import flatten_list, get_callable_name, shorten_string
 
@@ -66,18 +66,20 @@ class Agent(BaseModel):
             description="Hooks to run at various points in the agent's lifecycle.",
         ),
     ] = []
-    thread: t.Annotated[
-        Thread | None,
-        "Stateful thread for this agent, for when otherwise not specified during execution.",
+    state: t.Annotated[
+        State | None,
+        "Stateful state for this agent, for when otherwise not specified during execution.",
         Field(
-            default_factory=Thread,
+            default_factory=State,
             exclude=True,
             repr=False,
         ),
     ] = None
-    _dispatcher: t.Annotated[
-        Dispatcher | None,
-        Field(exclude=True, repr=False, description="Optional dispatcher to handle agent events."),
+    _agent_event_handler: t.Annotated[
+        AgentEventHandler | None,
+        Field(
+            exclude=True, repr=False, description="Optional event hander to handle agent events."
+        ),
     ] = None
 
     _generator: t.Annotated[Generator | None, Field(default=None, init=False, repr=False)] = None
@@ -239,9 +241,9 @@ class Agent(BaseModel):
 
         return chat
 
-    def reset(self) -> Thread:
-        previous = self.thread
-        self.thread = Thread()
+    def reset(self) -> State:
+        previous = self.state
+        self.state = State()
         return previous
 
     @asynccontextmanager
@@ -249,11 +251,11 @@ class Agent(BaseModel):
         self,
         user_input: str,
         *,
-        thread: Thread | None = None,
+        state: State | None = None,
     ) -> t.AsyncIterator[t.AsyncGenerator[Event, None]]:
-        thread = thread or self.thread
-        async with thread.stream(
-            self, user_input, commit="always" if thread == self.thread else "on-success"
+        state = state or self.state
+        async with state.stream(
+            self, user_input, commit="always" if state == self.state else "on-success"
         ) as stream:
             yield stream
 
@@ -261,9 +263,9 @@ class Agent(BaseModel):
         self,
         user_input: str,
         *,
-        thread: Thread | None = None,
+        state: State | None = None,
     ) -> AgentResult:
-        thread = thread or self.thread
-        return await thread.run(
-            self, user_input, commit="always" if thread == self.thread else "on-success"
+        state = state or self.state
+        return await state.run(
+            self, user_input, commit="always" if state == self.state else "on-success"
         )

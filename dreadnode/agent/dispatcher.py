@@ -1,42 +1,93 @@
+import asyncio
 import typing as t
+from collections import defaultdict
 from typing import Optional
 
 from loguru import logger
-
-from dreadnode.agent.events import Event
+from pydantic import BaseModel
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
-    from dreadnode.agent.types import Message, ToolCall, Usage
 
 
-class Dispatcher:
-    def on_agent_start(self, agent: "Agent") -> Event:
-        logger.info(f"Agent started: {agent.name}")
+class AgentDispatcher:
+    """
+    Manages agent registration and message routing.
+    """
 
-    def on_step_start(self, step: int) -> Event:
-        logger.info(f"Step {step} started")
+    def __init__(self) -> None:
+        self._agents: dict[str, Agent] = {}
+        self._subscriptions: dict[type[BaseModel], set[str]] = defaultdict(set)
+        logger.info("Dispatcher started.")
 
-    def on_generation_end(self, message: "Message", usage: Optional["Usage"]) -> Event:
-        logger.info(f"Generation ended with message: {message.content}")
+    async def register_agent(self, agent: "Agent"):
+        """
+        Register an agent with the dispatcher.
+        Automatically subscribes the agent to message types based on its handlers."""
+        if agent.unique_name in self._agents:
+            logger.warning(
+                f"Agent with name '{agent.unique_name}' is already registered. Overwriting."
+            )
+        self._agents[agent.unique_name] = agent
 
-    def on_tool_start(self, tool_call: "ToolCall") -> Event:
-        logger.info(f"Tool started: {tool_call.name}")
+        handler = getattr(agent.__class__, "handle_message", None)
+        if handler and hasattr(handler, "_handled_types"):
+            for msg_type in handler._handled_types:
+                self._subscriptions[msg_type].add(agent.unique_name)
+                logger.info(f"Agent '{agent.unique_name}' subscribed to {msg_type.__name__}")
 
-    def on_tool_end(self, tool_call: "ToolCall", message: "Message", stop: bool) -> Event:
-        logger.info(f"Tool ended: {tool_call.name} with message: {message.content}")
+    def get_agent(self, name: str) -> Optional["Agent"]:
+        """Get an agent proxy by name."""
+        return self._agents.get(name)
 
-    def on_agent_stalled(self, agent: "Agent") -> Event:
-        logger.warning("Agent has stalled")
+    async def remove_agent(self, name: str):
+        """Remove an agent from the dispatcher."""
+        if name in self._agents:
+            agent_instance = self._agents.get(name)
+            if agent_instance:
+                handler = getattr(agent_instance.__class__, "handle_message", None)
+                if handler and hasattr(handler, "_handled_types"):
+                    for msg_type in handler._handled_types:
+                        if msg_type in self._subscriptions:
+                            self._subscriptions[msg_type].discard(name)
+            del self._agents[name]
+            logger.info(f"Agent '{name}' removed from dispatcher.")
 
-    def on_agent_error(self, error: Exception) -> Event:
-        logger.error(f"Agent encountered an error: {error}")
+    def list_agents(self) -> list[str]:
+        """List all registered agent names."""
+        return list(self._agents.keys())
 
-    def on_agent_end(self, agent: "Agent") -> Event:
-        logger.info(f"{agent.name} has completed its run")
+    def get_subscribers(self, message_type: type[BaseModel]) -> list["Agent"]:
+        """
+        Get all agents subscribed to a specific message type.
+        """
+        agent_names = self._subscriptions.get(message_type, set())
+        return [self._agents[name] for name in agent_names if name in self._agents]
 
-    def catch(self, callback, *args, **kwargs):
-        try:
-            return callback(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"Error in {callback.__qualname__}(): {e}")
+    async def publish(self, message: Dispatchable):
+        """
+        Publish a message to all agents subscribed to its type (fire-and-forget).
+        """
+        message_type = type(message)
+        message_data_type = type(message.data)
+        data_subscribers = self.get_subscribers(message_data_type)
+        message_subscribers = self.get_subscribers(message_type)
+        subscribers = data_subscribers + message_subscribers
+
+        if not subscribers:
+            logger.warning(f"No subscribers for message type {message_type.__name__}")
+            return 0
+
+        for agent in subscribers:
+            agent.tell(message)
+        logger.info(f"Published '{message_type.__name__}' to {len(subscribers)} agents.")
+        return len(subscribers)
+
+    async def shutdown_all(self):
+        """Shutdown all registered agents."""
+        logger.info("Shutting down all agents.")
+        agents = list(self._agents.values())
+        await asyncio.gather(*[agent.shutdown() for agent in agents], return_exceptions=True)
+        self._agents.clear()
+        self._subscriptions.clear()
+        logger.info("All agents shut down and dispatcher cleared.")

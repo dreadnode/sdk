@@ -111,6 +111,4 @@ class BBotTool(Toolset):
         )
 
         async for event in scan.async_start():
-            console.print(event)
-
-        return "Scan complete."
+            yield event
