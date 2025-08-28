@@ -740,6 +740,166 @@ class KaliTool(Toolset):
             return f"Common credential test failed: {e!s}"
 
     @tool_method()
+    def dig_dns_lookup(
+        self,
+        domain: str,
+        record_type: str = "A",
+        nameserver: str = "8.8.8.8",
+    ) -> str:
+        """
+        Perform DNS lookup using dig command.
+
+        Args:
+            domain: Domain/subdomain to query
+            record_type: DNS record type (A, AAAA, CNAME, NS, MX, TXT, etc.)
+            nameserver: DNS server to query (default: Google DNS)
+
+        Returns:
+            dig command output showing DNS records
+
+        Example:
+            >>> result = dig_dns_lookup("subdomain.example.com", "CNAME")
+        """
+        
+        cmd = ["dig", f"@{nameserver}", domain, record_type, "+short"]
+        
+        try:
+            logger.info(f"[*] Performing DNS lookup for {domain} ({record_type})")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=30)  # noqa: S603
+            
+            if result.stdout.strip():
+                output = f"DNS {record_type} record for {domain}:\n{result.stdout.strip()}"
+            else:
+                output = f"No {record_type} record found for {domain}"
+                
+            logger.info(f"[*] DNS lookup completed for {domain}")
+            return output
+            
+        except subprocess.TimeoutExpired:
+            return f"DNS lookup timed out for {domain}"
+        except Exception as e:
+            return f"DNS lookup failed for {domain}: {e!s}"
+
+    @tool_method()
+    def nslookup_dns_query(
+        self,
+        domain: str,
+        nameserver: str = "8.8.8.8",
+    ) -> str:
+        """
+        Perform comprehensive DNS query using nslookup.
+
+        Args:
+            domain: Domain/subdomain to query
+            nameserver: DNS server to query
+
+        Returns:
+            nslookup output showing all DNS information
+
+        Example:
+            >>> result = nslookup_dns_query("test.example.com")
+        """
+        
+        cmd = ["nslookup", domain, nameserver]
+        
+        try:
+            logger.info(f"[*] Running nslookup for {domain}")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=30)  # noqa: S603
+            
+            logger.info(f"[*] nslookup completed for {domain}")
+            return f"nslookup results for {domain}:\n{result.stdout}"
+            
+        except subprocess.TimeoutExpired:
+            return f"nslookup timed out for {domain}"
+        except Exception as e:
+            return f"nslookup failed for {domain}: {e!s}"
+
+    @tool_method() 
+    def check_subdomain_takeover(
+        self,
+        subdomain: str,
+    ) -> str:
+        """
+        Check if subdomain is vulnerable to takeover by analyzing DNS records and HTTP responses.
+
+        Args:
+            subdomain: Subdomain to check for takeover vulnerability
+
+        Returns:
+            Analysis results indicating takeover vulnerability status
+
+        Example:
+            >>> result = check_subdomain_takeover("old.example.com")
+        """
+        
+        results = []
+        
+        # Check CNAME record
+        try:
+            cname_result = subprocess.run(
+                ["dig", "@8.8.8.8", subdomain, "CNAME", "+short"], 
+                check=False, capture_output=True, text=True, timeout=15
+            )  # noqa: S603
+            
+            if cname_result.stdout.strip():
+                cname_target = cname_result.stdout.strip()
+                results.append(f"CNAME points to: {cname_target}")
+                
+                # Check if CNAME target is resolvable
+                a_result = subprocess.run(
+                    ["dig", "@8.8.8.8", cname_target, "A", "+short"],
+                    check=False, capture_output=True, text=True, timeout=15
+                )  # noqa: S603
+                
+                if not a_result.stdout.strip():
+                    results.append(f"🚨 POTENTIAL TAKEOVER: CNAME target '{cname_target}' does not resolve!")
+                else:
+                    results.append(f"CNAME target resolves to: {a_result.stdout.strip()}")
+            else:
+                results.append("No CNAME record found")
+                
+        except Exception as e:
+            results.append(f"CNAME check failed: {e}")
+        
+        # Check A record
+        try:
+            a_result = subprocess.run(
+                ["dig", "@8.8.8.8", subdomain, "A", "+short"],
+                check=False, capture_output=True, text=True, timeout=15
+            )  # noqa: S603
+            
+            if a_result.stdout.strip():
+                results.append(f"A record: {a_result.stdout.strip()}")
+            else:
+                results.append("🚨 No A record found - potential dangling subdomain!")
+                
+        except Exception as e:
+            results.append(f"A record check failed: {e}")
+        
+        # Try HTTP request to check for service errors
+        try:
+            import requests
+            response = requests.get(f"http://{subdomain}", timeout=10, allow_redirects=False)
+            results.append(f"HTTP status: {response.status_code}")
+            
+            # Check for common takeover error messages
+            error_strings = [
+                "NoSuchBucket", "Repository not found", "Project not found",
+                "There isn't a GitHub Pages site here", "herokucdn.com/error-pages",
+                "The specified bucket does not exist", "This site is disabled"
+            ]
+            
+            for error in error_strings:
+                if error.lower() in response.text.lower():
+                    results.append(f"🚨 TAKEOVER INDICATOR: Found '{error}' in response!")
+                    
+        except Exception as e:
+            results.append(f"HTTP check failed: {e}")
+        
+        logger.info(f"[*] Subdomain takeover check completed for {subdomain}")
+        return f"Subdomain takeover analysis for {subdomain}:\n" + "\n".join(results)
+
+    @tool_method()
     def generate_golden_ticket(
         self,
         krbtgt_hash: str,
