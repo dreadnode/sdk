@@ -2,7 +2,7 @@ import inspect
 import typing as t
 from contextlib import asynccontextmanager
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import ConfigDict, Field, PrivateAttr, field_validator
 from rigging import get_generator
 from rigging.caching import CacheMode, apply_cache_mode_to_messages
 from rigging.chat import Chat
@@ -18,20 +18,19 @@ from rigging.transform import (
     tools_to_json_with_tag_transform,
 )
 
-from dreadnode.agent.configurable import configurable
 from dreadnode.agent.events import AgentStalled, Event
 from dreadnode.agent.hooks.base import retry_with_feedback
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
-from dreadnode.agent.stop import StopCondition, StopNever
+from dreadnode.agent.stop import StopCondition, stop_never
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools.base import AnyTool, Tool, Toolset
 from dreadnode.agent.types import Message
+from dreadnode.meta import Config, Model
 from dreadnode.util import flatten_list, get_callable_name, shorten_string
 
 
-@configurable(["model", "instructions", "max_steps", "tool_mode", "caching"])
-class Agent(BaseModel):
+class Agent(Model):
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
     name: str
@@ -39,23 +38,23 @@ class Agent(BaseModel):
     description: str = ""
     """A brief description of the agent's purpose."""
 
-    model: str | None = None
+    model: str | None = Config()
     """Inference model (rigging generator identifier)."""
-    instructions: str | None = None
+    instructions: str | None = Config()
     """The agent's core instructions."""
-    tools: list[AnyTool | Toolset] = []
+    tools: list[AnyTool | Toolset] = Config(default_factory=list)
     """Tools the agent can use."""
-    tool_mode: t.Annotated[ToolMode, Field(repr=False)] = "auto"
+    tool_mode: ToolMode = Config("auto", repr=False)
     """The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto"."""
-    caching: t.Annotated[CacheMode | None, Field(repr=False)] = None
-    """How to handle cache_control entries on inference messages."""
-    max_steps: int = 10
+    max_steps: int = Config(10)
     """The maximum number of steps (generation + tool calls) the agent can take before stopping."""
-
-    stop_conditions: list[StopCondition] = []
-    """The logical condition for successfully stopping a run."""
-    hooks: t.Annotated[list[Hook], Field(exclude=True, repr=False)] = []
+    caching: CacheMode | None = Config(None, repr=False)
+    """How to handle cache_control entries on inference messages."""
+    hooks: list[Hook] = Config(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the agent's lifecycle."""
+
+    stop_conditions: list[StopCondition] = Field(default_factory=list)
+    """The logical condition for successfully stopping a run."""
     thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
     """Stateful thread for this agent, for when otherwise not specified during execution."""
 
@@ -254,12 +253,13 @@ class TaskAgent(Agent):
     It extends the base Agent class to provide task-specific functionality.
 
     - Automatically includes the `finish_task` and `update_todo` tools.
-    - Installs a default StopNever condition to trigger stalling behavior when no tools calls are made.
+    - Installs a default stop_never condition to trigger stalling behavior when no tools calls are made.
     - Uses the `AgentStalled` event to handle stalled tasks by pushing the model to continue or finish the task.
     """
 
     def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools import finish_task, update_todo
+        from dreadnode.agent.tools.task import finish_task
+        from dreadnode.agent.tools.todo import update_todo
 
         if not any(tool for tool in self.tools if tool.name == "finish_task"):
             self.tools.append(finish_task)
@@ -268,7 +268,7 @@ class TaskAgent(Agent):
             self.tools.append(update_todo)
 
         # Force the agent to use finish_task
-        self.stop_conditions.append(StopNever())
+        self.stop_conditions.append(stop_never())
         self.hooks.insert(
             0,
             retry_with_feedback(

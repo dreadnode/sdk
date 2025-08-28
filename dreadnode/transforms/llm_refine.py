@@ -23,7 +23,7 @@ def refine(input: Input) -> Refinement:  # type: ignore [empty-body]
 
 
 def llm_refine(
-    model: str,
+    model: str | rg.Generator,
     guidance: str,
     *,
     model_params: AnyDict | None = None,
@@ -39,7 +39,11 @@ def llm_refine(
         name: The name of the transform.
     """
 
-    async def transform(object: str, *, model: str = Config(model, help="The model to use")) -> str:
+    async def transform(
+        object: str,
+        *,
+        model: str | rg.Generator = Config(model, help="The model to use", expose_as=str),  # noqa: B008
+    ) -> str:
         nonlocal guidance
 
         generator: rg.Generator

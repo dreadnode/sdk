@@ -191,20 +191,34 @@ def clone(self) -> "Task[P, R]":
     Returns:
         A new Task instance with the same attributes as this one.
     """
-    return Task(
-        func=self.func,
-        tracer=self._tracer,
-        name=self.name,
-        label=self.label,
-        scorers=self.scorers.copy(),
-        log_inputs=self.log_inputs,
-        log_output=self.log_output,
-        log_execution_metrics=self.log_execution_metrics,
-        tags=self.tags.copy(),
-        attributes=self.attributes.copy(),
-        config=deepcopy(self.__dn_param_config__),
-        context=deepcopy(self.__dn_context__),
-    )
+    return self.__deepcopy__({})
+```
+
+
+</Accordion>
+
+### eval
+
+```python
+eval(
+    dataset: InputDataset[InputT]
+    | list[AnyDict]
+    | Path
+    | str,
+) -> EvalResult[InputT, OutputT]
+```
+
+Evaluate the task with the given arguments and return an evaluation result.
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+async def eval(
+    self, dataset: "InputDataset[InputT] | list[AnyDict] | Path | str"
+) -> "EvalResult[InputT, OutputT]":
+    """
+    Evaluate the task with the given arguments and return an evaluation result.
+    """
+    return await self.as_eval(dataset).run()
 ```
 
 

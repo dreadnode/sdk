@@ -110,6 +110,8 @@ def __init__(
     "Automatically increment an internal step counter every time this scorer is called."
     self.log_all = log_all
     "Log all sub-metrics from nested composition, or just the final resulting metric."
+
+    self.__name__ = name
 ```
 
 
@@ -237,17 +239,7 @@ Clone the scorer.
 ```python
 def clone(self) -> "Scorer[T]":
     """Clone the scorer."""
-    return Scorer(
-        func=self.func,
-        name=self.name,
-        attributes=self.attributes.copy(),
-        catch=self.catch,
-        step=self.step,
-        auto_increment_step=self.auto_increment_step,
-        log_all=self.log_all,
-        config=deepcopy(self.__dn_param_config__),
-        context=deepcopy(self.__dn_context__),
-    )
+    return self.__deepcopy__({})
 ```
 
 
@@ -1911,9 +1903,11 @@ def zero_shot_classification(
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
         pipeline_key = f"zero-shot-classification_{model_name}"
-        if pipeline_key not in g_pipelines:
-            g_pipelines[pipeline_key] = pipeline("zero-shot-classification", model=model_name)
-        classifier = g_pipelines[pipeline_key]
+        if pipeline_key not in g_transformer_pipeline_cache:
+            g_transformer_pipeline_cache[pipeline_key] = pipeline(
+                "zero-shot-classification", model=model_name
+            )
+        classifier = g_transformer_pipeline_cache[pipeline_key]
 
         text = str(data)
         if not text.strip():
@@ -2097,7 +2091,6 @@ def contains(
                 compiled = re.compile(pattern, flags)
             else:
                 compiled = pattern
-
             matches = compiled.findall(text)
             contains = bool(matches)
             metadata["matches"] = list(set(matches))
@@ -2218,7 +2211,7 @@ def detect_bias(*, extra_patterns: list[str] | None = None, name: str = "bias") 
         r"\b(all|most) (asians|black people|white people|hispanics) are\b",
         # Ageism
         r"\bok boomer\b",
-        r"\b(old people|millennials|gen z) can't\b",
+        r"\b(old people|millennials|gen z|zoomers|gen alpha) can't\b",
         r"\btoo old to\b",
         # Other generalizations
         r"people from [A-Za-z]+ are always",
@@ -2665,7 +2658,7 @@ llm\_judge
 
 ```python
 llm_judge(
-    model: str,
+    model: str | Generator,
     rubric: str,
     *,
     expected_output: str | None = None,
@@ -2682,7 +2675,7 @@ Score the output of a task using an LLM to judge it against a rubric.
 **Parameters:**
 
 * **`model`**
-  (`str`)
+  (`str | Generator`)
   –The model to use for judging.
 * **`rubric`**
   (`str`)
@@ -2721,7 +2714,7 @@ Score the output of a task using an LLM to judge it against a rubric.
 <Accordion title="Source code in dreadnode/scorers/judge.py" icon="code">
 ```python
 def llm_judge(
-    model: str,
+    model: str | rg.Generator,
     rubric: str,
     *,
     expected_output: str | None = None,
@@ -2746,7 +2739,11 @@ def llm_judge(
     """
 
     async def evaluate(
-        data: t.Any, *, model: str = Config(model, help="The model to use for judging.")
+        data: t.Any,
+        *,
+        model: str | rg.Generator = Config(  # noqa: B008
+            model, help="The model to use for judging.", expose_as=str
+        ),
     ) -> list[Metric]:
         nonlocal rubric, expected_output
 

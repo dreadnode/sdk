@@ -9,10 +9,10 @@ from pydantic_core import PydanticUndefined
 
 from dreadnode.meta.types import Component, ConfigInfo, Model
 from dreadnode.types import AnyDict
-from dreadnode.util import get_obj_name
+from dreadnode.util import get_obj_name, safe_issubclass
 
 
-def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBaseModel] | None:
+def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBaseModel]:
     """
     Generates a Pydantic BaseModel type from a blueprint instance (Model or Component).
 
@@ -40,6 +40,10 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
             annotation = blueprint.__annotations__.get(field_name, t.Any)
 
             field_type, default = _resolve_type_and_default(obj, annotation, name=field_name)
+            field_type = param_info.expose_as or field_type
+
+            if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
+                continue
 
             field_kwargs = {**param_info.field_kwargs, "default": default}
             field_kwargs.pop("default_factory", None)
@@ -73,6 +77,10 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
                 continue
 
             field_type, default = _resolve_type_and_default(obj, annotation, name=param_name)
+            field_type = param_info.expose_as or field_type
+
+            if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
+                continue
 
             field_kwargs = {**param_info.field_kwargs, "default": default}
             fields[param_name] = (field_type, Field(**field_kwargs))
@@ -85,12 +93,13 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
 
             obj = getattr(blueprint, attr_name)
             field_type, default = _resolve_type_and_default(obj, t.Any, name=attr_name)
+            field_type = attr_info.expose_as or field_type
 
             field_kwargs = {**attr_info.field_kwargs, "default": default}
             field_kwargs.pop("default_factory", None)
             fields[attr_name] = (field_type, Field(**field_kwargs))
 
-    return create_model(name, **fields) if fields else None
+    return create_model(name, **fields)  # , __config__=ConfigDict(arbitrary_types_allowed=True))
 
 
 def get_model_schema(model: type[PydanticBaseModel]) -> AnyDict:
@@ -140,33 +149,35 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
                 suffix += 1
             used_names.add(item_name)
 
-            if nested_model := get_config_model(item, f"{name}_{item_name}"):
+            nested_model = get_config_model(item, f"{name}_{item_name}")
+            if nested_model.model_fields:
                 nested_default = Ellipsis
                 with contextlib.suppress(Exception):
                     nested_default = nested_model()
                 nested_fields[item_name] = (nested_model, Field(default=nested_default))
 
+        obj_type = create_model(name, **nested_fields)
+        obj_default = Ellipsis
+        with contextlib.suppress(Exception):
+            obj_default = obj_type()
+
     elif isinstance(obj, dict):
         for key, value in obj.items():
-            if isinstance(value, (Model, Component)) and (
-                nested_model := get_config_model(value, f"{name}_{key}")
-            ):
-                nested_default = Ellipsis
-                with contextlib.suppress(Exception):
-                    nested_default = nested_model()
-                nested_fields[key] = (nested_model, Field(default=nested_default))
+            if isinstance(value, (Model, Component)):
+                nested_model = get_config_model(value, f"{name}_{key}")
+                if nested_model.model_fields:
+                    nested_default = Ellipsis
+                    with contextlib.suppress(Exception):
+                        nested_default = nested_model()
+                    nested_fields[key] = (nested_model, Field(default=nested_default))
 
-    if nested_fields:
         obj_type = create_model(name, **nested_fields)
         obj_default = Ellipsis
         with contextlib.suppress(Exception):
             obj_default = obj_type()
 
     elif isinstance(obj, (Model, Component)):
-        if (config_model := get_config_model(obj, name)) is None:
-            raise TypeError(f"Could not generate config model for field '{name}'")
-
-        obj_type = config_model
+        obj_type = get_config_model(obj, name)
         obj_default = Ellipsis
         with contextlib.suppress(Exception):
             obj_default = obj_type()

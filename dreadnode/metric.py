@@ -58,9 +58,9 @@ class Metric:
     "The value of the metric, e.g. 0.5, 1.0, 2.0, etc."
     step: int = 0
     "An step value to indicate when this metric was reported."
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), repr=False)
     "The timestamp when the metric was reported."
-    attributes: JsonDict = Field(default_factory=dict)
+    attributes: JsonDict = Field(default_factory=dict, repr=False)
     "A dictionary of attributes to attach to the metric."
 
     @classmethod
@@ -134,7 +134,3 @@ class Metric:
             self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
 
         return self
-
-
-class NamedMetric(Metric):
-    name: str

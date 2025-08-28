@@ -31,7 +31,7 @@ def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
 
 
 def llm_judge(
-    model: str,
+    model: str | rg.Generator,
     rubric: str,
     *,
     expected_output: str | None = None,
@@ -56,7 +56,11 @@ def llm_judge(
     """
 
     async def evaluate(
-        data: t.Any, *, model: str = Config(model, help="The model to use for judging.")
+        data: t.Any,
+        *,
+        model: str | rg.Generator = Config(  # noqa: B008
+            model, help="The model to use for judging.", expose_as=str
+        ),
     ) -> list[Metric]:
         nonlocal rubric, expected_output
 

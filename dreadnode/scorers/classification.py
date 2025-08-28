@@ -6,7 +6,7 @@ from dreadnode.scorers import Scorer
 from dreadnode.util import clean_str, warn_at_user_stacklevel
 
 # Global cache for pipelines
-g_pipelines: dict[str, t.Any] = {}
+g_transformer_pipeline_cache: dict[str, t.Any] = {}
 
 
 def zero_shot_classification(
@@ -54,9 +54,11 @@ def zero_shot_classification(
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
         pipeline_key = f"zero-shot-classification_{model_name}"
-        if pipeline_key not in g_pipelines:
-            g_pipelines[pipeline_key] = pipeline("zero-shot-classification", model=model_name)
-        classifier = g_pipelines[pipeline_key]
+        if pipeline_key not in g_transformer_pipeline_cache:
+            g_transformer_pipeline_cache[pipeline_key] = pipeline(
+                "zero-shot-classification", model=model_name
+            )
+        classifier = g_transformer_pipeline_cache[pipeline_key]
 
         text = str(data)
         if not text.strip():

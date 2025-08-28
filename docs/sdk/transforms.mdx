@@ -135,8 +135,12 @@ Pydantic model containing that string).
 
 **Parameters:**
 
-* **`adapt`**
+* **`adapt_in`**
+  (`Callable[[OuterIn], In]`)
   –A function to extract the `T` from the `OuterT`.
+* **`adapt_out`**
+  (`Callable[[Out], OuterOut]`)
+  –A function to extract the `OuterT` from the `T`.
 * **`name`**
   (`str | None`, default:
   `None`
@@ -164,7 +168,8 @@ def adapt(
     Pydantic model containing that string).
 
     Args:
-        adapt: A function to extract the `T` from the `OuterT`.
+        adapt_in: A function to extract the `T` from the `OuterT`.
+        adapt_out: A function to extract the `OuterT` from the `T`.
         name: An optional new name for the adapted scorer.
 
     Returns:
@@ -195,13 +200,7 @@ Clone the transform.
 ```python
 def clone(self) -> "Transform[In, Out]":
     """Clone the transform."""
-    return Transform(
-        func=self.func,
-        name=self.name,
-        catch=self.catch,
-        config=deepcopy(self.__dn_param_config__),
-        context=deepcopy(self.__dn_context__),
-    )
+    return self.__deepcopy__({})
 ```
 
 
@@ -668,7 +667,7 @@ llm\_refine
 
 ```python
 llm_refine(
-    model: str,
+    model: str | Generator,
     guidance: str,
     *,
     model_params: AnyDict | None = None,
@@ -681,7 +680,7 @@ A generic transform that uses an LLM to refine a candidate.
 **Parameters:**
 
 * **`model`**
-  (`str`)
+  (`str | Generator`)
   –The model to use for refining the candidate.
 * **`guidance`**
   (`str`)
@@ -700,7 +699,7 @@ A generic transform that uses an LLM to refine a candidate.
 <Accordion title="Source code in dreadnode/transforms/llm_refine.py" icon="code">
 ```python
 def llm_refine(
-    model: str,
+    model: str | rg.Generator,
     guidance: str,
     *,
     model_params: AnyDict | None = None,
@@ -716,7 +715,11 @@ def llm_refine(
         name: The name of the transform.
     """
 
-    async def transform(object: str, *, model: str = Config(model, help="The model to use")) -> str:
+    async def transform(
+        object: str,
+        *,
+        model: str | rg.Generator = Config(model, help="The model to use", expose_as=str),  # noqa: B008
+    ) -> str:
         nonlocal guidance
 
         generator: rg.Generator

@@ -4,7 +4,6 @@ from collections import Counter
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from dreadnode import log_metric, log_output
 from dreadnode.agent.tools.base import tool
 
 
@@ -82,6 +81,8 @@ def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of to
 
     When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.
     """
+    from dreadnode import log_metric, log_output
+
     status_counts = Counter(t.status for t in todos)
 
     log_metric("num_todos", len(todos))

@@ -1,10 +1,10 @@
 import typing as t
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 from rigging import tools
 from rigging.tools.base import ToolMethod as RiggingToolMethod
 
-from dreadnode.agent.configurable import CONFIGURABLE_ATTR, configurable
+from dreadnode.meta import Config, Model
 
 Tool = tools.Tool
 tool = tools.tool
@@ -56,7 +56,7 @@ def tool_method(
     return decorator
 
 
-class Toolset(BaseModel):
+class Toolset(Model):
     """
     A Pydantic-based class for creating a collection of related, stateful tools.
 
@@ -66,21 +66,10 @@ class Toolset(BaseModel):
     - A `get_tools` method for discovering methods decorated with `@dreadnode.tool_method`.
     """
 
-    variant: str = "all"
+    variant: str = Config("all")
     """The variant for filtering tools available in this toolset."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
-
-    def __init_subclass__(cls, **kwargs: t.Any) -> None:
-        """
-        This method automatically applies the @configurable decorator to any
-        subclass of Toolset, making them configurable by default.
-        """
-        super().__init_subclass__(**kwargs)
-
-        # Apply the @configurable decorator if it hasn't been yet
-        if not getattr(cls, CONFIGURABLE_ATTR, False):
-            configurable(cls)
 
     @property
     def name(self) -> str:

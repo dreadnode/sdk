@@ -2,6 +2,7 @@ import contextlib
 import inspect
 import typing as t
 from copy import deepcopy
+from pathlib import Path
 
 import typing_extensions as te
 from opentelemetry.trace import Tracer
@@ -18,6 +19,16 @@ from dreadnode.util import (
     get_callable_name,
     get_filepath_attribute,
 )
+
+if t.TYPE_CHECKING:
+    from dreadnode.eval.dataset import (
+        EvalResult,
+        InputDataset,
+        InputDatasetProcessor,
+        InputT,
+        OutputT,
+    )
+    from dreadnode.eval.eval import Eval
 
 P = t.ParamSpec("P")
 R = t.TypeVar("R")
@@ -224,13 +235,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             log_output=self.log_output,
         )
 
-    def clone(self) -> "Task[P, R]":
-        """
-        Clone a task.
-
-        Returns:
-            A new Task instance with the same attributes as this one.
-        """
+    def __deepcopy__(self, memo: dict[int, t.Any]) -> "Task[P, R]":
         return Task(
             func=self.func,
             tracer=self._tracer,
@@ -242,9 +247,18 @@ class Task(Component[P, R], t.Generic[P, R]):
             log_execution_metrics=self.log_execution_metrics,
             tags=self.tags.copy(),
             attributes=self.attributes.copy(),
-            config=deepcopy(self.__dn_param_config__),
-            context=deepcopy(self.__dn_context__),
+            config=deepcopy(self.__dn_param_config__, memo),
+            context=deepcopy(self.__dn_context__, memo),
         )
+
+    def clone(self) -> "Task[P, R]":
+        """
+        Clone a task.
+
+        Returns:
+            A new Task instance with the same attributes as this one.
+        """
+        return self.__deepcopy__({})
 
     def with_(
         self,
@@ -306,6 +320,41 @@ class Task(Component[P, R], t.Generic[P, R]):
             task.attributes = attributes or {}
 
         return task
+
+    def as_eval(
+        self,
+        dataset: "InputDataset[InputT] | list[AnyDict] | Path | str",
+        *,
+        name: str | None = None,
+        description: str = "",
+        concurrency: int | None = None,
+        preprocessor: "InputDatasetProcessor | None" = None,
+        scorers: "ScorersLike[R] | None" = None,
+        assertions: "ScorersLike[R] | None" = None,
+    ) -> "Eval[InputT, R]":
+        from dreadnode.eval.eval import Eval
+
+        if isinstance(dataset, str):
+            dataset = Path(dataset)
+
+        return Eval[InputT, R](
+            dataset=dataset,
+            name=name,
+            task=self,
+            description=description,
+            concurrency=concurrency,
+            preprocessor=preprocessor,
+            scorers=scorers or [],
+            assertions=assertions or [],
+        )
+
+    async def eval(
+        self, dataset: "InputDataset[InputT] | list[AnyDict] | Path | str"
+    ) -> "EvalResult[InputT, OutputT]":
+        """
+        Evaluate the task with the given arguments and return an evaluation result.
+        """
+        return await self.as_eval(dataset).run()
 
     async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         """

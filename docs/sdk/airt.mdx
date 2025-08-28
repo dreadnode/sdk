@@ -38,32 +38,6 @@ target: str | Generator
 
 The model or endpoint to attack, as a rigging generator identifier string or object.
 
-### make\_study
-
-```python
-make_study() -> Study[CandidateT]
-```
-
-[Internal] Each Attack subclass must implement this method.
-
-Its job is to translate the Attack's high-level configuration into a
-fully-configured Study object with the correct Strategy and glue functions.
-
-<Accordion title="Source code in dreadnode/airt/attack/base.py" icon="code">
-```python
-@abstractmethod
-def make_study(self) -> Study[CandidateT]:
-    """
-    [Internal] Each Attack subclass must implement this method.
-
-    Its job is to translate the Attack's high-level configuration into a
-    fully-configured Study object with the correct Strategy and glue functions.
-    """
-```
-
-
-</Accordion>
-
 AttackResult
 ------------
 

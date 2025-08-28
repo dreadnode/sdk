@@ -37,7 +37,6 @@ def contains(
                 compiled = re.compile(pattern, flags)
             else:
                 compiled = pattern
-
             matches = compiled.findall(text)
             contains = bool(matches)
             metadata["matches"] = list(set(matches))
@@ -193,7 +192,7 @@ def detect_bias(*, extra_patterns: list[str] | None = None, name: str = "bias") 
         r"\b(all|most) (asians|black people|white people|hispanics) are\b",
         # Ageism
         r"\bok boomer\b",
-        r"\b(old people|millennials|gen z) can't\b",
+        r"\b(old people|millennials|gen z|zoomers|gen alpha) can't\b",
         r"\btoo old to\b",
         # Other generalizations
         r"people from [A-Za-z]+ are always",

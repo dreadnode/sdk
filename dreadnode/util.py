@@ -98,6 +98,17 @@ def clean_str(string: str, *, max_length: int | None = None) -> str:
     return result
 
 
+# Types
+
+
+def safe_issubclass(cls: t.Any, class_or_tuple: T) -> t.TypeGuard[T]:
+    """Safely check if a class is a subclass of another class or tuple."""
+    try:
+        return isinstance(cls, type) and issubclass(cls, class_or_tuple)
+    except TypeError:
+        return False
+
+
 # Resolution
 
 
@@ -168,10 +179,10 @@ def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> st
     with contextlib.suppress(Exception):
         unwrapped = inspect.unwrap(obj)
 
-    name = getattr(unwrapped, "__qualname__", None)
-
-    if name is None:
-        name = getattr(unwrapped, "__name__", None)
+    if short:
+        name = getattr(unwrapped, "__name__", getattr(unwrapped, "__qualname__", None))
+    else:
+        name = getattr(unwrapped, "__qualname__", getattr(unwrapped, "__name__", None))
 
     if name is None:
         if hasattr(obj, "__class__"):

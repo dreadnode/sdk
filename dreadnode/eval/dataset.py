@@ -1,6 +1,8 @@
 import csv
 import json
+import statistics
 import typing as t
+from collections import defaultdict
 from pathlib import Path
 
 import typing_extensions as te
@@ -139,3 +141,90 @@ class EvalResult(BaseModel, t.Generic[InputT, OutputT]):
     @property
     def passed_samples(self) -> list[Sample[InputT, OutputT]]:
         return [s for s in self.samples if s.passed]
+
+    @property
+    def failed_samples(self) -> list[Sample[InputT, OutputT]]:
+        """A list of all samples that failed at least one assertion."""
+        return [s for s in self.samples if not s.passed]
+
+    @property
+    def pass_rate(self) -> float:
+        """The overall pass rate of the evaluation, from 0.0 to 1.0."""
+        if not self.samples:
+            return 0.0
+        return self.passed_count / len(self.samples)
+
+    @property
+    def metrics_summary(self) -> dict[str, dict[str, float]]:
+        """
+        Calculates and returns a summary of statistics for each metric across all samples.
+
+        Returns:
+            A dictionary where each key is a metric name and the value is another
+            dictionary containing the 'mean', 'stdev', 'min', and 'max' of that metric.
+        """
+        metrics_by_name: dict[str, list[float]] = defaultdict(list)
+        for sample in self.samples:
+            for name, metric_list in sample.metrics.items():
+                for metric in metric_list:
+                    metrics_by_name[name].append(metric.value)
+
+        summary: dict[str, dict[str, float]] = {}
+        for name, values in metrics_by_name.items():
+            if not values:
+                continue
+
+            mean = statistics.mean(values)
+            stdev = statistics.stdev(values) if len(values) > 1 else 0.0
+
+            summary[name] = {
+                "mean": mean,
+                "stdev": stdev,
+                "min": min(values),
+                "max": max(values),
+                "count": len(values),
+            }
+        return summary
+
+    @property
+    def assertions_summary(self) -> dict[str, dict[str, float | int]]:
+        """
+        Calculates and returns a summary for each assertion across all samples.
+
+        Returns:
+            A dictionary where each key is an assertion name and the value is
+            another dictionary containing 'passed_count', 'failed_count', and 'pass_rate'.
+        """
+        assertions_results: dict[str, list[bool]] = defaultdict(list)
+        for sample in self.samples:
+            for name, passed in sample.assertions.items():
+                assertions_results[name].append(passed)
+
+        summary: dict[str, dict[str, float | int]] = {}
+        for name, results in assertions_results.items():
+            if not results:
+                continue
+
+            passed_count = sum(1 for r in results if r)
+            total_count = len(results)
+            pass_rate = passed_count / total_count if total_count > 0 else 0.0
+
+            summary[name] = {
+                "passed_count": passed_count,
+                "failed_count": total_count - passed_count,
+                "pass_rate": pass_rate,
+            }
+        return summary
+
+
+# ---
+
+# @task(
+#     scorers={
+#         "similarity": similarity("foo"),
+#         "contains": contains("bar")
+#     },
+#     assertions={
+#         ""
+#     }
+# )

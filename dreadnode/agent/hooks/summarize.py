@@ -1,11 +1,11 @@
 import contextlib
 import typing as t
 
-from dreadnode.agent.configurable import configurable
 from dreadnode.agent.events import AgentError, Event, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
 from dreadnode.agent.types import Generator, Message
+from dreadnode.meta import Config, component
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.hooks.base import Hook
@@ -43,12 +43,19 @@ def _get_last_input_tokens(event: Event) -> int:
     return last_generation_event.usage.input_tokens if last_generation_event.usage else 0
 
 
-@configurable(["max_tokens"])
+@component
 def summarize_when_long(
-    model: "str | Generator | None" = None,
+    model: "str | Generator | None" = Config(  # noqa: B008
+        None, help="The model to use for summarization", expose_as=str | None
+    ),
     *,
-    max_tokens: int | None = None,
-    min_messages_to_keep: int = 5,
+    max_tokens: int | None = Config(
+        None,
+        help="The maximum number of tokens allowed in the context window before summarization is triggered",
+    ),
+    min_messages_to_keep: int = Config(
+        5, help="The minimum number of messages to retain after summarization"
+    ),
 ) -> "Hook":
     """
     Creates a hook to manage the agent's context window by summarizing the conversation history.

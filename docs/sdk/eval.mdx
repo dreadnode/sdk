@@ -13,7 +13,9 @@ Eval
 ### assertions
 
 ```python
-assertions: ScorersLike[OutputT] | None = None
+assertions: ScorersLike[OutputT] = Config(
+    default_factory=list
+)
 ```
 
 Assertions to validate the task's output (scores are resolved as truthy).
@@ -21,15 +23,17 @@ Assertions to validate the task's output (scores are resolved as truthy).
 ### concurrency
 
 ```python
-concurrency: int | None = None
+concurrency: int = Config(1)
 ```
 
-Maximum number of tasks to run in parallel. If None, runs with unlimited concurrency.
+Maximum number of tasks to run in parallel.
 
 ### dataset
 
 ```python
-dataset: InputDataset[InputT] | list[AnyDict] | FilePath
+dataset: InputDataset[InputT] | list[AnyDict] | FilePath = (
+    Config(expose_as=FilePath)
+)
 ```
 
 The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
@@ -37,23 +41,15 @@ The dataset to use for the evaluation. Can be a list of inputs or a file path to
 ### description
 
 ```python
-description: str = ''
+description: str = Config('')
 ```
 
 A brief description of the eval's purpose.
 
-### label
-
-```python
-label: str | None = None
-```
-
-Override the name-derived label for logging.
-
 ### name
 
 ```python
-name: str | None = None
+name: str | None = Config(None)
 ```
 
 The name of the evaluation.
@@ -69,7 +65,7 @@ Optional preprocessor function to transform the dataset before evaluation.
 ### scorers
 
 ```python
-scorers: ScorersLike[OutputT] | None = None
+scorers: ScorersLike[OutputT] = Config(default_factory=list)
 ```
 
 Scorers to evaluate the task's output.
@@ -77,7 +73,7 @@ Scorers to evaluate the task's output.
 ### task
 
 ```python
-task: Task[[InputT], OutputT] | str
+task: Task[[InputT], OutputT] | str = Config(expose_as=str)
 ```
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.
@@ -208,12 +204,11 @@ async def stream(
     extra_scorers = Scorer.fit_like(self.scorers or []) + assertion_scorers
     eval_task = task.with_(scorers=extra_scorers, append=True)
     eval_name = self.name or f"eval - {eval_task.name}"
-    eval_label = self.label or f"eval_{eval_task.label}"
 
     async def sample_gen() -> t.AsyncGenerator[
         Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None
     ]:
-        with task_span(eval_name, label=eval_label, tags=["eval"]):
+        with task_span(eval_name, tags=["eval"]):
             samples: list[Sample[InputT, OutputT]] = []
 
             async with eval_task.stream_map(dataset, concurrency=self.concurrency) as stream:
@@ -234,6 +229,52 @@ EvalResult
 ----------
 
 Represents the result of an evaluation, including input, output, metrics, and error.
+
+### assertions\_summary
+
+```python
+assertions_summary: dict[str, dict[str, float | int]]
+```
+
+Calculates and returns a summary for each assertion across all samples.
+
+**Returns:**
+
+* `dict[str, dict[str, float | int]]`
+  –A dictionary where each key is an assertion name and the value is
+* `dict[str, dict[str, float | int]]`
+  –another dictionary containing 'passed\_count', 'failed\_count', and 'pass\_rate'.
+
+### failed\_samples
+
+```python
+failed_samples: list[Sample[InputT, OutputT]]
+```
+
+A list of all samples that failed at least one assertion.
+
+### metrics\_summary
+
+```python
+metrics_summary: dict[str, dict[str, float]]
+```
+
+Calculates and returns a summary of statistics for each metric across all samples.
+
+**Returns:**
+
+* `dict[str, dict[str, float]]`
+  –A dictionary where each key is a metric name and the value is another
+* `dict[str, dict[str, float]]`
+  –dictionary containing the 'mean', 'stdev', 'min', and 'max' of that metric.
+
+### pass\_rate
+
+```python
+pass_rate: float
+```
+
+The overall pass rate of the evaluation, from 0.0 to 1.0.
 
 load\_from\_file
 ----------------

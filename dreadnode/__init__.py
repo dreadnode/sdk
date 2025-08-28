@@ -1,7 +1,7 @@
 import importlib
 import typing as t
 
-from dreadnode import convert, data_types, meta
+from dreadnode import agent, convert, data_types, meta
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.meta import (
@@ -84,6 +84,7 @@ __all__ = [
     "Text",
     "Video",
     "__version__",
+    "agent",
     "api",
     "configure",
     "continue_run",

@@ -8,6 +8,7 @@ import pydantic
 import typing_extensions as te
 from annotated_types import SupportsGt
 from pydantic import Field
+from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import PydanticUndefined
 from typing_extensions import ParamSpec
 
@@ -25,6 +26,7 @@ class ConfigInfo:
     """Internal container for static configuration metadata."""
 
     field_kwargs: dict[str, t.Any] = field(default_factory=dict)
+    expose_as: t.Any = None
 
 
 @t.overload
@@ -34,6 +36,7 @@ def Config(
     key: str | None = None,
     help: str | None = None,
     description: str | None = None,
+    expose_as: t.Any | None = None,
     examples: list[t.Any] | None = None,
     gt: float | None = None,
     ge: float | None = None,
@@ -54,6 +57,7 @@ def Config(
     key: str | None = None,
     help: str | None = None,
     description: str | None = None,
+    expose_as: t.Any = None,
     examples: list[t.Any] | None = None,
     gt: float | None = None,
     ge: float | None = None,
@@ -74,6 +78,7 @@ def Config(
     key: str | None = None,
     help: str | None = None,
     description: str | None = None,
+    expose_as: t.Any | None = None,
     examples: list[t.Any] | None = None,
     gt: float | None = None,
     ge: float | None = None,
@@ -93,6 +98,7 @@ def Config(
     key: str | None = None,
     help: str | None = None,
     description: str | None = None,
+    expose_as: t.Any | None = None,
     examples: list[t.Any] | None = None,
     gt: float | None = None,
     ge: float | None = None,
@@ -112,6 +118,7 @@ def Config(  # noqa: N802
     key: str | None = UNSET,
     help: str | None = UNSET,
     description: str | None = UNSET,
+    expose_as: t.Any | None = None,
     examples: list[t.Any] | None = UNSET,
     exclude: bool | None = UNSET,
     repr: bool = UNSET,
@@ -137,7 +144,9 @@ def Config(  # noqa: N802
             (in which case it is called as is) or a single argument containing the already validated data.
         alias: The name to use for the attribute when validating or serializing by alias.
             This is often used for things like converting between snake and camel case.
-        description: Human-readable description.
+        help: Human-readable help text.
+        description: Human-readable description (overridden by `help`)
+        expose_as: Override the type that this config value should be annotated as in configuration models.
         examples: Example values for this field.
         exclude: Exclude the field from the model serialization.
         repr: A boolean indicating whether to include the field in the `__repr__` output.
@@ -196,34 +205,64 @@ def Config(  # noqa: N802
     # Filter UNSET values
     field_kwargs = {k: v for k, v in field_kwargs.items() if v is not UNSET}
 
-    return ConfigInfo(
-        field_kwargs=field_kwargs,
-    )
+    return ConfigInfo(field_kwargs=field_kwargs, expose_as=expose_as)
 
 
-class Model(pydantic.BaseModel):
-    """The base class for all configurable class-based components."""
-
-    def __init_subclass__(cls, **kwargs: t.Any) -> None:
-        super().__init_subclass__(**kwargs)
-
-        params: dict[str, ConfigInfo] = {}
-        for name in cls.__annotations__:
-            obj = hasattr(cls, name) and getattr(cls, name)
-            if obj and isinstance(obj, ConfigInfo):
-                json_schema_extra = {
-                    **(obj.field_kwargs.get("json_schema_extra", {})),
-                    "__dn_param__": True,
-                }
-                obj.field_kwargs["json_schema_extra"] = json_schema_extra
+class ModelMeta(ModelMetaclass):
+    def __new__(
+        mcs,
+        name: str,
+        bases: tuple[type[t.Any], ...],
+        namespace: dict[str, t.Any],
+        **kwargs: t.Any,
+    ) -> type:
+        for attr_name, attr_value in namespace.items():
+            if isinstance(attr_value, ConfigInfo):
                 field_kwargs = {
                     k: (v if v is not UNSET else PydanticUndefined)
-                    for k, v in obj.field_kwargs.items()
+                    for k, v in attr_value.field_kwargs.items()
                 }
-                setattr(cls, name, Field(**field_kwargs))  # type: ignore[arg-type]
-                params[name] = obj
+                namespace[attr_name] = Field(**field_kwargs)  # type: ignore[arg-type]
 
+        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+
+        params = {
+            name: getattr(bases[0] if bases else object, name, attr_value)
+            for name, attr_value in namespace.items()
+            if isinstance(attr_value, ConfigInfo)
+        }
         cls.__dn_config__ = params  # type: ignore[attr-defined]
+
+        return cls
+
+
+class Model(pydantic.BaseModel, metaclass=ModelMeta):
+    pass
+
+
+# class Model(pydantic.BaseModel):
+#     """The base class for all configurable class-based components."""
+
+#     def __init_subclass__(cls, **kwargs: t.Any) -> None:
+#         super().__init_subclass__(**kwargs)
+
+#         params: dict[str, ConfigInfo] = {}
+#         for name in cls.__annotations__:
+#             obj = hasattr(cls, name) and getattr(cls, name)
+#             if obj and isinstance(obj, ConfigInfo):
+#                 # json_schema_extra = {
+#                 #     **(obj.field_kwargs.get("json_schema_extra", {})),
+#                 #     "__dn_param__": True,
+#                 # }
+#                 # obj.field_kwargs["json_schema_extra"] = json_schema_extra
+#                 field_kwargs = {
+#                     k: (v if v is not UNSET else PydanticUndefined)
+#                     for k, v in obj.field_kwargs.items()
+#                 }
+#                 setattr(cls, name, Field(**field_kwargs))  # type: ignore[arg-type]
+#                 params[name] = obj
+
+#         cls.__dn_config__ = params  # type: ignore[attr-defined]
 
 
 class Component(t.Generic[P, R]):
@@ -256,21 +295,40 @@ class Component(t.Generic[P, R]):
         self.__name__ = func.__name__
         self.__qualname__ = func.__qualname__
         self.__doc__ = func.__doc__
-        self.__annotations__ = func.__annotations__
-        self.__signature__ = self.signature
 
+        # Strip any Config values from annotations to avoid
+        # them polluting further inspection.
+        self.__annotations__ = {
+            name: annotation
+            for name, annotation in func.__annotations__.items()
+            if name not in self.__dn_param_config__
+        }
+        self.__signature__ = self.signature.replace(
+            parameters=[
+                param
+                for name, param in self.signature.parameters.items()
+                if name not in self.__dn_param_config__
+            ]
+        )
+
+        # Update the parameter names for context dependencies
         for name, dep in self.__dn_context__.items():
             dep._param_name = name  # noqa: SLF001
+
+    # We need this otherwise we could trigger undeseriable behavior
+    # when included in deepcopy calls above us
+    def __deepcopy__(self, memo: dict[int, t.Any]) -> te.Self:
+        return self.__class__(
+            self.func,
+            config=deepcopy(self.__dn_param_config__, memo),
+            context=deepcopy(self.__dn_context__, memo),
+        )
 
     def clone(self) -> te.Self:
         """
         Create a copy of the component with the same configuration and context.
         """
-        return self.__class__(
-            self.func,
-            config=deepcopy(self.__dn_param_config__),
-            context=deepcopy(self.__dn_context__),
-        )
+        return self.__deepcopy__({})
 
     def configure(self, **overrides: t.Any) -> te.Self:
         """

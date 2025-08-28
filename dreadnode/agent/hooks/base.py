@@ -1,7 +1,6 @@
 import inspect
 import typing as t
 
-from dreadnode.agent.configurable import configurable
 from dreadnode.agent.reactions import RetryWithFeedback
 
 if t.TYPE_CHECKING:
@@ -19,7 +18,6 @@ class Hook(t.Protocol):
     ) -> "Reaction | None": ...
 
 
-@configurable(["feedback"])
 def retry_with_feedback(
     event_type: "type[Event] | t.Callable[[Event], bool]", feedback: str
 ) -> "Hook":

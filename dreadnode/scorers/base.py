@@ -82,6 +82,11 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         self.log_all = log_all
         "Log all sub-metrics from nested composition, or just the final resulting metric."
 
+        self.__name__ = name
+
+    def __repr__(self) -> str:
+        return f"Scorer(name='{self.name}')"
+
     @classmethod
     def fit_like(
         cls, scorers: "ScorersLike[T] | None", *, attributes: JsonDict | None = None
@@ -118,8 +123,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             for scorer in scorers or []
         ]
 
-    def clone(self) -> "Scorer[T]":
-        """Clone the scorer."""
+    def __deepcopy__(self, memo: dict[int, t.Any]) -> "Scorer[T]":
         return Scorer(
             func=self.func,
             name=self.name,
@@ -128,9 +132,13 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             step=self.step,
             auto_increment_step=self.auto_increment_step,
             log_all=self.log_all,
-            config=deepcopy(self.__dn_param_config__),
-            context=deepcopy(self.__dn_context__),
+            config=deepcopy(self.__dn_param_config__, memo),
+            context=deepcopy(self.__dn_context__, memo),
         )
+
+    def clone(self) -> "Scorer[T]":
+        """Clone the scorer."""
+        return self.__deepcopy__({})
 
     def with_(
         self,

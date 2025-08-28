@@ -3,7 +3,7 @@ import typing as t
 from abc import ABC, abstractmethod
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from rigging import Generator, get_generator
+from rigging import Chat, Generator, Message, get_generator
 
 from dreadnode.optimization import Study, StudyEvent, Trial
 from dreadnode.scorers import ScorerLike
@@ -42,30 +42,29 @@ class Attack(ABC, BaseModel, t.Generic[CandidateT]):
 
     _target_generator: Generator | None = PrivateAttr(None, init=False)
 
-    def model_post_init(self, _: t.Any) -> None:
+    @property
+    def target_generator(self) -> Generator:
+        if self._target_generator is not None:
+            return self._target_generator
+
         if isinstance(self.target, str):
             self._target_generator = get_generator(self.target)
         else:
             self._target_generator = self.target
 
-    def apply_candidate_fn(self, candidate: CandidateT) -> Task:
+        return self._target_generator
+
+    def apply_candidate_fn(self, candidate: CandidateT) -> Task[[], Chat]:
         from dreadnode import task
 
         @task()
-        async def run_target_with_candidate() -> str:
-            response = await self._target_generator.chat(str(candidate)).run()
-            return response.last.content
+        async def run_target_with_candidate() -> Chat:
+            return await self.target_generator.chat(t.cast("Message", candidate)).run()
 
         return run_target_with_candidate
 
     @abstractmethod
-    def make_study(self) -> Study[CandidateT]:
-        """
-        [Internal] Each Attack subclass must implement this method.
-
-        Its job is to translate the Attack's high-level configuration into a
-        fully-configured Study object with the correct Strategy and glue functions.
-        """
+    def make_study(self) -> Study[CandidateT]: ...
 
     @contextlib.asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:

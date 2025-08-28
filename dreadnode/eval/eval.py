@@ -3,11 +3,8 @@ import typing as t
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, FilePath, PrivateAttr, TypeAdapter
+from pydantic import ConfigDict, FilePath, TypeAdapter
 
-from dreadnode.configurable import (
-    configurable,
-)
 from dreadnode.discovery import find
 from dreadnode.eval.dataset import (
     EvalResult,
@@ -18,37 +15,34 @@ from dreadnode.eval.dataset import (
     Sample,
     load_from_file,
 )
+from dreadnode.meta import Model
+from dreadnode.meta.types import Config
 from dreadnode.scorers.base import Scorer, ScorersLike
 from dreadnode.task import Task
 from dreadnode.types import AnyDict
 from dreadnode.util import get_callable_name, shorten_string
 
 
-@configurable(["name", "task", "dataset", "scorers", "assertions", "label", "concurrency"])
-class Eval(BaseModel, t.Generic[InputT, OutputT]):
+class Eval(Model, t.Generic[InputT, OutputT]):
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    name: str | None = None
+    name: str | None = Config(None)
     """The name of the evaluation."""
-    description: str = ""
+    description: str = Config("")
     """A brief description of the eval's purpose."""
-    task: Task[[InputT], OutputT] | str
+    task: Task[[InputT], OutputT] | str = Config(expose_as=str)
     """The task to evaluate. Can be a Task object or a string representing qualified task name."""
-    dataset: InputDataset[InputT] | list[AnyDict] | FilePath
+    dataset: InputDataset[InputT] | list[AnyDict] | FilePath = Config(expose_as=FilePath)
     """The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from."""
+    concurrency: int = Config(1)
+    """Maximum number of tasks to run in parallel."""
 
     preprocessor: InputDatasetProcessor | None = None
     """Optional preprocessor function to transform the dataset before evaluation."""
-    scorers: ScorersLike[OutputT] | None = None
+    scorers: ScorersLike[OutputT] = Config(default_factory=list)
     """Scorers to evaluate the task's output."""
-    assertions: ScorersLike[OutputT] | None = None
+    assertions: ScorersLike[OutputT] = Config(default_factory=list)
     """Assertions to validate the task's output (scores are resolved as truthy)."""
-    label: str | None = None
-    """Override the name-derived label for logging."""
-    concurrency: int | None = None
-    """Maximum number of tasks to run in parallel. If None, runs with unlimited concurrency."""
-
-    _label: str = PrivateAttr()
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)
@@ -71,9 +65,6 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
                 for assertion in Scorer.fit_like(self.assertions)
             )
             parts.append(f"assertions=[{assertions}]")
-        if self.label:
-            label = shorten_string(self.label or "", 50)
-            parts.append(f"label='{label}'")
         if self.concurrency is not None:
             parts.append(f"concurrency={self.concurrency}")
 
@@ -188,12 +179,11 @@ class Eval(BaseModel, t.Generic[InputT, OutputT]):
         extra_scorers = Scorer.fit_like(self.scorers or []) + assertion_scorers
         eval_task = task.with_(scorers=extra_scorers, append=True)
         eval_name = self.name or f"eval - {eval_task.name}"
-        eval_label = self.label or f"eval_{eval_task.label}"
 
         async def sample_gen() -> t.AsyncGenerator[
             Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None
         ]:
-            with task_span(eval_name, label=eval_label, tags=["eval"]):
+            with task_span(eval_name, tags=["eval"]):
                 samples: list[Sample[InputT, OutputT]] = []
 
                 async with eval_task.stream_map(dataset, concurrency=self.concurrency) as stream:

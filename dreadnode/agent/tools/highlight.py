@@ -1,6 +1,5 @@
 from loguru import logger
 
-from dreadnode import log_metric, log_output, tag
 from dreadnode.agent.tools.base import tool
 from dreadnode.data_types import Markdown
 
@@ -21,6 +20,7 @@ async def highlight_for_review(title: str, interest_level: str, justification: s
     `justification` should be a structured technical markdown explanation of *why* this is
     interesting and what the potential next steps for a human could be.
     """
+    from dreadnode import log_metric, log_output, tag
 
     interest_level = interest_level.lower().strip()
     if interest_level not in ["high", "medium", "low"]:

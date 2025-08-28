@@ -1,3 +1,4 @@
+import contextlib
 import typing as t
 from copy import deepcopy
 
@@ -24,7 +25,7 @@ def hydrate(blueprint: T, config: PydanticBaseModel | AnyDict) -> T:
     return t.cast("T", _hydrate_recursive(blueprint, config_data))
 
 
-def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:
+def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:  # noqa: PLR0911
     if override is None:
         return deepcopy(obj)
 
@@ -56,7 +57,10 @@ def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:
                 current_val = getattr(obj, key)
                 hydrated_attr = _hydrate_recursive(current_val, override_val)
                 updates[key] = hydrated_attr
-        return obj.model_copy(update=updates, deep=True)
+
+        with contextlib.suppress(Exception):
+            return obj.model_copy(update=updates, deep=True)
+        return obj.model_copy(update=updates)
 
     if isinstance(obj, list) and override_is_dict:
         hydrated_list = []

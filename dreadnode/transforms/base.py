@@ -52,15 +52,21 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         unmodified object from the input. If False, exceptions are raised.
         """
 
-    def clone(self) -> "Transform[In, Out]":
-        """Clone the transform."""
+    def __repr__(self) -> str:
+        return f"Transform(name='{self.name}')"
+
+    def __deepcopy__(self, memo: dict[int, t.Any]) -> "Transform[In, Out]":
         return Transform(
             func=self.func,
             name=self.name,
             catch=self.catch,
-            config=deepcopy(self.__dn_param_config__),
-            context=deepcopy(self.__dn_context__),
+            config=deepcopy(self.__dn_param_config__, memo),
+            context=deepcopy(self.__dn_context__, memo),
         )
+
+    def clone(self) -> "Transform[In, Out]":
+        """Clone the transform."""
+        return self.__deepcopy__({})
 
     def with_(
         self,
@@ -109,7 +115,8 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         Pydantic model containing that string).
 
         Args:
-            adapt: A function to extract the `T` from the `OuterT`.
+            adapt_in: A function to extract the `T` from the `OuterT`.
+            adapt_out: A function to extract the `OuterT` from the `T`.
             name: An optional new name for the adapted scorer.
 
         Returns:

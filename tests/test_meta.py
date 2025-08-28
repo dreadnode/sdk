@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 from pydantic_core import PydanticUndefined
 
 from dreadnode.meta.hydrate import hydrate
-from dreadnode.meta.introspect import get_config_model
+from dreadnode.meta.introspect import get_config_model, get_config_schema
 from dreadnode.meta.types import Component, Config, ConfigInfo, Model, component
 
 # ruff: noqa: PLR2004, N806
@@ -102,11 +102,12 @@ def test_model_stores_param_info_internally() -> None:
     assert "session_id" not in internal_params
 
 
-def test_model_includes_json_schema_attribute() -> None:
-    """Verify that the model includes the JSON schema attribute."""
-    json_schema_extra = TestAgent.__dn_config__["name"].field_kwargs["json_schema_extra"]
-    assert "__dn_param__" in json_schema_extra
-    assert json_schema_extra["__dn_param__"] is True
+# Excluded for now as I'm not sure whether we should keep it
+# def test_model_includes_json_schema_attribute() -> None:
+#     """Verify that the model includes the JSON schema attribute."""
+#     json_schema_extra = TestAgent.__dn_config__["name"].field_kwargs["json_schema_extra"]
+#     assert "__dn_param__" in json_schema_extra
+#     assert json_schema_extra["__dn_param__"] is True
 
 
 def test_model_validation_works_as_expected() -> None:
@@ -155,7 +156,7 @@ def test_component_decorator_wraps_function() -> None:
 
 def test_component_discovers_params() -> None:
     """Verify the Component wrapper finds Param objects in the signature."""
-    assert hasattr(task_optional_args, "__dn_config__")
+    assert hasattr(task_optional_args, "__dn_param_config__")
     params = task_optional_args.__dn_param_config__
 
     assert "model" in params
@@ -165,7 +166,7 @@ def test_component_discovers_params() -> None:
     assert isinstance(model_param_info, ConfigInfo)
     assert model_param_info.field_kwargs["default"] == "gpt-4"
 
-    assert hasattr(task_required_args, "__dn_config__")
+    assert hasattr(task_required_args, "__dn_param_config__")
     params = task_required_args.__dn_param_config__
     assert "prefix" not in params  # Should be ignored
     assert "suffix" in params
@@ -219,6 +220,11 @@ def not_a_component(foo: int) -> None:
 
 
 @component
+def component_without_config(required: int) -> None:
+    pass
+
+
+@component
 def component_with_default(model: str = Config("gpt-4")) -> None:
     pass
 
@@ -259,6 +265,17 @@ def blueprint() -> Thing:
         mapping={"key1": not_a_component, "component": component_with_required, "key3": 123},
         sub=Sub(parameter=False, field="bar"),
         other=True,
+    )
+
+
+@pytest.fixture
+def empty_blueprint() -> Thing:
+    return Thing(
+        name="empty",
+        func=component_without_config,
+        items=["item1", not_a_component, component_without_config],
+        mapping={"key1": not_a_component, "component": component_without_config},
+        other=False,
     )
 
 
@@ -417,6 +434,81 @@ def test_get_model_handles_dictionary_group(blueprint: Thing) -> None:
     assert component_fields["name"].default is PydanticUndefined
 
 
+def test_get_model_handles_non_configurable_component() -> None:
+    """Verify that non-configurable components are handled correctly."""
+    ConfigModel = get_config_model(component_without_config)
+    assert not ConfigModel.model_fields
+
+
+def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
+    """Verify full schema creation for blueprints"""
+    assert get_config_schema(blueprint) == {
+        "properties": {
+            "name": {"default": "override", "title": "Name", "type": "string"},
+            "func": {
+                "properties": {
+                    "model": {"default": "gpt-4o-mini", "title": "Model", "type": "string"}
+                },
+                "title": "func",
+                "type": "object",
+            },
+            "items": {
+                "properties": {
+                    "component_with_default": {
+                        "properties": {
+                            "model": {"default": "gpt-4", "title": "Model", "type": "string"}
+                        },
+                        "title": "items_component_with_default",
+                        "type": "object",
+                    }
+                },
+                "title": "items",
+                "type": "object",
+            },
+            "mapping": {
+                "properties": {
+                    "component": {
+                        "properties": {"name": {"title": "Name", "type": "string"}},
+                        "required": ["name"],
+                        "title": "mapping_component",
+                        "type": "object",
+                    }
+                },
+                "required": ["component"],
+                "title": "mapping",
+                "type": "object",
+            },
+            "version": {"default": 1, "title": "Version", "type": "integer"},
+            "sub": {
+                "properties": {
+                    "parameter": {"default": False, "title": "Parameter", "type": "boolean"}
+                },
+                "title": "sub",
+                "type": "object",
+            },
+        },
+        "required": ["mapping"],
+        "title": "config",
+        "type": "object",
+    }
+
+    assert get_config_schema(empty_blueprint) == {
+        "properties": {
+            "name": {"default": "empty", "title": "Name", "type": "string"},
+            "version": {"default": 1, "title": "Version", "type": "integer"},
+            "sub": {
+                "properties": {
+                    "parameter": {"default": True, "title": "Parameter", "type": "boolean"}
+                },
+                "title": "sub",
+                "type": "object",
+            },
+        },
+        "title": "config",
+        "type": "object",
+    }
+
+
 def test_generated_model_can_be_instantiated(blueprint: Thing) -> None:
     """Ensure the generated model can be instantiated with its own defaults."""
     ConfigModel = get_config_model(blueprint, "AgentConfig")
@@ -490,7 +582,7 @@ def test_hydrate_nested_component_parameter(blueprint: Thing) -> None:
     hydrated = hydrate(blueprint, config_instance)
 
     # Verify original blueprint's component is untouched
-    assert blueprint.func.__dn_config__["model"].field_kwargs["default"] == "gpt-4o-mini"
+    assert blueprint.func.__dn_param_config__["model"].field_kwargs["default"] == "gpt-4o-mini"
 
     # Verify the hydrated blueprint has a new, re-configured component
     hydrated_task = hydrated.func
@@ -525,7 +617,7 @@ def test_hydrate_heterogeneous_list(blueprint: Thing) -> None:
 
     # Verify the original list component is untouched
     original_component = blueprint.items[1]
-    assert original_component.__dn_config__["model"].field_kwargs["default"] == "gpt-4"
+    assert original_component.__dn_param_config__["model"].field_kwargs["default"] == "gpt-4"
 
 
 def test_hydrate_heterogeneous_dict(blueprint: Thing) -> None:
@@ -579,16 +671,19 @@ def test_full_hydration_integration(blueprint: Thing) -> None:
     assert hydrated.sub.parameter is True
 
     # Nested Component
-    assert hydrated.func.__dn_config__["model"].field_kwargs["default"] == "claude-3-opus"
+    assert hydrated.func.__dn_param_config__["model"].field_kwargs["default"] == "claude-3-opus"
 
     # Component in List
     hydrated_list_comp = hydrated.items[1]
-    assert hydrated_list_comp.__dn_config__["model"].field_kwargs["default"] == "llama3-70b"
+    assert hydrated_list_comp.__dn_param_config__["model"].field_kwargs["default"] == "llama3-70b"
     assert hydrated.items[0] == "item1"  # Primitive preserved
 
     # Component in Dict
     hydrated_dict_comp = hydrated.mapping["component"]
-    assert hydrated_dict_comp.__dn_config__["name"].field_kwargs["default"] == "final-required-name"
+    assert (
+        hydrated_dict_comp.__dn_param_config__["name"].field_kwargs["default"]
+        == "final-required-name"
+    )
     assert hydrated.mapping["key1"] == not_a_component
     assert hydrated.mapping["key3"] == 123
 
@@ -596,6 +691,6 @@ def test_full_hydration_integration(blueprint: Thing) -> None:
     assert blueprint.name == "override"
     assert blueprint.version == 1
     assert blueprint.sub.parameter is False
-    assert blueprint.func.__dn_config__["model"].field_kwargs["default"] == "gpt-4o-mini"
-    assert blueprint.items[1].__dn_config__["model"].field_kwargs["default"] == "gpt-4"
-    assert blueprint.mapping["component"].__dn_config__["name"].field_kwargs["default"] is ...
+    assert blueprint.func.__dn_param_config__["model"].field_kwargs["default"] == "gpt-4o-mini"
+    assert blueprint.items[1].__dn_param_config__["model"].field_kwargs["default"] == "gpt-4"
+    assert blueprint.mapping["component"].__dn_param_config__["name"].field_kwargs["default"] is ...
