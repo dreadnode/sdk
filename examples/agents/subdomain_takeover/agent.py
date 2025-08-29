@@ -64,7 +64,10 @@ dn.configure(server=None, token=None, project="subdomain-takeover-agent", consol
 console = Console()
 
 
-@dn.task()
+@dn.task(
+    name="Analyze Subdomain",
+    label="analyze_subdomain"
+)
 async def analyze_subdomain(subdomain: str) -> dict:
     """Analyze a single subdomain for takeover vulnerabilities."""
     takeover_agent = create_takeover_agent()
@@ -85,17 +88,38 @@ async def analyze_subdomain(subdomain: str) -> dict:
             tool_name = getattr(message, 'name', 'unknown')
             tool_outputs[tool_name] = message.content
             dn.log_output(f"tool_output_{tool_name}", message.content)
+            
+            if "Commands executed:" in message.content:
+                commands_section = message.content.split("Commands executed:")[1].split("Results:")[0]
+                commands = [line.strip() for line in commands_section.strip().split('\n') if line.strip()]
+                dn.log_output(f"executed_commands_{tool_name}", commands)
+    
+    finding_stored = "store_subdomain_takeover_finding" in tools_used
+    has_finding = finding_stored
+    if result.messages and result.messages[-1].content:
+        has_finding = has_finding or any(
+            phrase in result.messages[-1].content.lower() 
+            for phrase in [
+                "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
+                "vulnerable to takeover", "dangling cname", "unclaimed resource", 
+                "takeover indicator", "successful subdomain takeover"
+            ]
+        )
+    
+    dn.log_metric("tools_used", len(tools_used))
+    dn.log_metric("has_finding", 1 if has_finding else 0)
+    dn.log_metric("stored_in_db", 1 if finding_stored else 0)
+    dn.log_output("raw_tool_data", tool_outputs)
     
     analysis_result = {
         "subdomain": subdomain,
         "tools_used": tools_used,
         "tool_outputs": tool_outputs,
         "analysis": result.messages[-1].content if result.messages else None,
-        "steps": result.steps
+        "steps": result.steps,
+        "has_finding": has_finding,
+        "stored_in_db": finding_stored
     }
-    
-    dn.log_metric("tools_used_count", len(tools_used))
-    dn.log_output("raw_tool_data", tool_outputs)
     
     return analysis_result
 

@@ -833,11 +833,14 @@ class KaliTool(Toolset):
         """
 
         results = []
+        executed_commands = []
 
         # Check CNAME record
         try:
+            cname_cmd = ["dig", "@8.8.8.8", subdomain, "CNAME", "+short"]
+            executed_commands.append(" ".join(cname_cmd))
             cname_result = subprocess.run(
-                ["dig", "@8.8.8.8", subdomain, "CNAME", "+short"],
+                cname_cmd,
                 check=False,
                 capture_output=True,
                 text=True,
@@ -849,8 +852,10 @@ class KaliTool(Toolset):
                 results.append(f"CNAME: {cname_target}")
 
                 # Check if CNAME target resolves
+                a_cname_cmd = ["dig", "@8.8.8.8", cname_target, "A", "+short"]
+                executed_commands.append(" ".join(a_cname_cmd))
                 a_result = subprocess.run(
-                    ["dig", "@8.8.8.8", cname_target, "A", "+short"],
+                    a_cname_cmd,
                     check=False,
                     capture_output=True,
                     text=True,
@@ -860,7 +865,7 @@ class KaliTool(Toolset):
                 if a_result.stdout.strip():
                     results.append(f"CNAME target resolves to: {a_result.stdout.strip()}")
                 else:
-                    results.append(f"CNAME target does not resolve")
+                    results.append("CNAME target does not resolve")
             else:
                 results.append("No CNAME record")
 
@@ -869,8 +874,10 @@ class KaliTool(Toolset):
 
         # Check A record
         try:
+            a_cmd = ["dig", "@8.8.8.8", subdomain, "A", "+short"]
+            executed_commands.append(" ".join(a_cmd))
             a_result = subprocess.run(
-                ["dig", "@8.8.8.8", subdomain, "A", "+short"],
+                a_cmd,
                 check=False,
                 capture_output=True,
                 text=True,
@@ -888,19 +895,24 @@ class KaliTool(Toolset):
         # Try HTTP request
         try:
             import requests
+
+            http_cmd = f"curl -I http://{subdomain}"
+            executed_commands.append(http_cmd)
             response = requests.get(f"http://{subdomain}", timeout=10, allow_redirects=False)
             results.append(f"HTTP status: {response.status_code}")
 
             # Include first 500 chars of response for analysis
             if response.text:
-                preview = response.text[:500].replace('\n', ' ').strip()
+                preview = response.text[:500].replace("\n", " ").strip()
                 results.append(f"HTTP response preview: {preview}")
 
         except Exception as e:
             results.append(f"HTTP request failed: {e}")
 
         logger.info(f"[*] DNS and HTTP check completed for {subdomain}")
-        return "\n".join(results)
+
+        command_log = "Commands executed:\n" + "\n".join(f"  {cmd}" for cmd in executed_commands)
+        return command_log + "\n\nResults:\n" + "\n".join(results)
 
     @tool_method()
     def generate_golden_ticket(
