@@ -9,6 +9,13 @@ from dreadnode.agent.agent import Agent
 from dreadnode.agent.tools.bbot.tool import BBotTool
 from dreadnode.agent.tools.kali.tool import KaliTool
 
+# Optional Neo4j integration  
+try:
+    from dreadnode.agent.tools.neo4j.tool import Neo4jTool
+    NEO4J_AVAILABLE = True
+except ImportError:
+    NEO4J_AVAILABLE = False
+
 # Import necessary components for Pydantic dataclass fix
 from dreadnode.agent.events import (
     Event, AgentStart, StepStart, GenerationEnd, 
@@ -36,15 +43,30 @@ uv run python examples/agents/subdomain_takeover/agent.py hunt --targets "/path/
 console = Console()
 app = App()
 
+# Show Neo4j availability status
+if NEO4J_AVAILABLE:
+    console.print("[dim]Neo4j integration available - confirmed findings will be stored in database[/dim]")
+else:
+    console.print("[dim]Neo4j integration not available - install neo4j package for database storage[/dim]")
+
 
 def create_takeover_agent() -> Agent:
     """Create a subdomain takeover analysis agent."""
+    tools = [BBotTool(), KaliTool()]
+    
+    # Add Neo4j tool if available
+    if NEO4J_AVAILABLE:
+        tools.append(Neo4jTool())
+        neo4j_instructions = "\n\nWhen you find CONFIRMED takeover vulnerabilities, store them using Neo4jTool.store_subdomain_takeover_finding(subdomain, vulnerability_type, risk_level, cname_target, error_message, service_provider). Use HIGH/MEDIUM/LOW for risk_level."
+    else:
+        neo4j_instructions = ""
+    
     return Agent(
         name="subdomain-takeover-agent",
-        description="An agent that analyzes subdomains for takeover vulnerabilities",
+        description="An agent that detects and stores subdomain takeover vulnerabilities",
         model="gpt-4",
-        tools=[BBotTool(), KaliTool()],
-        instructions="""You are an expert at detecting subdomain takeover vulnerabilities.
+        tools=tools,
+        instructions=f"""You are an expert at detecting subdomain takeover vulnerabilities.
 
 FOCUS: Look for subdomains with DNS records (CNAME/A) pointing to unclaimed third-party services.
 
@@ -57,10 +79,12 @@ Key patterns:
   * "There isn't a GitHub Pages site here"
   * "herokucdn.com/error-pages"
 
+IMPORTANT: If CNAME resolves to A record owned by target organization, takeover is highly unlikely.
+
 Example vulnerability:
 marketing.example.com → CNAME → myapp.herokudns.com (but myapp is deleted/unclaimed)
 
-Report ONLY actual takeover vulnerabilities, not general DNS misconfigurations."""
+Report ONLY actual takeover vulnerabilities, not general DNS misconfigurations.{neo4j_instructions}""",
     )
 
 
