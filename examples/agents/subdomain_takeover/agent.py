@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import re
+import time
 import typing as t
 from pathlib import Path
 
@@ -96,7 +97,7 @@ When you find CONFIRMED takeover vulnerabilities, store them using Neo4jTool.sto
     )
 
 
-def display_analysis_result(result: AgentResult, subdomain: str) -> None:
+def display_analysis_result(result: AgentResult, subdomain: str, debug: bool = False) -> None:
     """Display the agent's analysis result."""
     if not result or not result.messages:
         console.print("Analysis completed but no content available")
@@ -104,13 +105,24 @@ def display_analysis_result(result: AgentResult, subdomain: str) -> None:
 
     # Show which tools the agent decided to use
     tools_used = []
+    tool_outputs = {}
     for message in result.messages:
         if message.role == "assistant" and message.tool_calls:
             for tool_call in message.tool_calls:
                 tools_used.append(tool_call.function.name)
+        elif message.role == "tool" and debug:
+            # Capture tool outputs for debugging
+            tool_name = getattr(message, 'name', 'unknown')
+            tool_outputs[tool_name] = message.content
 
     if tools_used:
         console.print(f"Agent used: {', '.join(tools_used)}")
+
+    # Show raw tool outputs in debug mode
+    if debug and tool_outputs:
+        console.print(f"\n[DEBUG] Raw tool outputs:")
+        for tool_name, output in tool_outputs.items():
+            console.print(f"  {tool_name}: {output[:200]}..." if len(output) > 200 else f"  {tool_name}: {output}")
 
     final_message = result.messages[-1]
     if final_message.content:
@@ -192,9 +204,9 @@ async def hunt(
             config=config,
         )
 
-        # Track metrics
+        # Track metrics at task level
         analyzed_count = 0
-        vulnerability_count = 0
+        findings_count = 0
         findings = []
 
         async for event in events:
@@ -216,24 +228,40 @@ async def hunt(
                     display_analysis_result(result, subdomain)
                     
                     analyzed_count += 1
+                    dn.log_metric("subdomains_analyzed", analyzed_count)
                     
-                    # Check if this is a potential vulnerability
+                    finding_stored = False
                     if result and result.messages:
                         final_message = result.messages[-1]
-                        # More specific vulnerability detection - look for confirmed takeover language
-                        if final_message.content and any(
+                        for message in result.messages:
+                            if message.role == "assistant" and message.tool_calls:
+                                for tool_call in message.tool_calls:
+                                    if tool_call.function.name == "store_subdomain_takeover_finding":
+                                        finding_stored = True
+                                        break
+                        
+                        if finding_stored or (final_message.content and any(
                             phrase in final_message.content.lower() 
                             for phrase in [
-                                "potential takeover", "vulnerable to takeover", "takeover vulnerability found",
-                                "dangling cname", "unclaimed resource", "takeover indicator"
+                                "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
+                                "vulnerable to takeover", "dangling cname", "unclaimed resource", 
+                                "takeover indicator", "successful subdomain takeover"
                             ]
-                        ):
-                            vulnerability_count += 1
-                            findings.append({
+                        )):
+                            findings_count += 1
+                            dn.log_metric("findings_found", findings_count)
+                            
+                            security_finding = {
                                 "subdomain": subdomain,
+                                "finding_type": "subdomain_takeover",
+                                "risk_level": "high",
                                 "analysis": final_message.content,
-                                "steps": result.steps
-                            })
+                                "steps": result.steps,
+                                "timestamp": time.time(),
+                                "stored_in_db": finding_stored
+                            }
+                            findings.append(security_finding)
+                            dn.log_output(f"finding_{subdomain}", security_finding)
 
                 except Exception as e:
                     console.print(f"Error analyzing subdomain: {e}")
@@ -267,19 +295,22 @@ async def hunt(
                 except Exception as e:
                     console.print(f"Error validating finding: {e}")
         
-        # Log final metrics and outputs
         dn.log_metric("subdomains_analyzed", analyzed_count)
-        dn.log_metric("vulnerabilities_found", vulnerability_count)
-        dn.log_output("findings", findings)
+        dn.log_metric("findings_found", findings_count)
+        dn.log_output("security_findings", findings)
         dn.log_output("summary", {
             "total_targets": len(targets),
             "subdomains_analyzed": analyzed_count,
-            "vulnerabilities_found": vulnerability_count,
+            "findings_found": findings_count,
             "findings": findings
         })
+        
+        console.print(f"\n📊 Task Summary:")
+        console.print(f"   Subdomains analyzed: {analyzed_count}")
+        console.print(f"   Security findings: {findings_count}")
 
 
-async def validate(subdomain: str) -> None:
+async def validate(subdomain: str, debug: bool = False) -> None:
     """Validate a specific subdomain for takeover vulnerability."""
 
     # Start dreadnode run context
@@ -300,30 +331,40 @@ async def validate(subdomain: str) -> None:
                 f"Use your tools strategically to assess risks and provide actionable recommendations."
             )
 
-            display_analysis_result(result, subdomain)
+            display_analysis_result(result, subdomain, debug=debug)
             
-            # Check if vulnerability found and log metrics
-            is_vulnerable = False
+            has_finding = False
             if result and result.messages:
                 final_message = result.messages[-1]
-                # More specific vulnerability detection - look for confirmed takeover language
                 if final_message.content and any(
                     phrase in final_message.content.lower() 
                     for phrase in [
-                        "potential takeover", "vulnerable to takeover", "takeover vulnerability found",
-                        "dangling cname", "unclaimed resource", "takeover indicator"
+                        "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
+                        "vulnerable to takeover", "dangling cname", "unclaimed resource", 
+                        "takeover indicator", "successful subdomain takeover"
                     ]
                 ):
-                    is_vulnerable = True
+                    has_finding = True
+                    
+                    security_finding = {
+                        "subdomain": subdomain,
+                        "finding_type": "subdomain_takeover", 
+                        "risk_level": "high",
+                        "analysis": final_message.content,
+                        "steps": result.steps,
+                        "timestamp": time.time()
+                    }
+                    dn.log_output("security_finding", security_finding)
             
-            # Log outputs and metrics
+ 
             dn.log_output("analysis_result", {
                 "subdomain": subdomain,
-                "is_vulnerable": is_vulnerable,
+                "has_finding": has_finding,
                 "analysis": result.messages[-1].content if result and result.messages else None,
                 "steps": result.steps if result else 0
             })
-            dn.log_metric("vulnerability_found", 1 if is_vulnerable else 0)
+            dn.log_metric("findings_found", 1 if has_finding else 0)
+            dn.log_metric("subdomains_analyzed", 1)
 
         except Exception as e:
             console.print(f"Validation failed: {e}")
@@ -347,6 +388,7 @@ async def main():
     # Validate command
     validate_parser = subparsers.add_parser("validate", help="Validate a specific subdomain")
     validate_parser.add_argument("subdomain", help="Subdomain to validate")
+    validate_parser.add_argument("--debug", action="store_true", help="Show raw tool outputs")
 
     # Info commands
     subparsers.add_parser("modules", help="List available BBOT modules")
@@ -359,7 +401,7 @@ async def main():
     if args.command == "hunt":
         await hunt(args.targets, args.presets, args.modules, args.flags, args.config)
     elif args.command == "validate":
-        await validate(args.subdomain)
+        await validate(args.subdomain, args.debug)
     elif args.command == "modules":
         await modules()
     elif args.command == "presets":
