@@ -44,9 +44,23 @@ def create_takeover_agent() -> Agent:
         description="An agent that analyzes subdomains for takeover vulnerabilities",
         model="gpt-4",
         tools=[BBotTool(), KaliTool()],
-        instructions="""You are an expert cybersecurity analyst specializing in subdomain takeover detection.
+        instructions="""You are an expert at detecting subdomain takeover vulnerabilities.
 
-Use your tools strategically to assess subdomain takeover risks. Provide clear, actionable analysis without unnecessary verbosity."""
+FOCUS: Look for subdomains with DNS records (CNAME/A) pointing to unclaimed third-party services.
+
+Key patterns:
+- DNS resolves to third-party service (AWS S3, GitHub Pages, Heroku, Azure, Shopify, etc.)
+- Service responds with error messages indicating unclaimed/deleted resource:
+  * "No such bucket" 
+  * "This site isn't configured"
+  * "Project not found"
+  * "There isn't a GitHub Pages site here"
+  * "herokucdn.com/error-pages"
+
+Example vulnerability:
+marketing.example.com → CNAME → myapp.herokudns.com (but myapp is deleted/unclaimed)
+
+Report ONLY actual takeover vulnerabilities, not general DNS misconfigurations."""
     )
 
 
