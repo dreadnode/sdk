@@ -64,6 +64,42 @@ dn.configure(server=None, token=None, project="subdomain-takeover-agent", consol
 console = Console()
 
 
+@dn.task()
+async def analyze_subdomain(subdomain: str) -> dict:
+    """Analyze a single subdomain for takeover vulnerabilities."""
+    takeover_agent = create_takeover_agent()
+    
+    result = await takeover_agent.run(
+        f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
+        f"Use your tools as needed and provide a concise risk assessment."
+    )
+    
+    tool_outputs = {}
+    tools_used = []
+    
+    for message in result.messages:
+        if message.role == "assistant" and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tools_used.append(tool_call.function.name)
+        elif message.role == "tool":
+            tool_name = getattr(message, 'name', 'unknown')
+            tool_outputs[tool_name] = message.content
+            dn.log_output(f"tool_output_{tool_name}", message.content)
+    
+    analysis_result = {
+        "subdomain": subdomain,
+        "tools_used": tools_used,
+        "tool_outputs": tool_outputs,
+        "analysis": result.messages[-1].content if result.messages else None,
+        "steps": result.steps
+    }
+    
+    dn.log_metric("tools_used_count", len(tools_used))
+    dn.log_output("raw_tool_data", tool_outputs)
+    
+    return analysis_result
+
+
 def create_takeover_agent() -> Agent:
     """Create a subdomain takeover analysis agent."""
     tools = [BBotTool(), KaliTool(), Neo4jTool()]
@@ -129,6 +165,20 @@ def display_analysis_result(result: AgentResult, subdomain: str, debug: bool = F
         console.print(f"\nAnalysis for {subdomain}:")
         console.print(final_message.content)
         console.print(f"\nProcessed {len(result.messages)} messages in {result.steps} steps")
+
+
+def display_analysis_result_from_task(analysis_result: dict, debug: bool = False) -> None:
+    """Display analysis result from task."""
+    console.print(f"Agent used: {', '.join(analysis_result['tools_used'])}")
+
+    if debug and analysis_result['tool_outputs']:
+        console.print(f"\n[DEBUG] Raw tool outputs:")
+        for tool_name, output in analysis_result['tool_outputs'].items():
+            console.print(f"  {tool_name}: {output[:200]}..." if len(output) > 200 else f"  {tool_name}: {output}")
+
+    console.print(f"\nAnalysis for {analysis_result['subdomain']}:")
+    console.print(analysis_result['analysis'])
+    console.print(f"\nProcessed {len(analysis_result['tool_outputs'])} tool calls in {analysis_result['steps']} steps")
 
 
 async def modules() -> None:
@@ -218,50 +268,41 @@ async def hunt(
                     subdomain = str(event.data)
                     console.print(f"Analyzing subdomain: {subdomain}")
 
-                    takeover_agent = create_takeover_agent()
-
-                    result = await takeover_agent.run(
-                        f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
-                        f"Use your tools as needed and provide a concise risk assessment."
-                    )
-
-                    display_analysis_result(result, subdomain)
+                    analysis_result = await analyze_subdomain(subdomain)
+                    
+                    console.print(f"Agent used: {', '.join(analysis_result['tools_used'])}")
+                    console.print(f"\nAnalysis for {subdomain}:")
+                    console.print(analysis_result['analysis'])
+                    console.print(f"\nProcessed {len(analysis_result['tool_outputs'])} tool calls in {analysis_result['steps']} steps")
                     
                     analyzed_count += 1
                     dn.log_metric("subdomains_analyzed", analyzed_count)
                     
-                    finding_stored = False
-                    if result and result.messages:
-                        final_message = result.messages[-1]
-                        for message in result.messages:
-                            if message.role == "assistant" and message.tool_calls:
-                                for tool_call in message.tool_calls:
-                                    if tool_call.function.name == "store_subdomain_takeover_finding":
-                                        finding_stored = True
-                                        break
+                    finding_stored = "store_subdomain_takeover_finding" in analysis_result['tools_used']
+                    
+                    if finding_stored or (analysis_result['analysis'] and any(
+                        phrase in analysis_result['analysis'].lower() 
+                        for phrase in [
+                            "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
+                            "vulnerable to takeover", "dangling cname", "unclaimed resource", 
+                            "takeover indicator", "successful subdomain takeover"
+                        ]
+                    )):
+                        findings_count += 1
+                        dn.log_metric("findings_found", findings_count)
                         
-                        if finding_stored or (final_message.content and any(
-                            phrase in final_message.content.lower() 
-                            for phrase in [
-                                "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
-                                "vulnerable to takeover", "dangling cname", "unclaimed resource", 
-                                "takeover indicator", "successful subdomain takeover"
-                            ]
-                        )):
-                            findings_count += 1
-                            dn.log_metric("findings_found", findings_count)
-                            
-                            security_finding = {
-                                "subdomain": subdomain,
-                                "finding_type": "subdomain_takeover",
-                                "risk_level": "high",
-                                "analysis": final_message.content,
-                                "steps": result.steps,
-                                "timestamp": time.time(),
-                                "stored_in_db": finding_stored
-                            }
-                            findings.append(security_finding)
-                            dn.log_output(f"finding_{subdomain}", security_finding)
+                        security_finding = {
+                            "subdomain": subdomain,
+                            "finding_type": "subdomain_takeover",
+                            "risk_level": "high",
+                            "analysis": analysis_result['analysis'],
+                            "tool_outputs": analysis_result['tool_outputs'],
+                            "steps": analysis_result['steps'],
+                            "timestamp": time.time(),
+                            "stored_in_db": finding_stored
+                        }
+                        findings.append(security_finding)
+                        dn.log_output(f"finding_{subdomain}", security_finding)
 
                 except Exception as e:
                     console.print(f"Error analyzing subdomain: {e}")
@@ -324,44 +365,39 @@ async def validate(subdomain: str, debug: bool = False) -> None:
         console.print(f"Validating subdomain: {subdomain}")
 
         try:
-            takeover_agent = create_takeover_agent()
-
-            result = await takeover_agent.run(
-                f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
-                f"Use your tools strategically to assess risks and provide actionable recommendations."
-            )
-
-            display_analysis_result(result, subdomain, debug=debug)
+            analysis_result = await analyze_subdomain(subdomain)
             
-            has_finding = False
-            if result and result.messages:
-                final_message = result.messages[-1]
-                if final_message.content and any(
-                    phrase in final_message.content.lower() 
-                    for phrase in [
-                        "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
-                        "vulnerable to takeover", "dangling cname", "unclaimed resource", 
-                        "takeover indicator", "successful subdomain takeover"
-                    ]
-                ):
-                    has_finding = True
-                    
-                    security_finding = {
-                        "subdomain": subdomain,
-                        "finding_type": "subdomain_takeover", 
-                        "risk_level": "high",
-                        "analysis": final_message.content,
-                        "steps": result.steps,
-                        "timestamp": time.time()
-                    }
-                    dn.log_output("security_finding", security_finding)
+            display_analysis_result_from_task(analysis_result, debug=debug)
             
+            finding_stored = "store_subdomain_takeover_finding" in analysis_result['tools_used']
+            has_finding = finding_stored or (analysis_result['analysis'] and any(
+                phrase in analysis_result['analysis'].lower() 
+                for phrase in [
+                    "potential takeover", "subdomain takeover vulnerability", "takeover vulnerability",
+                    "vulnerable to takeover", "dangling cname", "unclaimed resource", 
+                    "takeover indicator", "successful subdomain takeover"
+                ]
+            ))
+            
+            if has_finding:
+                security_finding = {
+                    "subdomain": subdomain,
+                    "finding_type": "subdomain_takeover", 
+                    "risk_level": "high",
+                    "analysis": analysis_result['analysis'],
+                    "tool_outputs": analysis_result['tool_outputs'],
+                    "steps": analysis_result['steps'],
+                    "timestamp": time.time(),
+                    "stored_in_db": finding_stored
+                }
+                dn.log_output("security_finding", security_finding)
  
             dn.log_output("analysis_result", {
                 "subdomain": subdomain,
                 "has_finding": has_finding,
-                "analysis": result.messages[-1].content if result and result.messages else None,
-                "steps": result.steps if result else 0
+                "analysis": analysis_result['analysis'],
+                "tool_outputs": analysis_result['tool_outputs'],
+                "steps": analysis_result['steps']
             })
             dn.log_metric("findings_found", 1 if has_finding else 0)
             dn.log_metric("subdomains_analyzed", 1)
