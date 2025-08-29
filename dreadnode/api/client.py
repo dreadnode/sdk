@@ -684,7 +684,6 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
-        import pandas as pd
 
         response = self.request(
             "GET",
