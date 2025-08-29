@@ -6,14 +6,7 @@ from loguru import logger
 
 from dreadnode.agent.tools import Toolset, tool_method
 
-try:
-    from neo4j import AsyncGraphDatabase, AsyncDriver
-    NEO4J_AVAILABLE = True
-except ImportError:
-    NEO4J_AVAILABLE = False
-    # Create dummy types when neo4j is not available
-    AsyncDriver = t.Any
-    AsyncGraphDatabase = None
+from neo4j import AsyncGraphDatabase, AsyncDriver
 
 
 class Neo4jTool(Toolset):
@@ -25,9 +18,6 @@ class Neo4jTool(Toolset):
     async def _get_driver(self) -> AsyncDriver:
         """Get or create Neo4j driver."""
         if not hasattr(self, '_driver') or not self._driver:
-            if not NEO4J_AVAILABLE or AsyncGraphDatabase is None:
-                raise ImportError("Neo4j package not available")
-                
             uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
             username = os.getenv("NEO4J_USERNAME", "neo4j")
             password = os.getenv("NEO4J_PASSWORD", "password")
