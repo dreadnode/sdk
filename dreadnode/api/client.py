@@ -48,9 +48,6 @@ from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
-if t.TYPE_CHECKING:
-    import pandas as pd
-
 
 class ApiClient:
     """
