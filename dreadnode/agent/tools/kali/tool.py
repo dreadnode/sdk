@@ -871,7 +871,7 @@ class KaliTool(Toolset):
             if a_result.stdout.strip():
                 results.append(f"A record: {a_result.stdout.strip()}")
             else:
-                results.append("No A record found")
+                results.append("🚨 No A record found - potential dangling subdomain!")
                 
         except Exception as e:
             results.append(f"A record check failed: {e}")
