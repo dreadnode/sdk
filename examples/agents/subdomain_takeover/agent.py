@@ -1,79 +1,85 @@
+import argparse
+import asyncio
+import re
 import typing as t
 from pathlib import Path
-import re
 
+import dreadnode as dn
+import pydantic.dataclasses
 from rich.console import Console
-from cyclopts import App
 
 from dreadnode.agent.agent import Agent
+from dreadnode.agent.result import AgentResult
 from dreadnode.agent.tools.bbot.tool import BBotTool
 from dreadnode.agent.tools.kali.tool import KaliTool
-
-# Optional Neo4j integration  
-try:
-    from dreadnode.agent.tools.neo4j.tool import Neo4jTool
-    NEO4J_AVAILABLE = True
-except ImportError:
-    NEO4J_AVAILABLE = False
+from dreadnode.agent.tools.neo4j.tool import Neo4jTool
 
 # Import necessary components for Pydantic dataclass fix
 from dreadnode.agent.events import (
-    Event, AgentStart, StepStart, GenerationEnd, 
-    AgentStalled, AgentError, ToolStart, ToolEnd, AgentEnd
+    AgentEnd,
+    AgentError,
+    AgentStalled,
+    AgentStart,
+    Event,
+    GenerationEnd,
+    StepStart,
+    ToolEnd,
+    ToolStart,
 )
-from dreadnode.agent.state import State
-from dreadnode.agent.result import AgentResult
-from dreadnode.agent.reactions import Reaction
 
-import pydantic.dataclasses
+# Rebuild dataclasses after all imports are complete
 try:
-    critical_classes = [Event, AgentStart, StepStart, GenerationEnd, 
-                       AgentStalled, AgentError, ToolStart, ToolEnd, AgentEnd]
+    from dreadnode.agent.state import State
+    from dreadnode.agent.reactions import Reaction
     
+    critical_classes = [
+        Event,
+        AgentStart,
+        StepStart,
+        GenerationEnd,
+        AgentStalled,
+        AgentError,
+        ToolStart,
+        ToolEnd,
+        AgentEnd,
+    ]
+
     for event_class in critical_classes:
         pydantic.dataclasses.rebuild_dataclass(event_class)
 except Exception:
     pass
+
 
 """Usage:
 uv run python examples/agents/subdomain_takeover/agent.py validate test.example.com
 uv run python examples/agents/subdomain_takeover/agent.py hunt --targets "/path/to/dir/subdomains.txt"
 """
 
-console = Console()
-app = App()
 
-# Show Neo4j availability status
-if NEO4J_AVAILABLE:
-    console.print("[dim]Neo4j integration available - confirmed findings will be stored in database[/dim]")
-else:
-    console.print("[dim]Neo4j integration not available - install neo4j package for database storage[/dim]")
+# Configure Dreadnode
+dn.configure(server=None, token=None, project="subdomain-takeover-agent", console=False)
+
+
+console = Console()
 
 
 def create_takeover_agent() -> Agent:
     """Create a subdomain takeover analysis agent."""
-    tools = [BBotTool(), KaliTool()]
-    
-    # Add Neo4j tool if available
-    if NEO4J_AVAILABLE:
-        tools.append(Neo4jTool())
-        neo4j_instructions = "\n\nWhen you find CONFIRMED takeover vulnerabilities, store them using Neo4jTool.store_subdomain_takeover_finding(subdomain, vulnerability_type, risk_level, cname_target, error_message, service_provider). Use HIGH/MEDIUM/LOW for risk_level."
-    else:
-        neo4j_instructions = ""
-    
+    tools = [BBotTool(), KaliTool(), Neo4jTool()]
+
     return Agent(
         name="subdomain-takeover-agent",
         description="An agent that detects and stores subdomain takeover vulnerabilities",
         model="gpt-4",
         tools=tools,
-        instructions=f"""You are an expert at detecting subdomain takeover vulnerabilities.
+        instructions="""You are an expert at detecting subdomain takeover vulnerabilities.
 
 FOCUS: Look for subdomains with DNS records (CNAME/A) pointing to unclaimed third-party services.
 
 Key patterns:
 - DNS resolves to third-party service (AWS S3, GitHub Pages, Heroku, Azure, Shopify, etc.)
 - Service responds with error messages indicating unclaimed/deleted resource:
-  * "No such bucket" 
+  * "No such bucket"
   * "This site isn't configured"
   * "Project not found"
   * "There isn't a GitHub Pages site here"
@@ -84,7 +90,9 @@ IMPORTANT: If CNAME resolves to A record owned by target organization, takeover 
 Example vulnerability:
 marketing.example.com → CNAME → myapp.herokudns.com (but myapp is deleted/unclaimed)
 
-Report ONLY actual takeover vulnerabilities, not general DNS misconfigurations.{neo4j_instructions}""",
+Report ONLY actual takeover vulnerabilities, not general DNS misconfigurations.
+
+When you find CONFIRMED takeover vulnerabilities, store them using Neo4jTool.store_subdomain_takeover_finding(subdomain, vulnerability_type, risk_level, cname_target, error_message, service_provider).""",
     )
 
 
@@ -93,17 +101,17 @@ def display_analysis_result(result: AgentResult, subdomain: str) -> None:
     if not result or not result.messages:
         console.print("Analysis completed but no content available")
         return
-    
+
     # Show which tools the agent decided to use
     tools_used = []
     for message in result.messages:
         if message.role == "assistant" and message.tool_calls:
             for tool_call in message.tool_calls:
                 tools_used.append(tool_call.function.name)
-    
+
     if tools_used:
         console.print(f"Agent used: {', '.join(tools_used)}")
-    
+
     final_message = result.messages[-1]
     if final_message.content:
         console.print(f"\nAnalysis for {subdomain}:")
@@ -111,35 +119,30 @@ def display_analysis_result(result: AgentResult, subdomain: str) -> None:
         console.print(f"\nProcessed {len(result.messages)} messages in {result.steps} steps")
 
 
-@app.command
 async def modules() -> None:
     """List available BBOT modules."""
     tool = await BBotTool.create()
     tool.get_modules()
 
 
-@app.command
 async def presets() -> None:
-    """List available BBOT presets.""" 
+    """List available BBOT presets."""
     tool = await BBotTool.create()
     tool.get_presets()
 
 
-@app.command
 async def flags() -> None:
     """List available BBOT flags."""
     tool = await BBotTool.create()
     tool.get_flags()
 
 
-@app.command
 async def events() -> None:
     """List available BBOT event types."""
     tool = await BBotTool.create()
     tool.get_events()
 
 
-@app.command
 async def hunt(
     targets: Path | None = None,
     presets: list[str] | None = None,
@@ -148,6 +151,7 @@ async def hunt(
     config: Path | dict[str, t.Any] | None = None,
 ) -> None:
     """Hunt for subdomain takeover vulnerabilities using BBOT discovery."""
+
     if isinstance(targets, Path):
         with Path.open(targets) as f:
             targets = [line.strip() for line in f.readlines() if line.strip()]
@@ -156,84 +160,217 @@ async def hunt(
         console.print("Error: No targets provided. Use --targets to specify targets.")
         return
 
-    console.print(f"Starting subdomain takeover hunt on {len(targets)} targets")
-
-    tool = await BBotTool.create()
-    events = tool.run(
-        targets=targets,
-        presets=presets,
-        modules=modules,
-        flags=flags,
-        config=config,
-    )
-
-    async for event in events:
-        console.print(event)
-        
-        # Analyze DNS_NAME events for takeover vulnerabilities
-        if event.type == "DNS_NAME":
-            try:
-                subdomain = str(event.data)
-                console.print(f"Analyzing subdomain: {subdomain}")
-                
-                takeover_agent = create_takeover_agent()
-                
-                result = await takeover_agent.run(
-                    f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
-                    f"Use your tools as needed and provide a concise risk assessment."
-                )
-                
-                display_analysis_result(result, subdomain)
-                
-            except Exception as e:
-                console.print(f"Error analyzing subdomain: {e}")
-
-        # Analyze FINDING events for takeover indicators
-        elif event.type == "FINDING" and any(keyword in str(event.data).lower() for keyword in ["takeover", "dangling", "cname"]):
-            try:
-                console.print(f"BBOT finding: {event.data}")
-                
-                # Extract domains from finding
-                domain_pattern = r'([a-zA-Z0-9]([a-zA-Z0-9-]{1,61})?[a-zA-Z0-9]\.)+[a-zA-Z]{2,}'
-                domains = re.findall(domain_pattern, str(event.data))
-                
-                if domains:
-                    domain = domains[0][0] if isinstance(domains[0], tuple) else domains[0]
-                    console.print(f"Validating extracted domain: {domain}")
-                    
-                    takeover_agent = create_takeover_agent()
-                    result = await takeover_agent.run(
-                        f"Validate the potential subdomain takeover for '{domain}'. "
-                        f"Determine if this is a genuine vulnerability."
-                    )
-                    
-                    display_analysis_result(result, domain)
-                else:
-                    console.print("No domain extracted from finding")
-                    
-            except Exception as e:
-                console.print(f"Error validating finding: {e}")
-
-
-@app.command 
-async def validate(subdomain: str) -> None:
-    """Validate a specific subdomain for takeover vulnerability."""
-    
-    console.print(f"Validating subdomain: {subdomain}")
-    
-    try:
-        takeover_agent = create_takeover_agent()
-        
-        result = await takeover_agent.run(
-            f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
-            f"Use your tools strategically to assess risks and provide actionable recommendations."
+    # Start dreadnode run context
+    with dn.run("subdomain-takeover-hunt"):
+        # Log parameters
+        dn.log_params(
+            target_count=len(targets),
+            presets=presets or [],
+            modules=modules or [],
+            flags=flags or []
         )
         
-        display_analysis_result(result, subdomain)
+        # Log inputs
+        dn.log_input("targets", targets)
+        if presets:
+            dn.log_input("presets", presets)
+        if modules:
+            dn.log_input("modules", modules)
+        if flags:
+            dn.log_input("flags", flags)
+        if config:
+            dn.log_input("config", str(config))
         
-    except Exception as e:
-        console.print(f"Validation failed: {e}")
+        console.print(f"Starting subdomain takeover hunt on {len(targets)} targets")
+
+        tool = await BBotTool.create()
+        events = tool.run(
+            targets=targets,
+            presets=presets,
+            modules=modules,
+            flags=flags,
+            config=config,
+        )
+
+        # Track metrics
+        analyzed_count = 0
+        vulnerability_count = 0
+        findings = []
+
+        async for event in events:
+            console.print(event)
+
+            # Analyze DNS_NAME events for takeover vulnerabilities
+            if event.type == "DNS_NAME":
+                try:
+                    subdomain = str(event.data)
+                    console.print(f"Analyzing subdomain: {subdomain}")
+
+                    takeover_agent = create_takeover_agent()
+
+                    result = await takeover_agent.run(
+                        f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
+                        f"Use your tools as needed and provide a concise risk assessment."
+                    )
+
+                    display_analysis_result(result, subdomain)
+                    
+                    analyzed_count += 1
+                    
+                    # Check if this is a potential vulnerability
+                    if result and result.messages:
+                        final_message = result.messages[-1]
+                        # More specific vulnerability detection - look for confirmed takeover language
+                        if final_message.content and any(
+                            phrase in final_message.content.lower() 
+                            for phrase in [
+                                "potential takeover", "vulnerable to takeover", "takeover vulnerability found",
+                                "dangling cname", "unclaimed resource", "takeover indicator"
+                            ]
+                        ):
+                            vulnerability_count += 1
+                            findings.append({
+                                "subdomain": subdomain,
+                                "analysis": final_message.content,
+                                "steps": result.steps
+                            })
+
+                except Exception as e:
+                    console.print(f"Error analyzing subdomain: {e}")
+
+            # Analyze FINDING events for takeover indicators
+            elif event.type == "FINDING" and any(
+                keyword in str(event.data).lower() for keyword in ["takeover", "dangling", "cname"]
+            ):
+                try:
+                    console.print(f"BBOT finding: {event.data}")
+
+                    # Extract domains from finding
+                    domain_pattern = r"([a-zA-Z0-9]([a-zA-Z0-9-]{1,61})?[a-zA-Z0-9]\.)+[a-zA-Z]{2,}"
+                    domains = re.findall(domain_pattern, str(event.data))
+
+                    if domains:
+                        domain = domains[0][0] if isinstance(domains[0], tuple) else domains[0]
+                        console.print(f"Validating extracted domain: {domain}")
+
+                        takeover_agent = create_takeover_agent()
+                        result = await takeover_agent.run(
+                            f"Validate the potential subdomain takeover for '{domain}'. "
+                            f"Determine if this is a genuine vulnerability."
+                        )
+
+                        display_analysis_result(result, domain)
+                        analyzed_count += 1
+                    else:
+                        console.print("No domain extracted from finding")
+
+                except Exception as e:
+                    console.print(f"Error validating finding: {e}")
+        
+        # Log final metrics and outputs
+        dn.log_metric("subdomains_analyzed", analyzed_count)
+        dn.log_metric("vulnerabilities_found", vulnerability_count)
+        dn.log_output("findings", findings)
+        dn.log_output("summary", {
+            "total_targets": len(targets),
+            "subdomains_analyzed": analyzed_count,
+            "vulnerabilities_found": vulnerability_count,
+            "findings": findings
+        })
+
+
+async def validate(subdomain: str) -> None:
+    """Validate a specific subdomain for takeover vulnerability."""
+
+    # Start dreadnode run context
+    with dn.run("subdomain-takeover-validate"):
+        # Log parameters
+        dn.log_params(subdomain=subdomain)
+        
+        # Log inputs
+        dn.log_input("subdomain", subdomain)
+        
+        console.print(f"Validating subdomain: {subdomain}")
+
+        try:
+            takeover_agent = create_takeover_agent()
+
+            result = await takeover_agent.run(
+                f"Analyze the subdomain '{subdomain}' for potential takeover vulnerabilities. "
+                f"Use your tools strategically to assess risks and provide actionable recommendations."
+            )
+
+            display_analysis_result(result, subdomain)
+            
+            # Check if vulnerability found and log metrics
+            is_vulnerable = False
+            if result and result.messages:
+                final_message = result.messages[-1]
+                # More specific vulnerability detection - look for confirmed takeover language
+                if final_message.content and any(
+                    phrase in final_message.content.lower() 
+                    for phrase in [
+                        "potential takeover", "vulnerable to takeover", "takeover vulnerability found",
+                        "dangling cname", "unclaimed resource", "takeover indicator"
+                    ]
+                ):
+                    is_vulnerable = True
+            
+            # Log outputs and metrics
+            dn.log_output("analysis_result", {
+                "subdomain": subdomain,
+                "is_vulnerable": is_vulnerable,
+                "analysis": result.messages[-1].content if result and result.messages else None,
+                "steps": result.steps if result else 0
+            })
+            dn.log_metric("vulnerability_found", 1 if is_vulnerable else 0)
+
+        except Exception as e:
+            console.print(f"Validation failed: {e}")
+            dn.log_output("error", str(e))
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="Subdomain takeover vulnerability scanner")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Hunt command
+    hunt_parser = subparsers.add_parser("hunt", help="Hunt for subdomain takeover vulnerabilities")
+    hunt_parser.add_argument(
+        "--targets", type=Path, help="Path to file containing target subdomains"
+    )
+    hunt_parser.add_argument("--presets", nargs="*", help="BBOT presets to use")
+    hunt_parser.add_argument("--modules", nargs="*", help="BBOT modules to use")
+    hunt_parser.add_argument("--flags", nargs="*", help="BBOT flags to use")
+    hunt_parser.add_argument("--config", type=Path, help="Path to config file")
+
+    # Validate command
+    validate_parser = subparsers.add_parser("validate", help="Validate a specific subdomain")
+    validate_parser.add_argument("subdomain", help="Subdomain to validate")
+
+    # Info commands
+    subparsers.add_parser("modules", help="List available BBOT modules")
+    subparsers.add_parser("presets", help="List available BBOT presets")
+    subparsers.add_parser("flags", help="List available BBOT flags")
+    subparsers.add_parser("events", help="List available BBOT event types")
+
+    args = parser.parse_args()
+
+    if args.command == "hunt":
+        await hunt(args.targets, args.presets, args.modules, args.flags, args.config)
+    elif args.command == "validate":
+        await validate(args.subdomain)
+    elif args.command == "modules":
+        await modules()
+    elif args.command == "presets":
+        await presets()
+    elif args.command == "flags":
+        await flags()
+    elif args.command == "events":
+        await events()
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
-    app()
+    asyncio.run(main())
