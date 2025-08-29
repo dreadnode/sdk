@@ -83,7 +83,7 @@ class CredentialManager:
             self._filesystem = new_filesystem
             self._prefix = f"{new_credentials.bucket}/{new_credentials.prefix}/"
 
-            logger.info("Storage credentials refreshed, valid until %s", self._credentials_expiry)
+            logger.info(f"Storage credentials refreshed, valid until {self._credentials_expiry}")
 
         except Exception:
             logger.exception("Failed to refresh storage credentials")
