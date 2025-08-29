@@ -1,8 +1,8 @@
-import typing as t
 from pathlib import Path
 
 from rich.console import Console
 
+import dreadnode as dn
 from dreadnode.agent.agent import Agent
 from dreadnode.agent.tools.bbot.tool import BBotTool
 
@@ -12,11 +12,10 @@ from cyclopts import App
 
 app = App()
 
-
 agent = Agent(
     name="bbot-agent",
     description="An agent that uses BBOT to perform various tasks.",
-    model="gpt-4",
+    model="meta-llama/llama-4-scout-17b-16e-instruct",
 )
 
 
@@ -50,30 +49,49 @@ async def scan(
     presets: list[str] | None = None,
     modules: list[str] | None = None,
     flags: list[str] | None = None,
-    config: Path | dict[str, t.Any] | None = None,
+    config: str | None = None,
 ) -> None:
     if isinstance(targets, Path):
         with Path.open(targets) as f:
-            targets = f.readlines()
+            loaded_targets = f.readlines()
 
     if not targets:
         console.print("[red]Error:[/red] No targets provided. Use --targets to specify targets.\n")
         return
 
-    tool = await BBotTool.create()
-    events = tool.run(
-        targets=targets,
-        presets=presets,
-        modules=modules,
-        flags=flags,
-        config=config,
-    )
+    dn.configure(server="https://platform.dreadnode.io", project="bug-bounty-rea")
 
-    async for event in events:
-        console.print(event)
-        # Add your agent logic here to process events
-        # if event == "FINDING":
-        #     await agent.run(...)
+    with dn.run("scan-name", tags=presets):
+        dn.log_params(
+            targets=loaded_targets,
+            presets=presets,
+            modules=modules,
+            flags=flags,
+            config=config,
+        )
+
+        tool = await BBotTool.create()
+        events = tool.run(
+            targets=loaded_targets,
+            presets=presets,
+            modules=modules,
+            flags=flags,
+            config=config,
+        )
+
+        all_events = []
+
+        async for event in events:
+            console.print(event)
+            all_events.append(event)
+            # Add your agent logic here to process events
+            # if event.type == "FINDING":
+            #     await agent.run(...)
+
+        for event in all_events:
+            with dn.task_span(event.type):
+                dn.log_output("event", event.json(siem_friendly=True))
+                dn.log_metric(event.type, 1, mode="count", to="task-or-run")
 
 
 # Usage

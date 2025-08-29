@@ -1,4 +1,3 @@
-import typing as t
 from pathlib import Path
 
 from bbot import Preset, Scanner
@@ -64,7 +63,7 @@ class BBotTool(Toolset):
         modules: list[str] | None = None,
         presets: list[str] | None = None,
         flags: list[str] | None = None,
-        config: dict[str, t.Any] | None = None,
+        config: list[str] | None = None,
     ) -> str:
         r"""
         Executes a BBOT scan against the specified targets.
