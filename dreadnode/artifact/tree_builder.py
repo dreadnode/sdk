@@ -397,7 +397,7 @@ class ArtifactTreeBuilder:
         child_hashes = [child["hash"] for child in dir_node["children"]]
         child_hashes.sort()  # Ensure consistent hash
         hash_input = "|".join(child_hashes)
-        return hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324 # nosec
+        return hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # nosec
 
     def _are_all_children_processed(self, parent_node: DirectoryNode, processed: set[str]) -> bool:
         """

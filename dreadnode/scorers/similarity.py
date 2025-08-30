@@ -217,7 +217,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    import litellm  # noqa: PLC0415
+    import litellm
 
     async def evaluate(data: t.Any) -> Metric:
         nonlocal reference, model

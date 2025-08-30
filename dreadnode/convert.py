@@ -1,14 +1,14 @@
 import typing as t
 
 if t.TYPE_CHECKING:
-    import networkx as nx  # type: ignore [import-untyped]
+    import networkx as nx
 
     from dreadnode.tracing.span import RunSpan
 
 
 def run_span_to_graph(run: "RunSpan") -> "nx.DiGraph":
     try:
-        import networkx as nx  # noqa: PLC0415 # pyright: ignore[reportMissingModuleSource]
+        import networkx as nx  # pyright: ignore[reportMissingModuleSource]
     except ImportError as e:
         raise RuntimeError("The `networkx` package is required for graph conversion") from e
 

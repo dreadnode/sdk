@@ -52,8 +52,8 @@ class FileMetricReader(MetricReader):
     def _receive_metrics(
         self,
         metrics_data: MetricsData,
-        timeout_millis: float = 10_000,  # noqa: ARG002
-        **kwargs: t.Any,  # noqa: ARG002
+        timeout_millis: float = 10_000,
+        **kwargs: t.Any,
     ) -> None:
         if metrics_data is None:
             return
@@ -64,13 +64,13 @@ class FileMetricReader(MetricReader):
             with self._lock:
                 self.file.write(json_str + "\n")
                 self.file.flush()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Failed to export metrics: {e}")
 
     def shutdown(
         self,
-        timeout_millis: float = 30_000,  # noqa: ARG002
-        **kwargs: t.Any,  # noqa: ARG002
+        timeout_millis: float = 30_000,
+        **kwargs: t.Any,
     ) -> None:
         with self._lock:
             if self._file:
@@ -99,14 +99,14 @@ class FileSpanExporter(SpanExporter):
             with self._lock:
                 self.file.write(json_str + "\n")
                 self.file.flush()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Failed to export spans: {e}")
             return SpanExportResult.FAILURE
         return SpanExportResult.SUCCESS
 
     def force_flush(
         self,
-        timeout_millis: float = 30_000,  # noqa: ARG002
+        timeout_millis: float = 30_000,
     ) -> bool:
         return True  # We flush above
 
@@ -138,14 +138,14 @@ class FileLogExporter(LogExporter):
             with self._lock:
                 self.file.write(json_str + "\n")
                 self.file.flush()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error(f"Failed to export logs: {e}")
             return LogExportResult.FAILURE
         return LogExportResult.SUCCESS
 
     def force_flush(
         self,
-        timeout_millis: float = 30_000,  # noqa: ARG002
+        timeout_millis: float = 30_000,
     ) -> bool:
         return True
 

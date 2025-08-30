@@ -1,0 +1,43 @@
+### AGGRESSIVE DNS CONFIG ###
+# This config maximizes DNS enumeration and resolution capabilities
+
+dns:
+  # Maximum DNS resolution settings
+  disable: false
+  minimal: false
+  # High thread counts for fast DNS operations
+  threads: 100
+  brute_threads: 5000
+  # Extended DNS search distance
+  search_distance: 3
+  # Higher runaway limit for complex DNS chains
+  runaway_limit: 10
+  # Longer timeout for comprehensive resolution
+  timeout: 15
+  # More retries for thorough enumeration
+  retries: 3
+  # Disabled wildcard detection limits
+  wildcard_disable: false
+  wildcard_ignore: []
+  # Maximum wildcard tests for accuracy
+  wildcard_tests: 25
+  # Higher abort threshold for persistent scanning
+  abort_threshold: 100
+  # Show all PTR records
+  filter_ptrs: false
+  # Enable DNS debug for troubleshooting
+  debug: false
+  # Clear omit queries to allow all DNS types
+  omit_queries: []
+
+scope:
+  # Allow broader scope for DNS discovery
+  strict: false
+  report_distance: 2
+  search_distance: 2
+
+# Enable all DNS-related processing
+speculate: True
+excavate: True
+dnsresolve: True
+cloudcheck: True

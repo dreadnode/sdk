@@ -1,0 +1,48 @@
+### SCOPE RESPECTFUL CONFIG ###
+# This config limits scope for respectful/careful reconnaissance
+
+scope:
+  # Only scan exact targets provided
+  strict: true
+  # Only show in-scope events
+  report_distance: 0
+  # Don't search beyond main targets
+  search_distance: 0
+
+web:
+  # Minimal web spidering
+  spider_distance: 0
+  spider_depth: 1
+  spider_links_per_page: 10
+  # Conservative timeouts
+  http_timeout: 5
+  httpx_timeout: 3
+  # Minimal retry behavior to avoid hammering
+  api_retries: 1
+  http_retries: 0
+  httpx_retries: 0
+  # Limited redirects
+  http_max_redirects: 3
+  # Longer delays when rate limited
+  429_sleep_interval: 60
+  429_max_sleep_interval: 300
+
+dns:
+  # Conservative DNS resolution
+  search_distance: 0
+  # Fewer DNS threads
+  threads: 10
+  brute_threads: 100
+  # Single retry only
+  retries: 0
+  # Standard timeout
+  timeout: 3
+  # Fewer wildcard tests
+  wildcard_tests: 5
+
+# Minimal processing for lighter footprint
+speculate: False
+excavate: False
+aggregate: True
+dnsresolve: True
+cloudcheck: False

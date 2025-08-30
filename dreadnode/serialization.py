@@ -77,7 +77,7 @@ def _handle_sequence(
             non_empty_schemas_found = True
 
     schema: JsonDict = {"type": "array"}
-    if obj_type != list:  # noqa: E721
+    if obj_type != list:
         schema["title"] = obj_type.__name__
         type_name_map = {tuple: "tuple", set: "set", frozenset: "set", deque: "deque"}
         schema["x-python-datatype"] = type_name_map.get(obj_type, obj_type.__name__)
@@ -153,7 +153,7 @@ def _handle_bytes(
     try:
         serialized = obj.decode()
         if not serialized.isprintable():
-            raise ValueError("Non-printable characters found")  # noqa: TRY301
+            raise ValueError("Non-printable characters found")
     except (UnicodeDecodeError, ValueError):
         serialized = base64.b64encode(obj).decode()
         schema["format"] = "base64"
@@ -317,14 +317,14 @@ def _handle_dataclass(obj: t.Any, seen: set[int]) -> tuple[JsonValue, JsonDict]:
 
 
 def _handle_attrs(obj: t.Any, seen: set[int]) -> tuple[JsonValue, JsonDict]:
-    import attrs  # noqa: PLC0415
+    import attrs
 
     keys = [f.name for f in attrs.fields(obj.__class__)]
     return _handle_custom_object(obj, keys, seen, "attrs")
 
 
 def _handle_pydantic_model(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
-    import pydantic  # noqa: PLC0415
+    import pydantic
 
     if not isinstance(obj, pydantic.BaseModel):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -345,7 +345,7 @@ def _handle_numpy_array(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
-    import numpy  # noqa: ICN001, PLC0415
+    import numpy
 
     if not isinstance(obj, numpy.ndarray):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -363,7 +363,7 @@ def _handle_pandas_dataframe(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
-    import pandas as pd  # noqa: PLC0415
+    import pandas as pd
 
     if not isinstance(obj, pd.DataFrame):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -378,7 +378,7 @@ def _handle_pandas_series(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
-    import pandas as pd  # noqa: PLC0415
+    import pandas as pd
 
     if not isinstance(obj, pd.Series):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -390,7 +390,7 @@ def _handle_pandas_series(
 
 
 def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
-    import datasets  # type: ignore[import-untyped]  # noqa: PLC0415
+    import datasets  # type: ignore[import-untyped]
 
     if not isinstance(obj, datasets.Dataset):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -453,7 +453,7 @@ def _get_handlers() -> dict[type, HandlerFunc]:
     # Pydantic
 
     with contextlib.suppress(Exception):
-        import pydantic  # noqa: PLC0415
+        import pydantic
 
         handlers[pydantic.NameEmail] = lambda o, s: _handle_str_based(
             o,
@@ -478,7 +478,7 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[pydantic.BaseModel] = _handle_pydantic_model
 
     with contextlib.suppress(Exception):
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         handlers[np.ndarray] = _handle_numpy_array
         handlers[np.floating] = lambda o, s: _serialize(float(o), s)
@@ -496,13 +496,13 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         )
 
     with contextlib.suppress(Exception):
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         handlers[pd.DataFrame] = _handle_pandas_dataframe
         handlers[pd.Series] = _handle_pandas_series
 
     with contextlib.suppress(Exception):
-        import datasets  # noqa: PLC0415
+        import datasets
 
         handlers[datasets.Dataset] = _handle_dataset
 
@@ -515,7 +515,7 @@ def _get_handlers() -> dict[type, HandlerFunc]:
 # Core functions
 
 
-def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, JsonDict]:  # noqa: PLR0911
+def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, JsonDict]:
     # Primitives early
 
     if isinstance(obj, str | int | float | bool) or obj is None:
@@ -642,11 +642,11 @@ def serialize(obj: t.Any, *, schema_extras: JsonDict | None = None) -> Serialize
 
     data_hash = EMPTY_HASH
     if serialized is not None:
-        data_hash = hashlib.sha1(serialized_bytes).hexdigest()[:16]  # noqa: S324 # nosec (using sha1 for speed)
+        data_hash = hashlib.sha1(serialized_bytes).hexdigest()[:16]  # nosec (using sha1 for speed)
 
     schema_hash = EMPTY_HASH
     if schema and schema != EMPTY_SCHEMA:
-        schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # noqa: S324 # nosec
+        schema_hash = hashlib.sha1(schema_str.encode()).hexdigest()[:16]  # nosec
 
     return Serialized(
         data=serialized,

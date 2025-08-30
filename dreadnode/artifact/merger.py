@@ -589,7 +589,7 @@ class ArtifactMerger:
 
         child_hashes.sort()  # Ensure consistent hash regardless of order
         hash_input = "|".join(child_hashes)
-        dir_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324 # nosec
+        dir_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # nosec
 
         dir_node["hash"] = dir_hash
         return dir_hash

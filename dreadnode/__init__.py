@@ -12,7 +12,7 @@ from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
-    from dreadnode import scorers  # noqa: F401
+    from dreadnode import scorers
 
 configure = DEFAULT_INSTANCE.configure
 shutdown = DEFAULT_INSTANCE.shutdown

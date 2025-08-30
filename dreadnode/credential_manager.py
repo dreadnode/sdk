@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, TypeVar
 
-from botocore.exceptions import ClientError  # type: ignore  # noqa: PGH003
+from botocore.exceptions import ClientError  # type: ignore
 from loguru import logger
 from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
@@ -41,7 +41,7 @@ class CredentialManager:
         """Get current filesystem, refreshing credentials if needed."""
         if self._needs_refresh():
             self._refresh_credentials()
-        assert self._filesystem is not None  # noqa: S101
+        assert self._filesystem is not None
         return self._filesystem
 
     def get_prefix(self) -> str:
@@ -103,7 +103,7 @@ class CredentialManager:
         for attempt in range(max_retries):
             try:
                 return operation()
-            except ClientError as e:  # noqa: PERF203
+            except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code in ["ExpiredToken", "InvalidAccessKeyId", "SignatureDoesNotMatch"]:
                     logger.info(

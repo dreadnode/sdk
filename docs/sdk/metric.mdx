@@ -31,8 +31,8 @@ Metric
 Metric(
     value: float,
     step: int = 0,
-    timestamp: datetime = lambda: datetime.now(
-        timezone.utc
+    timestamp: datetime = (
+        lambda: datetime.now(timezone.utc)
     )(),
     attributes: JsonDict = dict(),
 )
@@ -136,9 +136,7 @@ def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
         self.value = len(others) + 1
     elif mode == "avg" and prior_values:
         current_avg = prior_values[-1]
-        self.value = current_avg + (self.value - current_avg) / (
-            len(prior_values) + 1
-        )
+        self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
 
     return self
 ```

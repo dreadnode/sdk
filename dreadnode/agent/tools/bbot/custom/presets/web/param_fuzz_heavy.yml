@@ -1,0 +1,49 @@
+description: Run all WEB_PARAMETER modules for parameter tampering and pollution
+
+# Recommended to run after an initial lightfuzz-heavy module run with a list of URLs to check params
+
+# Usage
+# uv run python examples/agents/bbot/agent.py presets
+# uv run python examples/agents/bbot/agent.py scan --targets /path/to/file.txt --presets web-thorough --presets param_fuzz_heavy
+
+include:
+  - spider-intense
+
+modules:
+  - paramminer_cookies
+  - paramminer_getparams
+  - paramminer_headers
+
+config:
+  modules:
+    ffuf:
+      depth: 3
+      lines: 5000
+      extensions:
+        - php
+        - asp
+        - aspx
+        - ashx
+        - asmx
+        - jsp
+        - jspx
+        - cfm
+        - zip
+        - conf
+        - config
+        - xml
+        - json
+        - yml
+        - yaml
+    # emit URLs from wayback
+    wayback:
+      urls: True
+  web:
+    http_proxy: http://127.0.0.1:8080
+    username: $PARAM_FUZZ_HEAVY_USERNAME
+    password: $PARAM_FUZZ_HEAVY_PASSWORD
+dns:
+  wildcard_tests: 20
+
+flags:
+  - web-paramminer

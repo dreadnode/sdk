@@ -10,7 +10,7 @@ if t.TYPE_CHECKING:
 
 
 @dataclass
-class Reaction(Exception): ...  # noqa: N818
+class Reaction(Exception): ...
 
 
 @dataclass

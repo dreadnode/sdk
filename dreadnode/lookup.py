@@ -101,7 +101,7 @@ class Lookup:
         if self.process:
             try:
                 processed_value = self.process(raw_value)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 warn_at_user_stacklevel(
                     f"Error processing Lookup('{self.name}'): {e}", LookupWarning
                 )

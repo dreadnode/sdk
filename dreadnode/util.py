@@ -40,7 +40,7 @@ get_filepath_attribute = _get_filepath_attribute
 is_user_code = _is_user_code
 
 
-import dreadnode  # noqa: E402
+import dreadnode
 
 warn_at_user_stacklevel = _warn_at_user_stacklevel
 
@@ -108,7 +108,7 @@ def safe_repr(obj: t.Any) -> str:
 
     try:
         result = repr(obj)
-    except Exception:  # noqa: BLE001
+    except Exception:
         result = ""
 
     if result:
@@ -116,7 +116,7 @@ def safe_repr(obj: t.Any) -> str:
 
     try:
         return f"<{type(obj).__name__} object>"
-    except Exception:  # noqa: BLE001
+    except Exception:
         return "<unknown (repr failed)>"
 
 
@@ -213,7 +213,7 @@ async def join_generators(
         *generators: The asynchronous generators to join.
     """
 
-    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
+    FINISHED = object()  # sentinel object to indicate a generator has finished
     queue = asyncio.Queue[T | object | Exception](maxsize=1)
 
     async def _queue_generator(
@@ -223,7 +223,7 @@ async def join_generators(
             async with aclosing(generator) as gen:
                 async for item in gen:
                     await queue.put(item)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             await queue.put(e)
         finally:
             await queue.put(FINISHED)
@@ -276,11 +276,11 @@ def log_internal_error() -> None:
     try:
         current_test = os.environ.get("PYTEST_CURRENT_TEST", "")
         reraise = bool(current_test and "test_internal_exception" not in current_test)
-    except Exception:  # noqa: BLE001
+    except Exception:
         reraise = False
 
     if reraise:
-        raise  # noqa: PLE0704
+        raise
 
     with suppress_instrumentation():  # prevent infinite recursion from the logging integration
         logger.exception(
@@ -313,22 +313,22 @@ def _internal_error_exc_info() -> SysExcInfo:
         # Now add useful outer frames that give context, but skipping frames that are just about handling the error.
         frame = inspect.currentframe()
         # Skip this frame right here.
-        assert frame  # noqa: S101
+        assert frame
         frame = frame.f_back
 
         if frame and frame.f_code is log_internal_error.__code__:  # pragma: no branch
             # This function is always called from log_internal_error, so skip that frame.
             frame = frame.f_back
-            assert frame  # noqa: S101
+            assert frame
 
             if frame.f_code is _HANDLE_INTERNAL_ERRORS_CODE:
                 # Skip the line in _handle_internal_errors that calls log_internal_error
                 frame = frame.f_back
                 # Skip the frame defining the _handle_internal_errors context manager
-                assert frame  # noqa: S101
-                assert frame.f_code.co_name == "__exit__"  # noqa: S101
+                assert frame
+                assert frame.f_code.co_name == "__exit__"
                 frame = frame.f_back
-                assert frame  # noqa: S101
+                assert frame
                 # Skip the frame calling the context manager, on the `with` line.
                 frame = frame.f_back
             else:
@@ -357,11 +357,11 @@ def _internal_error_exc_info() -> SysExcInfo:
             )
             frame = frame.f_back
 
-        assert exc_type  # noqa: S101
-        assert exc_val  # noqa: S101
+        assert exc_type
+        assert exc_val
         exc_val = exc_val.with_traceback(tb)
-        return exc_type, exc_val, tb  # noqa: TRY300
-    except Exception:  # noqa: BLE001
+        return exc_type, exc_val, tb
+    except Exception:
         return original_exc_info
 
 
@@ -369,7 +369,7 @@ def _internal_error_exc_info() -> SysExcInfo:
 def handle_internal_errors() -> t.Iterator[None]:
     try:
         yield
-    except Exception:  # noqa: BLE001
+    except Exception:
         log_internal_error()
 
 
@@ -431,7 +431,7 @@ def test_connection(endpoint: str) -> bool:
     try:
         parsed = urlparse(endpoint)
         socket.create_connection((parsed.hostname, parsed.port or 443), timeout=1)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
     return True

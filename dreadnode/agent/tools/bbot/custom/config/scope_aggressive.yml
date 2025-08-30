@@ -1,0 +1,45 @@
+### SCOPE AGGRESSIVE CONFIG ###
+# This config expands scope for more aggressive reconnaissance
+
+scope:
+  # Allow scanning of subdomains and related domains
+  strict: false
+  # Show events up to distance-1 (1 hop from target)
+  report_distance: 1
+  # Search further out from main scope
+  search_distance: 1
+
+web:
+  # Allow deeper web spidering
+  spider_distance: 2
+  spider_depth: 3
+  spider_links_per_page: 50
+  # Increase timeouts for more thorough scanning
+  http_timeout: 20
+  httpx_timeout: 15
+  # More aggressive retry behavior
+  api_retries: 3
+  http_retries: 2
+  httpx_retries: 2
+  # Higher redirect following
+  http_max_redirects: 10
+
+dns:
+  # More aggressive DNS resolution
+  search_distance: 2
+  # More DNS threads for faster resolution
+  threads: 50
+  brute_threads: 2000
+  # More retries for thorough DNS enumeration
+  retries: 2
+  # Higher timeout for slower resolvers
+  timeout: 10
+  # More wildcard tests for accuracy
+  wildcard_tests: 15
+
+# Enable more advanced processing
+speculate: True
+excavate: True
+aggregate: True
+dnsresolve: True
+cloudcheck: True

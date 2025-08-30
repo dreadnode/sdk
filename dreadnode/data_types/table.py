@@ -78,8 +78,8 @@ class Table(DataType):
         Returns:
             A pandas DataFrame representation of the input data
         """
-        import numpy as np  # noqa: PLC0415
-        import pandas as pd  # noqa: PLC0415
+        import numpy as np
+        import pandas as pd
 
         if isinstance(self._data, pd.DataFrame):
             return self._data
@@ -134,8 +134,8 @@ class Table(DataType):
         Returns:
             A dictionary of metadata
         """
-        import numpy as np  # noqa: PLC0415
-        import pandas as pd  # noqa: PLC0415
+        import numpy as np
+        import pandas as pd
 
         metadata = {
             "extension": self._format,

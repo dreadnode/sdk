@@ -11,8 +11,7 @@ if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
     from dreadnode.agent.reactions import Reaction
     from dreadnode.agent.result import AgentResult
-    from dreadnode.agent.thread import Thread
-
+    from dreadnode.agent.state import State
 
 EventT = t.TypeVar("EventT", bound="Event")
 
@@ -20,7 +19,7 @@ EventT = t.TypeVar("EventT", bound="Event")
 @dataclass
 class Event:
     agent: "Agent" = field(repr=False)
-    thread: "Thread" = field(repr=False)
+    state: "State" = field(repr=False)
     messages: "list[Message]" = field(repr=False)
     events: "list[Event]" = field(repr=False)
 
@@ -108,11 +107,6 @@ class AgentEnd(Event):
 
 
 def rebuild_event_models() -> None:
-    from dreadnode.agent.agent import Agent  # noqa: F401,PLC0415
-    from dreadnode.agent.reactions import Reaction  # noqa: F401,PLC0415
-    from dreadnode.agent.result import AgentResult  # noqa: F401,PLC0415
-    from dreadnode.agent.thread import Thread  # noqa: F401,PLC0415
-
     rebuild_dataclass(Event)  # type: ignore[arg-type]
     rebuild_dataclass(AgentStart)  # type: ignore[arg-type]
     rebuild_dataclass(StepStart)  # type: ignore[arg-type]

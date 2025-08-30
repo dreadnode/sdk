@@ -410,7 +410,7 @@ class Dreadnode:
         return self._api
 
     def _get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
-        return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
+        return self._logfire._tracer_provider.get_tracer(
             self.otel_scope,
             VERSION,
             is_span_tracer=is_span_tracer,
@@ -769,7 +769,7 @@ class Dreadnode:
             self.configure()
 
         if name is None:
-            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311 # nosec
+            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # nosec
 
         return RunSpan(
             name=name,
@@ -942,7 +942,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool,  # noqa: FBT001
+        value: float | bool,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1033,7 +1033,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,  # noqa: FBT001
+        value: float | bool | Metric,
         *,
         step: int = 0,
         origin: t.Any | None = None,
