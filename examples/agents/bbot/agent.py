@@ -59,39 +59,42 @@ async def scan(
         console.print("[red]Error:[/red] No targets provided. Use --targets to specify targets.\n")
         return
 
-    dn.configure(server="https://platform.dreadnode.io", project="bug-bounty-rea")
+    tool = await BBotTool.create(
+        targets=loaded_targets, presets=presets, modules=modules, flags=flags, config=config
+    )
 
-    with dn.run("scan-name", tags=presets):
+    dn.configure(server="https://platform.dreadnode.io", project="bount-rea")
+
+    with dn.run(tool.scan.name, tags=presets):
         dn.log_params(
             targets=loaded_targets,
             presets=presets,
             modules=modules,
             flags=flags,
             config=config,
+            scan=tool.scan.id,
         )
 
-        tool = await BBotTool.create()
-        events = tool.run(
-            targets=loaded_targets,
-            presets=presets,
-            modules=modules,
-            flags=flags,
-            config=config,
-        )
-
-        all_events = []
+        events = tool.run()
 
         async for event in events:
             console.print(event)
-            all_events.append(event)
-            # Add your agent logic here to process events
-            # if event.type == "FINDING":
-            #     await agent.run(...)
-
-        for event in all_events:
             with dn.task_span(event.type):
                 dn.log_output("event", event.json(siem_friendly=True))
-                dn.log_metric(event.type, 1, mode="count", to="task-or-run")
+                dn.log_metric(event.type, 1, mode="count", to="run")
+                # Add your agent logic here to process events
+                if event.type == "WEBSCREENSHOT":
+                    image_path = f"{tool.scan.core.scans_dir}/{tool.scan.name}/{event.data['path']}"
+                    console.print(event.json())
+                    console.print(
+                        f"[bold green]Web Screenshot saved to:[/bold green] {event.data['path']}"
+                    )
+                    dn.log_output(
+                        "webscreenshot",
+                        dn.Image(image_path),
+                    )
+                    dn.log_artifact(image_path)
+            #     await agent.run(...)
 
 
 # Usage

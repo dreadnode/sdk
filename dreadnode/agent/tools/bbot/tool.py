@@ -1,7 +1,6 @@
-from pathlib import Path
+import typing as t
 
 from bbot import Preset, Scanner
-from loguru import logger
 from pydantic import Field
 from rich.console import Console
 
@@ -15,20 +14,48 @@ console = Console()
 
 class BBotTool(Toolset):
     tool_name: str = Field(default="bbot-agent", description="Name of the BBOT Tool")
-    scanner: Scanner | None = Field(default=None, exclude=True)
-    scan_timeout: int = Field(default=300, description="Timeout for BBOT scans in seconds")
-    config_dir: Path = Field(
-        default=Path(__file__).parent.parent.parent.parent / "config", exclude=True
+    targets: list[str] = Field(default_factory=list, description="Targets to scan with BBOT")
+    modules: list[str] = Field(default_factory=list, description="Modules to run with BBOT")
+    presets: list[str] = Field(default_factory=list, description="Presets to use with BBOT")
+    flags: list[str] = Field(default=None, description="Flags to enable module groups")
+    config: dict[str, t.Any] = Field(
+        default=None, description="Custom config options in key=value format"
     )
+    scan: Scanner = Field(default=None, description="The BBOT Scanner instance")
+    scan_timeout: int = Field(default=300, description="Timeout for BBOT scans in seconds")
+
     dispatcher: Dispatcher = Field(default_factory=Dispatcher, exclude=True)
 
     @classmethod
-    async def create(cls, tool_name: str = "bbot-agent", **kwargs: dict) -> "BBotTool":
+    async def create(
+        cls,
+        targets: list[str],
+        modules: list[str] | None = None,
+        presets: list[str] | None = None,
+        flags: list[str] | None = None,
+        config: dict[str, t.Any] | None = None,
+    ) -> "BBotTool":
         """Factory method to create and initialize a BBOT Tool."""
         try:
-            instance = cls(name=tool_name, **kwargs)
+            instance = cls(
+                targets=targets,
+                modules=modules or [],
+                presets=presets or [],
+                flags=flags or [],
+                config=config or {},
+            )
+            instance.scan = Scanner(
+                *instance.targets,
+                modules=instance.modules,
+                presets=instance.presets,
+                flags=instance.flags,
+                config=instance.config,
+                dispatcher=instance.dispatcher,
+            )
         except (ValueError, TypeError) as e:
-            raise ValueError(f"Failed to create BBOT Tool with tool_name '{tool_name}': {e}") from e
+            raise ValueError(
+                f"Failed to create BBOT Tool with tool_name '{instance.tool_name}': {e}"
+            ) from e
 
         return instance
 
@@ -57,14 +84,7 @@ class BBotTool(Toolset):
         preset = Preset(_log=True, name="bbot_cli_main")
         console.print(events_table(preset.module_loader))
 
-    async def run(
-        self,
-        targets: list[str],
-        modules: list[str] | None = None,
-        presets: list[str] | None = None,
-        flags: list[str] | None = None,
-        config: list[str] | None = None,
-    ) -> str:
+    async def run(self) -> str:
         r"""
         Executes a BBOT scan against the specified targets.
 
@@ -85,29 +105,8 @@ class BBotTool(Toolset):
         Returns:
             The standard output from the bbot command, summarizing the scan.
         """
-        if not targets:
+        if not self.targets:
             raise ValueError("At least one target is required to run a scan.")
 
-        user_config_path = Path("~/.config/bbot/bbot.yaml").expanduser().resolve()
-        repo_config_path = self.config_dir / "bbot.yaml"
-        if (
-            user_config_path.exists()
-            and repo_config_path.exists()
-            and user_config_path.read_text() != repo_config_path.read_text()
-        ):
-            logger.warning(
-                f"User and repo `bbot.yml` config files differ. When running BBOT locally, "
-                f"BBOT always reads from {user_config_path} - update settings there as needed."
-            )
-
-        scan = Scanner(
-            *targets,
-            modules=modules or [],
-            presets=presets or [],
-            flags=flags or [],
-            config=config or {},
-            dispatcher=self.dispatcher,
-        )
-
-        async for event in scan.async_start():
+        async for event in self.scan.async_start():
             yield event
