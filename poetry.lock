@@ -666,14 +666,14 @@ files = [
 
 [[package]]
 name = "cyclopts"
-version = "3.22.5"
+version = "3.23.1"
 description = "Intuitive, easy CLIs based on type hints."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "cyclopts-3.22.5-py3-none-any.whl", hash = "sha256:92efb4a094d9812718d7efe0bffa319a19cb661f230dbf24406c18cd8809fb82"},
-    {file = "cyclopts-3.22.5.tar.gz", hash = "sha256:fa2450b9840abc41c6aa37af5eaeafc7a1264e08054e3a2fe39d49aa154f592a"},
+    {file = "cyclopts-3.23.1-py3-none-any.whl", hash = "sha256:8e57c6ea47d72b4b565c6a6c8a9fd56ed048ab4316627991230f4ad24ce2bc29"},
+    {file = "cyclopts-3.23.1.tar.gz", hash = "sha256:ca6a5e9b326caf156d79f3932e2f88b95629e59fd371c0b3a89732b7619edacb"},
 ]
 
 [package.dependencies]
