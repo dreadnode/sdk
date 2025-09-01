@@ -3,11 +3,13 @@ import types
 import typing as t
 from copy import deepcopy
 from dataclasses import dataclass, field
+from typing import get_origin
 
-import pydantic
 import typing_extensions as te
 from annotated_types import SupportsGt
-from pydantic import Field
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field as PydanticField
+from pydantic import PrivateAttr as PydanticPrivateAttr
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import PydanticUndefined
 from typing_extensions import ParamSpec
@@ -27,6 +29,66 @@ class ConfigInfo:
 
     field_kwargs: dict[str, t.Any] = field(default_factory=dict)
     expose_as: t.Any = None
+
+    @staticmethod
+    def from_annotation(annotation: t.Any) -> "ConfigInfo | None":
+        """Extract ConfigInfo from Annotated metadata."""
+        if get_origin(annotation) is t.Annotated:
+            args = t.get_args(annotation)
+            # Skip first arg (the actual type), check metadata
+            for metadata in args[1:]:
+                if isinstance(metadata, ConfigInfo):
+                    return metadata
+        return None
+
+    @staticmethod
+    def from_defaults_and_annotations(
+        defaults: AnyDict, annotations: AnyDict
+    ) -> dict[str, "ConfigInfo"]:
+        """Extract ConfigInfo from default values and associated annotations."""
+        configs: dict[str, ConfigInfo] = {}
+        configs_from_defaults = {
+            name: value for name, value in defaults.items() if isinstance(value, ConfigInfo)
+        }
+        configs_from_annotations = {
+            name: config
+            for name, annotation in annotations.items()
+            if (config := ConfigInfo.from_annotation(annotation))
+        }
+
+        for name in set(configs_from_defaults) | set(configs_from_annotations):
+            config_from_default = configs_from_defaults.get(name)
+            config_from_annotation = configs_from_annotations.get(name)
+
+            # Merge configs if both are present (arg: Annotated[int, Config()] = Config(123))
+            if config_from_default and config_from_annotation:
+                configs[name] = config_from_annotation.merge(config_from_default)
+
+            # Take from default if available (arg: int = Config())
+            elif config_from_default:
+                configs[name] = config_from_default
+
+            # Merge default and annotation (arg: Annotated[int, Config()] = 123)
+            elif config_from_annotation and name in defaults:
+                configs[name] = ConfigInfo(
+                    field_kwargs={
+                        **config_from_annotation.field_kwargs,
+                        "default": defaults[name],
+                    },
+                    expose_as=config_from_annotation.expose_as,
+                )
+
+            # Otherwise just annotation (arg: Annotated[int, Config()])
+            else:
+                configs[name] = config_from_annotation
+
+        return configs
+
+    def merge(self: "ConfigInfo", other: "ConfigInfo") -> "ConfigInfo":
+        """Merge configs - `other` takes precedence over `self`."""
+        merged_kwargs = {**self.field_kwargs, **other.field_kwargs}
+        merged_expose_as = other.expose_as or self.expose_as
+        return ConfigInfo(field_kwargs=merged_kwargs, expose_as=merged_expose_as)
 
 
 @t.overload
@@ -208,7 +270,10 @@ def Config(  # noqa: N802
     return ConfigInfo(field_kwargs=field_kwargs, expose_as=expose_as)
 
 
-class ModelMeta(ModelMetaclass):
+@te.dataclass_transform(
+    kw_only_default=True, field_specifiers=(Config, PydanticField, PydanticPrivateAttr)
+)
+class ConfigurableMeta(ModelMetaclass):
     def __new__(
         mcs,
         name: str,
@@ -216,53 +281,57 @@ class ModelMeta(ModelMetaclass):
         namespace: dict[str, t.Any],
         **kwargs: t.Any,
     ) -> type:
-        for attr_name, attr_value in namespace.items():
-            if isinstance(attr_value, ConfigInfo):
-                field_kwargs = {
-                    k: (v if v is not UNSET else PydanticUndefined)
-                    for k, v in attr_value.field_kwargs.items()
-                }
-                namespace[attr_name] = Field(**field_kwargs)  # type: ignore[arg-type]
+        configs = ConfigInfo.from_defaults_and_annotations(
+            namespace, namespace.get("__annotations__", {})
+        )
+
+        # Rewrite all our configs as pydantic fields
+        for attr_name, config in configs.items():
+            field_kwargs = {
+                k: (v if v is not UNSET else PydanticUndefined)
+                for k, v in config.field_kwargs.items()
+            }
+            namespace[attr_name] = PydanticField(**field_kwargs)
 
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
 
-        params = {
-            name: getattr(bases[0] if bases else object, name, attr_value)
-            for name, attr_value in namespace.items()
-            if isinstance(attr_value, ConfigInfo)
-        }
-        cls.__dn_config__ = params  # type: ignore[attr-defined]
+        # Merge config from all base classes
+        merged_configs = {}
+        for base in reversed(cls.__mro__):  # Go from most base to most derived
+            if hasattr(base, "__dn_config__"):
+                merged_configs.update(base.__dn_config__)
+
+        merged_configs.update(configs)
+
+        # If pydantic resolved any of our field descriptions, we need to
+        # reflect those back into the ConfigInfo objects
+        for field_name, field_info in cls.model_fields.items():  # type: ignore[attr-defined]
+            if field_name in configs:
+                configs[field_name].field_kwargs["description"] = field_info.description
+
+        cls.__dn_config__ = merged_configs  # type: ignore[attr-defined]
 
         return cls
 
 
-class Model(pydantic.BaseModel, metaclass=ModelMeta):
-    pass
+class Model(PydanticBaseModel, metaclass=ConfigurableMeta):
+    def configure(self, **overrides: t.Any) -> te.Self:
+        """Create a new model with updated default configuration values."""
+        return self.model_copy(update=overrides)
 
+        # Update the ConfigInfo defaults to match
+        # updated_config = {}
+        # for name, config_info in t.cast("dict[str, ConfigInfo]", self.__dn_config__).items():
+        #     if name in overrides:
+        #         new_field_kwargs = {**config_info.field_kwargs, "default": overrides[name]}
+        #         updated_config[name] = ConfigInfo(
+        #             field_kwargs=new_field_kwargs, expose_as=config_info.expose_as
+        #         )
+        #     else:
+        #         updated_config[name] = config_info
 
-# class Model(pydantic.BaseModel):
-#     """The base class for all configurable class-based components."""
-
-#     def __init_subclass__(cls, **kwargs: t.Any) -> None:
-#         super().__init_subclass__(**kwargs)
-
-#         params: dict[str, ConfigInfo] = {}
-#         for name in cls.__annotations__:
-#             obj = hasattr(cls, name) and getattr(cls, name)
-#             if obj and isinstance(obj, ConfigInfo):
-#                 # json_schema_extra = {
-#                 #     **(obj.field_kwargs.get("json_schema_extra", {})),
-#                 #     "__dn_param__": True,
-#                 # }
-#                 # obj.field_kwargs["json_schema_extra"] = json_schema_extra
-#                 field_kwargs = {
-#                     k: (v if v is not UNSET else PydanticUndefined)
-#                     for k, v in obj.field_kwargs.items()
-#                 }
-#                 setattr(cls, name, Field(**field_kwargs))  # type: ignore[arg-type]
-#                 params[name] = obj
-
-#         cls.__dn_config__ = params  # type: ignore[attr-defined]
+        # new_instance.__dn_config__ = updated_config
+        # return new_instance
 
 
 class Component(t.Generic[P, R]):
@@ -276,31 +345,43 @@ class Component(t.Generic[P, R]):
         *,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
+        wraps: t.Callable | None = None,
     ) -> None:
         self.func = func
         "The underlying function to call"
-        self.signature = getattr(func, "__signature__", inspect.signature(func))
+        self.signature = getattr(wraps or func, "__signature__", inspect.signature(func))
         "The underlying function signature"
-        self.__dn_param_config__ = config or {
-            name: param.default
-            for name, param in self.signature.parameters.items()
-            if isinstance(param.default, ConfigInfo)
-        }
+        self.__dn_param_config__ = (
+            config or wraps.__dn_param_config__
+            if isinstance(wraps, Component)
+            else ConfigInfo.from_defaults_and_annotations(
+                {
+                    n: p.default
+                    for n, p in self.signature.parameters.items()
+                    if p.default is not inspect.Parameter.empty
+                },
+                func.__annotations__,
+            )
+        )
         self.__dn_attr_config__: dict[str, ConfigInfo] = {}
-        self.__dn_context__: dict[str, Context] = context or {
-            n: p.default
-            for n, p in self.signature.parameters.items()
-            if isinstance(p.default, Context)
-        }
-        self.__name__ = func.__name__
-        self.__qualname__ = func.__qualname__
-        self.__doc__ = func.__doc__
+        self.__dn_context__: dict[str, Context] = (
+            context or wraps.__dn_context__
+            if isinstance(wraps, Component)
+            else {
+                n: p.default
+                for n, p in self.signature.parameters.items()
+                if isinstance(p.default, Context)
+            }
+        )
+        self.__name__ = (wraps or func).__name__
+        self.__qualname__ = (wraps or func).__qualname__
+        self.__doc__ = (wraps or func).__doc__
 
         # Strip any Config values from annotations to avoid
         # them polluting further inspection.
         self.__annotations__ = {
             name: annotation
-            for name, annotation in func.__annotations__.items()
+            for name, annotation in (wraps or func).__annotations__.items()
             if name not in self.__dn_param_config__
         }
         self.__signature__ = self.signature.replace(
@@ -330,6 +411,30 @@ class Component(t.Generic[P, R]):
         """
         return self.__deepcopy__({})
 
+    @property
+    def defaults(self) -> dict[str, Unset | t.Any]:
+        defaults: dict[str, Unset | t.Any] = {}
+        for name, param in self.signature.parameters.items():
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
+
+            if name in self.__dn_param_config__:
+                config_info = self.__dn_param_config__[name]
+                if "default" in config_info.field_kwargs:
+                    defaults[name] = config_info.field_kwargs["default"]
+                elif "default_factory" in config_info.field_kwargs:
+                    defaults[name] = config_info.field_kwargs["default_factory"]
+            elif name in self.__dn_context__:
+                defaults[name] = self.__dn_context__[name]
+            else:
+                defaults[name] = (
+                    param.default if param.default is not inspect.Parameter.empty else UNSET
+                )
+        return defaults
+
     def configure(self, **overrides: t.Any) -> te.Self:
         """
         Configure the component with new default configuration values.
@@ -353,9 +458,14 @@ class Component(t.Generic[P, R]):
         """
         new = self.clone()
 
-        known_keys = set(new.__dn_param_config__) | set(new.__dn_context__)
+        known_keys = (
+            set(new.__dn_param_config__) | set(new.__dn_context__) | set(self.signature.parameters)
+        )
         for key, value in overrides.items():
             if key not in known_keys:
+                warn_at_user_stacklevel(
+                    f"Unknown parameter '{key}' passed to {self.__name__}.configure()"
+                )
                 continue
 
             new.__dn_context__.pop(key, None)

@@ -24,9 +24,14 @@ def contains(
         exact: Exact string matching instead of contains
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal pattern
-
+    def evaluate(
+        data: t.Any,
+        *,
+        pattern: str | re.Pattern[str] = pattern,
+        case_sensitive: bool = case_sensitive,
+        exact: bool = exact,
+        regex: bool = regex,
+    ) -> Metric:
         text = str(data)
         contains = False
 

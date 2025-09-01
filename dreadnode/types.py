@@ -8,9 +8,10 @@ T = t.TypeVar("T")
 
 # Common types
 
+Primitive = int | float | str | bool | None
 JsonValue = te.TypeAliasType(
     "JsonValue",
-    "int | float | str | bool | None | list[JsonValue] | tuple[JsonValue, ...] | JsonDict",
+    "Primitive | list[JsonValue] | tuple[JsonValue, ...] | JsonDict",
 )
 JsonDict = te.TypeAliasType("JsonDict", dict[str, JsonValue])
 AnyDict = dict[str, t.Any]

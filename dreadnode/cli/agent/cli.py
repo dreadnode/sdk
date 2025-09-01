@@ -1,17 +1,20 @@
 import contextlib
 import itertools
 import typing as t
+from inspect import isawaitable
 from pathlib import Path
 
 import cyclopts
 import rich
 
+from dreadnode import log_input
 from dreadnode.agent import Agent
-from dreadnode.cli.agent.format import format_agent, format_agents_table
+from dreadnode.agent.format import format_agent, format_agents_table
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
 from dreadnode.meta import get_config_model, hydrate
+from dreadnode.meta.introspect import flatten_model
 
-cli = cyclopts.App("agent", help="Run and manage agents.", help_flags=[])
+cli = cyclopts.App("agent", help="Run and manage agents.")
 
 
 @cli.command(name=["list", "ls", "show"])
@@ -48,10 +51,9 @@ def show(
             rich.print(format_agents_table(agents))
 
 
-@cli.command(help_flags=[])
-async def run(  # noqa: PLR0915
+@cli.command()
+async def run(  # noqa: PLR0912, PLR0915
     agent: str,
-    input: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
 ) -> None:
@@ -63,9 +65,10 @@ async def run(  # noqa: PLR0915
     - If the agent is specified with a file, it will run that specific agent in the given file ('my_agents.py:web_enum').\n
     - If the file is not specified, it defaults to searching for main.py, agent.py, or app.py.
 
+    **To get detailed help for a specific agent, use `dreadnode agent run <agent> help`.**
+
     Args:
         agent: The agent to run, e.g., 'my_agents.py:basic' or 'basic'.
-        input: The input to provide to the agent.
         config: Optional path to a TOML/YAML/JSON configuration file for the agent.
     """
 
@@ -103,27 +106,43 @@ async def run(  # noqa: PLR0915
     agent_blueprint = agents_by_name[agent_name]
 
     config_model = get_config_model(agent_blueprint)
-    config_parameter = cyclopts.Parameter(name="*", group=f"Agent '{agent_name}' Config")(
-        config_model
-    )
+    config_parameter = cyclopts.Parameter(name="*", group="Agent Config")(config_model)
 
     config_default = None
     with contextlib.suppress(Exception):
         config_default = config_model()
         config_parameter = t.Optional[config_parameter]  # type: ignore [assignment] # noqa: UP007
 
-    async def agent_cli(*, config: t.Any = config_default) -> None:
+    async def agent_cli(
+        input: t.Annotated[str, cyclopts.Parameter(help="Input to the agent")],
+        *,
+        config: t.Any = config_default,
+    ) -> None:
+        from dreadnode import run as run_span
+
+        flat_config = {k: v for k, v in flatten_model(config).items() if v is not None}
         agent = hydrate(agent_blueprint, config)
-        rich.print(f"Running agent: [bold]{agent.name}[/bold]")
-        rich.print(agent)
-        async with agent.stream(input) as stream:
-            async for event in stream:
-                rich.print(event)
-                rich.print("---")
+
+        rich.print(f"Running agent: [bold]{agent.name}[/bold] with config:")
+        for key, value in flat_config.items():
+            rich.print(f" |- {key}: {value}")
+        rich.print()
+
+        with run_span(name_prefix=f"agent-{agent.name}", params=flat_config, tags=agent.tags):
+            log_input("user_input", input)
+            async with agent.stream(input) as stream:
+                async for event in stream:
+                    rich.print(event)
 
     agent_cli.__annotations__["config"] = config_parameter
 
-    agent_app = cyclopts.App(help=f"Run the '{agent}' agent.", help_on_error=True)
+    agent_app = cyclopts.App(
+        name=agent_name,
+        help=f"Run the '{agent_name}' agent.",
+        help_on_error=True,
+        help_flags=("help"),
+        version_flags=(),
+    )
     agent_app.default(agent_cli)
 
     if config:
@@ -132,16 +151,17 @@ async def run(  # noqa: PLR0915
             return
 
         if config.suffix in {".toml"}:
-            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # noqa: SLF001
-        elif config.suffix in {".yaml", ".yml"}:
             agent_app._config = cyclopts.config.Toml(config, use_commands_as_keys=False)  # noqa: SLF001
+        elif config.suffix in {".yaml", ".yml"}:
+            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # noqa: SLF001
         elif config.suffix in {".json"}:
             agent_app._config = cyclopts.config.Json(config, use_commands_as_keys=False)  # noqa: SLF001
         else:
             rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
             return
 
-    # print(tokens)
-    command, bound, unbound = agent_app.parse_args(tokens)
-    # print(bound, unbound)
-    await command(*bound.args, **bound.kwargs)
+    command, bound, _ = agent_app.parse_args(tokens)
+
+    result = command(*bound.args, **bound.kwargs)
+    if isawaitable(result):
+        await result

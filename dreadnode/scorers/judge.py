@@ -5,6 +5,7 @@ import rigging as rg
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
+from dreadnode.types import AnyDict
 
 
 class JudgeInput(rg.Model):
@@ -35,7 +36,7 @@ def llm_judge(
     rubric: str,
     *,
     expected_output: str | None = None,
-    params: rg.GenerateParams | None = None,
+    model_params: rg.GenerateParams | AnyDict | None = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
     max_score: float | None = None,
@@ -48,7 +49,7 @@ def llm_judge(
         model: The model to use for judging.
         rubric: The rubric to use for judging.
         expected_output: The expected output to compare against, if applicable.
-        params: Optional parameters for the generator.
+        model_params: Optional parameters for the model.
         passing: Optional callback to determine if the score is passing based on the score value - overrides any model-specified value.
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
         max_score: Optional maximum score for the judgement - if provided, the score will be clamped to this value.
@@ -61,12 +62,22 @@ def llm_judge(
         model: str | rg.Generator = Config(  # noqa: B008
             model, help="The model to use for judging.", expose_as=str
         ),
+        rubric: str = rubric,
+        expected_output: str | None = expected_output,
+        model_params: rg.GenerateParams | AnyDict | None = model_params,
+        min_score: float | None = min_score,
+        max_score: float | None = max_score,
     ) -> list[Metric]:
-        nonlocal rubric, expected_output
-
         generator: rg.Generator
         if isinstance(model, str):
-            generator = rg.get_generator(model, params=params or rg.GenerateParams())
+            generator = rg.get_generator(
+                model,
+                params=model_params
+                if isinstance(model_params, rg.GenerateParams)
+                else rg.GenerateParams.model_validate(model_params)
+                if model_params
+                else None,
+            )
         elif isinstance(model, rg.Generator):
             generator = model
         else:

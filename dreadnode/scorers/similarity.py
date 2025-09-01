@@ -33,9 +33,13 @@ def similarity(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = method,
+        case_sensitive: bool = case_sensitive,
+    ) -> Metric:
         candidate_text = str(data)
 
         if not case_sensitive:
@@ -85,7 +89,7 @@ def similarity_with_rapidfuzz(
         name: Name of the scorer.
     """
     rapidfuzz_import_error_msg = (
-        "rapidfuzz dependency is not installed. Please install it with: pip install rapidfuzz"
+        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
     )
 
     try:
@@ -98,9 +102,17 @@ def similarity_with_rapidfuzz(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal[
+            "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
+        ] = method,
+        normalize: bool = normalize,
+        preprocessor: bool = preprocessor,
+        score_cutoff: float | None = score_cutoff,
+    ) -> Metric:
         candidate_text = str(data)
         processor = utils.default_process if preprocessor else None
 
@@ -174,7 +186,7 @@ def distance(
         name: Name of the scorer.
     """
     rapidfuzz_import_error_msg = (
-        "rapidfuzz dependency is not installed. Please install it with: pip install rapidfuzz"
+        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
     )
 
     try:
@@ -187,9 +199,15 @@ def distance(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:  # noqa: PLR0912
-        nonlocal reference
-
+    def evaluate(  # noqa: PLR0912
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal[
+            "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
+        ] = method,
+        normalize: bool = normalize,
+    ) -> Metric:
         candidate_text = str(data)
 
         # Select the appropriate distance method
@@ -257,9 +275,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
 
     vectorizer = TfidfVectorizer(stop_words="english")
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(data: t.Any, *, reference: str = reference) -> Metric:
         candidate_text = str(data)
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference])
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
@@ -292,7 +308,7 @@ def similarity_with_sentence_transformers(
         model_name: The name of the sentence-transformer model to use.
         name: Name of the scorer.
     """
-    sentence_transformers_error_msg = "sentence-transformers dependency is not installed. Please install it with: pip install sentence-transformers"
+    sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers"
 
     try:
         from sentence_transformers import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
@@ -307,9 +323,9 @@ def similarity_with_sentence_transformers(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any, *, reference: str = reference, model_name: str = Config(model_name)
+    ) -> Metric:
         # Lazily load and cache the model
         if model_name not in g_sentence_transformers_models:
             g_sentence_transformers_models[model_name] = SentenceTransformer(model_name)
@@ -361,12 +377,11 @@ def similarity_with_litellm(
     async def evaluate(
         data: t.Any,
         *,
+        reference: str = reference,
         model: str = Config(model),
         api_key: str | None = Config(api_key),
         api_base: str | None = Config(api_base),
     ) -> Metric:
-        nonlocal reference
-
         candidate_text = str(data)
         if not candidate_text.strip() or not reference.strip():
             return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
@@ -411,7 +426,7 @@ def bleu(
         weights: Weights for unigram, bigram, etc. Must sum to 1.
         name: Name of the scorer.
     """
-    nltk_import_error_msg = "nltk dependency is not installed. Please run: pip install nltk && python -m nltk.downloader punkt"
+    nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
 
     try:
         import nltk  # type: ignore[import-not-found,unused-ignore]
@@ -436,9 +451,9 @@ def bleu(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any, *, reference: str = reference, weights: tuple[float, ...] = weights
+    ) -> Metric:
         candidate_text = str(data)
 
         if not reference or not candidate_text:

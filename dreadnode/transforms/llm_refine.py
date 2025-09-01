@@ -1,3 +1,5 @@
+import typing as t
+
 import rigging as rg
 
 from dreadnode.meta import Config
@@ -28,7 +30,7 @@ def llm_refine(
     *,
     model_params: AnyDict | None = None,
     name: str = "llm_refine",
-) -> Transform[str]:
+) -> Transform[t.Any, str]:
     """
     A generic transform that uses an LLM to refine a candidate.
 
@@ -40,16 +42,17 @@ def llm_refine(
     """
 
     async def transform(
-        object: str,
+        object: t.Any,
         *,
         model: str | rg.Generator = Config(model, help="The model to use", expose_as=str),  # noqa: B008
+        guidance: str = guidance,
+        model_params: AnyDict | None = model_params,
     ) -> str:
-        nonlocal guidance
-
         generator: rg.Generator
         if isinstance(model, str):
             generator = rg.get_generator(
-                model, params=rg.GenerateParams.model_validate(model_params) or rg.GenerateParams()
+                model,
+                params=rg.GenerateParams.model_validate(model_params) if model_params else None,
             )
         elif isinstance(model, rg.Generator):
             generator = model

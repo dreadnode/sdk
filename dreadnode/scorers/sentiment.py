@@ -29,7 +29,7 @@ def sentiment(
         target: The desired sentiment to score against.
         name: Name of the scorer.
     """
-    textblob_import_error_msg = "textblob dependency is not installed. Please run: pip install textblob && python -m textblob.download_corpora"
+    textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
 
     try:
         from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
@@ -41,9 +41,7 @@ def sentiment(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target
-
+    def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:
             target = "neutral"  # Default to neutral if invalid
             warn_at_user_stacklevel(
@@ -102,7 +100,12 @@ def sentiment_with_perspective(
             "API key must be provided or set in the PERSPECTIVE_API_KEY environment variable."
         )
 
-    async def evaluate(data: t.Any, *, api_key: str | None = Config(api_key)) -> float:
+    async def evaluate(
+        data: t.Any,
+        *,
+        api_key: str | None = Config(api_key),
+        attribute: PerspectiveAttribute = attribute,
+    ) -> float:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze",

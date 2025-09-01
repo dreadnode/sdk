@@ -2,11 +2,10 @@ from loguru import logger
 
 from dreadnode.agent.reactions import Fail, Finish
 from dreadnode.agent.tools.base import tool
-from dreadnode.data_types import Markdown
 
 
 @tool
-async def finish_task(success: bool, summary: str) -> None:  # noqa: FBT001
+async def finish_task(success: bool, summary: str) -> None:  # noqa: ARG001, FBT001
     """
     Mark your task as complete with a success/failure status and markdown summary of actions taken.
 
@@ -28,14 +27,24 @@ async def finish_task(success: bool, summary: str) -> None:  # noqa: FBT001
     *   **Honest Status**: Accurately report the success or failure of the overall task. If any part of the task failed or was not completed, `success` should be `False`.
     *   **Comprehensive Summary**: The `summary` should be a complete and detailed markdown-formatted report of everything you did, including steps taken, tools used, and the final outcome. This is your final report to the user.
     """
-    from dreadnode import log_metric, log_output
+    from dreadnode import log_metric
 
     log_func = logger.success if success else logger.warning
-    log_func(f"Agent finished the task (success={success}):")
-    logger.info(summary)
-    logger.info("---")
+    log_func(f"Agent finished the task (success={success})")
 
     log_metric("task_success", success)
-    log_output("task_summary", Markdown(summary))
 
     raise Finish if success else Fail("Agent marked the task as failed.")
+
+
+@tool
+async def give_up_on_task(reason: str) -> None:  # noqa: ARG001
+    """
+    Give up on your task.
+    """
+    from dreadnode import log_metric
+
+    logger.info("Agent gave up on the task")
+    log_metric("task_give_up", 1)
+
+    raise Fail("Agent gave up on the task.")

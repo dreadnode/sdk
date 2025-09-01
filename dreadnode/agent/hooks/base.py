@@ -5,7 +5,7 @@ from dreadnode.agent.reactions import RetryWithFeedback
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.events import (
-        Event,
+        AgentEvent,
     )
     from dreadnode.agent.reactions import Reaction
 
@@ -14,12 +14,12 @@ if t.TYPE_CHECKING:
 class Hook(t.Protocol):
     async def __call__(
         self,
-        event: "Event",
+        event: "AgentEvent",
     ) -> "Reaction | None": ...
 
 
 def retry_with_feedback(
-    event_type: "type[Event] | t.Callable[[Event], bool]", feedback: str
+    event_type: "type[AgentEvent] | t.Callable[[AgentEvent], bool]", feedback: str
 ) -> "Hook":
     """
     Create a hook that provides feedback when the specified event occurs.
@@ -32,7 +32,7 @@ def retry_with_feedback(
         A hook that provides feedback when the event occurs.
     """
 
-    async def retry_with_feedback(event: "Event") -> "Reaction | None":
+    async def retry_with_feedback(event: "AgentEvent") -> "Reaction | None":
         if isinstance(event_type, type) and not isinstance(event, event_type):
             return None
 

@@ -237,3 +237,32 @@ def RunOutput(  # noqa: N802
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """
     return SpanContext(name, "output", scope="run", default=default, required=required)
+
+
+class DatasetField(Context):
+    """
+    A Context marker for a value from the full dataset sample row
+    for the current evaluation task.
+    """
+
+    def __init__(self, name: str, *, default: t.Any | Unset = UNSET, required: bool = True):
+        super().__init__(default=default, required=required)
+        self.ref_name = name
+
+    def __repr__(self) -> str:
+        return f"DatasetField(name='{self.ref_name}')"
+
+    def resolve(self) -> t.Any:
+        from dreadnode.eval.eval import current_sample_row
+
+        if (row := current_sample_row.get()) is None:
+            raise RuntimeError("DatasetField() can only be used within an active Eval.")
+
+        try:
+            return row[self.ref_name]
+        except Exception as e:
+            available = list(row.keys())
+            raise RuntimeError(
+                f"Field '{self.ref_name}' not found in dataset sample. "
+                f"Available fields: {available}"
+            ) from e

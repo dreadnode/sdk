@@ -25,9 +25,7 @@ def type_token_ratio(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_ratio
-
+    def evaluate(data: t.Any, *, target_ratio: float | None = target_ratio) -> Metric:
         if target_ratio is not None and not (0.0 <= target_ratio <= 1.0):
             raise ValueError("target_ratio must be between 0.0 and 1.0.")
 

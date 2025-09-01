@@ -9,6 +9,7 @@ from dreadnode.scorers.base import (
     and_,
     avg,
     clip,
+    equals,
     invert,
     normalize,
     not_,
@@ -28,6 +29,7 @@ from dreadnode.scorers.contains import (
     detect_sensitive_keywords,
     detect_unsafe_shell_content,
 )
+from dreadnode.scorers.crucible import contains_crucible_flag
 from dreadnode.scorers.format import is_json, is_xml
 from dreadnode.scorers.harm import detect_harm_with_openai
 from dreadnode.scorers.judge import llm_judge
@@ -61,6 +63,7 @@ __all__ = [
     "character_consistency",
     "clip",
     "contains",
+    "contains_crucible_flag",
     "detect_ansi_escapes",
     "detect_ansi_escapes",
     "detect_bias",
@@ -76,6 +79,7 @@ __all__ = [
     "detect_sensitive_keywords",
     "detect_unsafe_shell_content",
     "detect_unsafe_shell_content",
+    "equals",
     "invert",
     "is_json",
     "is_xml",

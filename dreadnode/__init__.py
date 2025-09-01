@@ -1,13 +1,18 @@
 import importlib
 import typing as t
 
-from dreadnode import agent, convert, data_types, meta
+from loguru import logger
+
+from dreadnode import agent, convert, data_types, eval, meta, transforms  # noqa: A004
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
+from dreadnode.eval import Eval
+from dreadnode.logging import configure_logging
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.meta import (
     Config,
     CurrentRun,
     CurrentTask,
+    DatasetField,
     ParentTask,
     RunInput,
     RunOutput,
@@ -24,6 +29,8 @@ from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     from dreadnode import scorers  # noqa: F401
+
+logger.disable("dreadnode")
 
 configure = DEFAULT_INSTANCE.configure
 shutdown = DEFAULT_INSTANCE.shutdown
@@ -61,7 +68,9 @@ __all__ = [
     "Config",
     "CurrentRun",
     "CurrentTask",
+    "DatasetField",
     "Dreadnode",
+    "Eval",
     "Image",
     "Markdown",
     "Metric",
@@ -87,9 +96,11 @@ __all__ = [
     "agent",
     "api",
     "configure",
+    "configure_logging",
     "continue_run",
     "convert",
     "data_types",
+    "eval",
     "get_run_context",
     "link_objects",
     "log_artifact",
@@ -109,6 +120,7 @@ __all__ = [
     "task",
     "task_span",
     "task_span",
+    "transforms",
 ]
 
 __lazy_submodules__ = ["scorers"]

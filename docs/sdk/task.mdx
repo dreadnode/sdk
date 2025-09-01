@@ -17,6 +17,7 @@ Task(
     name: str | None = None,
     label: str | None = None,
     scorers: ScorersLike[R] | None = None,
+    assert_scores: list[str] | Literal[True] | None = None,
     log_inputs: Sequence[str]
     | bool
     | Inherited = INHERITED,
@@ -43,6 +44,7 @@ def __init__(
     name: str | None = None,
     label: str | None = None,
     scorers: ScorersLike[R] | None = None,
+    assert_scores: list[str] | t.Literal[True] | None = None,
     log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
@@ -84,6 +86,9 @@ def __init__(
     "The label of the task - used to group associated metrics and data together."
     self.scorers = Scorer.fit_like(scorers)
     "A list of scorers to evaluate the task's output."
+    scorer_names = [s.name for s in self.scorers]
+    self.assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
+    "A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError."
     self.tags = list(tags or [])
     "A list of tags to attach to the task span."
     self.attributes = attributes
@@ -96,10 +101,28 @@ def __init__(
     "Log the result of the function as an output."
     self.log_execution_metrics = log_execution_metrics
     "Track execution metrics such as success rate and run count."
+
+    for assertion in self.assert_scores or []:
+        if assertion not in scorer_names:
+            raise ValueError(
+                f"Unknown '{assertion}' in assert_scores, it must be one of {scorer_names}"
+            )
 ```
 
 
 </Accordion>
+
+### assert\_scores
+
+```python
+assert_scores = (
+    scorer_names
+    if assert_scores is True
+    else list(assert_scores or [])
+)
+```
+
+A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError.
 
 ### attributes
 
@@ -192,33 +215,6 @@ def clone(self) -> "Task[P, R]":
         A new Task instance with the same attributes as this one.
     """
     return self.__deepcopy__({})
-```
-
-
-</Accordion>
-
-### eval
-
-```python
-eval(
-    dataset: InputDataset[InputT]
-    | list[AnyDict]
-    | Path
-    | str,
-) -> EvalResult[InputT, OutputT]
-```
-
-Evaluate the task with the given arguments and return an evaluation result.
-
-<Accordion title="Source code in dreadnode/task.py" icon="code">
-```python
-async def eval(
-    self, dataset: "InputDataset[InputT] | list[AnyDict] | Path | str"
-) -> "EvalResult[InputT, OutputT]":
-    """
-    Evaluate the task with the given arguments and return an evaluation result.
-    """
-    return await self.as_eval(dataset).run()
 ```
 
 
@@ -367,6 +363,84 @@ async def map(
 
 </Accordion>
 
+### retry
+
+```python
+retry(count: int, *args: args, **kwargs: kwargs) -> R
+```
+
+Run the task up to `count` times, returning the output of the first
+successful execution, otherwise raise the most recent exception.
+
+This is a powerful pattern for non-deterministic tasks where multiple
+attempts may be needed to generate a valid output according to the
+task's `assert_scores`. However, it can also be useful as a retry
+mechanism for transient errors.
+
+**Parameters:**
+
+* **`count`**
+  (`int`)
+  –The maximum number of times to run the task.
+* **`args`**
+  (`args`, default:
+  `()`
+  )
+  –The arguments to pass to the task.
+* **`kwargs`**
+  (`kwargs`, default:
+  `{}`
+  )
+  –The keyword arguments to pass to the task.
+
+**Returns:**
+
+* `R`
+  –The output of the first successful and valid task execution.
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+async def retry(
+    self,
+    count: int,
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> R:
+    """
+    Run the task up to `count` times, returning the output of the first
+    successful execution, otherwise raise the most recent exception.
+
+    This is a powerful pattern for non-deterministic tasks where multiple
+    attempts may be needed to generate a valid output according to the
+    task's `assert_scores`. However, it can also be useful as a retry
+    mechanism for transient errors.
+
+    Args:
+        count: The maximum number of times to run the task.
+        args: The arguments to pass to the task.
+        kwargs: The keyword arguments to pass to the task.
+
+    Returns:
+        The output of the first successful and valid task execution.
+    """
+    last_span = None
+    for _ in range(count):
+        span = await self.run_always(*args, **kwargs)
+        last_span = span
+        if span.exception is None:
+            return span.output
+
+    # If the loop finishes, all attempts failed. Raise the exception
+    # from the final attempt for debugging.
+    last_span.raise_if_failed()
+
+    # Just for type checking - should never be called
+    raise RuntimeError("Generation failed to produce a valid result.")
+```
+
+
+</Accordion>
+
 ### run
 
 ```python
@@ -466,21 +540,7 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         else self.log_output
     )
 
-    bound_args = self._bind_args(*args, **kwargs)
-    bound_args_dict = dict(bound_args.arguments)
-
-    inputs_to_log = (
-        bound_args_dict
-        if log_inputs is True
-        else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
-        if log_inputs is not False
-        else {}
-    )
-
-    # If log_inputs is inherited, filter out items that don't seem useful
-    # to serialize like `None` or repr fallbacks.
-    if isinstance(self.log_inputs, Inherited):
-        inputs_to_log = {k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)}
+    ctx_inputs_to_log: AnyDict = kwargs.pop("__dn_ctx_inputs__", {})
 
     task_span = TaskSpan[R](
         name=self.name,
@@ -493,6 +553,24 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
     )
 
     with contextlib.suppress(Exception), task_span as span:
+        bound_args = self._bind_args(*args, **kwargs)
+        bound_args_dict = dict(bound_args.arguments)
+
+        inputs_to_log = (
+            bound_args_dict
+            if log_inputs is True
+            else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
+            if log_inputs is not False
+            else {}
+        )
+
+        # If log_inputs is inherited, filter out items that don't seem useful
+        # to serialize like `None` or repr fallbacks.
+        if isinstance(self.log_inputs, Inherited):
+            inputs_to_log = {
+                k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)
+            }
+
         if run and self.log_execution_metrics:
             run.log_metric(
                 "count",
@@ -506,38 +584,25 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
             span.log_input(
                 name,
                 value,
-                label=f"{self.label}.input.{name}",
                 attributes={"auto": True},
             )
             for name, value in inputs_to_log.items()
         ]
 
-        try:
-            output = t.cast(
-                "R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs)
+        for name, value in ctx_inputs_to_log.items():
+            span.log_input(
+                name,
+                value,
+                attributes={"auto": True, "ctx": True},
             )
-            if inspect.isawaitable(output):
-                output = await output
-        except Exception:
-            if run and self.log_execution_metrics:
-                run.log_metric(
-                    "success_rate",
-                    0,
-                    prefix=f"{self.label}.exec",
-                    mode="avg",
-                    attributes={"auto": True},
-                )
-            raise
 
-        if run and self.log_execution_metrics:
-            run.log_metric(
-                "success_rate",
-                1,
-                prefix=f"{self.label}.exec",
-                mode="avg",
-                attributes={"auto": True},
-            )
+        output = t.cast("R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs))
+        if inspect.isawaitable(output):
+            output = await output
+
         span.output = output
+
+        # Log the output
 
         if (
             run
@@ -549,7 +614,6 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
             output_object_hash = span.log_output(
                 "output",
                 output,
-                label=f"{self.label}.output",
                 attributes={"auto": True},
             )
 
@@ -557,11 +621,22 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
             for input_object_hash in input_object_hashes:
                 run.link_objects(output_object_hash, input_object_hash)
 
-        await score(output, self.scorers)
+        # Score and check assertions
 
-        # Trigger a run update whenever a task completes
-        if run is not None:
-            run.push_update()
+        await score(output, self.scorers, assert_scores=self.assert_scores)
+
+    if run and self.log_execution_metrics:
+        run.log_metric(
+            "success_rate",
+            0 if span.exception else 1,
+            prefix=f"{self.label}.exec",
+            mode="avg",
+            attributes={"auto": True},
+        )
+
+    # Trigger a run update whenever a task completes
+    if run is not None:
+        run.push_update()
 
     return span
 ```
@@ -867,6 +942,9 @@ with_(
     *,
     scorers: Sequence[Scorer[R] | ScorerCallable[R]]
     | None = None,
+    assert_scores: Sequence[str]
+    | Literal[True]
+    | None = None,
     name: str | None = None,
     tags: Sequence[str] | None = None,
     label: str | None = None,
@@ -890,6 +968,11 @@ Clone a task and modify its attributes.
   `None`
   )
   –A list of new scorers to set or append to the task.
+* **`assert_scores`**
+  (`Sequence[str] | Literal[True] | None`, default:
+  `None`
+  )
+  –A list of new assertion names to set or append to the task.
 * **`name`**
   (`str | None`, default:
   `None`
@@ -942,6 +1025,7 @@ def with_(
     self,
     *,
     scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
+    assert_scores: t.Sequence[str] | t.Literal[True] | None = None,
     name: str | None = None,
     tags: t.Sequence[str] | None = None,
     label: str | None = None,
@@ -956,6 +1040,7 @@ def with_(
 
     Args:
         scorers: A list of new scorers to set or append to the task.
+        assert_scores: A list of new assertion names to set or append to the task.
         name: The new name for the task.
         tags: A list of new tags to set or append to the task.
         label: The new label for the task.
@@ -985,16 +1070,21 @@ def with_(
         else task.log_execution_metrics
     )
 
-    new_scorers = [Scorer(scorer) for scorer in (scorers or [])]
+    new_scorers = Scorer.fit_like(scorers or [])
     new_tags = list(tags or [])
+    new_assert_scores = (
+        [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
+    )
 
     if append:
         task.scorers.extend(new_scorers)
         task.tags.extend(new_tags)
+        task.assert_scores.extend(new_assert_scores)
         task.attributes.update(attributes or {})
     else:
         task.scorers = new_scorers
         task.tags = new_tags
+        task.assert_scores = new_assert_scores
         task.attributes = attributes or {}
 
     return task
@@ -1002,6 +1092,11 @@ def with_(
 
 
 </Accordion>
+
+TaskFailedWarning
+-----------------
+
+Warning related to task execution failures.
 
 TaskSpanList
 ------------

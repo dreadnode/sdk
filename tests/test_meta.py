@@ -694,3 +694,452 @@ def test_full_hydration_integration(blueprint: Thing) -> None:
     assert blueprint.func.__dn_param_config__["model"].field_kwargs["default"] == "gpt-4o-mini"
     assert blueprint.items[1].__dn_param_config__["model"].field_kwargs["default"] == "gpt-4"
     assert blueprint.mapping["component"].__dn_param_config__["name"].field_kwargs["default"] is ...
+
+
+#
+# Annotations
+#
+
+# Test Components with Annotation-Based Config
+
+
+@component
+def component_annotation_only(
+    name: t.Annotated[str, Config(help="Required name parameter")],
+) -> str:
+    return f"Hello {name}"
+
+
+@component
+def component_annotation_with_validation(
+    count: t.Annotated[int, Config(help="Must be positive", gt=0, le=100)],
+) -> int:
+    return count * 2
+
+
+@component
+def component_annotation_with_regular_default(
+    # Key test case: annotation Config + regular default value
+    name: t.Annotated[str, Config(help="Name parameter")] = "default_name",
+) -> str:
+    return f"Hello {name}"
+
+
+@component
+def component_mixed_config(
+    value: t.Annotated[float, Config(help="Base help", gt=0)] = Config(
+        1.0, help="Override help", le=100
+    ),
+) -> float:
+    return value
+
+
+@component
+def component_annotation_and_traditional(
+    required: t.Annotated[str, Config(help="Required via annotation")],
+    optional: int = Config(42, help="Optional via assignment"),
+    # Another key case: annotation + regular default
+    mixed: t.Annotated[str, Config(help="Mixed parameter")] = "regular_default",
+) -> str:
+    return f"{required}: {optional}: {mixed}"
+
+
+# Test Models with Annotation-Based Config
+
+
+class ModelAnnotationOnly(Model):
+    name: t.Annotated[str, Config(help="Required name field")]
+
+
+class ModelAnnotationWithDefault(Model):
+    # This is the key case: annotation Config + regular default value
+    name: t.Annotated[str, Config(help="Name with annotation")] = "default_name"
+    count: t.Annotated[int, Config(help="Count with validation", gt=0)] = 42
+
+
+class ModelMixedConfig(Model):
+    # Pure annotation
+    required_field: t.Annotated[str, Config(help="Required field")]
+
+    # Traditional assignment
+    optional_field: int = Config(42, help="Optional field")
+
+    # Merged config - annotation + assignment (both are ConfigInfo)
+    merged_field: t.Annotated[float, Config(help="Base help", gt=0)] = Config(
+        1.0, help="Override help", le=100
+    )
+
+    # Annotation + regular default (the case we were missing)
+    annotation_with_default: t.Annotated[str, Config(help="From annotation")] = "regular_default"
+
+
+class ModelAnnotationWithValidation(Model):
+    count: t.Annotated[int, Config(help="Positive integer", gt=0, le=100)]
+    email: t.Annotated[str, Config(help="Valid email", pattern=r"^[^@]+@[^@]+\.[^@]+$")]
+
+
+# Tests for Component Annotation Discovery
+
+
+def test_component_annotation_only_discovery():
+    """Test that pure annotation-based config is discovered correctly."""
+    assert hasattr(component_annotation_only, "__dn_param_config__")
+    params = component_annotation_only.__dn_param_config__
+
+    assert "name" in params
+    config_info = params["name"]
+    assert isinstance(config_info, ConfigInfo)
+    assert config_info.field_kwargs["description"] == "Required name parameter"
+    # Should be required (no default value)
+    assert config_info.field_kwargs.get("default", Ellipsis) is Ellipsis
+
+
+def test_component_annotation_with_regular_default():
+    """Test that annotation Config gets merged with regular default values."""
+    params = component_annotation_with_regular_default.__dn_param_config__
+
+    assert "name" in params
+    config_info = params["name"]
+    assert isinstance(config_info, ConfigInfo)
+
+    # Should have description from annotation
+    assert config_info.field_kwargs["description"] == "Name parameter"
+    # Should have default value from parameter default
+    assert config_info.field_kwargs["default"] == "default_name"
+
+
+def test_component_mixed_patterns_with_defaults():
+    """Test component with annotation+default alongside traditional patterns."""
+    params = component_annotation_and_traditional.__dn_param_config__
+
+    # Pure annotation (required)
+    assert "required" in params
+    required_config = params["required"]
+    assert required_config.field_kwargs["description"] == "Required via annotation"
+    assert required_config.field_kwargs.get("default", Ellipsis) is Ellipsis
+
+    # Traditional Config assignment
+    assert "optional" in params
+    optional_config = params["optional"]
+    assert optional_config.field_kwargs["description"] == "Optional via assignment"
+    assert optional_config.field_kwargs["default"] == 42
+
+    # Annotation + regular default (the key case)
+    assert "mixed" in params
+    mixed_config = params["mixed"]
+    assert mixed_config.field_kwargs["description"] == "Mixed parameter"
+    assert mixed_config.field_kwargs["default"] == "regular_default"
+
+
+def test_component_mixed_config_discovery():
+    """Test that annotation and assignment configs are merged correctly."""
+    params = component_mixed_config.__dn_param_config__
+
+    assert "value" in params
+    config_info = params["value"]
+
+    # Assignment should override annotation for conflicting fields
+    assert config_info.field_kwargs["description"] == "Override help"
+    assert config_info.field_kwargs["default"] == 1.0
+
+    # Non-conflicting fields should be merged
+    assert config_info.field_kwargs["gt"] == 0  # From annotation
+    assert config_info.field_kwargs["le"] == 100  # From assignment
+
+
+def test_component_mixed_patterns():
+    """Test component with both annotation and traditional parameter patterns."""
+    params = component_annotation_and_traditional.__dn_param_config__
+
+    # Annotation-only parameter
+    assert "required" in params
+    required_config = params["required"]
+    assert required_config.field_kwargs["description"] == "Required via annotation"
+    assert required_config.field_kwargs.get("default", Ellipsis) is Ellipsis
+
+    # Traditional assignment parameter
+    assert "optional" in params
+    optional_config = params["optional"]
+    assert optional_config.field_kwargs["description"] == "Optional via assignment"
+    assert optional_config.field_kwargs["default"] == 42
+
+
+# Tests for Component Function Calls
+
+
+def test_component_annotation_only_call():
+    """Test that annotation-only components work correctly when called."""
+    # Should work with explicit argument
+    result = component_annotation_only("Alice")
+    assert result == "Hello Alice"
+
+    # Should fail without required argument
+    with pytest.raises(TypeError, match="Missing required"):
+        component_annotation_only()
+
+
+def test_component_annotation_with_regular_default_call():
+    """Test that annotation+default components use defaults correctly."""
+    # Should use default value when no argument provided
+    result = component_annotation_with_regular_default()
+    assert result == "Hello default_name"
+
+    # Should accept override
+    result = component_annotation_with_regular_default("Alice")
+    assert result == "Hello Alice"
+
+
+def test_component_mixed_patterns_call():
+    """Test calling component with all different parameter patterns."""
+    # Should fail without required parameter
+    with pytest.raises(TypeError, match="Missing required"):
+        component_annotation_and_traditional()
+
+    # Should work with just required parameter (others use defaults)
+    result = component_annotation_and_traditional("test")
+    assert result == "test: 42: regular_default"
+
+    # Should work with all parameters overridden
+    result = component_annotation_and_traditional("test", 99, "override")
+    assert result == "test: 99: override"
+
+
+# Tests for Model Annotation Discovery
+
+
+def test_model_annotation_with_regular_default():
+    """Test that Model handles annotation Config + regular default values."""
+    config = ModelAnnotationWithDefault.__dn_config__
+
+    # Check annotation + regular default case
+    assert "name" in config
+    name_info = config["name"]
+    assert name_info.field_kwargs["description"] == "Name with annotation"
+    assert name_info.field_kwargs["default"] == "default_name"
+
+    # Check annotation with validation + regular default
+    assert "count" in config
+    count_info = config["count"]
+    assert count_info.field_kwargs["description"] == "Count with validation"
+    assert count_info.field_kwargs["gt"] == 0
+    assert count_info.field_kwargs["default"] == 42
+
+
+def test_model_annotation_with_regular_default_pydantic_fields():
+    """Test that Pydantic Fields are created correctly for annotation+default."""
+    model_fields = ModelAnnotationWithDefault.model_fields
+
+    # Check that Pydantic Fields have correct defaults
+    assert "name" in model_fields
+    assert model_fields["name"].default == "default_name"
+    assert model_fields["name"].description == "Name with annotation"
+
+    assert "count" in model_fields
+    assert model_fields["count"].default == 42
+    assert model_fields["count"].metadata[0].gt == 0
+
+
+def test_model_annotation_with_regular_default_instantiation():
+    """Test that Model instances work correctly with annotation+default."""
+    # Should use defaults
+    instance = ModelAnnotationWithDefault()
+    assert instance.name == "default_name"
+    assert instance.count == 42
+
+    # Should accept overrides
+    instance2 = ModelAnnotationWithDefault(name="override", count=99)
+    assert instance2.name == "override"
+    assert instance2.count == 99
+
+    # Should validate (count > 0)
+    with pytest.raises(ValidationError):
+        ModelAnnotationWithDefault(count=0)
+
+
+def test_model_mixed_config_discovery():
+    """Test that Model handles mixed annotation and assignment configs."""
+    config = ModelMixedConfig.__dn_config__
+
+    # Pure annotation (required)
+    assert "required_field" in config
+    required_info = config["required_field"]
+    assert required_info.field_kwargs["description"] == "Required field"
+    assert required_info.field_kwargs.get("default", Ellipsis) is Ellipsis
+
+    # Traditional assignment
+    assert "optional_field" in config
+    optional_info = config["optional_field"]
+    assert optional_info.field_kwargs["description"] == "Optional field"
+    assert optional_info.field_kwargs["default"] == 42
+
+    # Merged config (both are ConfigInfo)
+    assert "merged_field" in config
+    merged_info = config["merged_field"]
+    assert merged_info.field_kwargs["description"] == "Override help"  # Assignment wins
+    assert merged_info.field_kwargs["default"] == 1.0  # From assignment
+    assert merged_info.field_kwargs["gt"] == 0  # From annotation
+    assert merged_info.field_kwargs["le"] == 100  # From assignment
+
+    # Annotation + regular default (key test case)
+    assert "annotation_with_default" in config
+    mixed_default_info = config["annotation_with_default"]
+    assert mixed_default_info.field_kwargs["description"] == "From annotation"
+    assert mixed_default_info.field_kwargs["default"] == "regular_default"
+
+
+def test_model_annotation_validation():
+    """Test that annotation-based validation works in Model instances."""
+    # Valid instance
+    instance = ModelAnnotationWithValidation(count=50, email="test@example.com")
+    assert instance.count == 50
+    assert instance.email == "test@example.com"
+
+    # Invalid count (violates gt=0)
+    with pytest.raises(ValidationError):
+        ModelAnnotationWithValidation(count=0, email="test@example.com")
+
+    # Invalid count (violates le=100)
+    with pytest.raises(ValidationError):
+        ModelAnnotationWithValidation(count=101, email="test@example.com")
+
+    # Invalid email (violates pattern)
+    with pytest.raises(ValidationError):
+        ModelAnnotationWithValidation(count=50, email="invalid-email")
+
+
+# Tests for Introspection with Annotations
+
+
+def test_get_config_model_annotation_only():
+    """Test that introspection works with annotation-only configs."""
+    ConfigModel = get_config_model(component_annotation_only, "TestConfig")
+
+    fields = ConfigModel.model_fields
+    assert "name" in fields
+    assert fields["name"].annotation is str
+    assert fields["name"].is_required()
+    assert fields["name"].description == "Required name parameter"
+
+
+def test_get_config_model_mixed_patterns():
+    """Test that introspection handles mixed annotation/assignment patterns."""
+    ConfigModel = get_config_model(component_annotation_and_traditional, "MixedConfig")
+
+    fields = ConfigModel.model_fields
+
+    # Annotation-only field should be required
+    assert "required" in fields
+    assert fields["required"].is_required()
+    assert fields["required"].description == "Required via annotation"
+
+    # Traditional field should have default
+    assert "optional" in fields
+    assert fields["optional"].default == 42
+    assert fields["optional"].description == "Optional via assignment"
+
+
+def test_get_config_model_for_annotation_model():
+    """Test introspection of Model classes with annotation-based configs."""
+    instance = ModelMixedConfig(required_field="test")
+    ConfigModel = get_config_model(instance, "ModelConfig")
+
+    fields = ConfigModel.model_fields
+
+    # Required annotation field
+    assert "required_field" in fields
+    assert not fields["required_field"].is_required()
+
+    # Optional assignment field
+    assert "optional_field" in fields
+    assert fields["optional_field"].default == 42
+
+    # Merged field
+    assert "merged_field" in fields
+    assert fields["merged_field"].default == 1.0
+
+
+# Tests for Hydration with Annotations
+
+
+def test_hydrate_annotation_based_component():
+    """Test that hydration works with annotation-based component configs."""
+    # Create a component instance that can be configured
+    component_instance = component_mixed_config
+
+    ConfigModel = get_config_model(component_instance, "HydrateConfig")
+    config = ConfigModel(value=5.0)
+
+    hydrated = hydrate(component_instance, config)
+
+    # Should be a new instance
+    assert hydrated is not component_instance
+
+    # Should have updated config
+    params = hydrated.__dn_param_config__
+    assert params["value"].field_kwargs["default"] == 5.0
+
+
+def test_hydrate_annotation_based_model():
+    """Test that hydration works with annotation-based model configs."""
+    instance = ModelMixedConfig(required_field="original")
+
+    ConfigModel = get_config_model(instance, "HydrateConfig")
+    config = ConfigModel(required_field="hydrated", optional_field=99)
+
+    hydrated = hydrate(instance, config)
+
+    # Should be a new instance
+    assert hydrated is not instance
+
+    # Should have updated values
+    assert hydrated.required_field == "hydrated"
+    assert hydrated.optional_field == 99
+
+
+# Edge Cases and Error Handling
+
+
+def test_annotation_without_config_ignored():
+    """Test that regular annotations without Config are ignored."""
+
+    @component
+    def regular_annotations(name: str, count: int = 42) -> str:
+        return f"{name}: {count}"
+
+    # Should only find the Config from the default, not from regular annotations
+    params = regular_annotations.__dn_param_config__
+    assert "name" not in params  # Regular annotation, no Config
+    assert "count" not in params  # Regular default value, no Config
+
+
+def test_expose_as_works_with_annotations():
+    """Test that expose_as parameter works in annotation-based configs."""
+
+    @component
+    def with_expose_as(
+        value: t.Annotated[str, Config(expose_as=int, help="Exposed as int")],
+    ) -> str:
+        return value
+
+    ConfigModel = get_config_model(with_expose_as, "ExposeAsConfig")
+    fields = ConfigModel.model_fields
+
+    # Should be exposed as int, not str
+    assert fields["value"].annotation is int
+
+
+def test_multiple_config_metadata_in_annotation():
+    """Test handling of multiple Config instances in annotation metadata (should use first)."""
+
+    @component
+    def multiple_configs(
+        # This is an edge case - multiple Config instances in metadata
+        value: t.Annotated[str, Config(help="First"), Config(help="Second")],
+    ) -> str:
+        return value
+
+    params = multiple_configs.__dn_param_config__
+    config_info = params["value"]
+
+    # Should use the first Config found
+    assert config_info.field_kwargs["description"] == "First"

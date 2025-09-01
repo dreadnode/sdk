@@ -34,9 +34,9 @@ def character_consistency(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any, *, reference: str = reference, max_ratio_diff: float = max_ratio_diff
+    ) -> Metric:
         candidate_text = str(data)
 
         candidate_chars = _analyze_text(candidate_text)

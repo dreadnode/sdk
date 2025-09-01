@@ -26,9 +26,13 @@ def length_ratio(
     if min_ratio <= 0:
         raise ValueError("min_ratio must be greater than 0.")
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any,
+        *,
+        reference: str = reference,
+        min_ratio: float = min_ratio,
+        max_ratio: float = max_ratio,
+    ) -> Metric:
         candidate_text = str(data)
 
         if not reference:
@@ -66,9 +70,9 @@ def length_in_range(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal min_length, max_length
-
+    def evaluate(
+        data: t.Any, *, min_length: int = min_length, max_length: float = max_length
+    ) -> Metric:
         if min_length < 0 or max_length < min_length:
             raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
 
@@ -113,9 +117,7 @@ def length_target(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_length
-
+    def evaluate(data: t.Any, *, target_length: int = target_length) -> Metric:
         if target_length < 0:
             raise ValueError("Target length must be non-negative.")
 

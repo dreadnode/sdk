@@ -11,7 +11,7 @@ from dreadnode.meta.context import Context
 from dreadnode.meta.types import ConfigInfo
 from dreadnode.metric import Metric
 from dreadnode.types import JsonDict
-from dreadnode.util import get_callable_name, warn_at_user_stacklevel
+from dreadnode.util import clean_str, get_callable_name, shorten_string, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
 OuterT = t.TypeVar("OuterT")
@@ -19,7 +19,7 @@ UnusedP = te.ParamSpec("UnusedP", default=...)
 
 
 class ScorerWarning(UserWarning):
-    pass
+    """Warning related to scorer mechanics."""
 
 
 ScorerResult = float | int | bool | Metric
@@ -62,14 +62,18 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         log_all: bool = False,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
+        wraps: t.Callable | None = None,
     ):
-        super().__init__(func, config=config, context=context)
+        if isinstance(func, Scorer):
+            func = func.func
+
+        super().__init__(func, config=config, context=context, wraps=wraps)
 
         if name is None:
             unwrapped = inspect.unwrap(func)
             name = get_callable_name(unwrapped, short=True)
 
-        self.name = name
+        self.name = clean_str(name)
         "The name of the scorer, used for reporting metrics."
         self.attributes = attributes or {}
         "A dictionary of attributes for metrics produced by this Scorer."
@@ -85,7 +89,22 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         self.__name__ = name
 
     def __repr__(self) -> str:
-        return f"Scorer(name='{self.name}')"
+        func_name = get_callable_name(self.func, short=True)
+
+        parts: list[str] = [
+            f"name='{self.name}'",
+            f"func={func_name}",
+            f"catch={self.catch}",
+        ]
+
+        if self.auto_increment_step:
+            parts.append("auto_increment_step=True")
+        if self.log_all:
+            parts.append("log_all=True")
+        if self.step != 0:
+            parts.append(f"step={self.step}")
+
+        return f"{self.__class__.__name__}({', '.join(parts)})"
 
     @classmethod
     def fit_like(
@@ -189,6 +208,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
 
     def adapt(
         self: "Scorer[T]",
+        type: type[OuterT],  # noqa: ARG002
         adapt: t.Callable[[OuterT], T],
         name: str | None = None,
     ) -> "Scorer[OuterT]":
@@ -200,6 +220,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         Pydantic model containing that string).
 
         Args:
+            type: The type to adapt the scorer to (used for type hinting - particularly with lambdas)
             adapt: A function to extract the `T` from the `OuterT`.
             name: An optional new name for the adapted scorer.
 
@@ -211,7 +232,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         async def evaluate(object: OuterT, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
             return await original.normalize_and_score(adapt(object), *args, **kwargs)
 
-        return Scorer(evaluate, name=name or self.name)
+        return Scorer(evaluate, name=name or self.name, wraps=original)
 
     async def normalize_and_score(self, object: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         """
@@ -241,7 +262,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
                 raise
 
             warn_at_user_stacklevel(
-                f"Error executing scorer {self.name!r} for object {object!r}: {e}",
+                f"Error executing scorer {self.name!r} for object {shorten_string(repr(object), 20)}: {e}",
                 ScorerWarning,
             )
             result = Metric(value=0.0, step=self.step, attributes={"error": str(e)})
@@ -264,15 +285,9 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         if self.auto_increment_step:
             self.step += 1
 
-        for metric in metrics:
-            # Add an origin in case this metric gets rolled up in composition.
-            if not hasattr(metric, "_scorer_name"):
-                metric._scorer_name = self.name  # type: ignore [attr-defined] # noqa: SLF001
-            if not hasattr(metric, "_scorer"):
-                metric._scorer = self  # type: ignore [attr-defined] # noqa: SLF001
-
-            # Update our attributes
-            metric.attributes.update(self.attributes)
+        metrics[0]._scorer_name = self.name  # type: ignore [attr-defined] # noqa: SLF001
+        metrics[0]._scorer = self  # type: ignore [attr-defined] # noqa: SLF001
+        metrics[0].attributes.update(self.attributes)
 
         if not self.log_all:
             metrics = metrics[:1]  # Only return the primary metric if log_all is False
@@ -406,7 +421,7 @@ def invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None
         metric = Metric(max(0, known_max - original.value), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_inverted")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_inverted", wraps=scorer)
 
 
 # Range remapping and normalization
@@ -480,7 +495,7 @@ def remap_range(
         metric = Metric(value=final_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_remapped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_remapped", wraps=scorer)
 
 
 def normalize(
@@ -591,7 +606,7 @@ def threshold(
     operators = [op for op in operators if op]
     operator_str = ("_" + "_".join(operators)) if operators else ""
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}{operator_str}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}{operator_str}", wraps=scorer)
 
 
 # Logical combinations
@@ -614,15 +629,15 @@ def and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Sco
         A new Scorer that applies logical AND to the two input scorers.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         passed = original.value > 0 and original_other.value > 0
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_and_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_and_{other.name}", wraps=scorer)
 
 
 def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -642,15 +657,15 @@ def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scor
         A new Scorer that applies logical OR to the two input scorers.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         passed = original.value > 0 or original_other.value > 0
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_or_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_or_{other.name}", wraps=scorer)
 
 
 def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -668,7 +683,7 @@ def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
         metric = Metric(float(passed), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"not_{scorer.name}")
+    return Scorer[T](evaluate, name=name or f"not_{scorer.name}", wraps=scorer)
 
 
 # Arithmetic operations
@@ -695,9 +710,9 @@ def add(
         A new Scorer that adds (or averages) the values of the two input scorers.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         value = original.value + original_other.value
         metric = Metric(
@@ -706,7 +721,7 @@ def add(
         )
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}", wraps=scorer)
 
 
 def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -726,15 +741,15 @@ def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) ->
         A new Scorer that subtracts the second scorer's value from the first.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         value = original.value - original_other.value
         metric = Metric(value, step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}", wraps=scorer)
 
 
 def avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -823,7 +838,7 @@ def scale(scorer: Scorer[T], factor: float, *, name: str | None = None) -> Score
         metric = Metric(original.value * factor, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_scaled")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_scaled", wraps=scorer)
 
 
 def clip(
@@ -858,4 +873,25 @@ def clip(
         metric = Metric(clipped_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_clipped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_clipped", wraps=scorer)
+
+
+# Core Scorers
+
+
+def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
+    """
+    Create a scorer that checks for equality between the input and a reference value.
+
+    Returns a 1.0 if they are equal, and 0.0 otherwise.
+
+    Args:
+        reference: The value to compare against.
+        name: Optional name for the equality scorer. If None, derives the name
+            from the reference value.
+    """
+
+    async def evaluate(data: T, *, reference: T = reference) -> Metric:
+        return Metric(1.0 if data == reference else 0.0)
+
+    return Scorer[T](evaluate, name=name)

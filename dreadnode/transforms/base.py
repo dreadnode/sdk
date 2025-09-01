@@ -64,6 +64,15 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
             context=deepcopy(self.__dn_context__, memo),
         )
 
+    @classmethod
+    def fit(cls, transform: "TransformLike[In, Out]") -> "Transform[In, Out]":
+        """Ensures that the provided transform is a Transform instance."""
+        if isinstance(transform, Transform):
+            return transform
+        if callable(transform):
+            return Transform(transform)
+        raise TypeError("Transform must be a Transform instance or a callable.")
+
     def clone(self) -> "Transform[In, Out]":
         """Clone the transform."""
         return self.__deepcopy__({})

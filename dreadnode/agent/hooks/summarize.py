@@ -1,7 +1,7 @@
 import contextlib
 import typing as t
 
-from dreadnode.agent.events import AgentError, Event, GenerationEnd, StepStart
+from dreadnode.agent.events import AgentError, AgentEvent, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
 from dreadnode.agent.types import Generator, Message
@@ -32,7 +32,7 @@ def _is_context_length_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in CONTEXT_LENGTH_ERROR_PATTERNS)
 
 
-def _get_last_input_tokens(event: Event) -> int:
+def _get_last_input_tokens(event: AgentEvent) -> int:
     """
     Finds the input token count from the most recent GenerationEnd event in the thread.
     This represents the size of the context for the last successful model call.
@@ -45,17 +45,9 @@ def _get_last_input_tokens(event: Event) -> int:
 
 @component
 def summarize_when_long(
-    model: "str | Generator | None" = Config(  # noqa: B008
-        None, help="The model to use for summarization", expose_as=str | None
-    ),
-    *,
-    max_tokens: int | None = Config(
-        None,
-        help="The maximum number of tokens allowed in the context window before summarization is triggered",
-    ),
-    min_messages_to_keep: int = Config(
-        5, help="The minimum number of messages to retain after summarization"
-    ),
+    model: str | Generator | None = None,
+    max_tokens: int = 100_000,
+    min_messages_to_keep: int = 5,
 ) -> "Hook":
     """
     Creates a hook to manage the agent's context window by summarizing the conversation history.
@@ -76,7 +68,23 @@ def summarize_when_long(
     if min_messages_to_keep < 2:  # noqa: PLR2004
         raise ValueError("min_messages_to_keep must be at least 2.")
 
-    async def summarize_when_long(event: Event) -> Reaction | None:  # noqa: PLR0912
+    @component
+    async def summarize_when_long(  # noqa: PLR0912
+        event: AgentEvent,
+        *,
+        model: "str | Generator | None" = Config(  # noqa: B008
+            model,
+            help="Model to use for summarization - fallback to the agent model",
+            expose_as=str | None,
+        ),
+        max_tokens: int | None = Config(
+            max_tokens,
+            help="Maximum number of tokens observed before summarization is triggered",
+        ),
+        min_messages_to_keep: int = Config(
+            5, help="Minimum number of messages to retain after summarization"
+        ),
+    ) -> Reaction | None:
         should_summarize = False
 
         # Proactive check using the last known token count

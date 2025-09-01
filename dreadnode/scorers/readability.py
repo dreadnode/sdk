@@ -23,7 +23,7 @@ def readability(
         name: Name of the scorer.
     """
     textstat_import_error_msg = (
-        "textstat dependency is not installed. Please install it with: pip install textstat"
+        "Textstat dependency is not installed. Install with: pip install textstat"
     )
 
     try:
@@ -36,9 +36,7 @@ def readability(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_grade
-
+    def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)
         if not text.strip():
             return Metric(value=0.0, attributes={"error": "Input text is empty."})

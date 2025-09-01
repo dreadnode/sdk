@@ -32,4 +32,4 @@ async def highlight_for_review(title: str, interest_level: str, justification: s
     log_output("markdown", Markdown(f"# {title} ({interest_level})\n\n{justification}"))
     log_metric("count", 1, mode="count")
 
-    return "Area of interest has been highlighted for human review. Continue analysis."
+    return "Area of interest has been highlighted for human review."

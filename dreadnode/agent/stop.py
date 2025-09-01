@@ -1,9 +1,11 @@
+import inspect
 import re
 import typing as t
 from collections.abc import Sequence
 
-from dreadnode.agent.events import Event, GenerationEnd, ToolEnd
+from dreadnode.agent.events import AgentEvent, GenerationEnd, ToolEnd
 from dreadnode.meta import Config
+from dreadnode.util import get_callable_name
 
 
 class StopCondition:
@@ -12,7 +14,7 @@ class StopCondition:
     Conditions can be combined using & (AND) and | (OR).
     """
 
-    def __init__(self, func: t.Callable[[Sequence[Event]], bool], name: str | None = None):
+    def __init__(self, func: t.Callable[[Sequence[AgentEvent]], bool], name: str | None = None):
         """
         Initializes the StopCondition.
 
@@ -20,13 +22,20 @@ class StopCondition:
             func: A callable that takes a sequence of events and returns True if the run should stop.
             name: An optional name for the condition for representation.
         """
+
+        if name is None:
+            unwrapped = inspect.unwrap(func)
+            name = get_callable_name(unwrapped, short=True)
+
         self.func = func
-        self.name = name or getattr(func, "__name__", "anonymous")
+        """The function that defines the stop condition."""
+        self.name = name
+        """A human-readable name for the condition."""
 
     def __repr__(self) -> str:
         return f"StopCondition(name='{self.name}')"
 
-    def __call__(self, events: Sequence[Event]) -> bool:
+    def __call__(self, events: Sequence[AgentEvent]) -> bool:
         return self.func(events)
 
     def __and__(self, other: "StopCondition") -> "StopCondition":
@@ -43,7 +52,7 @@ def and_(
 ) -> StopCondition:
     """Perform a logical AND with two conditions."""
 
-    def stop(events: Sequence[Event]) -> bool:
+    def stop(events: Sequence[AgentEvent]) -> bool:
         return condition(events) and other(events)
 
     return StopCondition(stop, name=name or f"({condition.name}_and_{other.name})")
@@ -54,7 +63,7 @@ def or_(
 ) -> StopCondition:
     """Perform a logical OR with two conditions."""
 
-    def stop(events: Sequence[Event]) -> bool:
+    def stop(events: Sequence[AgentEvent]) -> bool:
         return condition(events) or other(events)
 
     return StopCondition(stop, name=name or f"({condition.name}_or_{other.name})")
@@ -63,7 +72,7 @@ def or_(
 def stop_never() -> StopCondition:
     """A condition that never stops the agent."""
 
-    def stop(_: Sequence[Event]) -> bool:
+    def stop(_: Sequence[AgentEvent]) -> bool:
         return False
 
     return StopCondition(stop, name="stop_never")
@@ -72,7 +81,7 @@ def stop_never() -> StopCondition:
 def stop_after_steps(max_steps: int) -> StopCondition:
     """Terminates after a maximum number of LLM calls (steps)."""
 
-    def stop(events: Sequence[Event], *, max_steps: int = Config(max_steps)) -> bool:
+    def stop(events: Sequence[AgentEvent], *, max_steps: int = Config(max_steps)) -> bool:
         step_count = sum(1 for event in events if isinstance(event, GenerationEnd))
         return step_count >= max_steps
 
@@ -82,7 +91,7 @@ def stop_after_steps(max_steps: int) -> StopCondition:
 def stop_on_tool_use(tool_name: str) -> StopCondition:
     """Terminates after a specific tool has been successfully used."""
 
-    def stop(events: Sequence[Event]) -> bool:
+    def stop(events: Sequence[AgentEvent]) -> bool:
         return any(isinstance(e, ToolEnd) and e.tool_call.name == tool_name for e in events)
 
     return StopCondition(stop, name="stop_on_tool_use")
@@ -105,7 +114,7 @@ def stop_on_text(
         regex: If True, treats the `pattern` string as a regular expression. Defaults to False.
     """
 
-    def stop(events: Sequence[Event]) -> bool:
+    def stop(events: Sequence[AgentEvent]) -> bool:
         if not events:
             return False
 

@@ -10,20 +10,22 @@ title: dreadnode.eval
 Eval
 ----
 
-### assertions
+Prepared evaluation of a task with an associated dataset and configuration.
+
+### assert\_scores
 
 ```python
-assertions: ScorersLike[OutputT] = Config(
+assert_scores: list[str] | Literal[True] = Config(
     default_factory=list
 )
 ```
 
-Assertions to validate the task's output (scores are resolved as truthy).
+Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions).
 
 ### concurrency
 
 ```python
-concurrency: int = Config(1)
+concurrency: int = Config(default=1)
 ```
 
 Maximum number of tasks to run in parallel.
@@ -31,28 +33,69 @@ Maximum number of tasks to run in parallel.
 ### dataset
 
 ```python
-dataset: InputDataset[InputT] | list[AnyDict] | FilePath = (
-    Config(expose_as=FilePath)
-)
+dataset: Annotated[
+    InputDataset[In] | list[AnyDict] | FilePath,
+    Config(expose_as=FilePath),
+]
 ```
 
 The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
 
+### dataset\_input\_mapping
+
+```python
+dataset_input_mapping: list[str] | dict[str, str] | None = (
+    Config(None)
+)
+```
+
+A list of dataset keys to pass as input parameters to the task, or an
+explicit mapping from dataset keys to task parameter names.
+If None, will attempt to map keys that match parameter names.
+
 ### description
 
 ```python
-description: str = Config('')
+description: str = Config(default='')
 ```
 
 A brief description of the eval's purpose.
 
+### iterations
+
+```python
+iterations: int = Config(default=1, ge=1)
+```
+
+Number of times to run each scenario.
+
+### max\_consecutive\_failures
+
+```python
+max_consecutive_failures: int | None = Config(default=10)
+```
+
+The number of consecutive sample failures (not caused by assertions)
+before terminating the evaluation run. Set to None to disable.
+
 ### name
 
 ```python
-name: str | None = Config(None)
+name: str | None = Config(default=None)
 ```
 
 The name of the evaluation.
+
+### parameters
+
+```python
+parameters: dict[str, list[Any]] | None = Config(None)
+```
+
+A dictionary defining a parameter space to run experiments against.
+For each item in the dataset, a scenario will be run for every combination
+of the parameters defined here. Key names should align with
+arguments on the task assigned with a `Config` context.
 
 ### preprocessor
 
@@ -65,15 +108,25 @@ Optional preprocessor function to transform the dataset before evaluation.
 ### scorers
 
 ```python
-scorers: ScorersLike[OutputT] = Config(default_factory=list)
+scorers: ScorersLike[Out] = Config(default_factory=list)
 ```
 
-Scorers to evaluate the task's output.
+Scorers to evaluate the task's output (appended to existing task scorers).
+
+### tags
+
+```python
+tags: list[str] = Config(default_factory=lambda: ['eval'])
+```
+
+A list of tags associated with the evaluation.
 
 ### task
 
 ```python
-task: Task[[InputT], OutputT] | str = Config(expose_as=str)
+task: Annotated[
+    Task[[In], Out] | str, Config(expose_as=str)
+]
 ```
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.
@@ -81,14 +134,14 @@ The task to evaluate. Can be a Task object or a string representing qualified ta
 ### run
 
 ```python
-run() -> EvalResult[InputT, OutputT]
+run() -> EvalResult[In, Out]
 ```
 
 Evaluate the task with the given arguments and return a list of Samples.
 
 <Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
 ```python
-async def run(self) -> EvalResult[InputT, OutputT]:
+async def run(self) -> EvalResult[In, Out]:
     """
     Evaluate the task with the given arguments and return a list of Samples.
     """
@@ -106,181 +159,35 @@ async def run(self) -> EvalResult[InputT, OutputT]:
 
 ```python
 stream() -> t.AsyncIterator[
-    t.AsyncGenerator[
-        Sample[InputT, OutputT]
-        | EvalResult[InputT, OutputT],
-        None,
-    ]
+    t.AsyncGenerator[EvalEvent[In, Out], None]
 ]
 ```
 
-Create an async context manager for streaming evaluation results.
-
-This method provides a streaming interface for running evaluations, yielding
-individual Sample objects as they complete, followed by a final EvalResult.
-The streaming approach allows for real-time processing and monitoring of
-evaluation progress, especially useful for long-running evaluations.
-
-The method handles:
-- Task and dataset preparation via \_prepare()
-- Configuration of scorers and assertions
-- Concurrent execution of tasks with optional concurrency limits
-- Proper resource cleanup through async context management
-- Telemetry and span tracking for observability
-
-**Yields:**
-
-* `AsyncIterator[AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]]`
-  –An async generator that yields:
-* `AsyncIterator[AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]]`
-  –+ Sample[InputT, OutputT]: Individual evaluation samples as they complete
-* `AsyncIterator[AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]]`
-  –+ EvalResult[InputT, OutputT]: Final aggregated result containing all samples
-
-Example
-
-```python
-async with eval_instance.stream() as stream:
-    async for item in stream:
-        if isinstance(item, Sample):
-            print(f"Completed sample: {item}")
-        elif isinstance(item, EvalResult):
-            print(f"Final result: {item}")
-```
-
-
-<Note>
-The context manager ensures proper cleanup of async resources and
-maintains consistent telemetry spans for the entire evaluation process.
-</Note>
+Create an async context manager that runs the evaluation and yields events.
 
 <Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
 ```python
 @asynccontextmanager
-async def stream(
-    self,
-) -> t.AsyncIterator[
-    t.AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]
-]:
+async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
     """
-    Create an async context manager for streaming evaluation results.
-
-    This method provides a streaming interface for running evaluations, yielding
-    individual Sample objects as they complete, followed by a final EvalResult.
-    The streaming approach allows for real-time processing and monitoring of
-    evaluation progress, especially useful for long-running evaluations.
-
-    The method handles:
-    - Task and dataset preparation via _prepare()
-    - Configuration of scorers and assertions
-    - Concurrent execution of tasks with optional concurrency limits
-    - Proper resource cleanup through async context management
-    - Telemetry and span tracking for observability
-
-    Yields:
-        An async generator that yields:
-        - Sample[InputT, OutputT]: Individual evaluation samples as they complete
-        - EvalResult[InputT, OutputT]: Final aggregated result containing all samples
-
-    Example:
-        ~~~python
-        async with eval_instance.stream() as stream:
-            async for item in stream:
-                if isinstance(item, Sample):
-                    print(f"Completed sample: {item}")
-                elif isinstance(item, EvalResult):
-                    print(f"Final result: {item}")
-        ~~~
-
-    Note:
-        The context manager ensures proper cleanup of async resources and
-        maintains consistent telemetry spans for the entire evaluation process.
+    Create an async context manager that runs the evaluation and yields events.
     """
-    from dreadnode import task_span
-
-    task, dataset = await self._prepare()
-
-    assertion_scorers = Scorer.fit_like(self.assertions or [], attributes={"assertion": True})
-    extra_scorers = Scorer.fit_like(self.scorers or []) + assertion_scorers
-    eval_task = task.with_(scorers=extra_scorers, append=True)
-    eval_name = self.name or f"eval - {eval_task.name}"
-
-    async def sample_gen() -> t.AsyncGenerator[
-        Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None
-    ]:
-        with task_span(eval_name, tags=["eval"]):
-            samples: list[Sample[InputT, OutputT]] = []
-
-            async with eval_task.stream_map(dataset, concurrency=self.concurrency) as stream:
-                async for span in stream:
-                    sample = Sample[InputT, OutputT].from_task(span)
-                    samples.append(sample)
-                    yield sample
-
-            yield EvalResult[InputT, OutputT](name=eval_name, samples=samples)
-
-    async with contextlib.aclosing(sample_gen()) as gen:
-        yield gen
+    async with contextlib.aclosing(self._stream()) as stream:
+        yield stream
 ```
 
 
 </Accordion>
-EvalResult
-----------
 
-Represents the result of an evaluation, including input, output, metrics, and error.
+EvalWarning
+-----------
 
-### assertions\_summary
-
-```python
-assertions_summary: dict[str, dict[str, float | int]]
-```
-
-Calculates and returns a summary for each assertion across all samples.
-
-**Returns:**
-
-* `dict[str, dict[str, float | int]]`
-  –A dictionary where each key is an assertion name and the value is
-* `dict[str, dict[str, float | int]]`
-  –another dictionary containing 'passed\_count', 'failed\_count', and 'pass\_rate'.
-
-### failed\_samples
+Warning raised during evaluation.
+load\_dataset
+-------------
 
 ```python
-failed_samples: list[Sample[InputT, OutputT]]
-```
-
-A list of all samples that failed at least one assertion.
-
-### metrics\_summary
-
-```python
-metrics_summary: dict[str, dict[str, float]]
-```
-
-Calculates and returns a summary of statistics for each metric across all samples.
-
-**Returns:**
-
-* `dict[str, dict[str, float]]`
-  –A dictionary where each key is a metric name and the value is another
-* `dict[str, dict[str, float]]`
-  –dictionary containing the 'mean', 'stdev', 'min', and 'max' of that metric.
-
-### pass\_rate
-
-```python
-pass_rate: float
-```
-
-The overall pass rate of the evaluation, from 0.0 to 1.0.
-
-load\_from\_file
-----------------
-
-```python
-load_from_file(
+load_dataset(
     path: Path, *, file_format: FileFormat | None = None
 ) -> list[AnyDict]
 ```
@@ -305,7 +212,7 @@ Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and
 
 <Accordion title="Source code in dreadnode/eval/dataset.py" icon="code">
 ```python
-def load_from_file(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]:
+def load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]:
     """
     Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
 
@@ -350,7 +257,7 @@ def load_from_file(path: Path, *, file_format: FileFormat | None = None) -> list
             import yaml  # type: ignore[import-untyped,unused-ignore]
         except ImportError as e:
             raise ImportError(
-                "YAML support requires the 'PyYAML' package. Install with: pip install pyyaml"
+                "Loading YAML datasets requires PyYAML. Install with: pip install pyyaml"
             ) from e
 
         dataset = yaml.safe_load(content)

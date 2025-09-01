@@ -31,8 +31,7 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     transformers_error_msg = (
-        "Hugging Face transformers dependency is not installed. "
-        "Please install with: pip install transformers torch"
+        "Transformers dependency is not installed. Install with: pip install transformers"
     )
 
     try:
@@ -47,9 +46,13 @@ def zero_shot_classification(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
-        nonlocal labels, score_label
-
+    def evaluate(
+        data: t.Any,
+        *,
+        labels: list[str] = labels,
+        score_label: str = score_label,
+        model_name: str = Config(model_name),
+    ) -> Metric:
         if score_label not in labels:
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 

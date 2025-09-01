@@ -229,7 +229,7 @@ def unicode_confusable(
         )
     except ImportError as e:
         raise ImportError(
-            "unicode_confusable requires 'confusables'. Install with: pip install confusables"
+            "Confusables dependency is not installed. Install with: pip install confusables"
         ) from e
 
     if not 0.0 <= ratio <= 1.0:

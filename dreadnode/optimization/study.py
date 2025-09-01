@@ -4,7 +4,7 @@ import typing as t
 from pydantic import BaseModel, ConfigDict, Field, FilePath, PrivateAttr
 
 from dreadnode.eval import Eval
-from dreadnode.eval.dataset import EvalResult
+from dreadnode.eval.result import EvalResult
 from dreadnode.optimization.events import (
     CandidatePruned,
     CandidatesSuggested,
@@ -19,7 +19,7 @@ from dreadnode.optimization.events import (
     TrialComplete,
 )
 from dreadnode.optimization.trial import Trial
-from dreadnode.scorers.base import Scorer, ScorerLike
+from dreadnode.scorers import Scorer, ScorerLike
 from dreadnode.task import Task
 from dreadnode.types import AnyDict
 from dreadnode.util import concurrent_gen
@@ -133,6 +133,7 @@ class Study(BaseModel, t.Generic[CandidateT]):
         self.best_trial = None
         self.stop_reason = "unknown"
         self._steps_since_best = 0
+        self.strategy.reset()
 
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:  # noqa: PLR0912, PLR0915
         """
@@ -160,8 +161,11 @@ class Study(BaseModel, t.Generic[CandidateT]):
             - NewBestTrialFound: Reports when a new best score is achieved
             - StudyEnd: Signals completion with final results and stop reason
         """
+        from dreadnode.optimization.events import rebuild_event_models
+
         self._reset()
 
+        rebuild_event_models()
         yield StudyStart(
             study=self, initial_candidate=getattr(self.strategy, "initial_candidate", None)
         )
@@ -169,7 +173,7 @@ class Study(BaseModel, t.Generic[CandidateT]):
         for step in range(1, self.max_steps + 1):
             yield StepStart(study=self, step=step)
 
-            candidates = await self.strategy.suggest(step)
+            candidates = await self.strategy.suggest()
             if not candidates:
                 self.stop_reason = "no_more_candidates"
                 break
@@ -191,6 +195,9 @@ class Study(BaseModel, t.Generic[CandidateT]):
                         pruned_trials.append(trial)
                         yield CandidatePruned(study=self, trial=trial)
                 except Exception as e:  # noqa: BLE001, PERF203
+                    from dreadnode.tracing.span import TaskSpan  # noqa: F401
+
+                    Trial.model_rebuild()
                     trial = Trial(
                         candidate=candidate,
                         status="failed",

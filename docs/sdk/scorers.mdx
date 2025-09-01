@@ -68,6 +68,7 @@ Scorer(
     log_all: bool = False,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
+    wraps: Callable | None = None,
 )
 ```
 
@@ -91,14 +92,18 @@ def __init__(
     log_all: bool = False,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
+    wraps: t.Callable | None = None,
 ):
-    super().__init__(func, config=config, context=context)
+    if isinstance(func, Scorer):
+        func = func.func
+
+    super().__init__(func, config=config, context=context, wraps=wraps)
 
     if name is None:
         unwrapped = inspect.unwrap(func)
         name = get_callable_name(unwrapped, short=True)
 
-    self.name = name
+    self.name = clean_str(name)
     "The name of the scorer, used for reporting metrics."
     self.attributes = attributes or {}
     "A dictionary of attributes for metrics produced by this Scorer."
@@ -152,7 +157,7 @@ Log all sub-metrics from nested composition, or just the final resulting metric.
 ### name
 
 ```python
-name = name
+name = clean_str(name)
 ```
 
 The name of the scorer, used for reporting metrics.
@@ -169,7 +174,9 @@ The step value to attach to metrics produced by this Scorer.
 
 ```python
 adapt(
-    adapt: Callable[[OuterT], T], name: str | None = None
+    type: type[OuterT],
+    adapt: Callable[[OuterT], T],
+    name: str | None = None,
 ) -> Scorer[OuterT]
 ```
 
@@ -181,6 +188,9 @@ Pydantic model containing that string).
 
 **Parameters:**
 
+* **`type`**
+  (`type[OuterT]`)
+  –The type to adapt the scorer to (used for type hinting - particularly with lambdas)
 * **`adapt`**
   (`Callable[[OuterT], T]`)
   –A function to extract the `T` from the `OuterT`.
@@ -199,6 +209,7 @@ Pydantic model containing that string).
 ```python
 def adapt(
     self: "Scorer[T]",
+    type: type[OuterT],  # noqa: ARG002
     adapt: t.Callable[[OuterT], T],
     name: str | None = None,
 ) -> "Scorer[OuterT]":
@@ -210,6 +221,7 @@ def adapt(
     Pydantic model containing that string).
 
     Args:
+        type: The type to adapt the scorer to (used for type hinting - particularly with lambdas)
         adapt: A function to extract the `T` from the `OuterT`.
         name: An optional new name for the adapted scorer.
 
@@ -221,7 +233,7 @@ def adapt(
     async def evaluate(object: OuterT, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         return await original.normalize_and_score(adapt(object), *args, **kwargs)
 
-    return Scorer(evaluate, name=name or self.name)
+    return Scorer(evaluate, name=name or self.name, wraps=original)
 ```
 
 
@@ -374,7 +386,7 @@ async def normalize_and_score(self, object: T, *args: t.Any, **kwargs: t.Any) ->
             raise
 
         warn_at_user_stacklevel(
-            f"Error executing scorer {self.name!r} for object {object!r}: {e}",
+            f"Error executing scorer {self.name!r} for object {shorten_string(repr(object), 20)}: {e}",
             ScorerWarning,
         )
         result = Metric(value=0.0, step=self.step, attributes={"error": str(e)})
@@ -397,15 +409,9 @@ async def normalize_and_score(self, object: T, *args: t.Any, **kwargs: t.Any) ->
     if self.auto_increment_step:
         self.step += 1
 
-    for metric in metrics:
-        # Add an origin in case this metric gets rolled up in composition.
-        if not hasattr(metric, "_scorer_name"):
-            metric._scorer_name = self.name  # type: ignore [attr-defined] # noqa: SLF001
-        if not hasattr(metric, "_scorer"):
-            metric._scorer = self  # type: ignore [attr-defined] # noqa: SLF001
-
-        # Update our attributes
-        metric.attributes.update(self.attributes)
+    metrics[0]._scorer_name = self.name  # type: ignore [attr-defined] # noqa: SLF001
+    metrics[0]._scorer = self  # type: ignore [attr-defined] # noqa: SLF001
+    metrics[0].attributes.update(self.attributes)
 
     if not self.log_all:
         metrics = metrics[:1]  # Only return the primary metric if log_all is False
@@ -635,6 +641,11 @@ def with_(
 
 </Accordion>
 
+ScorerWarning
+-------------
+
+Warning related to scorer mechanics.
+
 add
 ---
 
@@ -702,9 +713,9 @@ def add(
         A new Scorer that adds (or averages) the values of the two input scorers.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         value = original.value + original_other.value
         metric = Metric(
@@ -713,7 +724,7 @@ def add(
         )
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}", wraps=scorer)
 ```
 
 
@@ -775,15 +786,15 @@ def and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Sco
         A new Scorer that applies logical AND to the two input scorers.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         passed = original.value > 0 and original_other.value > 0
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_and_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_and_{other.name}", wraps=scorer)
 ```
 
 
@@ -915,7 +926,53 @@ def clip(
         metric = Metric(clipped_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_clipped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_clipped", wraps=scorer)
+```
+
+
+</Accordion>
+
+equals
+------
+
+```python
+equals(reference: T, *, name: str = 'equals') -> Scorer[T]
+```
+
+Create a scorer that checks for equality between the input and a reference value.
+
+Returns a 1.0 if they are equal, and 0.0 otherwise.
+
+**Parameters:**
+
+* **`reference`**
+  (`T`)
+  –The value to compare against.
+* **`name`**
+  (`str`, default:
+  `'equals'`
+  )
+  –Optional name for the equality scorer. If None, derives the name
+  from the reference value.
+
+<Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
+```python
+def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
+    """
+    Create a scorer that checks for equality between the input and a reference value.
+
+    Returns a 1.0 if they are equal, and 0.0 otherwise.
+
+    Args:
+        reference: The value to compare against.
+        name: Optional name for the equality scorer. If None, derives the name
+            from the reference value.
+    """
+
+    async def evaluate(data: T, *, reference: T = reference) -> Metric:
+        return Metric(1.0 if data == reference else 0.0)
+
+    return Scorer[T](evaluate, name=name)
 ```
 
 
@@ -993,7 +1050,7 @@ def invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None
         metric = Metric(max(0, known_max - original.value), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_inverted")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_inverted", wraps=scorer)
 ```
 
 
@@ -1166,7 +1223,7 @@ def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
         metric = Metric(float(passed), step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"not_{scorer.name}")
+    return Scorer[T](evaluate, name=name or f"not_{scorer.name}", wraps=scorer)
 ```
 
 
@@ -1228,15 +1285,15 @@ def or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scor
         A new Scorer that applies logical OR to the two input scorers.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         passed = original.value > 0 or original_other.value > 0
         metric = Metric(float(passed), step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_or_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_or_{other.name}", wraps=scorer)
 ```
 
 
@@ -1367,7 +1424,7 @@ def remap_range(
         metric = Metric(value=final_value, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_remapped")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_remapped", wraps=scorer)
 ```
 
 
@@ -1440,7 +1497,7 @@ def scale(scorer: Scorer[T], factor: float, *, name: str | None = None) -> Score
         metric = Metric(original.value * factor, step=original.step)
         return [metric, original, *others]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_scaled")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_scaled", wraps=scorer)
 ```
 
 
@@ -1502,15 +1559,15 @@ def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) ->
         A new Scorer that subtracts the second scorer's value from the first.
     """
 
-    async def evaluate(data: T) -> list[Metric]:
+    async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data), other.score_composite(data)]
+            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
         )
         value = original.value - original_other.value
         metric = Metric(value, step=original.step)
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}", wraps=scorer)
 ```
 
 
@@ -1672,7 +1729,7 @@ def threshold(
     operators = [op for op in operators if op]
     operator_str = ("_" + "_".join(operators)) if operators else ""
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}{operator_str}")
+    return Scorer[T](evaluate, name=name or f"{scorer.name}{operator_str}", wraps=scorer)
 ```
 
 
@@ -1880,8 +1937,7 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     transformers_error_msg = (
-        "Hugging Face transformers dependency is not installed. "
-        "Please install with: pip install transformers torch"
+        "Transformers dependency is not installed. Install with: pip install transformers"
     )
 
     try:
@@ -1896,9 +1952,13 @@ def zero_shot_classification(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
-        nonlocal labels, score_label
-
+    def evaluate(
+        data: t.Any,
+        *,
+        labels: list[str] = labels,
+        score_label: str = score_label,
+        model_name: str = Config(model_name),
+    ) -> Metric:
         if score_label not in labels:
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
@@ -1984,9 +2044,9 @@ def character_consistency(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any, *, reference: str = reference, max_ratio_diff: float = max_ratio_diff
+    ) -> Metric:
         candidate_text = str(data)
 
         candidate_chars = _analyze_text(candidate_text)
@@ -2078,9 +2138,14 @@ def contains(
         exact: Exact string matching instead of contains
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal pattern
-
+    def evaluate(
+        data: t.Any,
+        *,
+        pattern: str | re.Pattern[str] = pattern,
+        case_sensitive: bool = case_sensitive,
+        exact: bool = exact,
+        regex: bool = regex,
+    ) -> Metric:
         text = str(data)
         contains = False
 
@@ -2662,7 +2727,7 @@ llm_judge(
     rubric: str,
     *,
     expected_output: str | None = None,
-    params: GenerateParams | None = None,
+    model_params: GenerateParams | AnyDict | None = None,
     passing: Callable[[float], bool] | None = None,
     min_score: float | None = None,
     max_score: float | None = None,
@@ -2685,11 +2750,11 @@ Score the output of a task using an LLM to judge it against a rubric.
   `None`
   )
   –The expected output to compare against, if applicable.
-* **`params`**
-  (`GenerateParams | None`, default:
+* **`model_params`**
+  (`GenerateParams | AnyDict | None`, default:
   `None`
   )
-  –Optional parameters for the generator.
+  –Optional parameters for the model.
 * **`passing`**
   (`Callable[[float], bool] | None`, default:
   `None`
@@ -2718,7 +2783,7 @@ def llm_judge(
     rubric: str,
     *,
     expected_output: str | None = None,
-    params: rg.GenerateParams | None = None,
+    model_params: rg.GenerateParams | AnyDict | None = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
     max_score: float | None = None,
@@ -2731,7 +2796,7 @@ def llm_judge(
         model: The model to use for judging.
         rubric: The rubric to use for judging.
         expected_output: The expected output to compare against, if applicable.
-        params: Optional parameters for the generator.
+        model_params: Optional parameters for the model.
         passing: Optional callback to determine if the score is passing based on the score value - overrides any model-specified value.
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
         max_score: Optional maximum score for the judgement - if provided, the score will be clamped to this value.
@@ -2744,12 +2809,22 @@ def llm_judge(
         model: str | rg.Generator = Config(  # noqa: B008
             model, help="The model to use for judging.", expose_as=str
         ),
+        rubric: str = rubric,
+        expected_output: str | None = expected_output,
+        model_params: rg.GenerateParams | AnyDict | None = model_params,
+        min_score: float | None = min_score,
+        max_score: float | None = max_score,
     ) -> list[Metric]:
-        nonlocal rubric, expected_output
-
         generator: rg.Generator
         if isinstance(model, str):
-            generator = rg.get_generator(model, params=params or rg.GenerateParams())
+            generator = rg.get_generator(
+                model,
+                params=model_params
+                if isinstance(model_params, rg.GenerateParams)
+                else rg.GenerateParams.model_validate(model_params)
+                if model_params
+                else None,
+            )
         elif isinstance(model, rg.Generator):
             generator = model
         else:
@@ -2843,9 +2918,9 @@ def length_in_range(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal min_length, max_length
-
+    def evaluate(
+        data: t.Any, *, min_length: int = min_length, max_length: float = max_length
+    ) -> Metric:
         if min_length < 0 or max_length < min_length:
             raise ValueError("Invalid length bounds. Must have 0 <= min <= max.")
 
@@ -2940,9 +3015,13 @@ def length_ratio(
     if min_ratio <= 0:
         raise ValueError("min_ratio must be greater than 0.")
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any,
+        *,
+        reference: str = reference,
+        min_ratio: float = min_ratio,
+        max_ratio: float = max_ratio,
+    ) -> Metric:
         candidate_text = str(data)
 
         if not reference:
@@ -3008,9 +3087,7 @@ def length_target(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_length
-
+    def evaluate(data: t.Any, *, target_length: int = target_length) -> Metric:
         if target_length < 0:
             raise ValueError("Target length must be non-negative.")
 
@@ -3092,9 +3169,7 @@ def type_token_ratio(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_ratio
-
+    def evaluate(data: t.Any, *, target_ratio: float | None = target_ratio) -> Metric:
         if target_ratio is not None and not (0.0 <= target_ratio <= 1.0):
             raise ValueError("target_ratio must be between 0.0 and 1.0.")
 
@@ -3294,7 +3369,7 @@ def detect_pii_with_presidio(
     """
     presidio_import_error_msg = (
         "Presidio dependencies are not installed. "
-        "Please install them with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
+        "Install with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
     )
 
     try:
@@ -3307,7 +3382,13 @@ def detect_pii_with_presidio(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
+    def evaluate(
+        data: t.Any,
+        *,
+        entities: list[str] | None = entities,
+        threshold: float = threshold,
+        invert: bool = invert,
+    ) -> Metric:
         analyzer = _get_presidio_analyzer()
 
         text = str(data)
@@ -3392,7 +3473,7 @@ def readability(
         name: Name of the scorer.
     """
     textstat_import_error_msg = (
-        "textstat dependency is not installed. Please install it with: pip install textstat"
+        "Textstat dependency is not installed. Install with: pip install textstat"
     )
 
     try:
@@ -3405,9 +3486,7 @@ def readability(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_grade
-
+    def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)
         if not text.strip():
             return Metric(value=0.0, attributes={"error": "Input text is empty."})
@@ -3597,7 +3676,7 @@ def sentiment(
         target: The desired sentiment to score against.
         name: Name of the scorer.
     """
-    textblob_import_error_msg = "textblob dependency is not installed. Please run: pip install textblob && python -m textblob.download_corpora"
+    textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
 
     try:
         from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
@@ -3609,9 +3688,7 @@ def sentiment(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target
-
+    def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:
             target = "neutral"  # Default to neutral if invalid
             warn_at_user_stacklevel(
@@ -3704,7 +3781,12 @@ def sentiment_with_perspective(
             "API key must be provided or set in the PERSPECTIVE_API_KEY environment variable."
         )
 
-    async def evaluate(data: t.Any, *, api_key: str | None = Config(api_key)) -> float:
+    async def evaluate(
+        data: t.Any,
+        *,
+        api_key: str | None = Config(api_key),
+        attribute: PerspectiveAttribute = attribute,
+    ) -> float:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze",
@@ -3783,7 +3865,7 @@ def bleu(
         weights: Weights for unigram, bigram, etc. Must sum to 1.
         name: Name of the scorer.
     """
-    nltk_import_error_msg = "nltk dependency is not installed. Please run: pip install nltk && python -m nltk.downloader punkt"
+    nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
 
     try:
         import nltk  # type: ignore[import-not-found,unused-ignore]
@@ -3808,9 +3890,9 @@ def bleu(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any, *, reference: str = reference, weights: tuple[float, ...] = weights
+    ) -> Metric:
         candidate_text = str(data)
 
         if not reference or not candidate_text:
@@ -3901,7 +3983,7 @@ def distance(
         name: Name of the scorer.
     """
     rapidfuzz_import_error_msg = (
-        "rapidfuzz dependency is not installed. Please install it with: pip install rapidfuzz"
+        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
     )
 
     try:
@@ -3914,9 +3996,15 @@ def distance(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:  # noqa: PLR0912
-        nonlocal reference
-
+    def evaluate(  # noqa: PLR0912
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal[
+            "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
+        ] = method,
+        normalize: bool = normalize,
+    ) -> Metric:
         candidate_text = str(data)
 
         # Select the appropriate distance method
@@ -4019,9 +4107,13 @@ def similarity(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = method,
+        case_sensitive: bool = case_sensitive,
+    ) -> Metric:
         candidate_text = str(data)
 
         if not case_sensitive:
@@ -4128,12 +4220,11 @@ def similarity_with_litellm(
     async def evaluate(
         data: t.Any,
         *,
+        reference: str = reference,
         model: str = Config(model),
         api_key: str | None = Config(api_key),
         api_base: str | None = Config(api_base),
     ) -> Metric:
-        nonlocal reference
-
         candidate_text = str(data)
         if not candidate_text.strip() or not reference.strip():
             return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
@@ -4255,7 +4346,7 @@ def similarity_with_rapidfuzz(
         name: Name of the scorer.
     """
     rapidfuzz_import_error_msg = (
-        "rapidfuzz dependency is not installed. Please install it with: pip install rapidfuzz"
+        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
     )
 
     try:
@@ -4268,9 +4359,17 @@ def similarity_with_rapidfuzz(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal[
+            "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
+        ] = method,
+        normalize: bool = normalize,
+        preprocessor: bool = preprocessor,
+        score_cutoff: float | None = score_cutoff,
+    ) -> Metric:
         candidate_text = str(data)
         processor = utils.default_process if preprocessor else None
 
@@ -4381,7 +4480,7 @@ def similarity_with_sentence_transformers(
         model_name: The name of the sentence-transformer model to use.
         name: Name of the scorer.
     """
-    sentence_transformers_error_msg = "sentence-transformers dependency is not installed. Please install it with: pip install sentence-transformers"
+    sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers"
 
     try:
         from sentence_transformers import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
@@ -4396,9 +4495,9 @@ def similarity_with_sentence_transformers(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any, *, model_name: str = Config(model_name)) -> Metric:
-        nonlocal reference
-
+    def evaluate(
+        data: t.Any, *, reference: str = reference, model_name: str = Config(model_name)
+    ) -> Metric:
         # Lazily load and cache the model
         if model_name not in g_sentence_transformers_models:
             g_sentence_transformers_models[model_name] = SentenceTransformer(model_name)
@@ -4478,9 +4577,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
 
     vectorizer = TfidfVectorizer(stop_words="english")
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal reference
-
+    def evaluate(data: t.Any, *, reference: str = reference) -> Metric:
         candidate_text = str(data)
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference])
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]

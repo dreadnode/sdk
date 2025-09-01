@@ -64,8 +64,10 @@ class StudyEnd(StudyEvent[CandidateT]):
 
 
 def rebuild_event_models() -> None:
-    from dreadnode.optimization.study import Study  # noqa: F401
+    from dreadnode.optimization.study import Study
     from dreadnode.optimization.trial import Trial  # noqa: F401
+
+    Study.model_rebuild()
 
     rebuild_dataclass(StudyEvent)  # type: ignore[arg-type]
     rebuild_dataclass(StudyStart)  # type: ignore[arg-type]

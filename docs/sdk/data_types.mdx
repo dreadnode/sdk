@@ -660,7 +660,7 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
         return self._process_moviepy_clip()
     if VideoClip is None and hasattr(self._data, "write_videofile"):
         raise ImportError(
-            "MoviePy VideoClip detected but moviepy not installed. "
+            "MoviePy VideoClip detected, but MoviePy is not installed. "
             "Install with: pip install dreadnode[multimodal]"
         )
     raise TypeError(f"Unsupported video data type: {type(self._data)}")

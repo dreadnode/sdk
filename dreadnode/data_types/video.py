@@ -79,7 +79,7 @@ class Video(DataType):
             return self._process_moviepy_clip()
         if VideoClip is None and hasattr(self._data, "write_videofile"):
             raise ImportError(
-                "MoviePy VideoClip detected but moviepy not installed. "
+                "MoviePy VideoClip detected, but MoviePy is not installed. "
                 "Install with: pip install dreadnode[multimodal]"
             )
         raise TypeError(f"Unsupported video data type: {type(self._data)}")
@@ -163,7 +163,7 @@ class Video(DataType):
             from moviepy.video.io import ImageSequenceClip  # type: ignore[import,unused-ignore]
         except ImportError as e:
             raise ImportError(
-                "Video processing from numpy arrays requires moviepy. "
+                "Video processing from numpy arrays requires MoviePy. "
                 "Install with: pip install dreadnode[multimodal]"
             ) from e
 

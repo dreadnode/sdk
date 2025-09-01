@@ -13,14 +13,14 @@ def check_imports() -> None:
         import soundfile as sf  # type: ignore[import-untyped,unused-ignore]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Audio processing requires `soundfile`. Install with: pip install dreadnode[multimodal]"
+            "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
         ) from e
 
     try:
         import numpy as np  # type: ignore[import-untyped,unused-ignore]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Audio processing requires `numpy`. Install with: pip install dreadnode[multimodal]"
+            "Audio processing requires NumPy. Install with: pip install dreadnode[multimodal]"
         ) from e
 
 

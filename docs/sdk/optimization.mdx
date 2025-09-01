@@ -130,38 +130,96 @@ Trial
 
 Represents a single, evaluated point in the search space.
 
-BeamSearch
-----------
+### candidate
 
 ```python
-BeamSearch(
-    transform: TransformLike[CandidateT, CandidateT],
-    initial_candidate: CandidateT,
-    beam_width: int = 3,
-    branching_factor: int = 3,
-)
+candidate: CandidateT
 ```
 
-A stateful strategy for sequential beam search.
+The candidate assessed.
 
-<Accordion title="Source code in dreadnode/optimization/search.py" icon="code">
+### error
+
 ```python
-def __init__(
-    self,
-    transform: TransformLike[CandidateT, CandidateT],
-    initial_candidate: CandidateT,
-    beam_width: int = 3,
-    branching_factor: int = 3,
-):
-    self.transform = transform if isinstance(transform, Transform) else Transform(transform)
-    self.initial_candidate = initial_candidate
-    self.beam_width = beam_width
-    self.branching_factor = branching_factor
-    self.beams: list[Trial[CandidateT]] = []
+error: str | None = None
 ```
 
+Any error which occurred while processing this trial.
 
-</Accordion>
+### eval\_result
+
+```python
+eval_result: EvalResult | None = None
+```
+
+Complete evaluation result for this candidate.
+
+### id
+
+```python
+id: UUID = Field(default_factory=uuid4)
+```
+
+Unique identifier.
+
+### parent\_id
+
+```python
+parent_id: UUID | None = None
+```
+
+The id of the parent trial for search purposes.
+
+### pruning\_reason
+
+```python
+pruning_reason: str | None = None
+```
+
+Reason for pruning this trial.
+
+### score
+
+```python
+score: float = -float('inf')
+```
+
+Fitness score of this candidate.
+
+### status
+
+```python
+status: TrialStatus = 'pending'
+```
+
+Current status of the trial.
+
+### step
+
+```python
+step: int = 0
+```
+
+The study step which produced this trial.
+
+TrialCollector
+--------------
+
+Gather a list of relevant trials based on the current trials.
+
+TrialFilter
+-----------
+
+Filter down trials based on criteria and/or sorting.
+
+Distribution
+------------
+
+```python
+Distribution()
+```
+
+Base class for all search space distributions.
 
 Search
 ------
@@ -176,7 +234,7 @@ observe(trials: list[Trial[CandidateT]]) -> None
 
 Informs the strategy of the results of recent trials.
 
-<Accordion title="Source code in dreadnode/optimization/search.py" icon="code">
+<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
 @abstractmethod
 def observe(self, trials: list[Trial[CandidateT]]) -> None:
@@ -186,18 +244,36 @@ def observe(self, trials: list[Trial[CandidateT]]) -> None:
 
 </Accordion>
 
+### reset
+
+```python
+reset() -> None
+```
+
+Resets the search strategy to its initial state.
+
+<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
+```python
+@abstractmethod
+def reset(self) -> None:
+    """Resets the search strategy to its initial state."""
+```
+
+
+</Accordion>
+
 ### suggest
 
 ```python
-suggest(step: int) -> list[CandidateT]
+suggest() -> list[CandidateT]
 ```
 
 Suggests the next batch of candidates.
 
-<Accordion title="Source code in dreadnode/optimization/search.py" icon="code">
+<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
 @abstractmethod
-async def suggest(self, step: int) -> list[CandidateT]:
+async def suggest(self) -> list[CandidateT]:
     """Suggests the next batch of candidates."""
 ```
 

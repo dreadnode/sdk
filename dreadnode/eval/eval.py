@@ -1,48 +1,103 @@
 import contextlib
+import contextvars
+import itertools
 import typing as t
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import typing_extensions as te
 from pydantic import ConfigDict, FilePath, TypeAdapter
 
 from dreadnode.discovery import find
-from dreadnode.eval.dataset import (
-    EvalResult,
-    InputDataset,
-    InputDatasetProcessor,
-    InputT,
-    OutputT,
-    Sample,
-    load_from_file,
+from dreadnode.eval.dataset import load_dataset
+from dreadnode.eval.events import (
+    EvalEnd,
+    EvalEvent,
+    EvalStart,
+    IterationEnd,
+    IterationStart,
+    SampleComplete,
+    ScenarioEnd,
+    ScenarioStart,
 )
+from dreadnode.eval.result import EvalResult, IterationResult, Sample, ScenarioResult
 from dreadnode.meta import Model
+from dreadnode.meta.context import DatasetField
 from dreadnode.meta.types import Config
 from dreadnode.scorers.base import Scorer, ScorersLike
 from dreadnode.task import Task
-from dreadnode.types import AnyDict
-from dreadnode.util import get_callable_name, shorten_string
+from dreadnode.tracing.span import current_run_span
+from dreadnode.types import AnyDict, Unset
+from dreadnode.util import (
+    concurrent_gen,
+    get_callable_name,
+    shorten_string,
+    warn_at_user_stacklevel,
+)
+
+In = te.TypeVar("In", default=t.Any)
+Out = te.TypeVar("Out", default=t.Any)
+
+InputDataset = list[In]
+InputDatasetProcessor = t.Callable[[InputDataset], InputDataset]
+
+current_sample_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
+    "current_sample_row", default=None
+)
 
 
-class Eval(Model, t.Generic[InputT, OutputT]):
+class EvalWarning(UserWarning):
+    """Warning raised during evaluation."""
+
+
+class Eval(Model, t.Generic[In, Out]):
+    """
+    Prepared evaluation of a task with an associated dataset and configuration.
+    """
+
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    name: str | None = Config(None)
-    """The name of the evaluation."""
-    description: str = Config("")
-    """A brief description of the eval's purpose."""
-    task: Task[[InputT], OutputT] | str = Config(expose_as=str)
+    task: t.Annotated[Task[[In], Out] | str, Config(expose_as=str)]
     """The task to evaluate. Can be a Task object or a string representing qualified task name."""
-    dataset: InputDataset[InputT] | list[AnyDict] | FilePath = Config(expose_as=FilePath)
+    dataset: t.Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=FilePath)]
     """The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from."""
-    concurrency: int = Config(1)
+
+    name: str | None = Config(default=None)
+    """The name of the evaluation."""
+    description: str = Config(default="")
+    """A brief description of the eval's purpose."""
+    tags: list[str] = Config(default_factory=lambda: ["eval"])
+    """A list of tags associated with the evaluation."""
+    concurrency: int = Config(default=1)
     """Maximum number of tasks to run in parallel."""
+    iterations: int = Config(default=1, ge=1)
+    """Number of times to run each scenario."""
+    max_consecutive_failures: int | None = Config(default=10)
+    """
+    The number of consecutive sample failures (not caused by assertions)
+    before terminating the evaluation run. Set to None to disable.
+    """
+
+    dataset_input_mapping: list[str] | dict[str, str] | None = Config(None)
+    """
+    A list of dataset keys to pass as input parameters to the task, or an
+    explicit mapping from dataset keys to task parameter names.
+    If None, will attempt to map keys that match parameter names.
+    """
+    parameters: dict[str, list[t.Any]] | None = Config(None)
+    """
+    A dictionary defining a parameter space to run experiments against.
+    For each item in the dataset, a scenario will be run for every combination
+    of the parameters defined here. Key names should align with
+    arguments on the task assigned with a `Config` context.
+    """
 
     preprocessor: InputDatasetProcessor | None = None
     """Optional preprocessor function to transform the dataset before evaluation."""
-    scorers: ScorersLike[OutputT] = Config(default_factory=list)
-    """Scorers to evaluate the task's output."""
-    assertions: ScorersLike[OutputT] = Config(default_factory=list)
-    """Assertions to validate the task's output (scores are resolved as truthy)."""
+    scorers: ScorersLike[Out] = Config(default_factory=list)
+    """Scorers to evaluate the task's output (appended to existing task scorers)."""
+    assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
+    """Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions)."""
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)
@@ -54,74 +109,36 @@ class Eval(Model, t.Generic[InputT, OutputT]):
             f"dataset={self.dataset!r}",
         ]
 
+        if self.parameters:
+            parts.append(f"parameter_space={list(self.parameters.keys())}")
+        if self.iterations > 1:
+            parts.append(f"iterations={self.iterations}")
         if self.scorers:
             scorers = ", ".join(
                 get_callable_name(scorer, short=True) for scorer in Scorer.fit_like(self.scorers)
             )
             parts.append(f"scorers=[{scorers}]")
-        if self.assertions:
-            assertions = ", ".join(
-                get_callable_name(assertion, short=True)
-                for assertion in Scorer.fit_like(self.assertions)
-            )
-            parts.append(f"assertions=[{assertions}]")
-        if self.concurrency is not None:
+        if self.assert_scores:
+            parts.append(f"assertions={self.assert_scores}")
+        if self.concurrency > 1:
             parts.append(f"concurrency={self.concurrency}")
 
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
     @classmethod
-    def _generic_types(cls) -> tuple[type[InputT], type[OutputT]]:
-        """
-        Extract the generic types (InputT, OutputT) from the class hierarchy.
-
-        This method traverses the Method Resolution Order (MRO) to find the first class
-        that has generic type arguments defined, either in Pydantic generic metadata
-        or in the class's __args__ attribute. This is used for type validation and
-        ensuring proper type safety throughout the evaluation framework.
-
-        Returns:
-            A tuple containing the input type and output type. If no generic types
-            are found in the class hierarchy, returns (Any, Any) as fallback types.
-
-        Example:
-            For a class like Eval[str, int], this would return (str, int).
-        """
+    def _generic_types(cls) -> tuple[type[In], type[Out]]:
         for c in cls.__mro__:
             metadata = getattr(c, "__pydantic_generic_metadata__", {})
             if len(args := (metadata.get("args", ()) or getattr(c, "__args__", ()))) == 2:  # noqa: PLR2004
                 return args  # type: ignore[no-any-return]
-
         return t.Any, t.Any  # type: ignore[return-value]
 
-    async def _prepare(self) -> tuple[Task[[InputT], OutputT], list[AnyDict]]:
-        """
-        Prepare the task and dataset for evaluation by resolving and validating components.
-
-        This method performs several preprocessing steps:
-        1. Resolves the task if provided as a string reference
-        2. Loads the dataset from file if provided as a file path
-        3. Validates the dataset against the expected input type using type adapters
-        4. Applies optional preprocessing transformations to the dataset
-
-        The preparation ensures that both the task and dataset are properly typed
-        and validated before the evaluation begins, preventing runtime type errors
-        and ensuring data consistency.
-
-        Returns:
-            A tuple containing:
-            - The resolved and validated Task object
-            - The processed dataset as a list of dictionaries
-
-        Raises:
-            ValidationError: If the dataset doesn't match the expected input type
-            ValueError: If the task string reference cannot be resolved
-        """
+    async def _prepare_task_and_dataset(self) -> tuple[Task[[In], Out], list[AnyDict]]:
         task = find(Task, self.task) if isinstance(self.task, str) else self.task
 
         dataset = self.dataset
         if isinstance(self.dataset, str | Path):
-            dataset = load_from_file(self.dataset)
+            dataset = load_dataset(self.dataset)
 
         input_type, _ = self._generic_types()
         dataset = TypeAdapter(list[input_type]).validate_python(dataset)  # type: ignore[valid-type]
@@ -131,73 +148,200 @@ class Eval(Model, t.Generic[InputT, OutputT]):
 
         return task, dataset  # type: ignore[return-value]
 
+    def _get_param_combinations(self) -> list[dict[str, t.Any]]:
+        if self.parameters:
+            keys, values = zip(*self.parameters.items(), strict=False)
+            return [dict(zip(keys, bundle, strict=False)) for bundle in itertools.product(*values)]
+        return [{}]
+
+    def _validate_scorers(self, scorers: list[Scorer[t.Any]], dataset_keys: list[str]) -> None:
+        """
+        Ensure that every scorer has only one required argument as this stage and that
+        any DatasetField configurations align with our available dataset keys
+        """
+
+        for scorer in scorers:
+            defaults = scorer.defaults
+            required_params = [
+                name for name, default in defaults.items() if isinstance(default, Unset)
+            ]
+            if len(required_params) > 1:
+                raise ValueError(
+                    f"Scorer '{scorer.name}' has more than one required parameter ({', '.join(required_params)}). "
+                    "Configure default arguments directly, or use `.configure()` to pre-fill them. "
+                    "Consider using a `DatasetField` to take values from your dataset (e.g. `.configure(required=DatasetField('field_name'))`)."
+                )
+
+            dataset_params = {
+                name: value for name, value in defaults.items() if isinstance(value, DatasetField)
+            }
+            for name, value in dataset_params.items():
+                if value.ref_name not in dataset_keys:
+                    raise ValueError(
+                        f"Scorer '{scorer.name}' is configured to take parameter '{name}' from "
+                        f"dataset field '{value.ref_name}', which is not available in the current dataset."
+                    )
+
     @asynccontextmanager
-    async def stream(
+    async def _run_iteration(
         self,
-    ) -> t.AsyncIterator[
-        t.AsyncGenerator[Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None]
-    ]:
+        configured_task: Task,
+        dataset: list[AnyDict],
+        scenario_params: dict,
+        iteration: int,
+    ) -> t.AsyncIterator[t.AsyncGenerator[Sample[In, Out], None]]:
+        async def _run_sample_with_context(index: int, row: dict) -> Sample[In, Out]:
+            token = current_sample_row.set(row)
+            try:
+                if self.dataset_input_mapping:
+                    if isinstance(self.dataset_input_mapping, list):
+                        task_kwargs = {k: row[k] for k in self.dataset_input_mapping}
+                    else:
+                        task_kwargs = {
+                            task_arg: row[ds_key]
+                            for ds_key, task_arg in self.dataset_input_mapping.items()
+                        }
+                else:
+                    task_params = set(configured_task.signature.parameters)
+                    task_kwargs = {k: v for k, v in row.items() if k in task_params}
+
+                task_kwargs["__dn_ctx_inputs__"] = {
+                    f"dataset_{k}": v for k, v in row.items() if k not in task_params
+                }
+
+                span = await configured_task.run_always(**task_kwargs)
+
+                task_input = (
+                    task_kwargs if len(task_kwargs) > 1 else next(iter(task_kwargs.values()), None)
+                )
+
+                return Sample.from_task(
+                    configured_task,
+                    span,
+                    task_input,
+                    scenario_params=scenario_params,
+                    iteration=iteration,
+                    index=index,
+                )
+            finally:
+                current_sample_row.reset(token)
+
+        coroutines = [_run_sample_with_context(index, row) for index, row in enumerate(dataset)]
+        async with concurrent_gen(coroutines, self.concurrency) as sample_stream:
+            yield sample_stream
+
+    async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
+        from dreadnode import log_inputs, log_params, run, task_span
+
+        base_task, dataset = await self._prepare_task_and_dataset()
+        param_combinations = self._get_param_combinations()
+        eval_name = self.name or base_task.name
+        scorers = Scorer.fit_like(self.scorers or [])
+        run_using_tasks = current_run_span.get() is not None
+
+        dataset_keys = list(dataset[0].keys()) if dataset else []  # We assume a homogeneous dataset
+        self._validate_scorers(scorers, dataset_keys=dataset_keys)
+
+        total_iterations = len(param_combinations) * self.iterations
+        total_samples = total_iterations * len(dataset)
+
+        yield EvalStart(
+            eval=self,
+            dataset_size=len(dataset),
+            scenario_count=len(param_combinations),
+            total_iterations=total_iterations,
+            total_samples=total_samples,
+        )
+
+        eval_result = EvalResult[In, Out](scenarios=[])
+
+        for scenario_params in param_combinations:
+            scenario_context = (
+                task_span(eval_name, tags=self.tags)
+                if run_using_tasks
+                else run(name_prefix=eval_name, tags=self.tags)
+            )
+
+            with scenario_context as scenario_span:
+                if run_using_tasks:
+                    log_inputs(**scenario_params)
+                else:
+                    log_params(**scenario_params)
+
+                run_id = scenario_span.run_id
+
+                yield ScenarioStart(
+                    eval=self,
+                    run_id=run_id,
+                    scenario_params=scenario_params,
+                    iteration_count=self.iterations,
+                )
+
+                configured_task = base_task.with_(
+                    scorers=scorers,
+                    assert_scores=self.assert_scores,
+                    append=True,
+                ).configure(**scenario_params)
+
+                scenario_result = ScenarioResult[In, Out](params=scenario_params)
+                consecutive_failures = 0
+
+                for i in range(self.iterations):
+                    iteration = i + 1
+                    yield IterationStart(
+                        eval=self,
+                        run_id=run_id,
+                        scenario_params=scenario_params,
+                        iteration=iteration,
+                    )
+
+                    iteration_result = IterationResult[In, Out](iteration=iteration)
+
+                    async with self._run_iteration(
+                        configured_task, dataset, scenario_params, iteration
+                    ) as sample_stream:
+                        async for sample in sample_stream:
+                            if sample.failed:
+                                consecutive_failures += 1
+                                if (
+                                    self.max_consecutive_failures is not None
+                                    and consecutive_failures >= self.max_consecutive_failures
+                                ):
+                                    warn_at_user_stacklevel(
+                                        f"Ending '{self.name}' evaluation early after {consecutive_failures} consecutive failures.",
+                                        EvalWarning,
+                                    )
+                                    scenario_result.iterations.append(iteration_result)
+                                    eval_result.scenarios.append(scenario_result)
+                                    yield EvalEnd(
+                                        eval=self,
+                                        result=eval_result,
+                                        stop_reason="max_consecutive_failures_reached",
+                                    )
+                                    return
+                            else:
+                                consecutive_failures = 0
+
+                            yield SampleComplete(eval=self, run_id=run_id, sample=sample)
+                            iteration_result.samples.append(sample)
+
+                    yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
+                    scenario_result.iterations.append(iteration_result)
+
+                yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
+                eval_result.scenarios.append(scenario_result)
+
+        yield EvalEnd(eval=self, result=eval_result)
+
+    @asynccontextmanager
+    async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
         """
-        Create an async context manager for streaming evaluation results.
-
-        This method provides a streaming interface for running evaluations, yielding
-        individual Sample objects as they complete, followed by a final EvalResult.
-        The streaming approach allows for real-time processing and monitoring of
-        evaluation progress, especially useful for long-running evaluations.
-
-        The method handles:
-        - Task and dataset preparation via _prepare()
-        - Configuration of scorers and assertions
-        - Concurrent execution of tasks with optional concurrency limits
-        - Proper resource cleanup through async context management
-        - Telemetry and span tracking for observability
-
-        Yields:
-            An async generator that yields:
-            - Sample[InputT, OutputT]: Individual evaluation samples as they complete
-            - EvalResult[InputT, OutputT]: Final aggregated result containing all samples
-
-        Example:
-            ```python
-            async with eval_instance.stream() as stream:
-                async for item in stream:
-                    if isinstance(item, Sample):
-                        print(f"Completed sample: {item}")
-                    elif isinstance(item, EvalResult):
-                        print(f"Final result: {item}")
-            ```
-
-        Note:
-            The context manager ensures proper cleanup of async resources and
-            maintains consistent telemetry spans for the entire evaluation process.
+        Create an async context manager that runs the evaluation and yields events.
         """
-        from dreadnode import task_span
+        async with contextlib.aclosing(self._stream()) as stream:
+            yield stream
 
-        task, dataset = await self._prepare()
-
-        assertion_scorers = Scorer.fit_like(self.assertions or [], attributes={"assertion": True})
-        extra_scorers = Scorer.fit_like(self.scorers or []) + assertion_scorers
-        eval_task = task.with_(scorers=extra_scorers, append=True)
-        eval_name = self.name or f"eval - {eval_task.name}"
-
-        async def sample_gen() -> t.AsyncGenerator[
-            Sample[InputT, OutputT] | EvalResult[InputT, OutputT], None
-        ]:
-            with task_span(eval_name, tags=["eval"]):
-                samples: list[Sample[InputT, OutputT]] = []
-
-                async with eval_task.stream_map(dataset, concurrency=self.concurrency) as stream:
-                    async for span in stream:
-                        sample = Sample[InputT, OutputT].from_task(span)
-                        samples.append(sample)
-                        yield sample
-
-                yield EvalResult[InputT, OutputT](name=eval_name, samples=samples)
-
-        async with contextlib.aclosing(sample_gen()) as gen:
-            yield gen
-
-    async def run(self) -> EvalResult[InputT, OutputT]:
+    async def run(self) -> EvalResult[In, Out]:
         """
         Evaluate the task with the given arguments and return a list of Samples.
         """

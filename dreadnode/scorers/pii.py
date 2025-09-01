@@ -105,7 +105,7 @@ def detect_pii_with_presidio(
     """
     presidio_import_error_msg = (
         "Presidio dependencies are not installed. "
-        "Please install them with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
+        "Install with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
     )
 
     try:
@@ -118,7 +118,13 @@ def detect_pii_with_presidio(
 
         return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
+    def evaluate(
+        data: t.Any,
+        *,
+        entities: list[str] | None = entities,
+        threshold: float = threshold,
+        invert: bool = invert,
+    ) -> Metric:
         analyzer = _get_presidio_analyzer()
 
         text = str(data)

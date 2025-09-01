@@ -33,7 +33,7 @@ Examples:
 
 
 class MetricWarning(UserWarning):
-    pass
+    """Warning for metrics-related issues"""
 
 
 class MetricDict(te.TypedDict, total=False):

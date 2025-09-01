@@ -21,14 +21,12 @@ from dreadnode.util import (
 )
 
 if t.TYPE_CHECKING:
-    from dreadnode.eval.dataset import (
-        EvalResult,
+    from dreadnode.eval.eval import (
+        Eval,
+        In,
         InputDataset,
         InputDatasetProcessor,
-        InputT,
-        OutputT,
     )
-    from dreadnode.eval.eval import Eval
 
 P = t.ParamSpec("P")
 R = t.TypeVar("R")
@@ -78,7 +76,7 @@ class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
 
 
 class TaskFailedWarning(UserWarning):
-    pass
+    """Warning related to task execution failures."""
 
 
 class TaskSpanList(list[TaskSpan[R]]):
@@ -163,6 +161,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         name: str | None = None,
         label: str | None = None,
         scorers: ScorersLike[R] | None = None,
+        assert_scores: list[str] | t.Literal[True] | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
         log_output: bool | Inherited = INHERITED,
         log_execution_metrics: bool = False,
@@ -204,6 +203,9 @@ class Task(Component[P, R], t.Generic[P, R]):
         "The label of the task - used to group associated metrics and data together."
         self.scorers = Scorer.fit_like(scorers)
         "A list of scorers to evaluate the task's output."
+        scorer_names = [s.name for s in self.scorers]
+        self.assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
+        "A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError."
         self.tags = list(tags or [])
         "A list of tags to attach to the task span."
         self.attributes = attributes
@@ -216,6 +218,39 @@ class Task(Component[P, R], t.Generic[P, R]):
         "Log the result of the function as an output."
         self.log_execution_metrics = log_execution_metrics
         "Track execution metrics such as success rate and run count."
+
+        for assertion in self.assert_scores or []:
+            if assertion not in scorer_names:
+                raise ValueError(
+                    f"Unknown '{assertion}' in assert_scores, it must be one of {scorer_names}"
+                )
+
+    def __repr__(self) -> str:
+        func_name = get_callable_name(self.func, short=True)
+
+        parts: list[str] = [
+            f"name='{self.name}'",
+            f"func={func_name}",
+        ]
+
+        if self.label != clean_str(self.name):
+            parts.append(f"label='{self.label}'")
+        if self.scorers:
+            scorers = [scorer.name for scorer in self.scorers]
+            parts.append(f"scorers={scorers}")
+        if self.assert_scores:
+            parts.append(f"assert_scores={self.assert_scores}")
+        if self.tags:
+            parts.append(f"tags={self.tags}")
+        if self.log_inputs is not INHERITED:
+            if isinstance(self.log_inputs, bool):
+                parts.append(f"log_inputs={self.log_inputs}")
+            else:
+                parts.append(f"log_inputs={list(self.log_inputs)}")
+        if self.log_output is not INHERITED:
+            parts.append(f"log_output={self.log_output}")
+
+        return f"{self.__class__.__name__}({', '.join(parts)})"
 
     def __get__(self, obj: t.Any, objtype: t.Any) -> "Task[P, R]":
         if obj is None:
@@ -242,6 +277,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             name=self.name,
             label=self.label,
             scorers=self.scorers.copy(),
+            assert_scores=self.assert_scores.copy(),
             log_inputs=self.log_inputs,
             log_output=self.log_output,
             log_execution_metrics=self.log_execution_metrics,
@@ -264,6 +300,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         self,
         *,
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
+        assert_scores: t.Sequence[str] | t.Literal[True] | None = None,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         label: str | None = None,
@@ -278,6 +315,7 @@ class Task(Component[P, R], t.Generic[P, R]):
 
         Args:
             scorers: A list of new scorers to set or append to the task.
+            assert_scores: A list of new assertion names to set or append to the task.
             name: The new name for the task.
             tags: A list of new tags to set or append to the task.
             label: The new label for the task.
@@ -307,54 +345,62 @@ class Task(Component[P, R], t.Generic[P, R]):
             else task.log_execution_metrics
         )
 
-        new_scorers = [Scorer(scorer) for scorer in (scorers or [])]
+        new_scorers = Scorer.fit_like(scorers or [])
         new_tags = list(tags or [])
+        new_assert_scores = (
+            [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
+        )
 
         if append:
             task.scorers.extend(new_scorers)
             task.tags.extend(new_tags)
+            task.assert_scores.extend(new_assert_scores)
             task.attributes.update(attributes or {})
         else:
             task.scorers = new_scorers
             task.tags = new_tags
+            task.assert_scores = new_assert_scores
             task.attributes = attributes or {}
 
         return task
 
     def as_eval(
         self,
-        dataset: "InputDataset[InputT] | list[AnyDict] | Path | str",
+        dataset: "InputDataset[In] | list[AnyDict] | Path | str",
         *,
         name: str | None = None,
         description: str = "",
-        concurrency: int | None = None,
+        tags: list[str] | None = None,
+        concurrency: int = 1,
+        iterations: int = 1,
+        max_consecutive_failures: int = 10,
+        dataset_input_mapping: list[str] | dict[str, str] | None = None,
+        parameters: dict[str, list[t.Any]] | None = None,
         preprocessor: "InputDatasetProcessor | None" = None,
         scorers: "ScorersLike[R] | None" = None,
-        assertions: "ScorersLike[R] | None" = None,
-    ) -> "Eval[InputT, R]":
+        assert_scores: list[str] | t.Literal[True] | None = None,
+    ) -> "Eval[In, R]":
         from dreadnode.eval.eval import Eval
+        from dreadnode.eval.result import In
 
         if isinstance(dataset, str):
             dataset = Path(dataset)
 
-        return Eval[InputT, R](
+        return Eval[In, R](
+            task=self,
             dataset=dataset,
             name=name,
-            task=self,
             description=description,
+            tags=tags or ["eval"],
             concurrency=concurrency,
+            iterations=iterations,
+            max_consecutive_failures=max_consecutive_failures,
+            dataset_input_mapping=dataset_input_mapping,
+            parameters=parameters,
             preprocessor=preprocessor,
             scorers=scorers or [],
-            assertions=assertions or [],
+            assert_scores=assert_scores or [],
         )
-
-    async def eval(
-        self, dataset: "InputDataset[InputT] | list[AnyDict] | Path | str"
-    ) -> "EvalResult[InputT, OutputT]":
-        """
-        Evaluate the task with the given arguments and return an evaluation result.
-        """
-        return await self.as_eval(dataset).run()
 
     async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         """
@@ -384,21 +430,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             else self.log_output
         )
 
-        bound_args = self._bind_args(*args, **kwargs)
-        bound_args_dict = dict(bound_args.arguments)
-
-        inputs_to_log = (
-            bound_args_dict
-            if log_inputs is True
-            else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
-            if log_inputs is not False
-            else {}
-        )
-
-        # If log_inputs is inherited, filter out items that don't seem useful
-        # to serialize like `None` or repr fallbacks.
-        if isinstance(self.log_inputs, Inherited):
-            inputs_to_log = {k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)}
+        ctx_inputs_to_log: AnyDict = kwargs.pop("__dn_ctx_inputs__", {})
 
         task_span = TaskSpan[R](
             name=self.name,
@@ -411,6 +443,24 @@ class Task(Component[P, R], t.Generic[P, R]):
         )
 
         with contextlib.suppress(Exception), task_span as span:
+            bound_args = self._bind_args(*args, **kwargs)
+            bound_args_dict = dict(bound_args.arguments)
+
+            inputs_to_log = (
+                bound_args_dict
+                if log_inputs is True
+                else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
+                if log_inputs is not False
+                else {}
+            )
+
+            # If log_inputs is inherited, filter out items that don't seem useful
+            # to serialize like `None` or repr fallbacks.
+            if isinstance(self.log_inputs, Inherited):
+                inputs_to_log = {
+                    k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)
+                }
+
             if run and self.log_execution_metrics:
                 run.log_metric(
                     "count",
@@ -424,38 +474,25 @@ class Task(Component[P, R], t.Generic[P, R]):
                 span.log_input(
                     name,
                     value,
-                    label=f"{self.label}.input.{name}",
                     attributes={"auto": True},
                 )
                 for name, value in inputs_to_log.items()
             ]
 
-            try:
-                output = t.cast(
-                    "R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs)
+            for name, value in ctx_inputs_to_log.items():
+                span.log_input(
+                    name,
+                    value,
+                    attributes={"auto": True, "ctx": True},
                 )
-                if inspect.isawaitable(output):
-                    output = await output
-            except Exception:
-                if run and self.log_execution_metrics:
-                    run.log_metric(
-                        "success_rate",
-                        0,
-                        prefix=f"{self.label}.exec",
-                        mode="avg",
-                        attributes={"auto": True},
-                    )
-                raise
 
-            if run and self.log_execution_metrics:
-                run.log_metric(
-                    "success_rate",
-                    1,
-                    prefix=f"{self.label}.exec",
-                    mode="avg",
-                    attributes={"auto": True},
-                )
+            output = t.cast("R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs))
+            if inspect.isawaitable(output):
+                output = await output
+
             span.output = output
+
+            # Log the output
 
             if (
                 run
@@ -467,7 +504,6 @@ class Task(Component[P, R], t.Generic[P, R]):
                 output_object_hash = span.log_output(
                     "output",
                     output,
-                    label=f"{self.label}.output",
                     attributes={"auto": True},
                 )
 
@@ -475,11 +511,22 @@ class Task(Component[P, R], t.Generic[P, R]):
                 for input_object_hash in input_object_hashes:
                     run.link_objects(output_object_hash, input_object_hash)
 
-            await score(output, self.scorers)
+            # Score and check assertions
 
-            # Trigger a run update whenever a task completes
-            if run is not None:
-                run.push_update()
+            await score(output, self.scorers, assert_scores=self.assert_scores)
+
+        if run and self.log_execution_metrics:
+            run.log_metric(
+                "success_rate",
+                0 if span.exception else 1,
+                prefix=f"{self.label}.exec",
+                mode="avg",
+                attributes={"auto": True},
+            )
+
+        # Trigger a run update whenever a task completes
+        if run is not None:
+            run.push_update()
 
         return span
 
@@ -517,6 +564,45 @@ class Task(Component[P, R], t.Generic[P, R]):
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:  # type: ignore[override]
         span = await self.run(*args, **kwargs)
         return span.output
+
+    # Retry
+
+    async def retry(
+        self,
+        count: int,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R:
+        """
+        Run the task up to `count` times, returning the output of the first
+        successful execution, otherwise raise the most recent exception.
+
+        This is a powerful pattern for non-deterministic tasks where multiple
+        attempts may be needed to generate a valid output according to the
+        task's `assert_scores`. However, it can also be useful as a retry
+        mechanism for transient errors.
+
+        Args:
+            count: The maximum number of times to run the task.
+            args: The arguments to pass to the task.
+            kwargs: The keyword arguments to pass to the task.
+
+        Returns:
+            The output of the first successful and valid task execution.
+        """
+        last_span = None
+        for _ in range(count):
+            span = await self.run_always(*args, **kwargs)
+            last_span = span
+            if span.exception is None:
+                return span.output
+
+        # If the loop finishes, all attempts failed. Raise the exception
+        # from the final attempt for debugging.
+        last_span.raise_if_failed()
+
+        # Just for type checking - should never be called
+        raise RuntimeError("Generation failed to produce a valid result.")
 
     # Mapping
 

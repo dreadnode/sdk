@@ -33,7 +33,9 @@ def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, 
     try:
         from art import text2art  # type: ignore[import-not-found,unused-ignore,import-untyped]
     except ImportError as e:
-        raise ImportError("ascii_art requires 'art'. Install with: pip install art") from e
+        raise ImportError(
+            "ASCII art dependency is not installed. Install with: pip install art"
+        ) from e
 
     def transform(text: str, *, font: str = Config(font, help="The font to use")) -> str:
         return str(text2art(text, font=font))
@@ -201,6 +203,31 @@ Clone the transform.
 def clone(self) -> "Transform[In, Out]":
     """Clone the transform."""
     return self.__deepcopy__({})
+```
+
+
+</Accordion>
+
+### fit
+
+```python
+fit(
+    transform: TransformLike[In, Out],
+) -> Transform[In, Out]
+```
+
+Ensures that the provided transform is a Transform instance.
+
+<Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
+```python
+@classmethod
+def fit(cls, transform: "TransformLike[In, Out]") -> "Transform[In, Out]":
+    """Ensures that the provided transform is a Transform instance."""
+    if isinstance(transform, Transform):
+        return transform
+    if callable(transform):
+        return Transform(transform)
+    raise TypeError("Transform must be a Transform instance or a callable.")
 ```
 
 
@@ -672,7 +699,7 @@ llm_refine(
     *,
     model_params: AnyDict | None = None,
     name: str = "llm_refine",
-) -> Transform[str]
+) -> Transform[t.Any, str]
 ```
 
 A generic transform that uses an LLM to refine a candidate.
@@ -704,7 +731,7 @@ def llm_refine(
     *,
     model_params: AnyDict | None = None,
     name: str = "llm_refine",
-) -> Transform[str]:
+) -> Transform[t.Any, str]:
     """
     A generic transform that uses an LLM to refine a candidate.
 
@@ -716,16 +743,17 @@ def llm_refine(
     """
 
     async def transform(
-        object: str,
+        object: t.Any,
         *,
         model: str | rg.Generator = Config(model, help="The model to use", expose_as=str),  # noqa: B008
+        guidance: str = guidance,
+        model_params: AnyDict | None = model_params,
     ) -> str:
-        nonlocal guidance
-
         generator: rg.Generator
         if isinstance(model, str):
             generator = rg.get_generator(
-                model, params=rg.GenerateParams.model_validate(model_params) or rg.GenerateParams()
+                model,
+                params=rg.GenerateParams.model_validate(model_params) if model_params else None,
             )
         elif isinstance(model, rg.Generator):
             generator = model
@@ -1114,7 +1142,7 @@ def unicode_confusable(
         )
     except ImportError as e:
         raise ImportError(
-            "unicode_confusable requires 'confusables'. Install with: pip install confusables"
+            "Confusables dependency is not installed. Install with: pip install confusables"
         ) from e
 
     if not 0.0 <= ratio <= 1.0:

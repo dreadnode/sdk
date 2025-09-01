@@ -14,14 +14,14 @@ def check_imports() -> None:
         import PIL  # type: ignore[import,unused-ignore]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Image processing requires `pillow`. Install with: pip install dreadnode[multimodal]"
+            "Image processing requires Pillow. Install with: pip install dreadnode[multimodal]"
         ) from e
 
     try:
         import numpy as np  # type: ignore[import,unused-ignore]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Image processing requires `numpy`. Install with: pip install dreadnode[multimodal]"
+            "Image processing requires NumPy. Install with: pip install dreadnode[multimodal]"
         ) from e
 
 
