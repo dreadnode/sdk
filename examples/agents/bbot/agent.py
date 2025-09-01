@@ -1,9 +1,9 @@
+import asyncio
 from pathlib import Path
 
 import ray
 from cyclopts import App
 from ray import serve
-from ray.actor import ActorClass
 from rich.console import Console
 
 from dreadnode.agent.tools.bbot.tool import BBotTool
@@ -49,48 +49,39 @@ async def scan(
         console.print("[red]Error:[/red] No targets provided. Use --targets to specify targets.\n")
         return
 
-    ray.init(address="auto")
+    ray.init(address="auto", namespace="bbot-scan-app")
 
-    scan_futures = []
+    BBotApplication = serve.deployment(
+        BBotTool, name="BBotService", num_replicas=2, max_queued_requests=-1
+    )
 
-    ActorDemoRay: ActorClass[BBotTool] = ray.remote(BBotTool)
-    BBotApplication = serve.deployment(BBotTool, name="BBotService", num_replicas=1)
+    serve.run(BBotApplication.bind(), name="BBotApp", route_prefix="/bbot")
+    handle = serve.get_deployment_handle(deployment_name="BBotService", app_name="BBotApp").options(
+        stream=True
+    )
 
-    app = BBotApplication.bind()
-    serve.run(app, name="BBotService", route_prefix="/bbot")
-
-    handle = serve.get_deployment("BBotService").get_handle()
-
-    for target in loaded_targets:
-        if not target:
-            continue
-
-        result_generator_ref = await handle.run.remote(target=target, presets=["web-screenshots"])
-
-        # Create an actor instance specifically for this one target
-        actor = ActorDemoRay.remote(
-            targets=[target],  # Pass the target in a list
-            presets=presets or [],
-            modules=modules or [],
-            flags=flags or [],
-            config={},
-        )
-
-        scan_futures.append(actor.run.remote())
+    async def _process_single_target(target: str) -> None:
+        try:
+            result_generator_ref = handle.run.remote(
+                target=target,
+                presets=presets,
+                modules=modules,
+                flags=flags,
+                config=config,
+            )
+            async for event in result_generator_ref:
+                console.print(f"[bold blue]>{target}:[/bold blue] {event}")
+        except Exception as e:
+            console.print(f"[bold red]ERROR processing {target}:[/bold red] {e}")
 
     console.print(f"[*] Starting BBOT scan on {len(loaded_targets)} targets...")
 
-    while scan_futures:
-        done, scan_futures = ray.wait(scan_futures, num_returns=1)
-        actor = done[0]
+    tasks = [asyncio.create_task(_process_single_target(target)) for target in loaded_targets]
 
-        result_generator = ray.get(done[0])
+    await asyncio.gather(*tasks)
 
-        async for event in result_generator:
-            console.print(await event)
+    console.print("\n[*] All scans complete.")
 
-
-console.print("[*] Scan complete.")
 
 # tool = await BBotTool.create(
 #     targets=loaded_targets, presets=presets, modules=modules, flags=flags, config=config

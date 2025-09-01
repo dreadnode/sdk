@@ -1,7 +1,7 @@
 import typing as t
 
 from bbot import Preset, Scanner
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field
 from rich.console import Console
 
 from dreadnode.agent.tools.base import Toolset
@@ -27,8 +27,6 @@ class BBotArgs(BaseModel):
 
 
 class BBotTool(Toolset):
-    _scan: Scanner | None = PrivateAttr(default=None)
-
     @staticmethod
     def get_presets() -> None:
         """Return the presets available in the BBOT Agent."""
@@ -96,7 +94,7 @@ class BBotTool(Toolset):
             raise ValueError("At least one target is required to run a scan.")
 
         self._scan = Scanner(
-            *args.target,
+            *[args.target],
             modules=args.modules,
             presets=args.presets,
             flags=args.flags,
