@@ -14,7 +14,45 @@ from dreadnode.agent.tools.bbot.tool import BBotTool
 from dreadnode.agent.tools.kali.tool import KaliTool
 from dreadnode.agent.tools.neo4j.tool import Neo4jTool
 
+# Import necessary components for Pydantic dataclass fix
+from dreadnode.agent.events import (
+    AgentEnd,
+    AgentError,
+    AgentStalled,
+    AgentStart,
+    Event,
+    GenerationEnd,
+    StepStart,
+    ToolEnd,
+    ToolStart,
+)
+
+# Rebuild dataclasses after all imports are complete
+try:
+    from dreadnode.agent.state import State
+    from dreadnode.agent.reactions import Reaction
+    
+    critical_classes = [
+        Event,
+        AgentStart,
+        StepStart,
+        GenerationEnd,
+        AgentStalled,
+        AgentError,
+        ToolStart,
+        ToolEnd,
+        AgentEnd,
+    ]
+
+    for event_class in critical_classes:
+        import pydantic.dataclasses
+        pydantic.dataclasses.rebuild_dataclass(event_class)
+except Exception:
+    pass
+
 # Configure Dreadnode
+dn.configure(server=None, token=None, project="subdomain-takeover-agent", console=False)
+
 console = Console()
 
 
@@ -215,108 +253,66 @@ async def hunt(
 
         console.print(f"Starting subdomain takeover hunt on {len(targets)} targets")
 
-        tool = await BBotTool.create()
-        events = tool.run(
-            targets=targets,
-            presets=presets,
-            modules=modules,
-            flags=flags,
-            config=config,
-        )
-
         # Track metrics at task level
         analyzed_count = 0
         findings_count = 0
         findings = []
 
-        async for event in events:
-            console.print(event)
+        # Analyze each subdomain directly (since we already have a list of subdomains)
+        for subdomain in targets:
+            try:
+                console.print(f"Analyzing subdomain: {subdomain}")
 
-            # Analyze DNS_NAME events for takeover vulnerabilities
-            if event.type == "DNS_NAME":
-                try:
-                    subdomain = str(event.data)
-                    console.print(f"Analyzing subdomain: {subdomain}")
+                analysis_result = await analyze_subdomain(subdomain)
 
-                    analysis_result = await analyze_subdomain(subdomain)
+                console.print(f"Agent used: {', '.join(analysis_result['tools_used'])}")
+                console.print(f"\nAnalysis for {subdomain}:")
+                console.print(analysis_result["analysis"])
+                console.print(
+                    f"\nProcessed {len(analysis_result['tool_outputs'])} tool calls in {analysis_result['steps']} steps"
+                )
 
-                    console.print(f"Agent used: {', '.join(analysis_result['tools_used'])}")
-                    console.print(f"\nAnalysis for {subdomain}:")
-                    console.print(analysis_result["analysis"])
-                    console.print(
-                        f"\nProcessed {len(analysis_result['tool_outputs'])} tool calls in {analysis_result['steps']} steps"
+                analyzed_count += 1
+                dn.log_metric("subdomains_analyzed", analyzed_count)
+
+                finding_stored = (
+                    "store_subdomain_takeover_finding" in analysis_result["tools_used"]
+                )
+
+                if finding_stored or (
+                    analysis_result["analysis"]
+                    and any(
+                        phrase in analysis_result["analysis"].lower()
+                        for phrase in [
+                            "potential takeover",
+                            "subdomain takeover vulnerability",
+                            "takeover vulnerability",
+                            "vulnerable to takeover",
+                            "dangling cname",
+                            "unclaimed resource",
+                            "takeover indicator",
+                            "successful subdomain takeover",
+                        ]
                     )
+                ):
+                    findings_count += 1
+                    dn.log_metric("findings_found", findings_count)
 
-                    analyzed_count += 1
-                    dn.log_metric("subdomains_analyzed", analyzed_count)
+                    security_finding = {
+                        "subdomain": subdomain,
+                        "finding_type": "subdomain_takeover",
+                        "risk_level": "high",
+                        "analysis": analysis_result["analysis"],
+                        "tool_outputs": analysis_result["tool_outputs"],
+                        "steps": analysis_result["steps"],
+                        "timestamp": time.time(),
+                        "stored_in_db": finding_stored,
+                    }
+                    findings.append(security_finding)
+                    dn.log_output(f"finding_{subdomain}", security_finding)
 
-                    finding_stored = (
-                        "store_subdomain_takeover_finding" in analysis_result["tools_used"]
-                    )
-
-                    if finding_stored or (
-                        analysis_result["analysis"]
-                        and any(
-                            phrase in analysis_result["analysis"].lower()
-                            for phrase in [
-                                "potential takeover",
-                                "subdomain takeover vulnerability",
-                                "takeover vulnerability",
-                                "vulnerable to takeover",
-                                "dangling cname",
-                                "unclaimed resource",
-                                "takeover indicator",
-                                "successful subdomain takeover",
-                            ]
-                        )
-                    ):
-                        findings_count += 1
-                        dn.log_metric("findings_found", findings_count)
-
-                        security_finding = {
-                            "subdomain": subdomain,
-                            "finding_type": "subdomain_takeover",
-                            "risk_level": "high",
-                            "analysis": analysis_result["analysis"],
-                            "tool_outputs": analysis_result["tool_outputs"],
-                            "steps": analysis_result["steps"],
-                            "timestamp": time.time(),
-                            "stored_in_db": finding_stored,
-                        }
-                        findings.append(security_finding)
-                        dn.log_output(f"finding_{subdomain}", security_finding)
-
-                except Exception as e:
-                    console.print(f"Error analyzing subdomain: {e}")
-
-            # Analyze FINDING events for takeover indicators
-            elif event.type == "FINDING" and any(
-                keyword in str(event.data).lower() for keyword in ["takeover", "dangling", "cname"]
-            ):
-                try:
-                    console.print(f"BBOT finding: {event.data}")
-
-                    # Extract domains from finding
-                    domain_pattern = r"([a-zA-Z0-9]([a-zA-Z0-9-]{1,61})?[a-zA-Z0-9]\.)+[a-zA-Z]{2,}"
-                    domains = re.findall(domain_pattern, str(event.data))
-
-                    if domains:
-                        domain = domains[0][0] if isinstance(domains[0], tuple) else domains[0]
-                        console.print(f"Validating extracted domain: {domain}")
-
-                        takeover_agent = create_takeover_agent()
-                        result = await takeover_agent.run(
-                            f"Validate the potential subdomain takeover for '{domain}'. "
-                            f"Determine if this is a genuine vulnerability."
-                        )
-
-                        display_analysis_result(result, domain)
-                        analyzed_count += 1
-                    else:
-                        console.print("No domain extracted from finding")
-
-                except Exception as e:
-                    console.print(f"Error validating finding: {e}")
+            except Exception as e:
+                console.print(f"Error analyzing subdomain: {e}")
 
         dn.log_metric("subdomains_analyzed", analyzed_count)
         dn.log_metric("findings_found", findings_count)
@@ -334,6 +330,26 @@ async def hunt(
         console.print("\n📊 Task Summary:")
         console.print(f"   Subdomains analyzed: {analyzed_count}")
         console.print(f"   Security findings: {findings_count}")
+
+
+async def modules() -> None:
+    """List available BBOT modules."""
+    BBotTool.get_modules()
+
+
+async def presets() -> None:
+    """List available BBOT presets."""
+    BBotTool.get_presets()
+
+
+async def flags() -> None:
+    """List available BBOT flags."""
+    BBotTool.get_flags()
+
+
+async def events() -> None:
+    """List available BBOT event types."""
+    BBotTool.get_events()
 
 
 async def validate(subdomain: str, debug: bool = False) -> None:
