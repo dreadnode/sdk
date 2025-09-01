@@ -175,30 +175,6 @@ def display_analysis_result_from_task(analysis_result: dict, debug: bool = False
     )
 
 
-async def modules() -> None:
-    """List available BBOT modules."""
-    tool = await BBotTool.create()
-    tool.get_modules()
-
-
-async def presets() -> None:
-    """List available BBOT presets."""
-    tool = await BBotTool.create()
-    tool.get_presets()
-
-
-async def flags() -> None:
-    """List available BBOT flags."""
-    tool = await BBotTool.create()
-    tool.get_flags()
-
-
-async def events() -> None:
-    """List available BBOT event types."""
-    tool = await BBotTool.create()
-    tool.get_events()
-
-
 async def hunt(
     targets: Path | None = None,
     presets: list[str] | None = None,

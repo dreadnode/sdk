@@ -20,7 +20,6 @@ from rigging.transform import (
 
 from dreadnode.agent.configurable import configurable
 from dreadnode.agent.events import Event
-from dreadnode.agent.handler import AgentEventHandler
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
 from dreadnode.agent.state import State
@@ -73,12 +72,6 @@ class Agent(BaseModel):
             default_factory=State,
             exclude=True,
             repr=False,
-        ),
-    ] = None
-    _agent_event_handler: t.Annotated[
-        AgentEventHandler | None,
-        Field(
-            exclude=True, repr=False, description="Optional event hander to handle agent events."
         ),
     ] = None
 

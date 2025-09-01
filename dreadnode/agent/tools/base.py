@@ -1,11 +1,16 @@
 import inspect
 import typing as t
+from importlib.resources import files
 
+import yaml
 from pydantic import BaseModel, ConfigDict
 from rigging import tools
 from rigging.tools.base import Tool, ToolMethod
 
 from dreadnode.agent.configurable import CONFIGURABLE_ATTR, configurable
+
+if t.TYPE_CHECKING:
+    from pathlib import Path
 
 Tool = tools.Tool  # noqa: F811
 tool = tools.tool
@@ -100,3 +105,8 @@ class Toolset(BaseModel):
                     bound_tool = t.cast("AnyTool", getattr(self, name))
                     tools.append(bound_tool)
         return tools
+
+    def get_manifest() -> dict:
+        path: Path = files(__package__).joinpath("manifest.yaml")
+        with path.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f)

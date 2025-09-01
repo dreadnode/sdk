@@ -48,9 +48,9 @@ class ArtifactStorage:
 
             if not filesystem.exists(target_key):
                 filesystem.put(str(file_path), target_key)
-                logger.info("Artifact successfully stored at %s", target_key)
+                logger.info(f"Artifact successfully stored at {target_key}")
             else:
-                logger.info("Artifact already exists at %s, skipping upload.", target_key)
+                logger.info(f"Artifact already exists at {target_key}, skipping upload.")
 
             return str(filesystem.unstrip_protocol(target_key))
 
@@ -83,7 +83,7 @@ class ArtifactStorage:
 
             if srcs:
                 filesystem.put(srcs, dsts)
-                logger.info("Batch upload completed for %d files", len(srcs))
+                logger.info(f"Batch upload completed for {len(srcs)} files")
             else:
                 logger.info("All files already exist, skipping upload")
 

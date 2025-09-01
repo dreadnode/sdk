@@ -33,6 +33,7 @@ moviepy = { version = "^2.1.2", optional = true }
 pillow = { version = "^11.2.1", optional = true }
 presidio-analyzer = "^2.2.359"
 ray = {extras = ["serve"], version = "^2.48.0"}
+tabulate = "^0.9.0"
 
 
 [tool.poetry.extras]
