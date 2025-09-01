@@ -128,7 +128,7 @@ def zero_shot_classification(
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]  # noqa: PLC0415
             pipeline,
         )
     except ImportError:
@@ -846,7 +846,7 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai
+    import openai  # noqa: PLC0415
 
     async def evaluate(data: t.Any) -> Metric:
         text = str(data)
@@ -1816,7 +1816,7 @@ def detect_pii_with_presidio(
     )
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401, PLC0415
     except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
@@ -2020,7 +2020,7 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat
+        from rigging.chat import Chat  # noqa: PLC0415
 
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):
@@ -2479,7 +2479,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    import litellm
+    import litellm  # noqa: PLC0415
 
     async def evaluate(data: t.Any) -> Metric:
         nonlocal reference, model

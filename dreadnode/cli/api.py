@@ -62,8 +62,8 @@ def create_api_client(*, profile: str | None = None) -> ApiClient:
     def _flush_auth_changes() -> None:
         """Flush the authentication data to disk if it has been updated."""
 
-        access_token = client._client.cookies.get("access_token")  # noqa: SLF001
-        refresh_token = client._client.cookies.get("refresh_token")  # noqa: SLF001
+        access_token = client._client.cookies.get("access_token")
+        refresh_token = client._client.cookies.get("refresh_token")
 
         changed: bool = False
         if access_token and access_token != config.access_token:

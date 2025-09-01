@@ -23,7 +23,7 @@ CONTEXT_LENGTH_ERROR_PATTERNS = [
 def _is_context_length_error(error: Exception) -> bool:
     """Checks if an exception is likely due to exceeding the context window."""
     with contextlib.suppress(ImportError):
-        from litellm.exceptions import ContextWindowExceededError  # noqa: PLC0415
+        from litellm.exceptions import ContextWindowExceededError
 
         if isinstance(error, ContextWindowExceededError):
             return True
@@ -66,10 +66,10 @@ def summarize_when_long(
         min_messages_to_keep: The minimum number of messages to retain after summarization (default is 5).
     """
 
-    if min_messages_to_keep < 2:  # noqa: PLR2004
+    if min_messages_to_keep < 2:
         raise ValueError("min_messages_to_keep must be at least 2.")
 
-    async def summarize_when_long(event: Event) -> Reaction | None:  # noqa: PLR0912
+    async def summarize_when_long(event: Event) -> Reaction | None:
         should_summarize = False
 
         # Proactive check using the last known token count

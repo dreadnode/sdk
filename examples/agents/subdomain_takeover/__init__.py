@@ -1,0 +1,1 @@
+# Subdomain takeover detection agent

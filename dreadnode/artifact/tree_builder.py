@@ -103,7 +103,7 @@ class ArtifactTreeBuilder:
         Returns:
             DirectoryNode: A hierarchical tree structure representing the directory and its contents.
         """
-        logger.debug("Processing directory: %s", dir_path)
+        logger.debug(f"Processing directory: {dir_path}")
 
         all_files: list[Path] = []
         for root, _, files in os.walk(dir_path):
@@ -157,7 +157,7 @@ class ArtifactTreeBuilder:
             file_hash_cache[file_hash] = file_node
 
         if source_paths:
-            logger.debug("Uploading %d files in batch", len(source_paths))
+            logger.debug(f"Uploading {len(source_paths)} files in batch")
             uris = self.storage.batch_upload_files(source_paths, target_paths)
 
             # Update file nodes with URIs
@@ -268,7 +268,7 @@ class ArtifactTreeBuilder:
                 rel_path = file_path.relative_to(base_dir)
                 parts = rel_path.parts
             except ValueError:
-                logger.debug("File %s is not relative to base directory %s", file_path, base_dir)
+                logger.debug(f"File {file_path} is not relative to base directory {base_dir}")
                 continue
 
             # File in the root directory
@@ -397,7 +397,7 @@ class ArtifactTreeBuilder:
         child_hashes = [child["hash"] for child in dir_node["children"]]
         child_hashes.sort()  # Ensure consistent hash
         hash_input = "|".join(child_hashes)
-        return hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324 # nosec
+        return hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # nosec
 
     def _are_all_children_processed(self, parent_node: DirectoryNode, processed: set[str]) -> bool:
         """

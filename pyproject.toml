@@ -32,6 +32,8 @@ soundfile = { version = "^0.13.1", optional = true }
 moviepy = { version = "^2.1.2", optional = true }
 pillow = { version = "^11.2.1", optional = true }
 presidio-analyzer = "^2.2.359"
+ray = {extras = ["serve"], version = "^2.48.0"}
+tabulate = "^0.9.0"
 
 
 [tool.poetry.extras]
@@ -120,6 +122,8 @@ ignore = [
     "FIX002",  # contains todo, consider fixing
     "COM812",  # disabled for formatting
     "ISC001",  # disabled for formatting
+    "BLE001",  # disabled for formatting
+    "S101",    # allow use of assert
 ]
 
 [tool.ruff.format]

@@ -2,7 +2,7 @@ import inspect
 import typing as t
 from contextlib import asynccontextmanager
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rigging import get_generator
 from rigging.caching import CacheMode, apply_cache_mode_to_messages
 from rigging.chat import Chat
@@ -19,13 +19,12 @@ from rigging.transform import (
 )
 
 from dreadnode.agent.configurable import configurable
-from dreadnode.agent.events import AgentStalled, Event
-from dreadnode.agent.hooks.base import retry_with_feedback
+from dreadnode.agent.events import Event
 from dreadnode.agent.reactions import Hook
 from dreadnode.agent.result import AgentResult
-from dreadnode.agent.stop import StopCondition, StopNever
-from dreadnode.agent.thread import Thread
-from dreadnode.agent.tools.base import AnyTool, Tool, Toolset
+from dreadnode.agent.state import State
+from dreadnode.agent.stop import StopCondition
+from dreadnode.agent.tools import AnyTool, Tool, Toolset
 from dreadnode.agent.types import Message
 from dreadnode.util import flatten_list, get_callable_name, shorten_string
 
@@ -34,32 +33,49 @@ from dreadnode.util import flatten_list, get_callable_name, shorten_string
 class Agent(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    name: str
-    """The name of the agent."""
-    description: str = ""
-    """A brief description of the agent's purpose."""
+    name: t.Annotated[str, "The name of the agent."]
+    description: t.Annotated[str, "A brief description of the agent's purpose."]
+    model: t.Annotated[str | None, "Inference model (rigging generator identifier)."] = None
+    instructions: t.Annotated[str | None, "The agent's core instructions."] = None
+    tools: t.Annotated[list[AnyTool | Toolset], "Tools the agent can use."] = []
+    tool_mode: t.Annotated[
+        ToolMode,
+        Field(
+            repr=False,
+            description='The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto".',
+        ),
+    ] = "auto"
+    caching: t.Annotated[
+        CacheMode | None,
+        Field(repr=False, description="How to handle cache_control entries on inference messages."),
+    ] = None
+    max_steps: t.Annotated[
+        int,
+        "The maximum number of steps (generation + tool calls) the agent can take before stopping.",
+    ] = 100
 
-    model: str | None = None
-    """Inference model (rigging generator identifier)."""
-    instructions: str | None = None
-    """The agent's core instructions."""
-    tools: list[AnyTool | Toolset] = []
-    """Tools the agent can use."""
-    tool_mode: t.Annotated[ToolMode, Field(repr=False)] = "auto"
-    """The tool calling mode to use (e.g., "xml", "json-with-tag", "json-in-xml", "api") - default is "auto"."""
-    caching: t.Annotated[CacheMode | None, Field(repr=False)] = None
-    """How to handle cache_control entries on inference messages."""
-    max_steps: int = 10
-    """The maximum number of steps (generation + tool calls) the agent can take before stopping."""
+    stop_conditions: t.Annotated[
+        list[StopCondition], "The logical condition for successfully stopping an Agent."
+    ] = []
+    hooks: t.Annotated[
+        list[Hook],
+        Field(
+            exclude=True,
+            repr=False,
+            description="Hooks to run at various points in the agent's lifecycle.",
+        ),
+    ] = []
+    state: t.Annotated[
+        State | None,
+        "Stateful state for this agent, for when otherwise not specified during execution.",
+        Field(
+            default_factory=State,
+            exclude=True,
+            repr=False,
+        ),
+    ] = None
 
-    stop_conditions: list[StopCondition] = []
-    """The logical condition for successfully stopping a run."""
-    hooks: t.Annotated[list[Hook], Field(exclude=True, repr=False)] = []
-    """Hooks to run at various points in the agent's lifecycle."""
-    thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
-    """Stateful thread for this agent, for when otherwise not specified during execution."""
-
-    _generator: Generator | None = PrivateAttr(None, init=False)
+    _generator: t.Annotated[Generator | None, Field(default=None, init=False, repr=False)] = None
 
     @field_validator("tools", mode="before")
     @classmethod
@@ -83,7 +99,6 @@ class Agent(BaseModel):
                 tools.append(Tool.from_callable(tool))
             else:
                 tools.append(tool)
-
         return tools
 
     def __repr__(self) -> str:
@@ -132,6 +147,7 @@ class Agent(BaseModel):
     @property
     def all_tools(self) -> list[AnyTool]:
         """Returns a flattened list of all available tools."""
+
         flat_tools: list[AnyTool] = []
         for item in self.tools:
             if isinstance(item, Toolset):
@@ -191,7 +207,7 @@ class Agent(BaseModel):
 
             generated = (await generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
-                raise generated  # noqa: TRY301
+                raise generated
 
             chat = Chat(
                 messages,
@@ -203,7 +219,7 @@ class Agent(BaseModel):
                 extra=generated.extra,
             )
 
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             chat = Chat(
                 messages,
                 [],
@@ -218,9 +234,9 @@ class Agent(BaseModel):
 
         return chat
 
-    def reset(self) -> Thread:
-        previous = self.thread
-        self.thread = Thread()
+    def reset(self) -> State:
+        previous = self.state
+        self.state = State()
         return previous
 
     @asynccontextmanager
@@ -228,11 +244,11 @@ class Agent(BaseModel):
         self,
         user_input: str,
         *,
-        thread: Thread | None = None,
+        state: State | None = None,
     ) -> t.AsyncIterator[t.AsyncGenerator[Event, None]]:
-        thread = thread or self.thread
-        async with thread.stream(
-            self, user_input, commit="always" if thread == self.thread else "on-success"
+        state = state or self.state
+        async with state.stream(
+            self, user_input, commit="always" if state == self.state else "on-success"
         ) as stream:
             yield stream
 
@@ -240,39 +256,9 @@ class Agent(BaseModel):
         self,
         user_input: str,
         *,
-        thread: Thread | None = None,
+        state: State | None = None,
     ) -> AgentResult:
-        thread = thread or Thread()
-        return await thread.run(
-            self, user_input, commit="always" if thread == self.thread else "on-success"
-        )
-
-
-class TaskAgent(Agent):
-    """
-    A specialized agent for running tasks with a focus on completion and reporting.
-    It extends the base Agent class to provide task-specific functionality.
-
-    - Automatically includes the `finish_task` and `update_todo` tools.
-    - Installs a default StopNever condition to trigger stalling behavior when no tools calls are made.
-    - Uses the `AgentStalled` event to handle stalled tasks by pushing the model to continue or finish the task.
-    """
-
-    def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools import finish_task, update_todo  # noqa: PLC0415
-
-        if not any(tool for tool in self.tools if tool.name == "finish_task"):
-            self.tools.append(finish_task)
-
-        if not any(tool for tool in self.tools if tool.name == "update_todo"):
-            self.tools.append(update_todo)
-
-        # Force the agent to use finish_task
-        self.stop_conditions.append(StopNever())
-        self.hooks.insert(
-            0,
-            retry_with_feedback(
-                event_type=AgentStalled,
-                feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
-            ),
+        state = state or self.state
+        return await state.run(
+            self, user_input, commit="always" if state == self.state else "on-success"
         )

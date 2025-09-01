@@ -570,7 +570,7 @@ class RunSpan(Span):
 
         # Create a composite key that represents both data and schema
         hash_input = f"{data_hash}:{schema_hash}"
-        composite_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # noqa: S324 # nosec
+        composite_hash = hashlib.sha1(hash_input.encode()).hexdigest()[:16]  # nosec
 
         # Store schema if new
         if schema_hash not in self._object_schemas:
@@ -735,7 +735,7 @@ class RunSpan(Span):
     def log_metric(
         self,
         name: str,
-        value: float | bool,  # noqa: FBT001
+        value: float | bool,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -759,7 +759,7 @@ class RunSpan(Span):
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,  # noqa: FBT001
+        value: float | bool | Metric,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -879,9 +879,9 @@ class TaskSpan(Span, t.Generic[R]):
         self._parent_task = current_task_span.get()
         if self._parent_task is not None:
             self.set_attribute(SPAN_ATTRIBUTE_PARENT_TASK_ID, self._parent_task.span_id)
-            self._parent_task._tasks.append(self)  # noqa: SLF001
+            self._parent_task._tasks.append(self)
         elif self._run:
-            self._run._tasks.append(self)  # noqa: SLF001
+            self._run._tasks.append(self)
 
         self._context_token = current_task_span.set(self)
         return super().__enter__()
@@ -1011,7 +1011,7 @@ class TaskSpan(Span, t.Generic[R]):
     def log_metric(
         self,
         name: str,
-        value: float | bool,  # noqa: FBT001
+        value: float | bool,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1033,7 +1033,7 @@ class TaskSpan(Span, t.Generic[R]):
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,  # noqa: FBT001
+        value: float | bool | Metric,
         *,
         step: int = 0,
         origin: t.Any | None = None,

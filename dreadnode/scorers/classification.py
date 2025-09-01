@@ -33,7 +33,7 @@ def zero_shot_classification(
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]  # noqa: PLC0415
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
             pipeline,
         )
     except ImportError:

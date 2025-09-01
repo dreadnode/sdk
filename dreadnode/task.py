@@ -422,7 +422,7 @@ class Task(t.Generic[P, R]):
         """
         try:
             return await self.run(*args, **kwargs)
-        except Exception:  # noqa: BLE001
+        except Exception:
             warn_at_user_stacklevel(
                 f"Task '{self.name}' ({self.label}) failed:\n{traceback.format_exc()}",
                 TaskFailedWarning,

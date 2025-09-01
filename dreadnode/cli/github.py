@@ -12,7 +12,7 @@ from rich.prompt import Prompt
 from dreadnode.config import UserConfig, find_dreadnode_saas_profiles, is_dreadnode_saas_server
 
 
-class GithubRepo(str):  # noqa: SLOT000
+class GithubRepo(str):
     """
     A string subclass that normalizes various GitHub repository string formats.
 
@@ -44,7 +44,7 @@ class GithubRepo(str):  # noqa: SLOT000
     OWN_FORMAT_PATTERN = re.compile(r"^([^/]+)/([^/@:]+)@(.+)$")
     ZIPBALL_PATTERN = re.compile(r"github\.com/([^/]+)/([^/]+?)/zipball/(.+)$")
 
-    def __new__(cls, value: t.Any, *_: t.Any, **__: t.Any) -> "GithubRepo":  # noqa: PLR0912, PLR0915
+    def __new__(cls, value: t.Any, *_: t.Any, **__: t.Any) -> "GithubRepo":
         if not isinstance(value, str):
             return super().__new__(cls, str(value))
 
@@ -146,7 +146,7 @@ class GithubRepo(str):  # noqa: SLOT000
     def exists(self) -> bool:
         """Check if a repo exists (or is private) on GitHub."""
         response = httpx.get(f"https://github.com/{self.namespace}/{self.repo}")
-        return response.status_code == 200  # noqa: PLR2004
+        return response.status_code == 200
 
     def __repr__(self) -> str:
         return f"GithubRepo(namespace='{self.namespace}', repo='{self.repo}', ref='{self.ref}')"
