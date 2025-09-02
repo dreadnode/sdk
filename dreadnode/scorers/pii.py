@@ -1,7 +1,8 @@
 import re
 import typing as t
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 from dreadnode.scorers.contains import contains
 from dreadnode.util import warn_at_user_stacklevel
 
@@ -64,8 +65,8 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
 
-    from presidio_analyzer import AnalyzerEngine  # noqa: PLC0415
-    from presidio_analyzer.nlp_engine import NlpEngineProvider  # noqa: PLC0415
+    from presidio_analyzer import AnalyzerEngine
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
 
     if g_analyzer_engine is None:
         provider = NlpEngineProvider(
@@ -93,7 +94,7 @@ def detect_pii_with_presidio(
     threshold, and 0.0 otherwise. The metadata will contain details of
     any PII found.
 
-    This is a powerful but dependency-heavy scorer.
+    Requires the `presidio-analyzer` package, see https://github.com/microsoft/presidio.
 
     Args:
         entities: A list of specific Presidio entity types to look for (e.g., ["PHONE_NUMBER", "CREDIT_CARD"]).
@@ -104,20 +105,26 @@ def detect_pii_with_presidio(
     """
     presidio_import_error_msg = (
         "Presidio dependencies are not installed. "
-        "Please install them with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
+        "Install with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
     )
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401, PLC0415
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
     except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": presidio_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
+    def evaluate(
+        data: t.Any,
+        *,
+        entities: list[str] | None = entities,
+        threshold: float = threshold,
+        invert: bool = invert,
+    ) -> Metric:
         analyzer = _get_presidio_analyzer()
 
         text = str(data)
@@ -148,4 +155,4 @@ def detect_pii_with_presidio(
 
         return Metric(value=final_score, attributes=metadata)
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

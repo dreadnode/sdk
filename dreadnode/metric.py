@@ -1,22 +1,39 @@
-import inspect
 import typing as t
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import typing_extensions as te
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
-# from logfire._internal.stack_info import warn_at_user_stacklevel
-# from logfire._internal.utils import safe_repr
 from dreadnode.types import JsonDict, JsonValue
-from dreadnode.util import safe_repr, warn_at_user_stacklevel
+from dreadnode.util import warn_at_user_stacklevel
 
 T = t.TypeVar("T")
 
 MetricAggMode = t.Literal["avg", "sum", "min", "max", "count"]
+"""
+Aggregation modes for metrics:"
+- "avg": Average of the values.
+- "sum": Sum of the values.
+- "min": Minimum value.
+- "max": Maximum value.
+- "count": Count of the values.
+"""
+
+MetricsDict = dict[str, "list[Metric]"]
+"""A dictionary of metrics, where the key is the metric name and the value is a list of metrics with that name."""
+MetricsLike = dict[str, float | bool] | list["MetricDict"]
+"""
+Either a dictionary of metric names to values (float or bool) or a list of metric dictionaries.
+
+Examples:
+- `{"accuracy": 0.95, "loss": 0.05}`
+- `[{"name": "accuracy", "value": 0.95}, {"name": "loss", "value": 0.05}]`
+"""
 
 
 class MetricWarning(UserWarning):
-    pass
+    """Warning for metrics-related issues"""
 
 
 class MetricDict(te.TypedDict, total=False):
@@ -41,10 +58,13 @@ class Metric:
     "The value of the metric, e.g. 0.5, 1.0, 2.0, etc."
     step: int = 0
     "An step value to indicate when this metric was reported."
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     "The timestamp when the metric was reported."
-    attributes: JsonDict = field(default_factory=dict)
+    attributes: JsonDict = Field(default_factory=dict)
     "A dictionary of attributes to attach to the metric."
+
+    def __repr__(self) -> str:
+        return f"Metric(value={self.value}, step={self.step})"
 
     @classmethod
     def from_many(
@@ -117,133 +137,3 @@ class Metric:
             self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
 
         return self
-
-
-MetricsDict = dict[str, list[Metric]]
-"""A dictionary of metrics, where the key is the metric name and the value is a list of metrics with that name."""
-ScorerResult = float | int | bool | Metric
-"""The result of a scorer function, which can be a numeric value or a Metric object."""
-ScorerCallable = t.Callable[[T], t.Awaitable[ScorerResult]] | t.Callable[[T], ScorerResult]
-
-
-@dataclass
-class Scorer(t.Generic[T]):
-    name: str
-    "The name of the scorer, used for reporting metrics."
-    tags: t.Sequence[str]
-    "A list of tags to attach to the metric."
-    attributes: dict[str, t.Any]
-    "A dictionary of attributes to attach to the metric."
-    func: ScorerCallable[T]
-    "The function to call to get the metric."
-    step: int = 0
-    "The step value to attach to metrics produced by this Scorer."
-    auto_increment_step: bool = False
-    "Whether to automatically increment the step for each time this scorer is called."
-    catch: bool = False
-    "Whether to catch exceptions in the scorer function and return a 0 Metric with error information."
-
-    @classmethod
-    def from_callable(
-        cls,
-        func: "ScorerCallable[T] | Scorer[T]",
-        *,
-        name: str | None = None,
-        tags: t.Sequence[str] | None = None,
-        catch: bool = False,
-        **attributes: t.Any,
-    ) -> "Scorer[T]":
-        """
-        Create a scorer from a callable function.
-
-        Args:
-            func: The function to call to get the metric.
-            name: The name of the scorer, used for reporting metrics.
-            tags: A list of tags to attach to the metric.
-            catch: Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-            **attributes: A dictionary of attributes to attach to the metric.
-
-        Returns:
-            A Scorer object.
-        """
-        if isinstance(func, Scorer):
-            if name is not None or attributes is not None:
-                func = func.clone()
-                func.name = name or func.name
-                func.attributes.update(attributes or {})
-            return func
-
-        func = inspect.unwrap(func)
-        func_name = getattr(
-            func,
-            "__qualname__",
-            getattr(func, "__name__", safe_repr(func)),
-        )
-        name = name or func_name
-        return cls(
-            name=name,
-            tags=tags or [],
-            attributes=attributes or {},
-            func=func,
-            catch=catch,
-        )
-
-    def __post_init__(self) -> None:
-        self.__signature__ = inspect.signature(self.func)
-        self.__name__ = self.name
-
-    def clone(self) -> "Scorer[T]":
-        """
-        Clone the scorer.
-
-        Returns:
-            A new Scorer.
-        """
-        return Scorer(
-            name=self.name,
-            tags=self.tags,
-            attributes=self.attributes,
-            func=self.func,
-            step=self.step,
-            auto_increment_step=self.auto_increment_step,
-            catch=self.catch,
-        )
-
-    async def __call__(self, object: T) -> Metric:
-        """
-        Execute the scorer and return the metric.
-
-        Any output value will be converted to a Metric object.
-
-        Args:
-            object: The object to score.
-
-        Returns:
-            A Metric object.
-        """
-        try:
-            metric = self.func(object)
-            if inspect.isawaitable(metric):
-                metric = await metric
-        except Exception as exc:
-            if not self.catch:
-                raise
-
-            warn_at_user_stacklevel(
-                f"Error executing scorer {self.name!r} for object {object!r}: {exc}",
-                MetricWarning,
-            )
-            metric = Metric(value=0.0, step=self.step, attributes={"error": str(exc)})
-
-        if not isinstance(metric, Metric):
-            metric = Metric(
-                float(metric),
-                step=self.step,
-                timestamp=datetime.now(timezone.utc),
-                attributes=self.attributes,
-            )
-
-        if self.auto_increment_step:
-            self.step += 1
-
-        return metric

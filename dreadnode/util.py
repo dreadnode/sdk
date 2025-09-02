@@ -59,33 +59,65 @@ T = t.TypeVar("T")
 # Formatting
 
 
-def shorten_string(content: str, max_length: int, *, sep: str = "...") -> str:
+def shorten_string(
+    text: str,
+    max_length: int | None = None,
+    *,
+    max_lines: int | None = None,
+    separator: str = "...",
+) -> str:
     """
-    Return a string at most max_length characters long by removing the middle of the string.
+    Shortens text to a maximum number of lines and/or characters by removing
+    content from the middle.
+
+    Line shortening is applied first, followed by character shortening.
+
+    Args:
+        text: The string to shorten.
+        max_lines: The maximum number of lines to allow.
+        max_chars: The maximum number of characters to allow.
+        separator: The separator to insert in the middle of the shortened text.
+
+    Returns:
+        The shortened text
     """
-    if len(content) <= max_length:
-        return content
+    # 1 - line count first
+    if max_lines is not None:
+        lines = text.splitlines()
+        if len(lines) > max_lines:
+            remaining_lines = max_lines - 1  # leave space for the separator
+            if remaining_lines <= 0:
+                text = separator  # if max_lines is 1, just use the separator
+            else:
+                half = remaining_lines // 2
+                start_lines = lines[:half]
+                end_lines = lines[-(remaining_lines - half) :]
+                text = "\n".join([*start_lines, separator, *end_lines])
 
-    remaining = max_length - len(sep)
-    if remaining <= 0:
-        return sep
+    # 2 - character count
+    if max_length is not None and len(text) > max_length:
+        remaining_chars = max_length - len(separator)
+        if remaining_chars <= 0:
+            text = separator
+        else:
+            half_chars = remaining_chars // 2
+            text = text[:half_chars] + separator + text[-half_chars:]
 
-    middle = remaining // 2
-    return content[:middle] + sep + content[-middle:]
+    return text
 
 
-def truncate_string(content: str, max_length: int, *, suf: str = "...") -> str:
+def truncate_string(text: str, max_length: int = 80, *, suf: str = "...") -> str:
     """
     Return a string at most max_length characters long by removing the end of the string.
     """
-    if len(content) <= max_length:
-        return content
+    if len(text) <= max_length:
+        return text
 
     remaining = max_length - len(suf)
     if remaining <= 0:
         return suf
 
-    return content[:remaining] + suf
+    return text[:remaining] + suf
 
 
 def clean_str(string: str, *, max_length: int | None = None) -> str:
@@ -98,6 +130,41 @@ def clean_str(string: str, *, max_length: int | None = None) -> str:
     return result
 
 
+def format_dict(data: dict[str, t.Any], max_length: int = 80) -> str:
+    """
+    Formats a dictionary to a string, prioritizing showing key-value pairs
+    and truncating gracefully if the string exceeds a max length.
+    """
+    parts: list[str] = []
+    items = list(data.items())
+    max_length = max_length - 2  # Account for the surrounding braces
+
+    for i, (key, value) in enumerate(items):
+        part_str = f"{key}={value!r}"
+        potential_parts = [*parts, part_str]
+
+        # Check if adding the next full part would exceed the length
+        if len(", ".join(potential_parts)) > max_length:
+            num_remaining = len(items) - i
+            parts.append(f"... (+{num_remaining} more)")
+        else:
+            parts.append(part_str)
+
+    formatted = ", ".join(parts)
+    return f"{{{formatted}}}"
+
+
+# Types
+
+
+def safe_issubclass(cls: t.Any, class_or_tuple: T) -> t.TypeGuard[T]:
+    """Safely check if a class is a subclass of another class or tuple."""
+    try:
+        return isinstance(cls, type) and issubclass(cls, class_or_tuple)  # type: ignore[arg-type]
+    except TypeError:
+        return False
+
+
 # Resolution
 
 
@@ -105,7 +172,6 @@ def safe_repr(obj: t.Any) -> str:
     """
     Return some kind of non-empty string representation of an object, catching exceptions.
     """
-
     try:
         result = repr(obj)
     except Exception:  # noqa: BLE001
@@ -118,6 +184,27 @@ def safe_repr(obj: t.Any) -> str:
         return f"<{type(obj).__name__} object>"
     except Exception:  # noqa: BLE001
         return "<unknown (repr failed)>"
+
+
+def get_obj_name(obj: t.Any, *, short: bool = False, clean: bool = False) -> str:
+    """
+    Return a best effort name for an object.
+    """
+    name = "unknown"
+    if hasattr(obj, "name"):
+        name = obj.name
+    elif hasattr(obj, "__name__"):
+        name = obj.__name__
+    elif hasattr(obj.__class__, "__name__"):
+        name = obj.__class__.__name__
+
+    if short:
+        name = name.split(".")[-1]
+
+    if clean:
+        name = clean_str(name)
+
+    return name
 
 
 def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> str:
@@ -148,10 +235,10 @@ def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> st
     with contextlib.suppress(Exception):
         unwrapped = inspect.unwrap(obj)
 
-    name = getattr(unwrapped, "__qualname__", None)
-
-    if name is None:
-        name = getattr(unwrapped, "__name__", None)
+    if short:
+        name = getattr(unwrapped, "__name__", getattr(unwrapped, "__qualname__", None))
+    else:
+        name = getattr(unwrapped, "__qualname__", getattr(unwrapped, "__name__", None))
 
     if name is None:
         if hasattr(obj, "__class__"):
@@ -175,8 +262,9 @@ def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> st
 
 
 def time_to(future_datetime: datetime) -> str:
-    """Get a string describing the time difference between a future datetime and now."""
-
+    """
+    Get a string describing the time difference between a future datetime and now.
+    """
     now = datetime.now(tz=future_datetime.tzinfo)
     time_difference = future_datetime - now
 
@@ -200,9 +288,100 @@ def time_to(future_datetime: datetime) -> str:
 # Async
 
 
-async def join_generators(
-    *generators: t.AsyncGenerator[T, None],
-) -> t.AsyncGenerator[T, None]:
+async def concurrent(coros: t.Iterable[t.Awaitable[T]], limit: int | None = None) -> list[T]:
+    """
+    Run multiple coroutines concurrently with a limit on the number of concurrent tasks.
+
+    Args:
+        coros: An iterable of coroutines to run concurrently.
+        limit: The maximum number of concurrent tasks. If None, no limit is applied.
+
+    Returns:
+        A list of results from the coroutines, in the order they were provided.
+    """
+    coros = list(coros)
+    semaphore = asyncio.Semaphore(limit or len(coros))
+
+    async def run_coroutine_with_semaphore(
+        coro: t.Awaitable[T],
+    ) -> T:
+        async with semaphore:
+            return await coro
+
+    return await asyncio.gather(
+        *(run_coroutine_with_semaphore(coro) for coro in coros),
+    )
+
+
+# Some weirdness here: https://discuss.python.org/t/overloads-of-async-generators-inconsistent-coroutine-wrapping/56665/2
+
+
+@t.overload
+@contextlib.asynccontextmanager
+def concurrent_gen(
+    coros: t.Iterable[t.Awaitable[T]],
+    limit: int | None = None,
+    *,
+    return_task: t.Literal[False] = False,
+) -> t.AsyncIterator[t.AsyncGenerator[T, None]]: ...
+
+
+@t.overload
+@contextlib.asynccontextmanager
+def concurrent_gen(
+    coros: t.Iterable[t.Awaitable[T]],
+    limit: int | None = None,
+    *,
+    return_task: t.Literal[True],
+) -> t.AsyncIterator[t.AsyncGenerator[asyncio.Task[T], None]]: ...
+
+
+@contextlib.asynccontextmanager
+async def concurrent_gen(
+    coros: t.Iterable[t.Awaitable[T]],
+    limit: int | None = None,
+    *,
+    return_task: bool = False,
+) -> t.AsyncIterator[t.AsyncGenerator[T | asyncio.Task[T], None]]:
+    """
+    Run multiple coroutines concurrently with a limit on the number of concurrent tasks.
+
+    Args:
+        coros: An iterable of coroutines to run concurrently.
+        limit: The maximum number of concurrent tasks. If None, no limit is applied.
+        return_task: If True, yields the asyncio.Task object instead of the result.
+
+    Yields:
+        An asynchronous generator yielding the results of the coroutines.
+        If return_task is True, yields the asyncio.Task objects instead.
+    """
+    coros = list(coros)
+    semaphore = asyncio.Semaphore(limit or len(coros))
+
+    async def run_coroutine_with_semaphore(coro: t.Awaitable[T]) -> T:
+        async with semaphore:
+            return await coro
+
+    async def generator() -> t.AsyncGenerator[T | asyncio.Task[T], None]:
+        pending_tasks = {asyncio.create_task(run_coroutine_with_semaphore(coro)) for coro in coros}
+
+        try:
+            while pending_tasks:
+                done, pending_tasks = await asyncio.wait(
+                    pending_tasks, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    yield task if return_task else await task
+        finally:
+            for task in pending_tasks:
+                task.cancel()
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+    async with aclosing(generator()) as gen:
+        yield gen
+
+
+async def join_generators(*generators: t.AsyncGenerator[T, None]) -> t.AsyncGenerator[T, None]:
     """
     Join multiple asynchronous generators into a single asynchronous generator.
 
@@ -211,8 +390,13 @@ async def join_generators(
 
     Args:
         *generators: The asynchronous generators to join.
-    """
 
+    Yields:
+        The items yielded by the joined generators.
+
+    Raises:
+        Exception: If any of the generators raises an exception.
+    """
     FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
     queue = asyncio.Queue[T | object | Exception](maxsize=1)
 
@@ -256,7 +440,15 @@ async def join_generators(
 # List utilities
 
 
-def flatten_list(nested_list: t.Iterable[t.Iterable[t.Any] | t.Any]) -> list[t.Any]:
+@t.overload
+def flatten_list(nested_list: t.Sequence[t.Sequence[t.Sequence[T] | T]]) -> list[T]: ...
+
+
+@t.overload
+def flatten_list(nested_list: t.Sequence[t.Sequence[T] | T]) -> list[T]: ...
+
+
+def flatten_list(nested_list: t.Sequence[t.Any]) -> list[t.Any]:
     """
     Recursively flatten a nested list into a single list.
     """
@@ -273,6 +465,9 @@ def flatten_list(nested_list: t.Iterable[t.Iterable[t.Any] | t.Any]) -> list[t.A
 
 
 def log_internal_error() -> None:
+    """
+    Log an internal error with a detailed traceback.
+    """
     try:
         current_test = os.environ.get("PYTEST_CURRENT_TEST", "")
         reraise = bool(current_test and "test_internal_exception" not in current_test)
@@ -290,7 +485,9 @@ def log_internal_error() -> None:
 
 
 def _internal_error_exc_info() -> SysExcInfo:
-    """Returns an exc_info tuple with a nicely tweaked traceback."""
+    """
+    Returns an exc_info tuple with a nicely tweaked traceback.
+    """
     original_exc_info: SysExcInfo = sys.exc_info()
     exc_type, exc_val, original_tb = original_exc_info
     try:
@@ -367,6 +564,9 @@ def _internal_error_exc_info() -> SysExcInfo:
 
 @contextmanager
 def handle_internal_errors() -> t.Iterator[None]:
+    """
+    Context manager to handle internal errors.
+    """
     try:
         yield
     except Exception:  # noqa: BLE001
@@ -377,7 +577,8 @@ _HANDLE_INTERNAL_ERRORS_CODE = inspect.unwrap(handle_internal_errors).__code__
 
 
 def is_docker_service_name(hostname: str) -> bool:
-    """Check if this looks like a Docker service name
+    """
+    Check if this looks like a Docker service name
 
     Args:
         hostname: The hostname to check.
@@ -389,7 +590,8 @@ def is_docker_service_name(hostname: str) -> bool:
 
 
 def resolve_endpoint(endpoint: str | None) -> str | None:
-    """Automatically resolve endpoints based on environment
+    """
+    Automatically resolve endpoints based on environment
 
     Args:
         endpoint: The endpoint URL to resolve.

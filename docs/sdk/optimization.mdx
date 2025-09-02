@@ -1,0 +1,281 @@
+---
+title: dreadnode.optimization
+---
+
+{/*
+::: dreadnode.optimization.study
+::: dreadnode.optimization.trial
+::: dreadnode.optimization.events
+::: dreadnode.optimization.search
+*/}
+
+Study
+-----
+
+### run
+
+```python
+run() -> StudyEnd[CandidateT]
+```
+
+Execute the optimization study to completion and return final results.
+
+This is a convenience method that runs the full optimization process and
+returns only the final StudyEnd event containing the complete results.
+Use this when you want the final results without processing intermediate events.
+
+For real-time monitoring of the optimization process, use the stream() method instead.
+
+**Returns:**
+
+* `StudyEnd[CandidateT]`
+  –StudyEnd event containing the final optimization results including:
+* `StudyEnd[CandidateT]`
+  –+ best\_trial: The best trial found during optimization (or None)
+* `StudyEnd[CandidateT]`
+  –+ steps: Total number of optimization steps completed
+* `StudyEnd[CandidateT]`
+  –+ stop\_reason: Why the optimization terminated
+
+**Raises:**
+
+* `RuntimeError`
+  –If the evaluation fails to complete properly.
+
+<Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
+```python
+async def run(self) -> StudyEnd[CandidateT]:
+    """
+    Execute the optimization study to completion and return final results.
+
+    This is a convenience method that runs the full optimization process and
+    returns only the final StudyEnd event containing the complete results.
+    Use this when you want the final results without processing intermediate events.
+
+    For real-time monitoring of the optimization process, use the stream() method instead.
+
+    Returns:
+        StudyEnd event containing the final optimization results including:
+        - best_trial: The best trial found during optimization (or None)
+        - steps: Total number of optimization steps completed
+        - stop_reason: Why the optimization terminated
+
+    Raises:
+        RuntimeError: If the evaluation fails to complete properly.
+    """
+    async with self.stream() as stream:
+        async for event in stream:
+            if isinstance(event, StudyEnd):
+                return event
+        raise RuntimeError("Evaluation failed to complete")
+```
+
+
+</Accordion>
+
+### stream
+
+```python
+stream() -> t.AsyncIterator[
+    t.AsyncGenerator[StudyEvent[CandidateT], None]
+]
+```
+
+Create an async context manager for the optimization event stream.
+
+This provides a safe way to access the optimization event stream with proper
+resource cleanup. The context manager ensures the async generator is properly
+closed even if an exception occurs during iteration.
+
+Usage
+
+async with study.stream() as event\_stream:
+async for event in event\_stream:
+# Process optimization events
+pass
+
+**Yields:**
+
+* `AsyncIterator[AsyncGenerator[StudyEvent[CandidateT], None]]`
+  –An async generator that produces StudyEvent objects throughout the optimization.
+
+<Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
+```python
+@contextlib.asynccontextmanager
+async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:
+    """
+    Create an async context manager for the optimization event stream.
+
+    This provides a safe way to access the optimization event stream with proper
+    resource cleanup. The context manager ensures the async generator is properly
+    closed even if an exception occurs during iteration.
+
+    Usage:
+        async with study.stream() as event_stream:
+            async for event in event_stream:
+                # Process optimization events
+                pass
+
+    Yields:
+        An async generator that produces StudyEvent objects throughout the optimization.
+    """
+    async with contextlib.aclosing(self._stream()) as gen:
+        yield gen
+```
+
+
+</Accordion>
+Trial
+-----
+
+Represents a single, evaluated point in the search space.
+
+### candidate
+
+```python
+candidate: CandidateT
+```
+
+The candidate assessed.
+
+### error
+
+```python
+error: str | None = None
+```
+
+Any error which occurred while processing this trial.
+
+### eval\_result
+
+```python
+eval_result: EvalResult | None = None
+```
+
+Complete evaluation result for this candidate.
+
+### id
+
+```python
+id: UUID = Field(default_factory=uuid4)
+```
+
+Unique identifier.
+
+### parent\_id
+
+```python
+parent_id: UUID | None = None
+```
+
+The id of the parent trial for search purposes.
+
+### pruning\_reason
+
+```python
+pruning_reason: str | None = None
+```
+
+Reason for pruning this trial.
+
+### score
+
+```python
+score: float = -float('inf')
+```
+
+Fitness score of this candidate.
+
+### status
+
+```python
+status: TrialStatus = 'pending'
+```
+
+Current status of the trial.
+
+### step
+
+```python
+step: int = 0
+```
+
+The study step which produced this trial.
+
+TrialCollector
+--------------
+
+Gather a list of relevant trials based on the current trials.
+
+TrialFilter
+-----------
+
+Filter down trials based on criteria and/or sorting.
+
+Distribution
+------------
+
+```python
+Distribution()
+```
+
+Base class for all search space distributions.
+
+Search
+------
+
+Abstract base class for all optimization search strategies.
+
+### observe
+
+```python
+observe(trials: Trials[CandidateT]) -> None
+```
+
+Informs the strategy of the results of recent trials.
+
+<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
+```python
+@abstractmethod
+def observe(self, trials: Trials[CandidateT]) -> None:
+    """Informs the strategy of the results of recent trials."""
+```
+
+
+</Accordion>
+
+### reset
+
+```python
+reset() -> None
+```
+
+Resets the search strategy to its initial state.
+
+<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
+```python
+@abstractmethod
+def reset(self) -> None:
+    """Resets the search strategy to its initial state."""
+```
+
+
+</Accordion>
+
+### suggest
+
+```python
+suggest() -> Trials[CandidateT]
+```
+
+Suggests the next batch of candidates.
+
+<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
+```python
+@abstractmethod
+async def suggest(self) -> Trials[CandidateT]:
+    """Suggests the next batch of candidates."""
+```
+
+
+</Accordion>
