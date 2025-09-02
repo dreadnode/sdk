@@ -515,7 +515,6 @@ class Dreadnode:
         /,
         *,
         scorers: ScorersLike[t.Any] | None = None,
-        assert_scores: list[str] | t.Literal[True] | None = None,
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,

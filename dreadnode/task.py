@@ -254,7 +254,6 @@ class Task(Component[P, R], t.Generic[P, R]):
             name=self.name,
             label=self.label,
             scorers=self.scorers.copy(),
-            # assert_scores=self.assert_scores.copy(),
             log_inputs=self.log_inputs,
             log_output=self.log_output,
             log_execution_metrics=self.log_execution_metrics,
@@ -322,14 +321,10 @@ class Task(Component[P, R], t.Generic[P, R]):
 
         new_scorers = Scorer.fit_like(scorers or [])
         new_tags = list(tags or [])
-        # new_assert_scores = (
-        #     [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
-        # )
 
         if append:
             task.scorers.extend(new_scorers)
             task.tags.extend(new_tags)
-            # task.assert_scores.extend(new_assert_scores)
             task.attributes.update(attributes or {})
         else:
             task.scorers = new_scorers
