@@ -562,7 +562,6 @@ class Dreadnode:
                 return func.with_(
                     name=name,
                     scorers=scorers,  # type: ignore[arg-type]
-                    assert_scores=assert_scores,
                     label=label,
                     log_inputs=log_inputs,
                     log_output=log_output,
@@ -578,7 +577,6 @@ class Dreadnode:
                 name=name,
                 label=label,
                 scorers=scorers,
-                assert_scores=assert_scores,
                 log_inputs=log_inputs,
                 log_output=log_output,
                 log_execution_metrics=log_execution_metrics,

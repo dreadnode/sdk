@@ -1,6 +1,6 @@
 import rigging as rg
 from datasets import load_dataset
-
+from dreadnode import Eval
 import dreadnode as dn
 
 
@@ -35,7 +35,7 @@ gsm8k_dataset = (
 
 # Define the evaluation
 
-gsm8k_eval = solve_math_problem.as_eval(
+gsm8k_eval = Eval()
     name="GSM8K",
     dataset=gsm8k_dataset,
     parameters={
