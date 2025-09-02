@@ -8,7 +8,7 @@ from pathlib import Path
 T = t.TypeVar("T")
 
 
-DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py")
+DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py", "tool.py")
 
 
 @dataclass

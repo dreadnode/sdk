@@ -19,6 +19,7 @@ from dreadnode.cli.github import (
     validate_server_for_clone,
 )
 from dreadnode.cli.profile import cli as profile_cli
+from dreadnode.cli.tools import cli as tools_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 from dreadnode.user_config import ServerConfig, UserConfig
 
@@ -28,6 +29,7 @@ cli["--help"].group = "Meta"
 
 cli.command(profile_cli)
 cli.command(agent_cli)
+cli.command(tools_cli)
 
 
 @cli.meta.default
