@@ -23,7 +23,6 @@ from dreadnode.util import (
 if t.TYPE_CHECKING:
     from dreadnode.eval.eval import (
         Eval,
-        In,
         InputDataset,
         InputDatasetProcessor,
     )
@@ -242,12 +241,9 @@ class Task(Component[P, R], t.Generic[P, R]):
             parts.append(f"assert_scores={self.assert_scores}")
         if self.tags:
             parts.append(f"tags={self.tags}")
-        if self.log_inputs is not INHERITED:
-            if isinstance(self.log_inputs, bool):
-                parts.append(f"log_inputs={self.log_inputs}")
-            else:
-                parts.append(f"log_inputs={list(self.log_inputs)}")
-        if self.log_output is not INHERITED:
+        if not isinstance(self.log_inputs, Inherited):
+            parts.append(f"log_inputs={self.log_inputs}")
+        if not isinstance(self.log_output, Inherited):
             parts.append(f"log_output={self.log_output}")
 
         return f"{self.__class__.__name__}({', '.join(parts)})"
@@ -366,7 +362,7 @@ class Task(Component[P, R], t.Generic[P, R]):
 
     def as_eval(
         self,
-        dataset: "InputDataset[In] | list[AnyDict] | Path | str",
+        dataset: "InputDataset[t.Any] | list[AnyDict] | Path | str",
         *,
         name: str | None = None,
         description: str = "",
@@ -379,15 +375,14 @@ class Task(Component[P, R], t.Generic[P, R]):
         preprocessor: "InputDatasetProcessor | None" = None,
         scorers: "ScorersLike[R] | None" = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
-    ) -> "Eval[In, R]":
+    ) -> "Eval[t.Any, R]":
         from dreadnode.eval.eval import Eval
-        from dreadnode.eval.result import In
 
         if isinstance(dataset, str):
             dataset = Path(dataset)
 
-        return Eval[In, R](
-            task=self,
+        return Eval[t.Any, R](
+            task=t.cast("Task[[t.Any], R]", self),
             dataset=dataset,
             name=name,
             description=description,
@@ -430,7 +425,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             else self.log_output
         )
 
-        ctx_inputs_to_log: AnyDict = kwargs.pop("__dn_ctx_inputs__", {})
+        ctx_inputs_to_log = t.cast("AnyDict", kwargs.pop("__dn_ctx_inputs__", {}))
 
         task_span = TaskSpan[R](
             name=self.name,
@@ -597,9 +592,9 @@ class Task(Component[P, R], t.Generic[P, R]):
             if span.exception is None:
                 return span.output
 
-        # If the loop finishes, all attempts failed. Raise the exception
-        # from the final attempt for debugging.
-        last_span.raise_if_failed()
+            # If the loop finishes, all attempts failed. Raise the exception
+            # from the final attempt for debugging.
+            last_span.raise_if_failed()
 
         # Just for type checking - should never be called
         raise RuntimeError("Generation failed to produce a valid result.")

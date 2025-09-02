@@ -30,7 +30,7 @@ class BeamSearch(Search[CandidateT]):
     def __init__(
         self,
         # The type hint is simplified to `list` to avoid the runtime TypeError.
-        transform: Transform[list, CandidateT],
+        transform: Transform[list[t.Any], CandidateT],
         initial_candidate: CandidateT,
         beam_width: int = 3,
         branching_factor: int = 3,

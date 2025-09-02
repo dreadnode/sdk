@@ -229,7 +229,7 @@ Abstract base class for all optimization search strategies.
 ### observe
 
 ```python
-observe(trials: list[Trial[CandidateT]]) -> None
+observe(trials: Trials[CandidateT]) -> None
 ```
 
 Informs the strategy of the results of recent trials.
@@ -237,7 +237,7 @@ Informs the strategy of the results of recent trials.
 <Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
 @abstractmethod
-def observe(self, trials: list[Trial[CandidateT]]) -> None:
+def observe(self, trials: Trials[CandidateT]) -> None:
     """Informs the strategy of the results of recent trials."""
 ```
 
@@ -265,7 +265,7 @@ def reset(self) -> None:
 ### suggest
 
 ```python
-suggest() -> list[CandidateT]
+suggest() -> Trials[CandidateT]
 ```
 
 Suggests the next batch of candidates.
@@ -273,7 +273,7 @@ Suggests the next batch of candidates.
 <Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
 @abstractmethod
-async def suggest(self) -> list[CandidateT]:
+async def suggest(self) -> Trials[CandidateT]:
     """Suggests the next batch of candidates."""
 ```
 

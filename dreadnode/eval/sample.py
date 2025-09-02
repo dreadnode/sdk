@@ -7,10 +7,10 @@ from pydantic.type_adapter import TypeAdapter
 from dreadnode.error import AssertionFailedError
 from dreadnode.metric import Metric
 from dreadnode.tracing.span import TaskSpan
-from dreadnode.types import AnyDict
 
 if t.TYPE_CHECKING:
     from dreadnode.task import Task
+    from dreadnode.types import AnyDict
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
@@ -75,7 +75,7 @@ class Sample(t.Generic[In, Out]):
     @classmethod
     def from_task(
         cls,
-        task: "Task",  # The configured task that was run.
+        task: "Task[..., t.Any]",  # The configured task that was run.
         span: TaskSpan[Out],  # The resulting span from the run.
         input: t.Any,
         *,
@@ -113,6 +113,7 @@ class Sample(t.Generic[In, Out]):
         (like metric pivoting) suitable for DataFrame conversion.
         """
         record: AnyDict = TypeAdapter(type(self)).dump_python(
+            self,
             exclude={"metrics", "assertions", "task", "error"},
             mode="json",
         )

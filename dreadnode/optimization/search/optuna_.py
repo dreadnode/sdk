@@ -1,4 +1,4 @@
-from uuid import UUID
+import typing as t
 
 import optuna
 
@@ -6,11 +6,14 @@ from dreadnode.optimization.search.base import Categorical, Float, Int, Search, 
 from dreadnode.optimization.trial import Trial
 from dreadnode.types import AnyDict
 
+if t.TYPE_CHECKING:
+    from uuid import UUID
+
 
 def _convert_search_space(
     search_space: SearchSpace,
 ) -> dict[str, optuna.distributions.BaseDistribution]:
-    optuna_space = {}
+    optuna_space: dict[str, optuna.distributions.BaseDistribution] = {}
     for name, dist in search_space.items():
         if isinstance(dist, Float):
             optuna_space[name] = optuna.distributions.FloatDistribution(
@@ -37,15 +40,14 @@ class OptunaSearch(Search[AnyDict]):
     ) -> None:
         self.optuna_study = study or optuna.create_study()
         self.optuna_search_space = _convert_search_space(search_space)
-        self._trial_map: dict[UUID, optuna.trial.FrozenTrial] = {}
+        self._trial_map: dict[UUID, optuna.trial.Trial] = {}
 
-    async def suggest(self, step: int) -> list[Trial[AnyDict]]:
+    async def suggest(self) -> list[Trial[AnyDict]]:
         optuna_trial = self.optuna_study.ask(self.optuna_search_space)
         candidate_params = optuna_trial.params
 
         trial = Trial[AnyDict](
             candidate=candidate_params,
-            step=step,
         )
         self._trial_map[trial.id] = optuna_trial
 

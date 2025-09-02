@@ -643,10 +643,10 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     Returns:
         A tuple of (video_bytes, metadata_dict)
     """
-    import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+    import numpy as np  # type: ignore[import,unused-ignore]
 
     try:
-        from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]  # noqa: PLC0415
+        from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]
             VideoClip,
         )
     except ImportError:

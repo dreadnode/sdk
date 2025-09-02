@@ -76,9 +76,7 @@ class Agent(Model):
     Agent abstraction for applying tools, event logic, and message state to LLM generation.
     """
 
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True, use_attribute_docstrings=True
-    )
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
     name: str
     """The name of the agent."""
@@ -87,15 +85,15 @@ class Agent(Model):
     tags: list[str] = Config(default_factory=lambda: ["agent"])
     """A list of tags associated with the agent."""
 
-    model: str | None = Config(None)
+    model: str | None = Config(default=None)
     """Inference model (rigging generator identifier)."""
-    instructions: str | None = Config(None)
+    instructions: str | None = Config(default=None)
     """The agent's core instructions."""
-    tool_mode: ToolMode = Config("auto", repr=False)
+    tool_mode: ToolMode = Config(default="auto", repr=False)
     """The tool calling mode to use."""
-    max_steps: int = Config(10)
+    max_steps: int = Config(default=10)
     """The maximum number of steps (generation + tool calls)."""
-    caching: CacheMode | None = Config(None, repr=False)
+    caching: CacheMode | None = Config(default=None, repr=False)
     """How to handle cache_control entries on inference messages."""
 
     tools: list[AnyTool | Toolset] = Config(default_factory=list)
@@ -124,9 +122,7 @@ class Agent(Model):
                 tools.extend(interior_tools)
             else:
                 tools.append(
-                    Tool.from_callable(
-                        tool if isinstance(tool, Component) else component(tool)
-                    )
+                    Tool.from_callable(tool if isinstance(tool, Component) else component(tool))
                 )
 
         return tools
@@ -151,9 +147,7 @@ class Agent(Model):
             stop_conditions = ", ".join(repr(cond) for cond in self.stop_conditions)
             parts.append(f"stop_conditions=[{stop_conditions}]")
         if self.hooks:
-            hooks = ", ".join(
-                get_callable_name(hook, short=True) for hook in self.hooks
-            )
+            hooks = ", ".join(get_callable_name(hook, short=True) for hook in self.hooks)
             parts.append(f"hooks=[{hooks}]")
 
         return f"{self.__class__.__name__}({', '.join(parts)})"
@@ -176,9 +170,7 @@ class Agent(Model):
             match self.tool_mode:
                 case "xml":
                     transforms.append(
-                        make_tools_to_xml_transform(
-                            self.all_tools, add_tool_stop_token=True
-                        )
+                        make_tools_to_xml_transform(self.all_tools, add_tool_stop_token=True)
                     )
                 case "json-in-xml":
                     transforms.append(tools_to_json_in_xml_transform)
@@ -241,16 +233,12 @@ class Agent(Model):
         messages = inject_system_content(messages, self.get_prompt())
 
         if self.tool_mode == "auto" and self.tools:
-            self.tool_mode = (
-                "api" if await generator.supports_function_calling() else "json-in-xml"
-            )
+            self.tool_mode = "api" if await generator.supports_function_calling() else "json-in-xml"
 
         transforms = self._get_transforms()
         post_transforms: list[PostTransform | None] = []
         for transform_callback in transforms:
-            messages, params, post_transform = await transform_callback(
-                messages, params
-            )
+            messages, params, post_transform = await transform_callback(messages, params)
             post_transforms.append(post_transform)
 
         try:
@@ -306,9 +294,7 @@ class Agent(Model):
             events.append(event)
 
             # If we have no hooks, just return the event
-            applicable_hooks = list(
-                set(hooks.get(type(event), []) + hooks.get(AgentEvent, []))
-            )
+            applicable_hooks = list(set(hooks.get(type(event), []) + hooks.get(AgentEvent, [])))
             if not applicable_hooks:
                 return
 
@@ -344,11 +330,7 @@ class Agent(Model):
 
             # P1 - Termination
             winning_reaction: Reaction | None = next(
-                (
-                    reaction
-                    for reaction in hook_reactions.values()
-                    if isinstance(reaction, Finish)
-                ),
+                (reaction for reaction in hook_reactions.values() if isinstance(reaction, Finish)),
                 None,
             )
 
@@ -374,9 +356,7 @@ class Agent(Model):
 
             # Take the first reaction otherwise
             winning_reaction = winning_reaction or next(
-                reaction
-                for reaction in iter(hook_reactions.values())
-                if reaction is not None
+                reaction for reaction in iter(hook_reactions.values()) if reaction is not None
             )
 
             # If we still don't have a winning reaction, return
@@ -392,11 +372,7 @@ class Agent(Model):
                     )
 
             winning_hook_name = next(
-                (
-                    name
-                    for name, reaction in hook_reactions.items()
-                    if reaction is winning_reaction
-                ),
+                (name for name, reaction in hook_reactions.items() if reaction is winning_reaction),
                 "unknown",
             )
             reacted_event = Reacted(
@@ -563,10 +539,7 @@ class Agent(Model):
                 stopped_by_tool_call: ToolCall | None = None
 
                 async for event in join_generators(
-                    *[
-                        _process_tool_call(tool_call)
-                        for tool_call in messages[-1].tool_calls
-                    ]
+                    *[_process_tool_call(tool_call) for tool_call in messages[-1].tool_calls]
                 ):
                     if isinstance(event, ToolEnd):
                         messages.append(event.message)
@@ -656,9 +629,7 @@ class Agent(Model):
             if isinstance(event.reaction, Retry):
                 log_metric("retries", 1, step=event.step, mode="count")
                 if event.reaction.messages:
-                    log_metric(
-                        "messages", len(event.reaction.messages), step=event.step
-                    )
+                    log_metric("messages", len(event.reaction.messages), step=event.step)
             if isinstance(event.reaction, Continue):
                 log_metric("continues", 1, step=event.step, mode="count")
                 log_metric("messages", len(event.messages), step=event.step)
@@ -693,18 +664,14 @@ class Agent(Model):
             )
 
             try:
-                async with aclosing(
-                    self._stream(thread, messages, hooks, commit=commit)
-                ) as stream:
+                async with aclosing(self._stream(thread, messages, hooks, commit=commit)) as stream:
                     async for event in stream:
                         last_event = event
                         self._log_event_metrics(event)
                         yield event
             finally:
                 if last_event is not None:
-                    log_outputs(
-                        messages=last_event.messages, token_usage=last_event.total_usage
-                    )
+                    log_outputs(messages=last_event.messages, token_usage=last_event.total_usage)
 
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
@@ -746,9 +713,7 @@ class Agent(Model):
         commit: CommitBehavior = "always",
     ) -> t.AsyncIterator[t.AsyncGenerator[AgentEvent, None]]:
         thread = thread or self.thread
-        async with aclosing(
-            self._stream_in_task(thread, user_input, commit=commit)
-        ) as stream:
+        async with aclosing(self._stream_in_task(thread, user_input, commit=commit)) as stream:
             yield stream
 
     async def run(

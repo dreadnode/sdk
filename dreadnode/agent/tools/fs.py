@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import rigging as rg
-from fsspec import AbstractFileSystem
+from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from pydantic import PrivateAttr
 from upath import UPath
 
@@ -74,18 +74,19 @@ class Filesystem(Toolset):
     variant: t.Literal["read", "write"] = Config("read")
 
     _fs: AbstractFileSystem = PrivateAttr()
+    _upath: UPath = PrivateAttr()
 
     def model_post_init(self, _: t.Any) -> None:
-        self.path = (
+        self._upath = (
             self.path
             if isinstance(self.path, UPath)
             else UPath(str(self.path), **(self.fs_options or {}))
         )
-        self.path = self.path.resolve()
-        self._fs = self.path.fs
+        self.path = self._upath.resolve()
+        self._fs = self._upath.fs
 
     def _resolve(self, path: str) -> "UPath":
-        full_path = (self.path / path.lstrip("/")).resolve()
+        full_path = (self._upath / path.lstrip("/")).resolve()
 
         # Check if the resolved path starts with the base path
         if not str(full_path).startswith(str(self.path)):
@@ -112,7 +113,7 @@ class Filesystem(Toolset):
         Get the path relative to the base path.
         """
         # Would prefer relative_to here, but it's very flaky with UPath
-        base_path = str(self.path.resolve())
+        base_path = str(self._upath.resolve())
         full_path = str(path.resolve())
         return full_path[len(base_path) :]
 
@@ -180,7 +181,7 @@ class Filesystem(Toolset):
             raise ValueError(f"'{path}' is not a directory.")
 
         items = list(_path.iterdir())
-        return [FilesystemItem.from_path(item, self.path) for item in items]
+        return [FilesystemItem.from_path(item, self._upath) for item in items]
 
     @tool_method(catch=True)
     def glob(
@@ -191,14 +192,14 @@ class Filesystem(Toolset):
         Returns a list of paths matching a valid glob pattern. The pattern can
         include ** for recursive matching, such as '/path/**/dir/*.py'.
         """
-        matches = list(self.path.glob(pattern))
+        matches = list(self._upath.glob(pattern))
 
         # Check to make sure all matches are within the base path
         for match in matches:
-            if not str(match).startswith(str(self.path)):
+            if not str(match).startswith(str(self._upath)):
                 raise ValueError(f"'{pattern}' is not valid.")
 
-        return [FilesystemItem.from_path(match, self.path) for match in matches]
+        return [FilesystemItem.from_path(match, self._upath) for match in matches]
 
     @tool_method(variants=["read", "write"], catch=True)
     def grep(
@@ -254,14 +255,14 @@ class Filesystem(Toolset):
                         for j in range(context_start, context_end):
                             prefix = ">" if j == i else " "
                             line_text = lines[j].rstrip("\r\n")
-                            context.append(f"{prefix} {j + 1}: {shorten_string(line_text)}")
+                            context.append(f"{prefix} {j + 1}: {shorten_string(line_text, 80)}")
 
                         rel_path = self._relative(file_path)
                         matches.append(
                             GrepMatch(
                                 path=rel_path,
                                 line_number=line_num,
-                                line=shorten_string(line.rstrip("\r\n")),
+                                line=shorten_string(line.rstrip("\r\n"), 80),
                                 context=context,
                             ),
                         )
@@ -279,7 +280,7 @@ class Filesystem(Toolset):
         with _path.open("w") as f:
             f.write(contents)
 
-        return FilesystemItem.from_path(_path, self.path)
+        return FilesystemItem.from_path(_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
     def write_lines(
@@ -323,7 +324,7 @@ class Filesystem(Toolset):
         with _path.open("w") as f:
             f.writelines(lines)
 
-        return FilesystemItem.from_path(_path, self.path)
+        return FilesystemItem.from_path(_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
     def mkdir(
@@ -334,7 +335,7 @@ class Filesystem(Toolset):
         dir_path = self._resolve(path)
         dir_path.mkdir(parents=True, exist_ok=True)
 
-        return FilesystemItem.from_path(dir_path, self.path)
+        return FilesystemItem.from_path(dir_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
     def mv(
@@ -353,7 +354,7 @@ class Filesystem(Toolset):
 
         src_path.rename(dest_path)
 
-        return FilesystemItem.from_path(dest_path, self.path)
+        return FilesystemItem.from_path(dest_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
     def cp(
@@ -376,7 +377,7 @@ class Filesystem(Toolset):
         with src_path.open("rb") as src_file, dest_path.open("wb") as dest_file:
             dest_file.write(src_file.read())
 
-        return FilesystemItem.from_path(dest_path, self.path)
+        return FilesystemItem.from_path(dest_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
     def delete(

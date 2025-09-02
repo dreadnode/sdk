@@ -561,7 +561,7 @@ class Dreadnode:
             if isinstance(func, Task):
                 return func.with_(
                     name=name,
-                    scorers=scorers,
+                    scorers=scorers,  # type: ignore[arg-type]
                     assert_scores=assert_scores,
                     label=label,
                     log_inputs=log_inputs,
@@ -735,7 +735,7 @@ class Dreadnode:
                     self.log_metric(metric_name, metric, origin=object)
                 )
 
-        failed_assertions: dict[str, list[Metric] | None] = {}
+        failed_assertions: dict[str, list[Metric]] = {}
         for name in _assert_scores:
             if (metric_list := metrics.get(name, [])) is None:
                 for _metrics in metrics.values():
@@ -972,7 +972,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool,  # noqa: FBT001
+        value: float | bool,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1063,7 +1063,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,  # noqa: FBT001
+        value: float | bool | Metric,
         *,
         step: int = 0,
         origin: t.Any | None = None,

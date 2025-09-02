@@ -50,9 +50,7 @@ Any reported value regarding the state of a run, task, and optionally object (in
 ### attributes
 
 ```python
-attributes: JsonDict = Field(
-    default_factory=dict, repr=False
-)
+attributes: JsonDict = Field(default_factory=dict)
 ```
 
 A dictionary of attributes to attach to the metric.
@@ -69,7 +67,7 @@ An step value to indicate when this metric was reported.
 
 ```python
 timestamp: datetime = Field(
-    default_factory=lambda: now(utc), repr=False
+    default_factory=lambda: now(utc)
 )
 ```
 

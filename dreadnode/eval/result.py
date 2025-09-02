@@ -23,12 +23,6 @@ class HasSamples(te.Protocol[In, Out]):
 class EvalResultMixin:
     """A mixin providing a common statistical interface for evaluation results."""
 
-    def __post_init__(self) -> None:
-        if not isinstance(self, HasSamples):
-            raise TypeError(
-                "Class using EvaluationStatsMixin must implement the HasSamples protocol."
-            )
-
     @property
     def passed_count(self: "HasSamples") -> int:
         """The number of samples that passed all assertions."""
@@ -57,15 +51,6 @@ class EvalResultMixin:
             return 0.0
         passed_count = sum(1 for s in self.samples if s.passed)
         return passed_count / len(_samples)
-
-    @property
-    def summary(self) -> dict[str, float]:
-        return {
-            "sample_count": len(self.samples),
-            "passed_count": self.passed_count,
-            "failed_count": self.failed_count,
-            "pass_rate": self.pass_rate,
-        }
 
     @property
     def metrics_summary(self: "HasSamples") -> dict[str, dict[str, float]]:
@@ -136,13 +121,13 @@ class EvalResultMixin:
         """
         import pandas as pd
 
-        return pd.DataFrame(self.to_dicts())
+        return pd.DataFrame(self.to_dicts())  # type: ignore[misc]
 
     def to_jsonl(self, path: str | Path) -> None:
         """
         Saves the results to a JSON Lines (JSONL) file.
         """
-        records = self.to_dicts()
+        records = self.to_dicts()  # type: ignore[misc]
         with Path(path).open("w", encoding="utf-8") as f:
             for record in records:
                 f.write(json.dumps(record) + "\n")

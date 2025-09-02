@@ -20,7 +20,8 @@ from dreadnode.eval.events import (
     ScenarioEnd,
     ScenarioStart,
 )
-from dreadnode.eval.result import EvalResult, IterationResult, Sample, ScenarioResult
+from dreadnode.eval.result import EvalResult, IterationResult, ScenarioResult
+from dreadnode.eval.sample import Sample
 from dreadnode.meta import Model
 from dreadnode.meta.context import DatasetField
 from dreadnode.meta.types import Config
@@ -78,13 +79,13 @@ class Eval(Model, t.Generic[In, Out]):
     before terminating the evaluation run. Set to None to disable.
     """
 
-    dataset_input_mapping: list[str] | dict[str, str] | None = Config(None)
+    dataset_input_mapping: list[str] | dict[str, str] | None = Config(default=None)
     """
     A list of dataset keys to pass as input parameters to the task, or an
     explicit mapping from dataset keys to task parameter names.
     If None, will attempt to map keys that match parameter names.
     """
-    parameters: dict[str, list[t.Any]] | None = Config(None)
+    parameters: dict[str, list[t.Any]] | None = Config(default=None)
     """
     A dictionary defining a parameter space to run experiments against.
     For each item in the dataset, a scenario will be run for every combination
@@ -185,12 +186,12 @@ class Eval(Model, t.Generic[In, Out]):
     @asynccontextmanager
     async def _run_iteration(
         self,
-        configured_task: Task,
+        configured_task: Task[[In], Out],
         dataset: list[AnyDict],
-        scenario_params: dict,
+        scenario_params: AnyDict,
         iteration: int,
     ) -> t.AsyncIterator[t.AsyncGenerator[Sample[In, Out], None]]:
-        async def _run_sample_with_context(index: int, row: dict) -> Sample[In, Out]:
+        async def _run_sample_with_context(index: int, row: AnyDict) -> Sample[In, Out]:
             token = current_sample_row.set(row)
             try:
                 if self.dataset_input_mapping:
@@ -209,11 +210,10 @@ class Eval(Model, t.Generic[In, Out]):
                     f"dataset_{k}": v for k, v in row.items() if k not in task_params
                 }
 
-                span = await configured_task.run_always(**task_kwargs)
+                span = await configured_task.run_always(**task_kwargs)  # type: ignore[call-arg]
 
-                task_input = (
-                    task_kwargs if len(task_kwargs) > 1 else next(iter(task_kwargs.values()), None)
-                )
+                first_kwarg = next(iter(task_kwargs.values()), None)
+                task_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg
 
                 return Sample.from_task(
                     configured_task,
@@ -335,18 +335,21 @@ class Eval(Model, t.Generic[In, Out]):
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
-        """
-        Create an async context manager that runs the evaluation and yields events.
-        """
+        """Create an event stream to monitor the evaluation process."""
         async with contextlib.aclosing(self._stream()) as stream:
             yield stream
 
     async def run(self) -> EvalResult[In, Out]:
-        """
-        Evaluate the task with the given arguments and return a list of Samples.
-        """
+        """Run the configured task evaluation."""
         async with self.stream() as stream:
             async for sample_or_eval in stream:
                 if isinstance(sample_or_eval, EvalResult):
                     return sample_or_eval
             raise RuntimeError("Evaluation failed to complete")
+
+    async def console(self) -> EvalResult:
+        """Run the evaluation with a live display in the console."""
+        from dreadnode.eval.console import EvalConsoleAdapter
+
+        adapter = EvalConsoleAdapter(self)
+        return await adapter.run()

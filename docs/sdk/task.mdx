@@ -430,9 +430,9 @@ async def retry(
         if span.exception is None:
             return span.output
 
-    # If the loop finishes, all attempts failed. Raise the exception
-    # from the final attempt for debugging.
-    last_span.raise_if_failed()
+        # If the loop finishes, all attempts failed. Raise the exception
+        # from the final attempt for debugging.
+        last_span.raise_if_failed()
 
     # Just for type checking - should never be called
     raise RuntimeError("Generation failed to produce a valid result.")
@@ -540,7 +540,7 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         else self.log_output
     )
 
-    ctx_inputs_to_log: AnyDict = kwargs.pop("__dn_ctx_inputs__", {})
+    ctx_inputs_to_log = t.cast("AnyDict", kwargs.pop("__dn_ctx_inputs__", {}))
 
     task_span = TaskSpan[R](
         name=self.name,

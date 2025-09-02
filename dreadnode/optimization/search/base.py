@@ -2,7 +2,7 @@ import typing as t
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from dreadnode.optimization.trial import CandidateT, Trial
+from dreadnode.optimization.trial import CandidateT, Trials
 from dreadnode.types import Primitive
 
 
@@ -14,11 +14,11 @@ class Search(ABC, t.Generic[CandidateT]):
         """Resets the search strategy to its initial state."""
 
     @abstractmethod
-    async def suggest(self) -> list[CandidateT]:
+    async def suggest(self) -> Trials[CandidateT]:
         """Suggests the next batch of candidates."""
 
     @abstractmethod
-    def observe(self, trials: list[Trial[CandidateT]]) -> None:
+    def observe(self, trials: Trials[CandidateT]) -> None:
         """Informs the strategy of the results of recent trials."""
 
 

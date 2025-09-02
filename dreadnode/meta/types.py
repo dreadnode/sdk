@@ -23,6 +23,10 @@ R = t.TypeVar("R")
 T = t.TypeVar("T")
 
 
+class ConfigWarning(UserWarning):
+    """Warning related to object configurations."""
+
+
 @dataclass(frozen=True)
 class ConfigInfo:
     """Internal container for static configuration metadata."""
@@ -79,7 +83,7 @@ class ConfigInfo:
                 )
 
             # Otherwise just annotation (arg: Annotated[int, Config()])
-            else:
+            elif config_from_annotation:
                 configs[name] = config_from_annotation
 
         return configs
@@ -291,7 +295,7 @@ class ConfigurableMeta(ModelMetaclass):
                 k: (v if v is not UNSET else PydanticUndefined)
                 for k, v in config.field_kwargs.items()
             }
-            namespace[attr_name] = PydanticField(**field_kwargs)
+            namespace[attr_name] = PydanticField(**field_kwargs)  # type: ignore[arg-type]
 
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
 
@@ -345,13 +349,13 @@ class Component(t.Generic[P, R]):
         *,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
-        wraps: t.Callable | None = None,
+        wraps: t.Callable[..., t.Any] | None = None,
     ) -> None:
         self.func = func
         "The underlying function to call"
         self.signature = getattr(wraps or func, "__signature__", inspect.signature(func))
         "The underlying function signature"
-        self.__dn_param_config__ = (
+        self.__dn_param_config__: dict[str, ConfigInfo] = (
             config or wraps.__dn_param_config__
             if isinstance(wraps, Component)
             else ConfigInfo.from_defaults_and_annotations(
@@ -464,7 +468,8 @@ class Component(t.Generic[P, R]):
         for key, value in overrides.items():
             if key not in known_keys:
                 warn_at_user_stacklevel(
-                    f"Unknown parameter '{key}' passed to {self.__name__}.configure()"
+                    f"Unknown parameter '{key}' passed to {self.__name__}.configure()",
+                    ConfigWarning,
                 )
                 continue
 

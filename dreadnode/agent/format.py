@@ -97,7 +97,7 @@ def format_message(message: Message, *, truncate: bool = False, markdown: bool =
     for part in message.content_parts:
         if isinstance(part, ContentText):
             text = (
-                shorten_string(part.text, max_chars=500, max_lines=15, separator="\n[...]\n")
+                shorten_string(part.text, max_length=500, max_lines=15, separator="\n[...]\n")
                 if truncate
                 else part.text
             )
@@ -113,7 +113,7 @@ def format_message(message: Message, *, truncate: bool = False, markdown: bool =
         for tool_call in message.tool_calls:
             function_name = tool_call.function.name
             function_args = (
-                shorten_string(tool_call.function.arguments, max_chars=100)
+                shorten_string(tool_call.function.arguments, 100)
                 if truncate
                 else tool_call.function.arguments
             )

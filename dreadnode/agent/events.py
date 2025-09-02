@@ -17,7 +17,7 @@ from dreadnode.agent.reactions import (
     RetryWithFeedback,
 )
 from dreadnode.agent.types import Message, ToolCall, Usage
-from dreadnode.util import shorten_string
+from dreadnode.util import format_dict, shorten_string
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
@@ -57,9 +57,7 @@ class AgentEvent:
             return last_event.usage
         return None
 
-    def get_latest_event_by_type(
-        self, event_type: type[AgentEventT]
-    ) -> AgentEventT | None:
+    def get_latest_event_by_type(self, event_type: type[AgentEventT]) -> AgentEventT | None:
         """
         Returns the latest event of the specified type from the thread's events.
 
@@ -88,9 +86,7 @@ class AgentEvent:
             border_style="dim",
         )
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         yield self.format_as_panel()
 
 
@@ -118,9 +114,7 @@ class AgentEventInStep(AgentEvent):
 class StepStart(AgentEvent):
     step: int
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         yield Rule(f"Step {self.step}", style="dim cyan", characters="·")
 
 
@@ -187,17 +181,7 @@ class ToolStart(AgentEventInStep):
             if not args:
                 content = Text("No arguments.", style="dim")
             elif truncate:
-                MAX_ARGS_TO_SHOW = 3
-                arg_previews = []
-                for i, (k, v) in enumerate(args.items()):
-                    if i >= MAX_ARGS_TO_SHOW:
-                        arg_previews.append(
-                            f"... (+{len(args) - MAX_ARGS_TO_SHOW} more)"
-                        )
-                        break
-                    value_preview = shorten_string(repr(v), 40)
-                    arg_previews.append(f"{k}={value_preview}")
-                content = Text(f"({', '.join(arg_previews)})", style="default")
+                content = Text(format_dict(args), style="default")
             else:
                 content = Table.grid(padding=(0, 1))
                 content.add_column("key", style="dim", no_wrap=True)
@@ -228,9 +212,7 @@ class ToolEnd(AgentEventInStep):
     def __repr__(self) -> str:
         message_content = shorten_string(str(self.message.content), 50)
         message = f"Message(role={self.message.role}, content='{message_content}')"
-        return (
-            f"ToolEnd(tool_call={self.tool_call}, message={message}, stop={self.stop})"
-        )
+        return f"ToolEnd(tool_call={self.tool_call}, message={message}, stop={self.stop})"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:
         panel = format_message(self.message, truncate=truncate)
@@ -253,7 +235,7 @@ class Reacted(AgentEventInStep):
     hook_name: str
     reaction: "Reaction"
 
-    def format_as_panel(self, *, truncate: bool = False) -> Panel:
+    def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002
         reaction_name = self.reaction.__class__.__name__
         details = ""
 
@@ -264,7 +246,9 @@ class Reacted(AgentEventInStep):
         elif isinstance(self.reaction, Fail) and self.reaction.error:
             details = f" ▸ Error: [italic]{self.reaction.error}[/italic]"
         elif isinstance(self.reaction, Continue):
-            details = f" ▸ Modifying messages ({len(self.messages)} -> {len(self.reaction.messages)})"
+            details = (
+                f" ▸ Modifying messages ({len(self.messages)} -> {len(self.reaction.messages)})"
+            )
 
         return Panel(
             Text.from_markup(details, style="default"),
@@ -279,13 +263,9 @@ class AgentEnd(AgentEvent):
     stop_reason: AgentStopReason
     result: "AgentResult"
 
-    def format_as_panel(self, *, truncate: bool = False) -> Panel:
+    def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002
         res = self.result
-        status = (
-            "[bold red]Failed[/bold red]"
-            if res.failed
-            else "[bold green]Success[/bold green]"
-        )
+        status = "[bold red]Failed[/bold red]" if res.failed else "[bold green]Success[/bold green]"
 
         table = Table.grid(padding=(0, 2))
         table.add_column(style="dim", justify="right")

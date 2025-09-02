@@ -11,7 +11,7 @@ from dreadnode.meta.context import Context
 from dreadnode.meta.types import ConfigInfo
 from dreadnode.metric import Metric
 from dreadnode.types import JsonDict
-from dreadnode.util import clean_str, get_callable_name, shorten_string, warn_at_user_stacklevel
+from dreadnode.util import clean_str, get_callable_name, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
 OuterT = t.TypeVar("OuterT")
@@ -62,7 +62,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         log_all: bool = False,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
-        wraps: t.Callable | None = None,
+        wraps: t.Callable[..., t.Any] | None = None,
     ):
         if isinstance(func, Scorer):
             func = func.func
@@ -262,7 +262,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
                 raise
 
             warn_at_user_stacklevel(
-                f"Error executing scorer {self.name!r} for object {shorten_string(repr(object), 20)}: {e}",
+                f"Error executing scorer {self.name!r} for object {object.__class__.__name__}: {e}",
                 ScorerWarning,
             )
             result = Metric(value=0.0, step=self.step, attributes={"error": str(e)})
@@ -327,7 +327,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         return all_metrics[0]
 
     @te.override
-    async def __call__(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:  # type: ignore[override]
+    async def __call__(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:
         return await self.score(object, *args, **kwargs)
 
     def __gt__(self, value: float) -> "Scorer[T]":

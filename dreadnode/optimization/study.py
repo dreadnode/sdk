@@ -161,11 +161,8 @@ class Study(BaseModel, t.Generic[CandidateT]):
             - NewBestTrialFound: Reports when a new best score is achieved
             - StudyEnd: Signals completion with final results and stop reason
         """
-        from dreadnode.optimization.events import rebuild_event_models
-
         self._reset()
 
-        rebuild_event_models()
         yield StudyStart(
             study=self, initial_candidate=getattr(self.strategy, "initial_candidate", None)
         )
@@ -173,8 +170,9 @@ class Study(BaseModel, t.Generic[CandidateT]):
         for step in range(1, self.max_steps + 1):
             yield StepStart(study=self, step=step)
 
-            candidates = await self.strategy.suggest()
-            if not candidates:
+            trials = await self.strategy.suggest()
+            candidates = [trial.candidate for trial in trials]
+            if not trials:
                 self.stop_reason = "no_more_candidates"
                 break
 

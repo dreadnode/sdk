@@ -2,7 +2,7 @@ import typing as t
 
 import dreadnode as dn
 from dreadnode.optimization import Study, Trial
-from dreadnode.optimization.search import BeamSearch
+from dreadnode.optimization.search.beam import BeamSearch
 from dreadnode.transforms import Transform
 
 

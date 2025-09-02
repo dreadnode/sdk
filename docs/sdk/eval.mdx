@@ -45,7 +45,7 @@ The dataset to use for the evaluation. Can be a list of inputs or a file path to
 
 ```python
 dataset_input_mapping: list[str] | dict[str, str] | None = (
-    Config(None)
+    Config(default=None)
 )
 ```
 
@@ -89,7 +89,9 @@ The name of the evaluation.
 ### parameters
 
 ```python
-parameters: dict[str, list[Any]] | None = Config(None)
+parameters: dict[str, list[Any]] | None = Config(
+    default=None
+)
 ```
 
 A dictionary defining a parameter space to run experiments against.
@@ -131,20 +133,39 @@ task: Annotated[
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.
 
+### console
+
+```python
+console() -> EvalResult
+```
+
+Run the evaluation with a live display in the console.
+
+<Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
+```python
+async def console(self) -> EvalResult:
+    """Run the evaluation with a live display in the console."""
+    from dreadnode.eval.console import EvalConsoleAdapter
+
+    adapter = EvalConsoleAdapter(self)
+    return await adapter.run()
+```
+
+
+</Accordion>
+
 ### run
 
 ```python
 run() -> EvalResult[In, Out]
 ```
 
-Evaluate the task with the given arguments and return a list of Samples.
+Run the configured task evaluation.
 
 <Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
 ```python
 async def run(self) -> EvalResult[In, Out]:
-    """
-    Evaluate the task with the given arguments and return a list of Samples.
-    """
+    """Run the configured task evaluation."""
     async with self.stream() as stream:
         async for sample_or_eval in stream:
             if isinstance(sample_or_eval, EvalResult):
@@ -163,15 +184,13 @@ stream() -> t.AsyncIterator[
 ]
 ```
 
-Create an async context manager that runs the evaluation and yields events.
+Create an event stream to monitor the evaluation process.
 
 <Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
 ```python
 @asynccontextmanager
 async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
-    """
-    Create an async context manager that runs the evaluation and yields events.
-    """
+    """Create an event stream to monitor the evaluation process."""
     async with contextlib.aclosing(self._stream()) as stream:
         yield stream
 ```

@@ -68,7 +68,7 @@ Scorer(
     log_all: bool = False,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
-    wraps: Callable | None = None,
+    wraps: Callable[..., Any] | None = None,
 )
 ```
 
@@ -92,7 +92,7 @@ def __init__(
     log_all: bool = False,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
-    wraps: t.Callable | None = None,
+    wraps: t.Callable[..., t.Any] | None = None,
 ):
     if isinstance(func, Scorer):
         func = func.func
@@ -386,7 +386,7 @@ async def normalize_and_score(self, object: T, *args: t.Any, **kwargs: t.Any) ->
             raise
 
         warn_at_user_stacklevel(
-            f"Error executing scorer {self.name!r} for object {shorten_string(repr(object), 20)}: {e}",
+            f"Error executing scorer {self.name!r} for object {object.__class__.__name__}: {e}",
             ScorerWarning,
         )
         result = Metric(value=0.0, step=self.step, attributes={"error": str(e)})
@@ -1941,7 +1941,7 @@ def zero_shot_classification(
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]  # noqa: PLC0415
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
             pipeline,
         )
     except ImportError:
@@ -2661,7 +2661,7 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai  # noqa: PLC0415
+    import openai
 
     async def evaluate(
         data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)
@@ -3373,7 +3373,7 @@ def detect_pii_with_presidio(
     )
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401, PLC0415
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
     except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
@@ -3589,7 +3589,7 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat  # noqa: PLC0415
+        from rigging.chat import Chat
 
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):
@@ -4215,7 +4215,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    import litellm  # noqa: PLC0415
+    import litellm
 
     async def evaluate(
         data: t.Any,

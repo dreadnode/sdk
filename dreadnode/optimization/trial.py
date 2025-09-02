@@ -37,7 +37,7 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     """The id of the parent trial for search purposes."""
 
 
-Trials = list[Trial]
+Trials = list[Trial[CandidateT]]
 
 
 class TrialCollector(t.Protocol):

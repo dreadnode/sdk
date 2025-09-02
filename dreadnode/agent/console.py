@@ -20,7 +20,7 @@ class AgentConsoleRenderer:
         self._status_table: Table | None = None
         self._active_tool_ids: set[str] = set()
 
-    def render(self, event: AgentEvent):
+    def render(self, event: AgentEvent) -> None:
         """
         Renders a single event to the console.
 
@@ -36,7 +36,7 @@ class AgentConsoleRenderer:
             # For all other events, print their rich representation directly.
             self.console.print(event)
 
-    def _handle_tool_start(self, event: ToolStart):
+    def _handle_tool_start(self, event: ToolStart) -> None:
         """Adds a tool to the live status board."""
         self._active_tool_ids.add(event.tool_call.id)
 

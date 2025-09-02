@@ -61,9 +61,9 @@ T = t.TypeVar("T")
 
 def shorten_string(
     text: str,
+    max_length: int | None = None,
     *,
     max_lines: int | None = None,
-    max_chars: int | None = None,
     separator: str = "...",
 ) -> str:
     """
@@ -95,8 +95,8 @@ def shorten_string(
                 text = "\n".join([*start_lines, separator, *end_lines])
 
     # 2 - character count
-    if max_chars is not None and len(text) > max_chars:
-        remaining_chars = max_chars - len(separator)
+    if max_length is not None and len(text) > max_length:
+        remaining_chars = max_length - len(separator)
         if remaining_chars <= 0:
             text = separator
         else:
@@ -104,15 +104,6 @@ def shorten_string(
             text = text[:half_chars] + separator + text[-half_chars:]
 
     return text
-
-
-def shorten_string(text: str, max_length: int = 80, *, sep: str = "...") -> str:
-    """
-    Return a string at most max_length characters long by removing the middle.
-    """
-    if max_length is None or len(text) <= max_length:
-        return text
-    return shorten_string(text, max_chars=max_length, separator=sep)
 
 
 def truncate_string(text: str, max_length: int = 80, *, suf: str = "...") -> str:
@@ -144,7 +135,7 @@ def format_dict(data: dict[str, t.Any], max_length: int = 80) -> str:
     Formats a dictionary to a string, prioritizing showing key-value pairs
     and truncating gracefully if the string exceeds a max length.
     """
-    parts = []
+    parts: list[str] = []
     items = list(data.items())
     max_length = max_length - 2  # Account for the surrounding braces
 

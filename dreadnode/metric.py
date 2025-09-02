@@ -58,10 +58,13 @@ class Metric:
     "The value of the metric, e.g. 0.5, 1.0, 2.0, etc."
     step: int = 0
     "An step value to indicate when this metric was reported."
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), repr=False)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     "The timestamp when the metric was reported."
-    attributes: JsonDict = Field(default_factory=dict, repr=False)
+    attributes: JsonDict = Field(default_factory=dict)
     "A dictionary of attributes to attach to the metric."
+
+    def __repr__(self) -> str:
+        return f"Metric(value={self.value}, step={self.step})"
 
     @classmethod
     def from_many(

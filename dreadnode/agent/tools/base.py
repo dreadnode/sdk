@@ -106,7 +106,7 @@ def tool_method(
 def tool_method(
     func: t.Callable[P, R],
     /,
-) -> t.Callable[[t.Callable[P, R]], RiggingToolMethod[P, R]]: ...
+) -> RiggingToolMethod[P, R]: ...
 
 
 def tool_method(
@@ -118,7 +118,7 @@ def tool_method(
     description: str | None = None,
     catch: bool | t.Iterable[type[Exception]] | None = None,
     truncate: int | None = None,
-) -> t.Callable[[t.Callable[P, R]], RiggingToolMethod[P, R]]:
+) -> t.Callable[[t.Callable[P, R]], RiggingToolMethod[P, R]] | RiggingToolMethod[P, R]:
     """
     Marks a method on a Toolset as a tool, adding it to specified variants.
 

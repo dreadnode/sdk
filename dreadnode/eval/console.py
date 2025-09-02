@@ -3,10 +3,13 @@ from collections import deque
 from datetime import datetime
 
 from rich.console import Console
+from rich.layout import Layout
 from rich.live import Live
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
+    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TaskID,
@@ -42,12 +45,12 @@ class EvalConsoleAdapter(t.Generic[In, Out]):
 
     def __init__(
         self,
-        eval_instance: EvalT,
+        eval: EvalT,
         *,
         console: Console | None = None,
         max_events_to_show: int = 10,
     ):
-        self.eval = eval_instance
+        self.eval = eval
         self.console = console or Console()
         self.final_result: EvalResult | None = None
         self.max_events_to_show = max_events_to_show
@@ -55,11 +58,13 @@ class EvalConsoleAdapter(t.Generic[In, Out]):
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
+            MofNCompleteColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             "•",
             TimeRemainingColumn(),
+            expand=True,
         )
-        self._event_log = deque(maxlen=max_events_to_show)
+        self._event_log: deque[str] = deque(maxlen=max_events_to_show)
         self._total_task_id: TaskID | None = None
         self._scenario_task_id: TaskID | None = None
         self._iteration_task_id: TaskID | None = None
@@ -74,49 +79,68 @@ class EvalConsoleAdapter(t.Generic[In, Out]):
             if self._total_samples_processed > 0
             else "N/A"
         )
-        table = Table.grid(expand=True, padding=(0, 2))
-        table.add_column("Statistic", style="dim", justify="right")
+        table = Table.grid(expand=True)
+        table.add_column("Statistic", style="dim")
         table.add_column("Value")
         table.add_row("Success Rate:", success_rate)
         table.add_row("Total Samples:", str(self._total_samples_processed))
         table.add_row("  Passed:", f"[green]{self._passed_count}[/green]")
-        table.add_row("  Failed:", f"[red]{self._failure_count}[/red]")
-        table.add_row("  Errors:", f"[yellow]{self._assert_count}[/yellow]")
+        table.add_row("  Failed:", f"[yellow]{self._failure_count}[/yellow]")
+        table.add_row("  Errors:", f"[red]{self._assert_count}[/red]")
         return table
 
     def _build_dashboard(self) -> Panel:
-        table = Table.grid(expand=True)
-        table.add_row(self._progress)
-        table.add_row(self._build_summary_table())
-        (
-            table.add_row(
-                Panel(
-                    "\n".join(self._event_log),
-                    title="[dim]Events[/dim]",
-                    border_style="dim",
-                    height=self.max_events_to_show + 2,
-                )
-            ),
+        events_panel = Panel(
+            "\n".join(self._event_log),
+            title="[dim]Events[/dim]",
+            border_style="dim",
         )
+        stats_panel = Panel(
+            self._build_summary_table(),
+            title="[dim]Summary[/dim]",
+            border_style="dim",
+        )
+
+        layout = Layout()
+
+        # Split into top (progress) and bottom sections
+        layout.split_column(
+            Layout(Padding(self._progress, (1, 0, 0, 0)), name="progress", size=4),
+            Layout(name="bottom"),
+        )
+
+        # Split the bottom section: 2/3 events, 1/3 stats
+        layout["bottom"].split_row(
+            Layout(events_panel, ratio=2),
+            Layout(stats_panel, ratio=1),
+        )
+
+        eval_name = (
+            self.eval.name or self.eval.task
+            if isinstance(self.eval.task, str)
+            else self.eval.task.name
+        )
+
         return Panel(
-            table,
+            layout,
             title=Text(
-                f"Evaluating '{self.eval.name or self.eval.task.name}'",
+                f"Evaluating '{eval_name}'",
                 justify="center",
                 style="bold",
             ),
             border_style="cyan",
+            height=self.max_events_to_show + 10,
         )
 
-    def _log_event(self, message: str):
+    def _log_event(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005
         self._event_log.append(f"[dim]{timestamp}[/dim] {message}")
 
-    def _handle_event(self, event: EvalEvent):
+    def _handle_event(self, event: EvalEvent) -> None:  # noqa: PLR0912
         """Mutates the adapter's state based on an incoming event."""
         if isinstance(event, EvalStart):
             self._log_event("Evaluation started.")
-            total_samples = event.total_iterations * len(self.eval.dataset)
+            total_samples = event.total_iterations * len(self.eval.dataset)  # type: ignore[arg-type]
             self._total_task_id = self._progress.add_task(
                 "[bold]Total Progress", total=total_samples
             )
@@ -126,7 +150,7 @@ class EvalConsoleAdapter(t.Generic[In, Out]):
         elif isinstance(event, ScenarioStart):
             params_str = format_dict(event.scenario_params)
             self._log_event(f"Running scenario: [bold cyan]{params_str}[/bold cyan]")
-            total_samples_in_scenario = event.iteration_count * len(self.eval.dataset)
+            total_samples_in_scenario = event.iteration_count * len(self.eval.dataset)  # type: ignore[arg-type]
             self._iteration_task_id = self._progress.add_task(
                 f"  Scenario ({params_str})", total=total_samples_in_scenario
             )
@@ -141,33 +165,32 @@ class EvalConsoleAdapter(t.Generic[In, Out]):
                     self._assert_count += 1
             else:
                 self._passed_count += 1
-            self._progress.update(self._total_task_id, advance=1)
+            if self._total_task_id is not None:
+                self._progress.update(self._total_task_id, advance=1)
             if self._iteration_task_id is not None:
                 self._progress.update(self._iteration_task_id, advance=1)
         elif isinstance(event, ScenarioEnd):
-            self._log_event("Scenario complete.")
-            self._progress.remove_task(self._iteration_task_id)
-            self._progress.update(self._scenario_task_id, advance=1)
+            params_str = format_dict(event.result.params)
+            self._log_event(f"Scenario complete: [bold cyan]{params_str}[/bold cyan]")
+            if self._iteration_task_id is not None:
+                self._progress.remove_task(self._iteration_task_id)
+            if self._scenario_task_id is not None:
+                self._progress.update(self._scenario_task_id, advance=1)
         elif isinstance(event, EvalEnd):
             self._progress.stop()
-            self._log_event("[bold green]Evaluation complete.[/bold green]")
+            self._log_event(f"[bold]Evaluation complete: {event.stop_reason}[/bold]")
             self.final_result = event.result
 
     async def run(self) -> EvalResult:
         """Runs the evaluation and renders the console interface."""
-        with Live(self._build_dashboard(), console=self.console):
+        with Live(self._build_dashboard(), console=self.console) as live:
             async with self.eval.stream() as stream:
                 async for event in stream:
                     self._handle_event(event)
+                    live.update(self._build_dashboard(), refresh=True)
 
         if self.final_result:
             self.console.print(self.final_result)
             return self.final_result
 
         raise RuntimeError("Evaluation did not produce a final result.")
-
-
-async def console(eval_instance: EvalT) -> EvalResult:
-    """Convenience wrapper to run an eval with a console adapter."""
-    adapter = EvalConsoleAdapter(eval_instance)
-    return await adapter.run()
