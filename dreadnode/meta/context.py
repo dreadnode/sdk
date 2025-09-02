@@ -1,6 +1,7 @@
 import typing as t
 from abc import ABC, abstractmethod
 
+from dreadnode.eval.evals import current_sample_row
 from dreadnode.tracing.span import RunSpan, current_run_span, current_task_span
 from dreadnode.types import UNSET, Unset
 from dreadnode.util import warn_at_user_stacklevel
@@ -253,11 +254,8 @@ class DatasetField(Context):
         return f"DatasetField(name='{self.ref_name}')"
 
     def resolve(self) -> t.Any:
-        from dreadnode.eval.eval import current_sample_row
-
         if (row := current_sample_row.get()) is None:
             raise RuntimeError("DatasetField() can only be used within an active Eval.")
-
         try:
             return row[self.ref_name]
         except Exception as e:

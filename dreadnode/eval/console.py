@@ -19,7 +19,7 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from dreadnode.eval.eval import In, Out
+from dreadnode.eval.evals import In, Out
 from dreadnode.eval.events import (
     EvalEnd,
     EvalEvent,
@@ -181,8 +181,8 @@ class EvalConsoleAdapter(t.Generic[In, Out]):
             self._log_event(f"[bold]Evaluation complete: {event.stop_reason}[/bold]")
             self.final_result = event.result
 
-    async def run(self) -> EvalResult:
-        """Runs the evaluation and renders the console interface."""
+    async def show(self) -> EvalResult:
+        """Renders the evaluation and renders the console interface."""
         with Live(self._build_dashboard(), console=self.console) as live:
             async with self.eval.stream() as stream:
                 async for event in stream:

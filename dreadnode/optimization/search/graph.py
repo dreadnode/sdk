@@ -53,7 +53,6 @@ class GraphSearch(Search[CandidateT]):
             coroutines = [self.transform(context) for _ in range(self.branching_factor)]
             new_candidates = await asyncio.gather(*coroutines)
 
-            # 3. Create the new trial objects with correct parentage.
             for candidate in new_candidates:
                 all_new_trials.append(
                     Trial(candidate=candidate, parent_id=leaf.trial_id, step=step)
@@ -61,7 +60,6 @@ class GraphSearch(Search[CandidateT]):
         return all_new_trials
 
     def observe(self, trials: list[Trial[CandidateT]]) -> None:
-        # Add all new trials to our graph representation.
         for trial in trials:
             self._all_trials[trial.trial_id] = trial
 

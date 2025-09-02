@@ -51,38 +51,26 @@ def show(
 
 
 @cli.command()
-async def install(
-    tool: str,
-    *,
-    server: t.Annotated[
-        str | None,
-        cyclopts.Parameter(name=["--server", "-s"], help="URL of the server to clone from."),
+def install(
+    tool: t.Annotated[
+        str | None, cyclopts.Parameter(help="The tool to install, e.g. 'bbot', 'ilspy', etc.")
     ] = None,
-    profile: t.Annotated[
-        str | None,
-        cyclopts.Parameter(
-            name=["--profile", "-p"], help="Profile alias to use for authentication."
-        ),
-    ] = None,
-    dest: t.Annotated[
-        Path | None,
-        cyclopts.Parameter(
-            name=["--dest", "-d"],
-            help="Destination directory to install the tool into. Defaults to ~/.dreadnode/tools/<tool>.",
-        ),
-    ] = None,
+    tools_path: t.Annotated[
+        Path,
+        cyclopts.Parameter(help="The target directory"),
+    ] = DEFAULT_TOOL_SEARCH_PATH,
 ) -> None:
-    """
-    Install a tool from a GitHub repository.
+    """Clone a GitHub repository to a local directory"""
 
-    The tool should be in a repository under the `dreadnode-tools` organization.
-    For example, to install the `web_enum` tool, you would run:
+    if not tools_path.exists():
+        rich.print(
+            f":exclamation: Tools path '{tools_path}' does not exist. Run `dn clone --repo https://github.com/dreadnode/tools --target ~/.dreadnode/tools first."
+        )
+        return
 
-        dreadnode tools install web_enum
-
-    This would clone from:
-
-    """
+    if tool is None:
+        rich.print(":exclamation: Installing all tools")
+        return
 
 
 @cli.command()

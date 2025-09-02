@@ -2,11 +2,11 @@ import contextlib
 import inspect
 import typing as t
 from copy import deepcopy
-from pathlib import Path
 
 import typing_extensions as te
 from opentelemetry.trace import Tracer
 
+from dreadnode import score
 from dreadnode.meta.context import Context
 from dreadnode.meta.types import Component, ConfigInfo
 from dreadnode.scorers.base import Scorer, ScorerCallable, ScorersLike
@@ -19,13 +19,6 @@ from dreadnode.util import (
     get_callable_name,
     get_filepath_attribute,
 )
-
-if t.TYPE_CHECKING:
-    from dreadnode.eval.eval import (
-        Eval,
-        InputDataset,
-        InputDatasetProcessor,
-    )
 
 P = t.ParamSpec("P")
 R = t.TypeVar("R")
@@ -160,7 +153,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         name: str | None = None,
         label: str | None = None,
         scorers: ScorersLike[R] | None = None,
-        assert_scores: list[str] | t.Literal[True] | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
         log_output: bool | Inherited = INHERITED,
         log_execution_metrics: bool = False,
@@ -202,9 +194,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         "The label of the task - used to group associated metrics and data together."
         self.scorers = Scorer.fit_like(scorers)
         "A list of scorers to evaluate the task's output."
-        scorer_names = [s.name for s in self.scorers]
-        self.assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
-        "A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError."
         self.tags = list(tags or [])
         "A list of tags to attach to the task span."
         self.attributes = attributes
@@ -217,12 +206,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         "Log the result of the function as an output."
         self.log_execution_metrics = log_execution_metrics
         "Track execution metrics such as success rate and run count."
-
-        for assertion in self.assert_scores or []:
-            if assertion not in scorer_names:
-                raise ValueError(
-                    f"Unknown '{assertion}' in assert_scores, it must be one of {scorer_names}"
-                )
 
     def __repr__(self) -> str:
         func_name = get_callable_name(self.func, short=True)
@@ -237,8 +220,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         if self.scorers:
             scorers = [scorer.name for scorer in self.scorers]
             parts.append(f"scorers={scorers}")
-        if self.assert_scores:
-            parts.append(f"assert_scores={self.assert_scores}")
         if self.tags:
             parts.append(f"tags={self.tags}")
         if not isinstance(self.log_inputs, Inherited):
@@ -273,7 +254,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             name=self.name,
             label=self.label,
             scorers=self.scorers.copy(),
-            assert_scores=self.assert_scores.copy(),
+            # assert_scores=self.assert_scores.copy(),
             log_inputs=self.log_inputs,
             log_output=self.log_output,
             log_execution_metrics=self.log_execution_metrics,
@@ -296,7 +277,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         self,
         *,
         scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
-        assert_scores: t.Sequence[str] | t.Literal[True] | None = None,
         name: str | None = None,
         tags: t.Sequence[str] | None = None,
         label: str | None = None,
@@ -311,7 +291,6 @@ class Task(Component[P, R], t.Generic[P, R]):
 
         Args:
             scorers: A list of new scorers to set or append to the task.
-            assert_scores: A list of new assertion names to set or append to the task.
             name: The new name for the task.
             tags: A list of new tags to set or append to the task.
             label: The new label for the task.
@@ -343,59 +322,22 @@ class Task(Component[P, R], t.Generic[P, R]):
 
         new_scorers = Scorer.fit_like(scorers or [])
         new_tags = list(tags or [])
-        new_assert_scores = (
-            [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
-        )
+        # new_assert_scores = (
+        #     [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
+        # )
 
         if append:
             task.scorers.extend(new_scorers)
             task.tags.extend(new_tags)
-            task.assert_scores.extend(new_assert_scores)
+            # task.assert_scores.extend(new_assert_scores)
             task.attributes.update(attributes or {})
         else:
             task.scorers = new_scorers
             task.tags = new_tags
-            task.assert_scores = new_assert_scores
+            # task.assert_scores = new_assert_scores
             task.attributes = attributes or {}
 
         return task
-
-    def as_eval(
-        self,
-        dataset: "InputDataset[t.Any] | list[AnyDict] | Path | str",
-        *,
-        name: str | None = None,
-        description: str = "",
-        tags: list[str] | None = None,
-        concurrency: int = 1,
-        iterations: int = 1,
-        max_consecutive_failures: int = 10,
-        dataset_input_mapping: list[str] | dict[str, str] | None = None,
-        parameters: dict[str, list[t.Any]] | None = None,
-        preprocessor: "InputDatasetProcessor | None" = None,
-        scorers: "ScorersLike[R] | None" = None,
-        assert_scores: list[str] | t.Literal[True] | None = None,
-    ) -> "Eval[t.Any, R]":
-        from dreadnode.eval.eval import Eval
-
-        if isinstance(dataset, str):
-            dataset = Path(dataset)
-
-        return Eval[t.Any, R](
-            task=t.cast("Task[[t.Any], R]", self),
-            dataset=dataset,
-            name=name,
-            description=description,
-            tags=tags or ["eval"],
-            concurrency=concurrency,
-            iterations=iterations,
-            max_consecutive_failures=max_consecutive_failures,
-            dataset_input_mapping=dataset_input_mapping,
-            parameters=parameters,
-            preprocessor=preprocessor,
-            scorers=scorers or [],
-            assert_scores=assert_scores or [],
-        )
 
     async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         """
@@ -410,7 +352,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         Returns:
             The span associated with task execution.
         """
-        from dreadnode import score
 
         run = current_run_span.get()
 
@@ -508,7 +449,7 @@ class Task(Component[P, R], t.Generic[P, R]):
 
             # Score and check assertions
 
-            await score(output, self.scorers, assert_scores=self.assert_scores)
+            await score(output, self.scorers)  # assert_scores=self.assert_scores)
 
         if run and self.log_execution_metrics:
             run.log_metric(

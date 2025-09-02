@@ -8,7 +8,9 @@ from pathlib import Path
 import typing_extensions as te
 from pydantic import ConfigDict, FilePath, TypeAdapter
 
+from dreadnode import log_inputs, log_params, run, task_span
 from dreadnode.discovery import find
+from dreadnode.eval.console import EvalConsoleAdapter
 from dreadnode.eval.dataset import load_dataset
 from dreadnode.eval.events import (
     EvalEnd,
@@ -231,8 +233,6 @@ class Eval(Model, t.Generic[In, Out]):
             yield sample_stream
 
     async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
-        from dreadnode import log_inputs, log_params, run, task_span
-
         base_task, dataset = await self._prepare_task_and_dataset()
         param_combinations = self._get_param_combinations()
         eval_name = self.name or base_task.name
@@ -279,7 +279,6 @@ class Eval(Model, t.Generic[In, Out]):
 
                 configured_task = base_task.with_(
                     scorers=scorers,
-                    assert_scores=self.assert_scores,
                     append=True,
                 ).configure(**scenario_params)
 
@@ -349,7 +348,6 @@ class Eval(Model, t.Generic[In, Out]):
 
     async def console(self) -> EvalResult:
         """Run the evaluation with a live display in the console."""
-        from dreadnode.eval.console import EvalConsoleAdapter
 
         adapter = EvalConsoleAdapter(self)
-        return await adapter.run()
+        return await adapter.show()

@@ -58,6 +58,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         attributes: JsonDict | None = None,
         catch: bool = False,
         step: int = 0,
+        assertion: bool = False,
         auto_increment_step: bool = False,
         log_all: bool = False,
         config: dict[str, ConfigInfo] | None = None,
@@ -81,6 +82,8 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         "Catch exceptions in the scorer function and return a 0 Metric with error information."
         self.step = step
         "The step value to attach to metrics produced by this Scorer."
+        self.assertion = assertion
+        "Whether this scorer is used as an assertion (for Task assertions)."
         self.auto_increment_step = auto_increment_step
         "Automatically increment an internal step counter every time this scorer is called."
         self.log_all = log_all
@@ -164,6 +167,8 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         name: str | None = None,
         attributes: JsonDict | None = None,
         step: int | None = None,
+        *,
+        assertion: bool | None = None,
         auto_increment_step: bool | None = None,
         catch: bool | None = None,
         log_all: bool | None = None,
@@ -175,6 +180,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             name: New name for the scorer.
             attributes: New attributes for the scorer.
             step: New step value for the scorer.
+            assertion: Whether this scorer is used as an assertion (for Task assertions).
             auto_increment_step: Automatically increment the step for each time this scorer is called.
             catch: Catch exceptions in the scorer function.
             log_all: Log all sub-metrics from nested composition.
@@ -187,6 +193,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         new.attributes = {**self.attributes, **(attributes or {})}
         new.func = self.func
         new.step = step if step is not None else self.step
+        new.assertion = assertion if assertion is not None else self.assertion
         new.auto_increment_step = (
             auto_increment_step if auto_increment_step is not None else self.auto_increment_step
         )

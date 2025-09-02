@@ -84,16 +84,6 @@ class Sample(t.Generic[In, Out]):
         index: int = 0,
     ) -> "Sample[In, Out]":
         # Assume false for all
-        assertions = dict.fromkeys(task.assert_scores, False)
-
-        # If a score was reported, assume true
-        for name in set(span.metrics.keys()) & set(assertions.keys()):
-            assertions[name] = True
-
-        # Reset to false for any that triggered a failure
-        if isinstance(span.exception, AssertionFailedError):
-            for name in span.exception.failures:
-                assertions[name] = False
 
         return cls(
             input=t.cast("In", input),
@@ -102,7 +92,6 @@ class Sample(t.Generic[In, Out]):
             iteration=iteration,
             scenario_params=scenario_params or {},
             metrics=span.metrics,
-            assertions=assertions,
             error=span.exception,
             task=span,  # The sample is associated with the span, not the task blueprint.
         )
