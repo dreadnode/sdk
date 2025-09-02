@@ -335,7 +335,6 @@ class Eval(Model, t.Generic[In, Out]):
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
         """Create an event stream to monitor the evaluation process."""
-
         async with contextlib.aclosing(self._stream()) as stream:
             yield stream
 

@@ -6,7 +6,6 @@ from copy import deepcopy
 import typing_extensions as te
 from opentelemetry.trace import Tracer
 
-from dreadnode import score
 from dreadnode.meta.context import Context
 from dreadnode.meta.types import Component, ConfigInfo
 from dreadnode.scorers.base import Scorer, ScorerCallable, ScorersLike
@@ -347,6 +346,8 @@ class Task(Component[P, R], t.Generic[P, R]):
         Returns:
             The span associated with task execution.
         """
+
+        from dreadnode import score
 
         run = current_run_span.get()
 
