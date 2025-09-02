@@ -170,7 +170,6 @@ def export_metrics(
     Returns:
         A DataFrame containing the exported metric data.
     """
-    import pandas as pd
 
     response = self.request(
         "GET",
@@ -265,7 +264,6 @@ def export_parameters(
     Returns:
         A DataFrame containing the exported parameter data.
     """
-    import pandas as pd
 
     response = self.request(
         "GET",
@@ -294,36 +292,48 @@ export_runs(
     filter: str | None = None,
     status: StatusFilter = "completed",
     aggregations: list[MetricAggregationType] | None = None,
-) -> pd.DataFrame
+    format: ExportFormat = "parquet",
+    base_dir: str | None = None,
+) -> str
 ```
 
-Exports run data for a specific project.
+Export runs using pagination - always writes to disk.
 
 **Parameters:**
 
 * **`project`**
   (`str`)
-  –The project identifier.
+  –The project identifier
 * **`filter`**
   (`str | None`, default:
   `None`
   )
-  –A filter to apply to the exported data. Defaults to None.
+  –A filter to apply to the exported data
 * **`status`**
   (`StatusFilter`, default:
   `'completed'`
   )
-  –The status of runs to include. Defaults to "completed".
+  –The status of runs to include
 * **`aggregations`**
   (`list[MetricAggregationType] | None`, default:
   `None`
   )
-  –A list of aggregation types to apply. Defaults to None.
+  –A list of aggregation types to apply
+* **`format`**
+  (`ExportFormat`, default:
+  `'parquet'`
+  )
+  –Output format - "parquet", "csv", "json", "jsonl"
+* **`base_dir`**
+  (`str | None`, default:
+  `None`
+  )
+  –Base directory for export (defaults to "./strikes-data")
 
 **Returns:**
 
-* `DataFrame`
-  –A DataFrame containing the exported run data.
+* **`str`** ( `str`
+  ) –Path to the export directory
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
@@ -332,35 +342,61 @@ def export_runs(
     project: str,
     *,
     filter: str | None = None,
-    # format: ExportFormat = "parquet",
     status: StatusFilter = "completed",
     aggregations: list[MetricAggregationType] | None = None,
-) -> "pd.DataFrame":
+    format: ExportFormat = "parquet",
+    base_dir: str | None = None,
+) -> str:
     """
-    Exports run data for a specific project.
+    Export runs using pagination - always writes to disk.
 
     Args:
-        project: The project identifier.
-        filter: A filter to apply to the exported data. Defaults to None.
-        status: The status of runs to include. Defaults to "completed".
-        aggregations: A list of aggregation types to apply. Defaults to None.
+        project: The project identifier
+        filter: A filter to apply to the exported data
+        status: The status of runs to include
+        aggregations: A list of aggregation types to apply
+        format: Output format - "parquet", "csv", "json", "jsonl"
+        base_dir: Base directory for export (defaults to "./strikes-data")
 
     Returns:
-        A DataFrame containing the exported run data.
+        str: Path to the export directory
     """
-    import pandas as pd
 
-    response = self.request(
+    logger.info(f"Starting paginated export for project '{project}', format='{format}'")
+
+    page = 1
+    first_response = self.request(
         "GET",
-        f"/strikes/projects/{project!s}/export",
+        f"/strikes/projects/{project!s}/export/paginated",
         params={
-            "format": "parquet",
+            "page": page,
             "status": status,
             **({"filter": filter} if filter else {}),
             **({"aggregations": aggregations} if aggregations else {}),
         },
     )
-    return pd.read_parquet(io.BytesIO(response.content))
+
+    if not first_response.content:
+        logger.info("No data found")
+
+    first_chunk = pd.read_parquet(io.BytesIO(first_response.content))
+
+    total_runs = int(first_response.headers.get("x-total", "0"))
+    has_more = first_response.headers.get("x-has-more", "false") == "true"
+
+    logger.info(f"Total runs: {total_runs}, Has more: {has_more}")
+
+    logger.info(f"Writing {total_runs} runs to disk")
+    return self._export_to_disk(
+        project,
+        first_chunk,
+        dict(first_response.headers),
+        filter,
+        status,
+        aggregations,
+        format,
+        str(base_dir) if base_dir else None,
+    )
 ```
 
 
