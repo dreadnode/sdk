@@ -57,7 +57,7 @@ def test_param_removes_own_kwargs() -> None:
     assert "help" not in p.field_kwargs
 
 
-class TestAgent(Model):
+class Agent(Model):
     # Public, configurable, with validation and a new default
     retries: int = Config(default=3, gt=0, le=5)
 
@@ -74,7 +74,7 @@ class TestAgent(Model):
 def test_model_transforms_params_to_fields() -> None:
     """Verify that __init_subclass__ correctly creates Pydantic Fields."""
     # This is an introspection test, we look at the generated Pydantic model fields
-    model_fields = TestAgent.model_fields
+    model_fields = Agent.model_fields
 
     assert "retries" in model_fields
     assert model_fields["retries"].default == 3
@@ -90,8 +90,8 @@ def test_model_transforms_params_to_fields() -> None:
 
 def test_model_stores_param_info_internally() -> None:
     """Verify that the original ParamInfo is stored for our introspection engine."""
-    assert hasattr(TestAgent, "__dn_config__")
-    internal_params = TestAgent.__dn_config__
+    assert hasattr(Agent, "__dn_config__")
+    internal_params = Agent.__dn_config__
 
     assert "retries" in internal_params
     assert isinstance(internal_params["retries"], ConfigInfo)
@@ -113,18 +113,18 @@ def test_model_stores_param_info_internally() -> None:
 def test_model_validation_works_as_expected() -> None:
     """Verify that the final class is a fully functional Pydantic model."""
     # Valid case
-    agent = TestAgent(name="MyAgent")
+    agent = Agent(name="MyAgent")
     assert agent.retries == 3
     assert agent.name == "MyAgent"
     assert agent.optional_setting is None
 
     # Invalid case for `retries`
     with pytest.raises(ValidationError):
-        TestAgent(name="MyAgent", retries=10)  # > 5
+        Agent(name="MyAgent", retries=10)  # > 5
 
     # Invalid case for `name`
     with pytest.raises(ValidationError):
-        TestAgent(name="")  # min_length=1
+        Agent(name="")  # min_length=1
 
     # Check that private field works as a normal Pydantic field
     assert agent.session_id == "abc-123"
@@ -251,7 +251,7 @@ class Thing(Model):
     func: t.Callable[..., t.Any] = Config(default=not_a_component)
     items: list[t.Any] = Config(default_factory=list)
     mapping: dict[str, t.Any] = Config(default_factory=dict)
-    version: int = Config(1)
+    version: int = Config(default=1)
     sub: Sub = Config(default_factory=Sub)
     other: bool = False
 
@@ -444,38 +444,22 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
     """Verify full schema creation for blueprints"""
     assert get_config_schema(blueprint) == {
         "properties": {
-            "name": {"default": "override", "title": "Name", "type": "string"},
-            "func": {
-                "properties": {
-                    "model": {"default": "gpt-4o-mini", "title": "Model", "type": "string"}
-                },
-                "title": "func",
-                "type": "object",
-            },
             "items": {
                 "properties": {
                     "component_with_default": {
                         "properties": {
-                            "model": {"default": "gpt-4", "title": "Model", "type": "string"}
+                            "model": {
+                                "default": "gpt-4",
+                                "description": " ",
+                                "title": "Model",
+                                "type": "string",
+                            }
                         },
                         "title": "items_component_with_default",
                         "type": "object",
                     }
                 },
                 "title": "items",
-                "type": "object",
-            },
-            "mapping": {
-                "properties": {
-                    "component": {
-                        "properties": {"name": {"title": "Name", "type": "string"}},
-                        "required": ["name"],
-                        "title": "mapping_component",
-                        "type": "object",
-                    }
-                },
-                "required": ["component"],
-                "title": "mapping",
                 "type": "object",
             },
             "version": {"default": 1, "title": "Version", "type": "integer"},
@@ -486,6 +470,34 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                 "title": "sub",
                 "type": "object",
             },
+            "mapping": {
+                "properties": {
+                    "component": {
+                        "properties": {
+                            "name": {"description": " ", "title": "Name", "type": "string"}
+                        },
+                        "required": ["name"],
+                        "title": "mapping_component",
+                        "type": "object",
+                    }
+                },
+                "required": ["component"],
+                "title": "mapping",
+                "type": "object",
+            },
+            "name": {"default": "override", "title": "Name", "type": "string"},
+            "func": {
+                "properties": {
+                    "model": {
+                        "default": "gpt-4o-mini",
+                        "description": " ",
+                        "title": "Model",
+                        "type": "string",
+                    }
+                },
+                "title": "func",
+                "type": "object",
+            },
         },
         "required": ["mapping"],
         "title": "config",
@@ -494,7 +506,6 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
 
     assert get_config_schema(empty_blueprint) == {
         "properties": {
-            "name": {"default": "empty", "title": "Name", "type": "string"},
             "version": {"default": 1, "title": "Version", "type": "integer"},
             "sub": {
                 "properties": {
@@ -503,6 +514,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                 "title": "sub",
                 "type": "object",
             },
+            "name": {"default": "empty", "title": "Name", "type": "string"},
         },
         "title": "config",
         "type": "object",
