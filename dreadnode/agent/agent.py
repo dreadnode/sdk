@@ -37,7 +37,6 @@ from dreadnode.agent.events import (
     ToolStart,
     _total_usage_from_events,
 )
-from dreadnode.agent.hooks import retry_with_feedback
 from dreadnode.agent.reactions import (
     Continue,
     Fail,
@@ -48,7 +47,7 @@ from dreadnode.agent.reactions import (
     RetryWithFeedback,
 )
 from dreadnode.agent.result import AgentResult
-from dreadnode.agent.stop import StopCondition, stop_never
+from dreadnode.agent.stop import StopCondition
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
 from dreadnode.agent.types import Message, ToolCall
@@ -732,37 +731,3 @@ class Agent(Model):
             raise RuntimeError("Agent run finished unexpectedly.")  # noqa: TRY004
 
         return final_event.result
-
-
-class TaskAgent(Agent):
-    """
-    A specialized agent for running tasks with a focus on completion and reporting.
-    It extends the base Agent class to provide task-specific functionality.
-
-    - Automatically includes the `finish_task`, `give_up_on_task`, and `update_todo` tools.
-    - Installs a default stop_never condition to trigger stalling behavior when no tools calls are made.
-    - Uses the `AgentStalled` event to handle stalled tasks by pushing the model to continue or finish the task.
-    """
-
-    def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools.planning import update_todo
-        from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
-
-        if not any(tool for tool in self.tools if tool.name == "finish_task"):
-            self.tools.append(finish_task)
-
-        if not any(tool for tool in self.tools if tool.name == "give_up_on_task"):
-            self.tools.append(give_up_on_task)
-
-        if not any(tool for tool in self.tools if tool.name == "update_todo"):
-            self.tools.append(update_todo)
-
-        # Force the agent to use finish_task
-        self.stop_conditions.append(stop_never())
-        self.hooks.insert(
-            0,
-            retry_with_feedback(
-                event_type=AgentStalled,
-                feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
-            ),
-        )

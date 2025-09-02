@@ -19,8 +19,8 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from dreadnode.eval.evals import In, Out
-from dreadnode.eval.events import (
+from dreadnode.evals.evals import In, Out
+from dreadnode.evals.events import (
     EvalEnd,
     EvalEvent,
     EvalStart,
@@ -28,11 +28,11 @@ from dreadnode.eval.events import (
     ScenarioEnd,
     ScenarioStart,
 )
-from dreadnode.eval.result import EvalResult
+from dreadnode.evals.result import EvalResult
 from dreadnode.util import format_dict
 
 if t.TYPE_CHECKING:
-    from dreadnode.eval import Eval
+    from dreadnode.evals import Eval
 
 # Type variable for the generic Eval object
 EvalT = t.TypeVar("EvalT", bound="Eval")

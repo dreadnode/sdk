@@ -3,8 +3,8 @@ import typing as t
 
 from pydantic import BaseModel, ConfigDict, Field, FilePath, PrivateAttr
 
-from dreadnode.eval import Eval
-from dreadnode.eval.result import EvalResult
+from dreadnode.evals import Eval
+from dreadnode.evals.result import EvalResult
 from dreadnode.optimization.events import (
     CandidatePruned,
     CandidatesSuggested,

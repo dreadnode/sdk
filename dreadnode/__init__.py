@@ -3,9 +3,9 @@ import typing as t
 
 from loguru import logger
 
-from dreadnode import agent, convert, data_types, eval, meta, transforms  # noqa: A004
+from dreadnode import agent, convert, data_types, evals, meta, transforms
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
-from dreadnode.eval import Eval
+from dreadnode.evals import Eval
 from dreadnode.logging import configure_logging
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.meta import (
@@ -100,7 +100,7 @@ __all__ = [
     "continue_run",
     "convert",
     "data_types",
-    "eval",
+    "evals",
     "get_run_context",
     "link_objects",
     "log_artifact",

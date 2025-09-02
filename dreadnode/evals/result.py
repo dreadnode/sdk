@@ -7,7 +7,7 @@ from pathlib import Path
 
 import typing_extensions as te
 
-from dreadnode.eval.sample import Sample
+from dreadnode.evals.sample import Sample
 from dreadnode.util import format_dict
 
 In = te.TypeVar("In", default=t.Any)
@@ -129,8 +129,7 @@ class EvalResultMixin:
         """
         records = self.to_dicts()  # type: ignore[misc]
         with Path(path).open("w", encoding="utf-8") as f:
-            for record in records:
-                f.write(json.dumps(record) + "\n")
+            f.writelines(json.dumps(record) + "\n" for record in records)
 
 
 @dataclass

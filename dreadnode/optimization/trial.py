@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import typing_extensions as te
 from pydantic import BaseModel, ConfigDict, Field
 
-from dreadnode.eval.result import EvalResult
+from dreadnode.evals.result import EvalResult
 
 CandidateT = te.TypeVar("CandidateT", default=t.Any)
 TrialStatus = t.Literal["pending", "success", "failed", "pruned"]

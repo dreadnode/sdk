@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 import typing_extensions as te
 
 if t.TYPE_CHECKING:
-    from dreadnode.eval.evals import Eval
-    from dreadnode.eval.result import EvalResult, IterationResult, ScenarioResult
-    from dreadnode.eval.sample import Sample
+    from dreadnode.evals.evals import Eval
+    from dreadnode.evals.result import EvalResult, IterationResult, ScenarioResult
+    from dreadnode.evals.sample import Sample
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
