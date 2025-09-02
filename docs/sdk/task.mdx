@@ -17,7 +17,6 @@ Task(
     name: str | None = None,
     label: str | None = None,
     scorers: ScorersLike[R] | None = None,
-    assert_scores: list[str] | Literal[True] | None = None,
     log_inputs: Sequence[str]
     | bool
     | Inherited = INHERITED,
@@ -44,7 +43,6 @@ def __init__(
     name: str | None = None,
     label: str | None = None,
     scorers: ScorersLike[R] | None = None,
-    assert_scores: list[str] | t.Literal[True] | None = None,
     log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
     log_output: bool | Inherited = INHERITED,
     log_execution_metrics: bool = False,
@@ -86,9 +84,6 @@ def __init__(
     "The label of the task - used to group associated metrics and data together."
     self.scorers = Scorer.fit_like(scorers)
     "A list of scorers to evaluate the task's output."
-    scorer_names = [s.name for s in self.scorers]
-    self.assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
-    "A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError."
     self.tags = list(tags or [])
     "A list of tags to attach to the task span."
     self.attributes = attributes
@@ -101,28 +96,10 @@ def __init__(
     "Log the result of the function as an output."
     self.log_execution_metrics = log_execution_metrics
     "Track execution metrics such as success rate and run count."
-
-    for assertion in self.assert_scores or []:
-        if assertion not in scorer_names:
-            raise ValueError(
-                f"Unknown '{assertion}' in assert_scores, it must be one of {scorer_names}"
-            )
 ```
 
 
 </Accordion>
-
-### assert\_scores
-
-```python
-assert_scores = (
-    scorer_names
-    if assert_scores is True
-    else list(assert_scores or [])
-)
-```
-
-A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError.
 
 ### attributes
 
@@ -525,6 +502,7 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
     Returns:
         The span associated with task execution.
     """
+
     from dreadnode import score
 
     run = current_run_span.get()
@@ -623,7 +601,7 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
 
         # Score and check assertions
 
-        await score(output, self.scorers, assert_scores=self.assert_scores)
+        await score(output, self.scorers)  # assert_scores=self.assert_scores)
 
     if run and self.log_execution_metrics:
         run.log_metric(
@@ -942,9 +920,6 @@ with_(
     *,
     scorers: Sequence[Scorer[R] | ScorerCallable[R]]
     | None = None,
-    assert_scores: Sequence[str]
-    | Literal[True]
-    | None = None,
     name: str | None = None,
     tags: Sequence[str] | None = None,
     label: str | None = None,
@@ -968,11 +943,6 @@ Clone a task and modify its attributes.
   `None`
   )
   –A list of new scorers to set or append to the task.
-* **`assert_scores`**
-  (`Sequence[str] | Literal[True] | None`, default:
-  `None`
-  )
-  –A list of new assertion names to set or append to the task.
 * **`name`**
   (`str | None`, default:
   `None`
@@ -1025,7 +995,6 @@ def with_(
     self,
     *,
     scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
-    assert_scores: t.Sequence[str] | t.Literal[True] | None = None,
     name: str | None = None,
     tags: t.Sequence[str] | None = None,
     label: str | None = None,
@@ -1040,7 +1009,6 @@ def with_(
 
     Args:
         scorers: A list of new scorers to set or append to the task.
-        assert_scores: A list of new assertion names to set or append to the task.
         name: The new name for the task.
         tags: A list of new tags to set or append to the task.
         label: The new label for the task.
@@ -1072,19 +1040,15 @@ def with_(
 
     new_scorers = Scorer.fit_like(scorers or [])
     new_tags = list(tags or [])
-    new_assert_scores = (
-        [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
-    )
 
     if append:
         task.scorers.extend(new_scorers)
         task.tags.extend(new_tags)
-        task.assert_scores.extend(new_assert_scores)
         task.attributes.update(attributes or {})
     else:
         task.scorers = new_scorers
         task.tags = new_tags
-        task.assert_scores = new_assert_scores
+        # task.assert_scores = new_assert_scores
         task.attributes = attributes or {}
 
     return task
