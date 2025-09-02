@@ -1,0 +1,40 @@
+description: Surface as much web footprint as possible
+
+# Usage
+# uv run python examples/agents/bbot/agent.py presets
+# uv run python examples/agents/bbot/agent.py scan --targets /path/to/file.txt --presets custom_footprint
+
+include:
+  - spider-intense
+  - nuclei-intense
+  - dirbust-heavy
+
+modules:
+
+config:
+  modules:
+    ffuf:
+      depth: 3
+      lines: 5000
+      extensions:
+        - php
+        - asp
+        - aspx
+        - ashx
+        - asmx
+        - jsp
+        - jspx
+        - cfm
+        - zip
+        - conf
+        - config
+        - xml
+        - json
+        - yml
+        - yaml
+    # emit URLs from wayback
+    wayback:
+      urls: True
+
+flags:
+  - web-paramminer
