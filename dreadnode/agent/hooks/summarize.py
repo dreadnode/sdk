@@ -4,8 +4,9 @@ import typing as t
 from dreadnode.agent.events import AgentError, AgentEvent, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
-from dreadnode.agent.types import Generator, Message
+from dreadnode.agent._types import Generator, Message
 from dreadnode.meta import Config, component
+
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.hooks.base import Hook

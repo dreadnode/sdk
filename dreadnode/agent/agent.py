@@ -51,7 +51,7 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.stop import StopCondition, stop_never
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
-from dreadnode.agent.types import Message, ToolCall
+from dreadnode.agent._types import Message, ToolCall
 from dreadnode.meta import Component, Config, Model, component
 from dreadnode.scorers import ScorersLike
 from dreadnode.util import (
@@ -65,6 +65,7 @@ from dreadnode.util import (
 
 CommitBehavior = t.Literal["always", "on-success"]
 HookMap = dict[type[AgentEvent], list[Hook]]
+
 
 
 class AgentWarning(UserWarning):

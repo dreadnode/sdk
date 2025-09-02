@@ -8,7 +8,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-from dreadnode.agent.types import (
+from dreadnode.agent._types import (
     ContentText,
     Message,
 )
