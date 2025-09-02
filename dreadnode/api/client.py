@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
+import pandas as pd
 from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
@@ -394,7 +395,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported run data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -431,7 +432,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported metric data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -471,7 +472,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported parameter data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -512,7 +513,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         response = self.request(
             "GET",

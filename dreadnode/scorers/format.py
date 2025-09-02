@@ -2,7 +2,8 @@ import json
 import typing as t
 import xml.etree.ElementTree as ET  # nosec
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 
 
 def is_json(*, name: str = "is_json") -> "Scorer[t.Any]":
@@ -30,7 +31,7 @@ def is_json(*, name: str = "is_json") -> "Scorer[t.Any]":
         except json.JSONDecodeError as e:
             return Metric(value=0.0, attributes={"error": str(e)})
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)
 
 
 def is_xml(*, name: str = "is_xml") -> "Scorer[t.Any]":
@@ -58,4 +59,4 @@ def is_xml(*, name: str = "is_xml") -> "Scorer[t.Any]":
         except ET.ParseError as e:
             return Metric(value=0.0, attributes={"error": str(e)})
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)

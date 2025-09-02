@@ -3,25 +3,16 @@ import typing as t
 
 import httpx
 
-from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.meta import Config
+from dreadnode.metric import Metric
+from dreadnode.scorers.base import Scorer
 from dreadnode.util import warn_at_user_stacklevel
-
-_TEXTBLOB_AVAILABLE = False
-_TEXTBLOB_ERROR_MSG = "textblob dependency is not installed. Please run: pip install textblob && python -m textblob.download_corpora"
-
-try:
-    from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
-
-    _TEXTBLOB_AVAILABLE = True
-except ImportError:
-    pass
 
 Sentiment = t.Literal["positive", "negative", "neutral"]
 
 
 def sentiment(
-    target: Sentiment | Lookup = "neutral",
+    target: Sentiment = "neutral",
     name: str = "score_sentiment",
 ) -> "Scorer[t.Any]":
     """
@@ -32,22 +23,25 @@ def sentiment(
     - For "negative", score is 0-1 (0=positive, 1=very negative).
     - For "neutral", score is 0-1 (1=perfectly neutral, 0=very polarized).
 
+    Requires `textblob`, see https://textblob.readthedocs.io.
+
     Args:
         target: The desired sentiment to score against.
         name: Name of the scorer.
     """
-    if not _TEXTBLOB_AVAILABLE:
-        warn_at_user_stacklevel(_TEXTBLOB_ERROR_MSG, UserWarning)
+    textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
+
+    try:
+        from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
+    except ImportError:
+        warn_at_user_stacklevel(textblob_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": _TEXTBLOB_ERROR_MSG})
+            return Metric(value=0.0, attributes={"error": textblob_import_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target
-
-        target = t.cast("Sentiment", str(resolve_lookup(target)).lower())
+    def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:
             target = "neutral"  # Default to neutral if invalid
             warn_at_user_stacklevel(
@@ -75,7 +69,7 @@ def sentiment(
 
         return Metric(value=score, attributes={"polarity": polarity, "target": target})
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 PerspectiveAttribute = t.Literal[
@@ -106,7 +100,12 @@ def sentiment_with_perspective(
             "API key must be provided or set in the PERSPECTIVE_API_KEY environment variable."
         )
 
-    async def evaluate(data: t.Any) -> float:
+    async def evaluate(
+        data: t.Any,
+        *,
+        api_key: str | None = Config(api_key),
+        attribute: PerspectiveAttribute = attribute,
+    ) -> float:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze",
@@ -126,4 +125,4 @@ def sentiment_with_perspective(
     if name is None:
         name = f"perspective_{attribute.lower()}"
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

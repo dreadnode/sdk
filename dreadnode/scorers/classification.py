@@ -1,18 +1,19 @@
 import typing as t
 
-from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.meta import Config
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 from dreadnode.util import clean_str, warn_at_user_stacklevel
 
 # Global cache for pipelines
-g_pipelines: dict[str, t.Any] = {}
+g_transformer_pipeline_cache: dict[str, t.Any] = {}
 
 
 def zero_shot_classification(
     labels: list[str],
     score_label: str,
     *,
-    model_name: str | Lookup = "facebook/bart-large-mnli",
+    model_name: str = "facebook/bart-large-mnli",
     name: str | None = None,
 ) -> "Scorer[t.Any]":
     """
@@ -21,6 +22,8 @@ def zero_shot_classification(
     The final score is the confidence score for the `score_label`.
     This is a powerful way to replace brittle keyword-based classifiers.
 
+    Requires `transformers`, see https://huggingface.co/docs/transformers.
+
     Args:
         labels: A list of candidate labels for the classification.
         score_label: The specific label whose score should be returned as the metric's value.
@@ -28,12 +31,11 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     transformers_error_msg = (
-        "Hugging Face transformers dependency is not installed. "
-        "Please install with: pip install transformers torch"
+        "Transformers dependency is not installed. Install with: pip install transformers"
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]  # noqa: PLC0415
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
             pipeline,
         )
     except ImportError:
@@ -42,22 +44,24 @@ def zero_shot_classification(
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": transformers_error_msg})
 
-        return Scorer.from_callable(disabled_evaluate, name=name)
+        return Scorer(disabled_evaluate, name=name)
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal model_name, labels, score_label
-
-        labels = resolve_lookup(labels)
-        score_label = str(resolve_lookup(score_label))
-
+    def evaluate(
+        data: t.Any,
+        *,
+        labels: list[str] = labels,
+        score_label: str = score_label,
+        model_name: str = Config(model_name),
+    ) -> Metric:
         if score_label not in labels:
             raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
-        model_name = str(resolve_lookup(model_name))
         pipeline_key = f"zero-shot-classification_{model_name}"
-        if pipeline_key not in g_pipelines:
-            g_pipelines[pipeline_key] = pipeline("zero-shot-classification", model=model_name)
-        classifier = g_pipelines[pipeline_key]
+        if pipeline_key not in g_transformer_pipeline_cache:
+            g_transformer_pipeline_cache[pipeline_key] = pipeline(
+                "zero-shot-classification", model=model_name
+            )
+        classifier = g_transformer_pipeline_cache[pipeline_key]
 
         text = str(data)
         if not text.strip():
@@ -76,7 +80,7 @@ def zero_shot_classification(
     if name is None:
         name = f"zero_shot_{clean_str(score_label)}"
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)
 
 
 def detect_refusal_with_zero_shot(

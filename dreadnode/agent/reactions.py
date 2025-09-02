@@ -6,7 +6,7 @@ from pydantic.dataclasses import dataclass
 from dreadnode.agent.types import Message
 
 if t.TYPE_CHECKING:
-    from dreadnode.agent.events import Event
+    from dreadnode.agent.events import AgentEvent
 
 
 @dataclass
@@ -40,4 +40,4 @@ class Finish(Reaction):
 
 @t.runtime_checkable
 class Hook(t.Protocol):
-    def __call__(self, event: "Event") -> "t.Awaitable[Reaction | None]": ...
+    def __call__(self, event: "AgentEvent") -> "t.Awaitable[Reaction | None]": ...

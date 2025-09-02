@@ -1,0 +1,290 @@
+---
+title: dreadnode.eval
+---
+
+{/*
+::: dreadnode.eval.eval
+::: dreadnode.eval.dataset
+*/}
+
+Eval
+----
+
+Prepared evaluation of a task with an associated dataset and configuration.
+
+### assert\_scores
+
+```python
+assert_scores: list[str] | Literal[True] = Config(
+    default_factory=list
+)
+```
+
+Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions).
+
+### concurrency
+
+```python
+concurrency: int = Config(default=1)
+```
+
+Maximum number of tasks to run in parallel.
+
+### dataset
+
+```python
+dataset: Annotated[
+    InputDataset[In] | list[AnyDict] | FilePath,
+    Config(expose_as=FilePath),
+]
+```
+
+The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
+
+### dataset\_input\_mapping
+
+```python
+dataset_input_mapping: list[str] | dict[str, str] | None = (
+    Config(default=None)
+)
+```
+
+A list of dataset keys to pass as input parameters to the task, or an
+explicit mapping from dataset keys to task parameter names.
+If None, will attempt to map keys that match parameter names.
+
+### description
+
+```python
+description: str = Config(default='')
+```
+
+A brief description of the eval's purpose.
+
+### iterations
+
+```python
+iterations: int = Config(default=1, ge=1)
+```
+
+Number of times to run each scenario.
+
+### max\_consecutive\_failures
+
+```python
+max_consecutive_failures: int | None = Config(default=10)
+```
+
+The number of consecutive sample failures (not caused by assertions)
+before terminating the evaluation run. Set to None to disable.
+
+### name
+
+```python
+name: str | None = Config(default=None)
+```
+
+The name of the evaluation.
+
+### parameters
+
+```python
+parameters: dict[str, list[Any]] | None = Config(
+    default=None
+)
+```
+
+A dictionary defining a parameter space to run experiments against.
+For each item in the dataset, a scenario will be run for every combination
+of the parameters defined here. Key names should align with
+arguments on the task assigned with a `Config` context.
+
+### preprocessor
+
+```python
+preprocessor: InputDatasetProcessor | None = None
+```
+
+Optional preprocessor function to transform the dataset before evaluation.
+
+### scorers
+
+```python
+scorers: ScorersLike[Out] = Config(default_factory=list)
+```
+
+Scorers to evaluate the task's output (appended to existing task scorers).
+
+### tags
+
+```python
+tags: list[str] = Config(default_factory=lambda: ['eval'])
+```
+
+A list of tags associated with the evaluation.
+
+### task
+
+```python
+task: Annotated[
+    Task[[In], Out] | str, Config(expose_as=str)
+]
+```
+
+The task to evaluate. Can be a Task object or a string representing qualified task name.
+
+### console
+
+```python
+console() -> EvalResult
+```
+
+Run the evaluation with a live display in the console.
+
+<Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
+```python
+async def console(self) -> EvalResult:
+    """Run the evaluation with a live display in the console."""
+    from dreadnode.eval.console import EvalConsoleAdapter
+
+    adapter = EvalConsoleAdapter(self)
+    return await adapter.run()
+```
+
+
+</Accordion>
+
+### run
+
+```python
+run() -> EvalResult[In, Out]
+```
+
+Run the configured task evaluation.
+
+<Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
+```python
+async def run(self) -> EvalResult[In, Out]:
+    """Run the configured task evaluation."""
+    async with self.stream() as stream:
+        async for sample_or_eval in stream:
+            if isinstance(sample_or_eval, EvalResult):
+                return sample_or_eval
+        raise RuntimeError("Evaluation failed to complete")
+```
+
+
+</Accordion>
+
+### stream
+
+```python
+stream() -> t.AsyncIterator[
+    t.AsyncGenerator[EvalEvent[In, Out], None]
+]
+```
+
+Create an event stream to monitor the evaluation process.
+
+<Accordion title="Source code in dreadnode/eval/eval.py" icon="code">
+```python
+@asynccontextmanager
+async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
+    """Create an event stream to monitor the evaluation process."""
+    async with contextlib.aclosing(self._stream()) as stream:
+        yield stream
+```
+
+
+</Accordion>
+
+EvalWarning
+-----------
+
+Warning raised during evaluation.
+load\_dataset
+-------------
+
+```python
+load_dataset(
+    path: Path, *, file_format: FileFormat | None = None
+) -> list[AnyDict]
+```
+
+Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
+
+**Parameters:**
+
+* **`path`**
+  (`Path`)
+  –The path to the file to load.
+* **`file_format`**
+  (`FileFormat | None`, default:
+  `None`
+  )
+  –Optional format of the file. If not provided, it will be inferred from the file extension.
+
+**Returns:**
+
+* `list[AnyDict]`
+  –A list of dictionaries representing the objects in the file.
+
+<Accordion title="Source code in dreadnode/eval/dataset.py" icon="code">
+```python
+def load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]:
+    """
+    Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
+
+    Args:
+        path: The path to the file to load.
+        file_format: Optional format of the file. If not provided, it will be inferred from the file extension.
+
+    Returns:
+        A list of dictionaries representing the objects in the file.
+    """
+    path = Path(path)
+    dataset: list[AnyDict] = []
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    if not path.is_file():
+        raise ValueError(f"Path is not a file: {path}")
+
+    content = path.read_text(encoding="utf-8").strip()
+    if not content:
+        return dataset
+
+    file_format = file_format or t.cast("FileFormat", path.suffix.lstrip(".").lower())
+    if file_format not in t.get_args(FileFormat):
+        raise ValueError(f"Unsupported file format: {file_format}")
+
+    if file_format == "jsonl":
+        dataset = [json.loads(line) for line in content.splitlines() if line.strip()]
+
+    elif file_format == "csv":
+        reader = csv.DictReader(content.splitlines())
+        dataset = list(reader)
+
+    elif file_format == "json":
+        dataset = json.loads(content)
+        if not isinstance(dataset, list):
+            raise ValueError("JSON file must contain a list of objects.")
+
+    elif file_format in {"yaml", "yml"}:
+        try:
+            import yaml  # type: ignore[import-untyped,unused-ignore]
+        except ImportError as e:
+            raise ImportError(
+                "Loading YAML datasets requires PyYAML. Install with: pip install pyyaml"
+            ) from e
+
+        dataset = yaml.safe_load(content)
+        if not isinstance(dataset, list):
+            raise ValueError("YAML file must contain a list of objects.")
+
+    return dataset
+```
+
+
+</Accordion>

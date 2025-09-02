@@ -10,17 +10,17 @@ if t.TYPE_CHECKING:
 
 def check_imports() -> None:
     try:
-        import soundfile as sf  # type: ignore[import-untyped,unused-ignore]  # noqa: F401,PLC0415
+        import soundfile as sf  # type: ignore[import-untyped,unused-ignore]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Audio processing requires `soundfile`. Install with: pip install dreadnode[multimodal]"
+            "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
         ) from e
 
     try:
-        import numpy as np  # type: ignore[import-untyped,unused-ignore]  # noqa: F401,PLC0415
+        import numpy as np  # type: ignore[import-untyped,unused-ignore]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Audio processing requires `numpy`. Install with: pip install dreadnode[multimodal]"
+            "Audio processing requires NumPy. Install with: pip install dreadnode[multimodal]"
         ) from e
 
 
@@ -78,7 +78,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
@@ -94,7 +94,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
+        import soundfile as sf  # type: ignore[import-not-found,unused-ignore]
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
@@ -113,8 +113,8 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import numpy as np  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
-        import soundfile as sf  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
+        import numpy as np  # type: ignore[import-not-found,unused-ignore]
+        import soundfile as sf  # type: ignore[import-not-found,unused-ignore]
 
         if self._sample_rate is None:
             raise ValueError('Argument "sample_rate" is required when using numpy arrays.')
@@ -151,7 +151,7 @@ class Audio(DataType):
         Returns:
             A dictionary of metadata
         """
-        import numpy as np  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
+        import numpy as np  # type: ignore[import-not-found,unused-ignore]
 
         metadata: dict[str, str | int | float | None] = {
             "extension": format_name.lower(),

@@ -4,10 +4,10 @@ import json
 from datetime import datetime, timezone
 
 from dreadnode.api.client import ApiClient
-from dreadnode.config import UserConfig
 from dreadnode.constants import (
     DEFAULT_TOKEN_MAX_TTL,
 )
+from dreadnode.user_config import UserConfig
 
 
 class Token:

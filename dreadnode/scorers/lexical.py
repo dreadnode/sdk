@@ -1,12 +1,13 @@
 import re
 import typing as t
 
-from dreadnode.lookup import Lookup, resolve_lookup
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
 
 
 def type_token_ratio(
-    target_ratio: float | Lookup | None = None,
+    target_ratio: float | None = None,
+    *,
     name: str = "type_token_ratio",
 ) -> "Scorer[t.Any]":
     """
@@ -24,10 +25,7 @@ def type_token_ratio(
         name: Name of the scorer.
     """
 
-    def evaluate(data: t.Any) -> Metric:
-        nonlocal target_ratio
-
-        target_ratio = float(resolve_lookup(target_ratio)) if target_ratio is not None else None
+    def evaluate(data: t.Any, *, target_ratio: float | None = target_ratio) -> Metric:
         if target_ratio is not None and not (0.0 <= target_ratio <= 1.0):
             raise ValueError("target_ratio must be between 0.0 and 1.0.")
 
@@ -64,4 +62,4 @@ def type_token_ratio(
             },
         )
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

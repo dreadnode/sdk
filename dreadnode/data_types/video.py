@@ -62,10 +62,10 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import numpy as np  # type: ignore[import,unused-ignore]
 
         try:
-            from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]  # noqa: PLC0415
+            from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]
                 VideoClip,
             )
         except ImportError:
@@ -81,7 +81,7 @@ class Video(DataType):
             return self._process_moviepy_clip()
         if VideoClip is None and hasattr(self._data, "write_videofile"):
             raise ImportError(
-                "MoviePy VideoClip detected but moviepy not installed. "
+                "MoviePy VideoClip detected, but MoviePy is not installed. "
                 "Install with: pip install dreadnode[multimodal]"
             )
         raise TypeError(f"Unsupported video data type: {type(self._data)}")
@@ -122,7 +122,7 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import numpy as np  # type: ignore[import,unused-ignore]
 
         if not self._fps:
             raise ValueError("fps is required for numpy array video frames")
@@ -137,7 +137,7 @@ class Video(DataType):
 
     def _extract_frames_from_data(self) -> "list[NDArray[t.Any]]":
         """Extract frames from numpy array or list data."""
-        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import numpy as np  # type: ignore[import,unused-ignore]
 
         frames = []
         rgb_dim = 3
@@ -159,15 +159,15 @@ class Video(DataType):
         self, frames: "list[NDArray[t.Any]]"
     ) -> tuple[bytes, dict[str, t.Any]]:
         """Create video file from frames."""
-        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+        import numpy as np  # type: ignore[import,unused-ignore]
 
         try:
-            from moviepy.video.io import (  # type: ignore[import,unused-ignore,import-untyped]  # noqa: PLC0415
+            from moviepy.video.io import (  # type: ignore[import,unused-ignore,import-untyped]
                 ImageSequenceClip,
             )
         except ImportError as e:
             raise ImportError(
-                "Video processing from numpy arrays requires moviepy. "
+                "Video processing from numpy arrays requires MoviePy. "
                 "Install with: pip install dreadnode[multimodal]"
             ) from e
 
@@ -211,7 +211,7 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        from moviepy.video.VideoClip import (  # noqa: PLC0415
+        from moviepy.video.VideoClip import (
             VideoClip,  # type: ignore[import,unused-ignore]
         )
 

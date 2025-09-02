@@ -1,18 +1,36 @@
 import importlib
 import typing as t
 
-from dreadnode import convert, data_types
+from loguru import logger
+
+from dreadnode import agent, convert, data_types, eval, meta, transforms  # noqa: A004
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
-from dreadnode.lookup import Lookup, lookup_input, lookup_output, lookup_param, resolve_lookup
+from dreadnode.eval import Eval
+from dreadnode.logging import configure_logging
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
-from dreadnode.metric import Metric, MetricDict, Scorer
+from dreadnode.meta import (
+    Config,
+    CurrentRun,
+    CurrentTask,
+    DatasetField,
+    ParentTask,
+    RunInput,
+    RunOutput,
+    RunParam,
+    TaskInput,
+    TaskOutput,
+)
+from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object
+from dreadnode.scorers import Scorer
 from dreadnode.task import Task
 from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     from dreadnode import scorers  # noqa: F401
+
+logger.disable("dreadnode")
 
 configure = DEFAULT_INSTANCE.configure
 shutdown = DEFAULT_INSTANCE.shutdown
@@ -23,6 +41,7 @@ task = DEFAULT_INSTANCE.task
 task_span = DEFAULT_INSTANCE.task_span
 run = DEFAULT_INSTANCE.run
 scorer = DEFAULT_INSTANCE.scorer
+score = DEFAULT_INSTANCE.score
 push_update = DEFAULT_INSTANCE.push_update
 tag = DEFAULT_INSTANCE.tag
 get_run_context = DEFAULT_INSTANCE.get_run_context
@@ -35,6 +54,8 @@ log_input = DEFAULT_INSTANCE.log_input
 log_inputs = DEFAULT_INSTANCE.log_inputs
 log_output = DEFAULT_INSTANCE.log_output
 log_outputs = DEFAULT_INSTANCE.log_outputs
+log_sample = DEFAULT_INSTANCE.log_sample
+log_samples = DEFAULT_INSTANCE.log_samples
 link_objects = DEFAULT_INSTANCE.link_objects
 log_artifact = DEFAULT_INSTANCE.log_artifact
 
@@ -44,29 +65,42 @@ __all__ = [
     "DEFAULT_INSTANCE",
     "Audio",
     "Code",
+    "Config",
+    "CurrentRun",
+    "CurrentTask",
+    "DatasetField",
     "Dreadnode",
+    "Eval",
     "Image",
-    "Lookup",
     "Markdown",
     "Metric",
     "MetricDict",
     "Object",
     "Object3D",
+    "ParentTask",
     "Run",
+    "RunInput",
+    "RunOutput",
+    "RunParam",
     "RunSpan",
     "Scorer",
     "Span",
     "Table",
     "Task",
+    "TaskInput",
+    "TaskOutput",
     "TaskSpan",
     "Text",
     "Video",
     "__version__",
+    "agent",
     "api",
     "configure",
+    "configure_logging",
     "continue_run",
     "convert",
     "data_types",
+    "eval",
     "get_run_context",
     "link_objects",
     "log_artifact",
@@ -76,11 +110,8 @@ __all__ = [
     "log_output",
     "log_param",
     "log_params",
-    "lookup_input",
-    "lookup_output",
-    "lookup_param",
+    "meta",
     "push_update",
-    "resolve_lookup",
     "run",
     "scorer",
     "shutdown",
@@ -89,6 +120,7 @@ __all__ = [
     "task",
     "task_span",
     "task_span",
+    "transforms",
 ]
 
 __lazy_submodules__ = ["scorers"]

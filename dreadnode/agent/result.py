@@ -19,11 +19,16 @@ class AgentResult:
     error: Exception | str | None
 
     def __repr__(self) -> str:
-        return (
-            f"AgentResult(agent={self.agent.name}, "
-            f"messages={len(self.messages)}, "
-            f"usage={self.usage}, "
-            f"steps={self.steps}, "
-            f"failed={self.failed}, "
-            f"error={self.error})"
-        )
+        parts = [
+            f"agent={self.agent.name}",
+            f"messages={len(self.messages)}",
+            f"usage={self.usage}",
+            f"steps={self.steps}",
+        ]
+
+        if self.failed:
+            parts.append(f"failed={self.failed}")
+        if self.error:
+            parts.append(f"error={self.error}")
+
+        return f"AgentResult({', '.join(parts)})"
