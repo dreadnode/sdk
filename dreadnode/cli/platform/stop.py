@@ -1,0 +1,18 @@
+from dreadnode.cli.platform.docker_ import docker_stop
+from dreadnode.cli.platform.utils.printing import print_error
+from dreadnode.cli.platform.utils.versions import (
+    get_current_version,
+)
+
+
+def stop_platform() -> None:
+    """Stop the currently running platform.
+
+    Uses the current version's compose file to stop all platform containers
+    via docker compose down.
+    """
+    current_version = get_current_version()
+    if not current_version:
+        print_error("No current version found. Nothing to stop.")
+        return
+    docker_stop(current_version.compose_file)

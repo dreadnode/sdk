@@ -555,7 +555,7 @@ class ApiClient:
         return ContainerRegistryCredentials(**response.json())
 
     def get_platform_releases(
-        self, arch: str, tag: str, services: list[str], cli_version: str
+        self, tag: str, services: list[str], cli_version: str | None
     ) -> RegistryImageDetails:
         """
         Resolves the platform releases for the current project.
@@ -564,10 +564,29 @@ class ApiClient:
             The resolved platform releases as a ResolveReleasesResponse object.
         """
         payload = {
-            "arch": arch,
             "tag": tag,
             "services": services,
             "cli_version": cli_version,
         }
-        response = self.request("POST", "/platform/get-releases", json_data=payload)
+        try:
+            response = self.request("POST", "/platform/get-releases", json_data=payload)
+
+        except RuntimeError as e:
+            if "404" in str(e):
+                if "Image not found" in str(e):
+                    raise RuntimeError("Image not found") from e
+
+                raise RuntimeError(
+                    f"Failed to get platform releases: {e}. The feature is likely disabled on this server"
+                ) from e
+            raise
         return RegistryImageDetails(**response.json())
+
+    def get_platform_templates(self, tag: str) -> bytes:
+        """
+        Retrieves the available platform templates.
+        """
+        params = {"tag": tag}
+        response = self.request("GET", "/platform/templates/all", params=params)
+        zip_content: bytes = response.content
+        return zip_content

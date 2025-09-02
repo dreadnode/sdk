@@ -54,15 +54,19 @@ class PlatformImage(BaseModel):
     service: str
     uri: str
     digest: str
-    version: str
+    tag: str
 
     @property
     def full_uri(self) -> str:
         return f"{self.uri}@{self.digest}"
 
+    @property
+    def registry(self) -> str:
+        return self.uri.split("/")[0]
+
 
 class RegistryImageDetails(BaseModel):
-    version: str
+    tag: str
     images: list[PlatformImage]
 
 

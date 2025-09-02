@@ -1,75 +1,50 @@
 import cyclopts
 
-from dreadnode.cli.platform.check_for_updates import check_for_updates as check_for_updates_
-from dreadnode.cli.platform.configure import configure_platform
-from dreadnode.cli.platform.docker.download import download as download_platform
-from dreadnode.cli.platform.docker.login import docker_login
-from dreadnode.cli.platform.docker.start import start as start_platform
-from dreadnode.cli.platform.docker.start import stop as stop_platform
-from dreadnode.cli.platform.init import init as init_platform
-from dreadnode.cli.platform.init import initialized as platform_initilized
+from dreadnode.cli.platform.download import download_platform
+from dreadnode.cli.platform.login import log_into_registries
+from dreadnode.cli.platform.start import start_platform
+from dreadnode.cli.platform.stop import stop_platform
+from dreadnode.cli.platform.upgrade import upgrade_platform
 
 cli = cyclopts.App("platform", help="Run and manage the platform.", help_flags=[])
 
 
 @cli.command()
-def init(tag: str = "latest", arch: str | None = None) -> None:
+def start(tag: str | None = None) -> None:
+    """Start the platform. Optionally, provide a tagged version to start.
+
+    Args:
+        tag: Optional image tag to use when starting the platform.
     """
-    Initialize the platform.
-    """
-    init_platform(tag=tag, arch=arch)
+    start_platform(tag=tag)
 
 
-@cli.command()
-def download(tag: str = "latest", arch: str | None = None) -> None:
-    """
-    Download the platform files.
-    """
-    docker_login()
-
-    if not platform_initilized() or tag != "latest" or arch:
-        init_platform(tag=tag, arch=arch)
-
-    download_platform()
-
-
-@cli.command()
-def configure() -> None:
-    """
-    Configure the platform.
-    """
-    configure_platform()
-
-
-@cli.command()
-def start() -> None:
-    """
-    Start the platform services.
-    """
-    start_platform()
-
-
-@cli.command()
+@cli.command(name=["stop", "down"])
 def stop() -> None:
-    """
-    Stop the platform services.
-    """
+    """Stop the running platform."""
     stop_platform()
 
 
 @cli.command()
-def check_for_updates() -> None:
+def download(tag: str) -> None:
+    """Download platform files for a specific tag.
+
+    Args:
+        tag: Image tag to download.
     """
-    Check for platform updates.
-    """
-    check_for_updates_()
+    download_platform(tag)
 
 
 @cli.command()
-def update() -> None:
+def upgrade() -> None:
+    """Upgrade the platform to the latest version."""
+    upgrade_platform()
+
+
+@cli.command()
+def refresh_registry_auth() -> None:
+    """Refresh container registry credentials for platform access.
+
+    Used for out of band Docker management.
     """
-    Update the platform.
-    """
-    stop_platform()
-    download_platform()
-    start_platform()
+    log_into_registries()
