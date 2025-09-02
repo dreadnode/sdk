@@ -47,22 +47,21 @@ current_sample_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
 )
 
 
-class EvalWarning(UserWarning):
+class EvaluationWarning(UserWarning):
     """Warning raised during evaluation."""
 
 
-class Eval(Model, t.Generic[In, Out]):
+class Evaluation(Model, t.Generic[In, Out]):
     """
     Prepared evaluation of a task with an associated dataset and configuration.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    task: t.Annotated[Task[[In], Out] | str, Config(expose_as=str)]
+    # task: t.Annotated[Task[[In], Out] | str, Config(expose_as=str)]
     """The task to evaluate. Can be a Task object or a string representing qualified task name."""
     dataset: t.Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=FilePath)]
     """The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from."""
-
     name: str | None = Config(default=None)
     """The name of the evaluation."""
     description: str = Config(default="")
@@ -106,7 +105,7 @@ class Eval(Model, t.Generic[In, Out]):
         parts: list[str] = [
             f"name='{self.name}'",
             f"description='{description}'",
-            f"task={self.task!r}",
+            # f"task={self.task!r}",
             f"dataset={self.dataset!r}",
         ]
 
@@ -246,7 +245,7 @@ class Eval(Model, t.Generic[In, Out]):
         total_samples = total_iterations * len(dataset)
 
         yield EvalStart(
-            eval=self,
+            evaluation=self,
             dataset_size=len(dataset),
             scenario_count=len(param_combinations),
             total_iterations=total_iterations,
@@ -271,7 +270,7 @@ class Eval(Model, t.Generic[In, Out]):
                 run_id = scenario_span.run_id
 
                 yield ScenarioStart(
-                    eval=self,
+                    evaluation=self,
                     run_id=run_id,
                     scenario_params=scenario_params,
                     iteration_count=self.iterations,
@@ -288,7 +287,7 @@ class Eval(Model, t.Generic[In, Out]):
                 for i in range(self.iterations):
                     iteration = i + 1
                     yield IterationStart(
-                        eval=self,
+                        evaluation=self,
                         run_id=run_id,
                         scenario_params=scenario_params,
                         iteration=iteration,
@@ -308,12 +307,12 @@ class Eval(Model, t.Generic[In, Out]):
                                 ):
                                     warn_at_user_stacklevel(
                                         f"Ending '{self.name}' evaluation early after {consecutive_failures} consecutive failures.",
-                                        EvalWarning,
+                                        EvaluationWarning,
                                     )
                                     scenario_result.iterations.append(iteration_result)
                                     eval_result.scenarios.append(scenario_result)
                                     yield EvalEnd(
-                                        eval=self,
+                                        evaluation=self,
                                         result=eval_result,
                                         stop_reason="max_consecutive_failures_reached",
                                     )
@@ -321,16 +320,16 @@ class Eval(Model, t.Generic[In, Out]):
                             else:
                                 consecutive_failures = 0
 
-                            yield SampleComplete(eval=self, run_id=run_id, sample=sample)
+                            yield SampleComplete(evaluation=self, run_id=run_id, sample=sample)
                             iteration_result.samples.append(sample)
 
-                    yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
+                    yield IterationEnd(evaluation=self, run_id=run_id, result=iteration_result)
                     scenario_result.iterations.append(iteration_result)
 
-                yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
+                yield ScenarioEnd(evaluation=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
 
-        yield EvalEnd(eval=self, result=eval_result)
+        yield EvalEnd(evaluation=self, result=eval_result)
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import typing_extensions as te
 
 if t.TYPE_CHECKING:
-    from dreadnode.evals.evals import Eval
+    from dreadnode.evals import Evaluation
     from dreadnode.evals.result import EvalResult, IterationResult, ScenarioResult
     from dreadnode.evals.sample import Sample
 
@@ -18,7 +18,7 @@ EvalStopReason = t.Literal["finished", "max_consecutive_failures_reached"]
 class EvalEvent(t.Generic[In, Out]):
     """Base class for all evaluation events."""
 
-    eval: "Eval[In, Out]" = field(repr=False)
+    evaluation: "Evaluation[In, Out]" = field(repr=False)
 
 
 @dataclass

@@ -36,6 +36,20 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     parent_id: UUID | None = None
     """The id of the parent trial for search purposes."""
 
+    def default_trial_formatter(self) -> str:
+        """
+        A default formatter that converts a trial into a human-readable summary string.
+        """
+        # Safely access the results from the trial's evaluation
+        output_dict = self.eval_result.samples[0].output if self.eval_result else {}
+        response_text = output_dict.get("output", "Evaluation failed or is pending.")
+
+        return (
+            f"ATTEMPT (Score: {self.score:.2f}):\n"
+            f"  - Prompt: {self.candidate}\n"
+            f"  - Response: {response_text}"
+        )
+
 
 Trials = list[Trial[CandidateT]]
 

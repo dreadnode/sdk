@@ -3,7 +3,7 @@ import typing as t
 
 from pydantic import BaseModel, ConfigDict, Field, FilePath, PrivateAttr
 
-from dreadnode.evals import Eval
+from dreadnode.evals import Evaluation
 from dreadnode.evals.result import EvalResult
 from dreadnode.optimization.events import (
     CandidatePruned,
@@ -102,7 +102,7 @@ class Study(BaseModel, t.Generic[CandidateT]):
             objective_scorer_name = scorer.name
 
         try:
-            evaluator = Eval(
+            evaluator = Evaluation(
                 task=task_variant,
                 dataset=self.dataset,
                 scorers=scorers,

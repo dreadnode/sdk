@@ -253,10 +253,10 @@ class DatasetField(Context):
         return f"DatasetField(name='{self.ref_name}')"
 
     def resolve(self) -> t.Any:
-        from dreadnode.evals.evals import current_sample_row
+        from dreadnode.evals.evaluation import current_sample_row
 
         if (row := current_sample_row.get()) is None:
-            raise RuntimeError("DatasetField() can only be used within an active Eval.")
+            raise RuntimeError("DatasetField() can only be used within an active Evaluation.")
         try:
             return row[self.ref_name]
         except Exception as e:

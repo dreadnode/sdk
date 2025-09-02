@@ -901,7 +901,7 @@ def clip(
 # Core Scorers
 
 
-def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
+def equals(reference: T, *, name: str = "equals", assertion: bool = False) -> Scorer[T]:
     """
     Create a scorer that checks for equality between the input and a reference value.
 
@@ -916,4 +916,4 @@ def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
     async def evaluate(data: T, *, reference: T = reference) -> Metric:
         return Metric(1.0 if data == reference else 0.0)
 
-    return Scorer[T](evaluate, name=name)
+    return Scorer[T](evaluate, name=name, assertion=assertion)
