@@ -317,6 +317,21 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         metrics = await self.normalize_and_score(object, *args, **kwargs)
         return metrics[0], metrics[1:]
 
+    async def _assert_score(self, object: T, *args: t.Any, **kwargs: t.Any) -> bool:
+        """
+        Execute the scorer and return whether it passes an assertion.
+
+        A scorer used as an assertion is considered passing if its primary metric's value is truthy.
+
+        Args:
+            object: The object to score.
+
+        Returns:
+            True if the primary metric's value is truthy, False otherwise.
+        """
+        primary_metric, _ = await self.score_composite(object, *args, **kwargs)
+        return bool(primary_metric.value)
+
     async def score(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:
         """
         Execute the scorer and return the metric. If the scorer is a composition of other scorers,

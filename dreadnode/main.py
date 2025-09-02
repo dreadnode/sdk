@@ -555,7 +555,7 @@ class Dreadnode:
             return func
 
         def make_task(
-            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
+            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R] | type,
         ) -> Task[P, R]:
             if isinstance(func, Task):
                 return func.with_(
