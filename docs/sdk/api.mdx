@@ -88,6 +88,7 @@ def __init__(
         headers=headers,
         base_url=self._base_url,
         timeout=30,
+        cookies=_cookies,
     )
 
     if debug:
@@ -169,7 +170,7 @@ def export_metrics(
     Returns:
         A DataFrame containing the exported metric data.
     """
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     response = self.request(
         "GET",
@@ -264,7 +265,7 @@ def export_parameters(
     Returns:
         A DataFrame containing the exported parameter data.
     """
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     response = self.request(
         "GET",
@@ -347,7 +348,7 @@ def export_runs(
     Returns:
         A DataFrame containing the exported run data.
     """
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     response = self.request(
         "GET",
@@ -444,7 +445,7 @@ def export_timeseries(
     Returns:
         A DataFrame containing the exported timeseries data.
     """
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     response = self.request(
         "GET",

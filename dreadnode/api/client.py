@@ -100,6 +100,7 @@ class ApiClient:
             headers=headers,
             base_url=self._base_url,
             timeout=30,
+            cookies=_cookies,
         )
 
         if debug:
@@ -394,7 +395,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported run data.
         """
-        import pandas as pd
+        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",
@@ -431,7 +432,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported metric data.
         """
-        import pandas as pd
+        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",
@@ -471,7 +472,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported parameter data.
         """
-        import pandas as pd
+        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",
@@ -512,7 +513,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
-        import pandas as pd
+        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",

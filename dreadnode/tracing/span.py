@@ -754,7 +754,7 @@ class RunSpan(Span):
     def log_metric(
         self,
         name: str,
-        value: float | bool,
+        value: float | bool,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -778,7 +778,7 @@ class RunSpan(Span):
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,
+        value: float | bool | Metric,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1040,7 +1040,7 @@ class TaskSpan(Span, t.Generic[R]):
     def log_metric(
         self,
         name: str,
-        value: float | bool,
+        value: float | bool,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1062,7 +1062,7 @@ class TaskSpan(Span, t.Generic[R]):
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,
+        value: float | bool | Metric,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,

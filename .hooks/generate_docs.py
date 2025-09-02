@@ -11,8 +11,6 @@ from mkdocstrings_handlers.python._internal.handler import (
     PythonHandler,
 )
 
-# ruff: noqa: T201
-
 
 class CustomMarkdownConverter(MarkdownConverter):  # type: ignore[misc]
     # Strip extra whitespace from code blocks
