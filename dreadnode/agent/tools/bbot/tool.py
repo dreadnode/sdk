@@ -8,6 +8,8 @@ from .utils import events_table, flags_table, modules_table, presets_table
 
 
 class BBotTool(Toolset):
+    _runtime_dependencies = ["bbot"]
+
     from bbot import Preset, Scanner
 
     @staticmethod

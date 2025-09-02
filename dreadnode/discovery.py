@@ -9,6 +9,7 @@ T = t.TypeVar("T")
 
 
 DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py", "tool.py")
+DEFAULT_TOOL_SEARCH_PATH = Path.home() / ".dreadnode" / "tools"
 
 
 @dataclass

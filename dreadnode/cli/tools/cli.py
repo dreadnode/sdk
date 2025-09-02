@@ -9,7 +9,7 @@ import rich
 
 from dreadnode.agent.format import format_tool, format_tools_table
 from dreadnode.agent.tools import Toolset
-from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
+from dreadnode.discovery import DEFAULT_TOOL_SEARCH_PATH, discover
 from dreadnode.meta import get_config_model, hydrate
 from dreadnode.meta.introspect import flatten_model
 
@@ -26,14 +26,16 @@ def show(
     ] = False,
 ) -> None:
     """
-    Discover and list available agents in a Python file.
+    Discover and list available tools in a Python file.
 
     If no file is specified, searches for `tool.py`.
     """
+    if not file:
+        file = DEFAULT_TOOL_SEARCH_PATH
     discovered = discover(Toolset, file)
     if not discovered:
-        path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
-        rich.print(f"No agents found in {path_hint}")
+        path_hint = file or ", ".join(str(DEFAULT_TOOL_SEARCH_PATH))
+        rich.print(f"No tools found in {path_hint}")
         return
 
     grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
@@ -46,6 +48,41 @@ def show(
                 rich.print(format_tool(tool))
         else:
             rich.print(format_tools_table(tools))
+
+
+@cli.command()
+async def install(
+    tool: str,
+    *,
+    server: t.Annotated[
+        str | None,
+        cyclopts.Parameter(name=["--server", "-s"], help="URL of the server to clone from."),
+    ] = None,
+    profile: t.Annotated[
+        str | None,
+        cyclopts.Parameter(
+            name=["--profile", "-p"], help="Profile alias to use for authentication."
+        ),
+    ] = None,
+    dest: t.Annotated[
+        Path | None,
+        cyclopts.Parameter(
+            name=["--dest", "-d"],
+            help="Destination directory to install the tool into. Defaults to ~/.dreadnode/tools/<tool>.",
+        ),
+    ] = None,
+) -> None:
+    """
+    Install a tool from a GitHub repository.
+
+    The tool should be in a repository under the `dreadnode-tools` organization.
+    For example, to install the `web_enum` tool, you would run:
+
+        dreadnode tools install web_enum
+
+    This would clone from:
+
+    """
 
 
 @cli.command()
@@ -79,7 +116,7 @@ async def run(  # noqa: PLR0912, PLR0915
             file_path = tool_as_path
             tool_name = tool.split(":", 1)[-1] if ":" in tool else None
 
-    path_hint = file_path or ", ".join(DEFAULT_SEARCH_PATHS)
+    path_hint = file_path or ", ".join(str(DEFAULT_TOOL_SEARCH_PATH))
 
     discovered = discover(Toolset, file_path)
     if not discovered:
@@ -111,8 +148,6 @@ async def run(  # noqa: PLR0912, PLR0915
         config_parameter = config_parameter | None  # type: ignore [assignment]
 
     async def tool_cli(
-        input: t.Annotated[str, cyclopts.Parameter(help="Input to the agent")],
-        *,
         config: t.Any = config_default,
     ) -> None:
         flat_config = {k: v for k, v in flatten_model(config).items() if v is not None}
