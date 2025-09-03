@@ -229,6 +229,71 @@ class Neo4jTool(Toolset):
         except Exception as e:
             logger.error(f"Failed to store SQL injection finding: {e}")
             return f"Failed to store SQL injection finding: {e}"
+
+    @tool_method()
+    async def store_host_header_finding(
+        self,
+        url: str,
+        vulnerability_type: str,
+        risk_level: str,
+        payload: str,
+        response_evidence: str,
+        reflection_location: str = "",
+        impact: str = "",
+    ) -> str:
+        """Store a Host Header Injection vulnerability finding in Neo4j.
+        
+        Args:
+            url: Target URL with vulnerable host header
+            vulnerability_type: Type of host header injection (e.g., "reflection", "cache_poisoning", "password_reset")
+            risk_level: Risk level (low/medium/high/critical)
+            payload: Malicious host header value used
+            response_evidence: Evidence of injection (reflected content, headers, etc.)
+            reflection_location: Where the host header is reflected (headers, body, etc.)
+            impact: Potential impact description
+            
+        Returns:
+            Confirmation message with finding ID
+        """
+        driver = await self._get_driver()
+        
+        try:
+            query = """
+            CREATE (f:HostHeaderInjectionVulnerability {
+                url: $url,
+                vulnerability_type: $vulnerability_type,
+                risk_level: $risk_level,
+                timestamp: $timestamp,
+                payload: $payload,
+                response_evidence: $response_evidence,
+                reflection_location: $reflection_location,
+                impact: $impact,
+                finding_id: randomUUID()
+            })
+            RETURN f.finding_id as finding_id
+            """
+            
+            params = {
+                "url": url,
+                "vulnerability_type": vulnerability_type,
+                "risk_level": risk_level.upper(),
+                "timestamp": datetime.now().isoformat(),
+                "payload": payload,
+                "response_evidence": response_evidence,
+                "reflection_location": reflection_location,
+                "impact": impact,
+            }
+            
+            async with driver.session() as session:
+                result = await session.run(query, params)
+                record = await result.single()
+                
+            logger.info(f"Stored host header injection finding for {url}")
+            return f"Successfully stored host header injection finding: {record['finding_id'] if record else 'unknown'}"
+            
+        except Exception as e:
+            logger.error(f"Failed to store host header injection finding: {e}")
+            return f"Failed to store host header injection finding: {e}"
     
     @tool_method()
     async def query_findings(
