@@ -150,6 +150,45 @@ def _are_docker_creds_fresh(registry: str, max_age_hours: int = 1) -> bool:
     return age_hours < max_age_hours and _check_docker_creds_exist(registry)
 
 
+def _check_docker_installed() -> bool:
+    """Check if Docker is installed on the system."""
+    try:
+        cmd = ["docker", "--version"]
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    except subprocess.CalledProcessError:
+        print_error("Docker is not installed. Please install Docker and try again.")
+        return False
+
+    return True
+
+
+def _check_docker_compose_installed() -> bool:
+    """Check if Docker Compose is installed on the system."""
+    try:
+        cmd = ["docker", "compose", "--version"]
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        print_error("Docker Compose is not installed. Please install Docker Compose and try again.")
+        return False
+    return True
+
+
+def docker_requirements_met() -> bool:
+    """Check if Docker and Docker Compose are installed."""
+    return _check_docker_installed() and _check_docker_compose_installed()
+
+
 def docker_login(registry: str) -> None:
     """Log into a Docker registry using API credentials.
 

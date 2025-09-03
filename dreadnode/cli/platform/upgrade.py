@@ -2,7 +2,7 @@ from dreadnode.cli.platform.constants import SERVICES
 from dreadnode.cli.platform.docker_ import docker_stop
 from dreadnode.cli.platform.download import download_platform
 from dreadnode.cli.platform.start import start_platform
-from dreadnode.cli.platform.utils.env_merge import (
+from dreadnode.cli.platform.utils.env_mgmt import (
     merge_env_files_content,
 )
 from dreadnode.cli.platform.utils.printing import print_error, print_info

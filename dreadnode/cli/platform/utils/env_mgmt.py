@@ -1,4 +1,7 @@
+import subprocess
+import sys
 import typing as t
+from pathlib import Path
 
 from dreadnode.cli.platform.constants import (
     SERVICES,
@@ -365,10 +368,23 @@ def create_default_env_files(current_version: LocalVersionSchema) -> None:
                         raise RuntimeError(
                             f"Sample environment file for {service} not found. Cannot configure {service}."
                         )
-    # concatenate .api.env and .ui.env into .env if it doesn't already exist
+
+
+def generate_env_file(current_version: LocalVersionSchema) -> None:
+    """Generate a .env file for the current version by concatenating API and UI environment files.
+
+    This file is used by Docker Compose.
+
+    Args:
+        current_version: The current local version schema containing service information.
+
+    Returns:
+        None
+
+    Raises:
+        RuntimeError: If .env file creation fails.
+    """
     env_file = current_version.local_path / ".env"
-    if env_file.exists():
-        return
 
     api_env_file = current_version.api_env_file
     ui_env_file = current_version.ui_env_file
@@ -376,9 +392,59 @@ def create_default_env_files(current_version: LocalVersionSchema) -> None:
     if api_env_file.exists() and ui_env_file.exists():
         print_info(f"Concatenating {api_env_file} and {ui_env_file} into {env_file}...")
         with env_file.open("w") as outfile:
+            outfile.write("# WARNING: This file is auto-generated. Do not edit directly.\n")
             for fname in (api_env_file, ui_env_file):
                 with fname.open() as infile:
                     outfile.write(infile.read())
     else:
         print_error(f"One or both environment files not found: {api_env_file}, {ui_env_file}.")
         raise RuntimeError("Failed to create .env file.")
+
+
+def remove_generated_env_file(current_version: LocalVersionSchema) -> None:
+    """Remove the generated .env file for the current version.
+
+    Args:
+        current_version: The current local version schema containing service information.
+    """
+    env_file = current_version.local_path / ".env"
+    if env_file.exists():
+        env_file.unlink()
+
+
+def open_env_file(filename: Path) -> None:
+    """Open the specified environment file in the default editor.
+
+    Args:
+        filename: The path to the environment file to open.
+    """
+    if sys.platform == "darwin":
+        cmd = ["open", "-t", filename]
+    else:
+        cmd = ["xdg-open", filename]
+    try:
+        subprocess.run(cmd, check=False)  # noqa: S603
+        print_info("Opened environment file.")
+    except subprocess.CalledProcessError as e:
+        print_error(f"Failed to open environment file: {e}")
+
+
+def read_env_file(filename: Path) -> dict[str, str]:
+    """Read the specified environment file and return its contents as a dictionary.
+
+    Args:
+        filename: The path to the environment file to read.
+
+    Returns:
+        A dictionary containing the environment variables defined in the file.
+    """
+    env_vars = {}
+    if filename.exists():
+        content = filename.read_text()
+
+    env_lines = _parse_env_lines(content)
+
+    # for all key-value pairs in env_lines, pretty print them
+    for key, value in env_lines.items():
+        print_info(f"Found environment variable: {key}={value}")
+    return env_vars

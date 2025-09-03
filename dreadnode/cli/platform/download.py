@@ -6,7 +6,7 @@ from dreadnode.api.models import RegistryImageDetails
 from dreadnode.cli.api import create_api_client
 from dreadnode.cli.platform.constants import SERVICES, VERSIONS_MANIFEST
 from dreadnode.cli.platform.schemas import LocalVersionSchema
-from dreadnode.cli.platform.utils.env_merge import (
+from dreadnode.cli.platform.utils.env_mgmt import (
     create_default_env_files,
 )
 from dreadnode.cli.platform.utils.printing import (

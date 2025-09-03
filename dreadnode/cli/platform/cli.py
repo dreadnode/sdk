@@ -1,5 +1,6 @@
 import cyclopts
 
+from dreadnode.cli.platform.configure import configure_platform
 from dreadnode.cli.platform.download import download_platform
 from dreadnode.cli.platform.login import log_into_registries
 from dreadnode.cli.platform.start import start_platform
@@ -48,3 +49,13 @@ def refresh_registry_auth() -> None:
     Used for out of band Docker management.
     """
     log_into_registries()
+
+
+@cli.command()
+def configure(service: str = "api") -> None:
+    """Configure the platform for a specific service.
+
+    Args:
+        service: The name of the service to configure.
+    """
+    configure_platform(service=service)
