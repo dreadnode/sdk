@@ -18,11 +18,6 @@ from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
 from dreadnode.util import warn_at_user_stacklevel
 
-if t.TYPE_CHECKING:
-    from sentence_transformers import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-        SentenceTransformer,
-    )
-
 
 def similarity(
     reference: str,
@@ -173,7 +168,7 @@ def similarity_with_rapidfuzz(
     return Scorer(evaluate, name=name, catch=True)
 
 
-def distance(
+def string_distance(
     reference: str,
     *,
     method: t.Literal[

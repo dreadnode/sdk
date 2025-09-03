@@ -101,10 +101,10 @@ def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:  # noqa: PLR0911, 
             hydrated_dict[key] = _hydrate_recursive(item, item_overrides)
         return hydrated_dict
 
-    if not isinstance(obj, (str, int, float, bool, type(None), type)) and hasattr(obj, "__dict__"):
+    if not isinstance(obj, str | int | float | bool | type(None) | type) and hasattr(obj, "__dict__"):
         with contextlib.suppress(Exception):
             for attr_name, attr_value in obj.__dict__.items():
-                if attr_name.startswith("__") or not isinstance(attr_value, (Component, Model)):
+                if attr_name.startswith("__") or not isinstance(attr_value, Component | Model):
                     continue
 
                 hydrated = _hydrate_recursive(attr_value, override)

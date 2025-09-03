@@ -23,9 +23,7 @@ from dreadnode.util import (
 )
 
 if t.TYPE_CHECKING:
-    from dreadnode.airt.target.custom import CustomTarget
     from dreadnode.eval.eval import (
-        Eval,
         InputDataset,
         InputDatasetProcessor,
     )

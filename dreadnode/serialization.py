@@ -363,7 +363,7 @@ def _handle_numpy_array(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
-    if not isinstance(obj, numpy.ndarray):
+    if not isinstance(obj, np.ndarray):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
     serialized, schema = _handle_bytes(obj.tobytes(), seen)

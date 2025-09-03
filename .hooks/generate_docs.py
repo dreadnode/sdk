@@ -96,7 +96,7 @@ class AutoDocGenerator:
             html_id: str = "",
             **kwargs: t.Any,
         ) -> t.Any:
-            return Markup(md.convert(text) if text else "")  # noqa: S704 # nosec
+            return Markup(md.convert(text) if text else "")  # nosec
 
         self.handler.env.filters["convert_markdown"] = simple_convert_markdown
 

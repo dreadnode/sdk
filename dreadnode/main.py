@@ -972,7 +972,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool,  # noqa: FBT001
+        value: float | bool,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1063,7 +1063,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,  # noqa: FBT001
+        value: float | bool | Metric,
         *,
         step: int = 0,
         origin: t.Any | None = None,

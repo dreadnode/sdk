@@ -67,7 +67,7 @@ class Image(DataType):
             A tuple of (image_bytes, image_format, mode, width, height)
         """
 
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
         if isinstance(self._data, PIL.Image.Image):
             return self._process_pil_image()
@@ -234,7 +234,7 @@ class Image(DataType):
             "x-python-datatype": "dreadnode.Image.bytes",
         }
 
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             metadata["source-type"] = "file"
             metadata["source-path"] = str(self._data)
         elif isinstance(self._data, PIL.Image.Image):
