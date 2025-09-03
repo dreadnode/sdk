@@ -54,7 +54,7 @@ class AgentConsoleRenderer:
             Text(f"Running [bold]{event.tool_call.name}[/bold]...", style="yellow")
         )
 
-    def _handle_tool_end(self, event: ToolEnd):
+    def _handle_tool_end(self, event: ToolEnd) -> None:
         """Prints the tool's result and cleans up the status board."""
         # First, print the static result panel. This ensures it's in the
         # console history even after the live display is gone.

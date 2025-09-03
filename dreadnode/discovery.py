@@ -9,6 +9,7 @@ T = t.TypeVar("T")
 
 
 DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py")
+DEFAULT_TOOL_SEARCH_PATH = Path.home() / ".dreadnode" / "tools"
 
 
 @dataclass
@@ -72,7 +73,7 @@ def _discover_in_module(module_data: ModuleData, discovery_type: type[T]) -> dic
 
 
 def _discover_from_path(discovery_type: type[T], path: Path | None) -> list[Discovered[T]]:
-    if path is not None and not path.is_file():
+    if path is not None and not path.exists():
         raise FileNotFoundError(f"Path does not exist or is not a file: {path}")
 
     objects: list[Discovered[T]] = []
