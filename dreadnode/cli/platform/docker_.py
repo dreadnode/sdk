@@ -68,6 +68,42 @@ def _run_docker_compose_command(
     return result
 
 
+def get_origin(ui_container: str) -> str | None:
+    """
+    Get the ORIGIN environment variable from the UI container and return
+    a friendly message for the user.
+
+    Args:
+        ui_container: Name of the UI container (default: dreadnode-ui).
+
+    Returns:
+        str | None: Message with the origin URL, or None if not found.
+    """
+    try:
+        cmd = [
+            "docker",
+            "inspect",
+            "-f",
+            "{{range .Config.Env}}{{println .}}{{end}}",
+            ui_container,
+        ]
+        cp = subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+
+        for line in cp.stdout.splitlines():
+            if line.startswith("ORIGIN="):
+                return line.split("=", 1)[1]
+
+    except subprocess.CalledProcessError:
+        return None
+
+    return None
+
+
 def _check_docker_creds_exist(registry: str) -> bool:
     """Check if Docker credentials exist for the specified registry.
 
@@ -123,9 +159,9 @@ def docker_login(registry: str) -> None:
     Raises:
         subprocess.CalledProcessError: If docker login command fails.
     """
-    # if _are_docker_creds_fresh(registry):
-    #     rich.print(f"Docker credentials for {registry} are fresh. Skipping login.")
-    #     return
+    if _are_docker_creds_fresh(registry):
+        print_info(f"Docker credentials for {registry} are fresh. Skipping login.")
+        return
 
     print_info(f"Logging in to Docker registry: {registry} ...")
     client = create_api_client()

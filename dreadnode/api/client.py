@@ -572,6 +572,9 @@ class ApiClient:
             response = self.request("POST", "/platform/get-releases", json_data=payload)
 
         except RuntimeError as e:
+            if "403" in str(e):
+                raise RuntimeError("You do not have access to platform releases.") from e
+
             if "404" in str(e):
                 if "Image not found" in str(e):
                     raise RuntimeError("Image not found") from e

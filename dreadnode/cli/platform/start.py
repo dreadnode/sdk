@@ -1,6 +1,6 @@
-from dreadnode.cli.platform.docker_ import docker_login, docker_run
+from dreadnode.cli.platform.docker_ import docker_login, docker_run, get_origin
 from dreadnode.cli.platform.download import download_platform
-from dreadnode.cli.platform.utils.printing import print_info
+from dreadnode.cli.platform.utils.printing import print_info, print_success
 from dreadnode.cli.platform.utils.versions import (
     create_local_latest_tag,
     get_current_version,
@@ -33,3 +33,11 @@ def start_platform(tag: str | None = None) -> None:
             registries_attempted.add(image.registry)
     print_info(f"Starting platform: {selected_version.tag}")
     docker_run(selected_version.compose_file)
+    print_success(f"Platform {selected_version.tag} started successfully.")
+    origin = get_origin("dreadnode-ui")
+    if origin:
+        print_info("You can access the app at the following URLs:")
+        print_info(f" - {origin}")
+    else:
+        print_info(" - Unable to determine the app URL.")
+        print_info("Please check the container logs for more information.")
