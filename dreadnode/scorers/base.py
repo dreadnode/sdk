@@ -164,9 +164,9 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         name: str | None = None,
         attributes: JsonDict | None = None,
         step: int | None = None,
-        auto_increment_step: bool | None = None,
-        catch: bool | None = None,
-        log_all: bool | None = None,
+        auto_increment_step: bool | None = None,  # noqa: FBT001
+        catch: bool | None = None,  # noqa: FBT001
+        log_all: bool | None = None,  # noqa: FBT001
     ) -> "Scorer[T]":
         """
         Create a new Scorer with updated properties.

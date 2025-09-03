@@ -3,6 +3,7 @@ import typing as t
 
 import aiohttp
 
+from dreadnode import tag
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
@@ -30,8 +31,6 @@ def contains_crucible_flag(
     platform_url: str = "https://platform.dreadnode.io",
     name: str = "contains_crucible_flag",
 ) -> Scorer[t.Any]:
-    from dreadnode import tag
-
     async def evaluate(
         obj: t.Any,
         *,

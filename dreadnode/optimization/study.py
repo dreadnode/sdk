@@ -4,11 +4,13 @@ import typing as t
 
 from pydantic import ConfigDict, FilePath, PrivateAttr
 
+from dreadnode import log_inputs, log_metric, log_outputs, log_params, run, task_span
 from dreadnode.eval import Eval
 from dreadnode.eval.result import EvalResult
 from dreadnode.eval.sample import InputDataset
 from dreadnode.meta import Model
 from dreadnode.meta.types import Config
+from dreadnode.optimization.console import StudyConsoleAdapter
 from dreadnode.optimization.events import (
     CandidatePruned,
     CandidatesSuggested,
@@ -26,6 +28,7 @@ from dreadnode.optimization.search import Search
 from dreadnode.optimization.trial import Trial, Trials
 from dreadnode.scorers import Scorer, ScorerLike
 from dreadnode.task import Task
+from dreadnode.tracing.span import current_run_span
 from dreadnode.types import AnyDict
 from dreadnode.util import concurrent_gen, get_callable_name
 
@@ -233,8 +236,6 @@ class Study(Model, t.Generic[CandidateT]):
         )
 
     def _log_event_metrics(self, event: StudyEvent) -> None:
-        from dreadnode import log_metric
-
         if isinstance(event, TrialComplete):
             trial = event.trial
             if trial.status == "success":
@@ -248,9 +249,6 @@ class Study(Model, t.Generic[CandidateT]):
             log_metric("best_score", event.trial.score, step=event.trial.step)
 
     async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
-        from dreadnode import log_inputs, log_outputs, log_params, run, task_span
-        from dreadnode.tracing.span import current_run_span
-
         objective_name = (
             self.objective
             if isinstance(self.objective, str)
@@ -335,7 +333,6 @@ class Study(Model, t.Generic[CandidateT]):
 
     async def console(self) -> StudyResult[CandidateT]:
         """Runs the optimization study with a live progress dashboard in the console."""
-        from dreadnode.optimization.console import StudyConsoleAdapter
 
         adapter = StudyConsoleAdapter(self)
         return await adapter.run()

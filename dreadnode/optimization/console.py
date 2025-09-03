@@ -206,7 +206,7 @@ class StudyConsoleAdapter(t.Generic[StudyT]):
             if self._steps_task_id is not None:
                 self._progress.update(self._steps_task_id, advance=1)
             if self._patience_task_id is not None:
-                if self.study._steps_since_best > 0:
+                if self.study._steps_since_best > 0:  # noqa: SLF001
                     self._progress.update(self._patience_task_id, advance=1)
                 else:
                     self._progress.reset(self._patience_task_id)

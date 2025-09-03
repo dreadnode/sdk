@@ -3,6 +3,8 @@ import json
 import typing as t
 from pathlib import Path
 
+import yaml
+
 from dreadnode.types import AnyDict
 
 FileFormat = t.Literal["jsonl", "csv", "json", "yaml", "yml"]
@@ -49,13 +51,6 @@ def load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[A
             raise ValueError("JSON file must contain a list of objects.")
 
     elif file_format in {"yaml", "yml"}:
-        try:
-            import yaml  # type: ignore[import-untyped,unused-ignore]
-        except ImportError as e:
-            raise ImportError(
-                "Loading YAML datasets requires PyYAML. Install with: pip install pyyaml"
-            ) from e
-
         dataset = yaml.safe_load(content)
         if not isinstance(dataset, list):
             raise ValueError("YAML file must contain a list of objects.")

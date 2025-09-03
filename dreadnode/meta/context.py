@@ -1,6 +1,8 @@
 import typing as t
 from abc import ABC, abstractmethod
 
+from dreadnode.eval.eval import current_dataset_row
+from dreadnode.optimization.study import current_trial
 from dreadnode.tracing.span import RunSpan, current_run_span, current_task_span
 from dreadnode.types import UNSET, Unset
 from dreadnode.util import warn_at_user_stacklevel
@@ -253,8 +255,6 @@ class DatasetField(Context):
         return f"DatasetField(name='{self.ref_name}')"
 
     def resolve(self) -> t.Any:
-        from dreadnode.eval.eval import current_dataset_row
-
         if (row := current_dataset_row.get()) is None:
             raise RuntimeError("DatasetField() can only be used within an active Eval.")
 
@@ -274,8 +274,6 @@ class CurrentTrial(Context):
     """
 
     def resolve(self) -> t.Any:
-        from dreadnode.optimization.study import current_trial
-
         if (trial := current_trial.get()) is None:
             raise RuntimeError("CurrentTrial() must be used inside an active optimization study.")
 
@@ -288,8 +286,6 @@ class TrialCandidate(Context):
     """
 
     def resolve(self) -> t.Any:
-        from dreadnode.optimization.study import current_trial
-
         if (trial := current_trial.get()) is None:
             raise RuntimeError("TrialCandidate() must be used inside an active optimization study.")
 
@@ -302,8 +298,6 @@ class TrialOutput(Context):
     """
 
     def resolve(self) -> t.Any:
-        from dreadnode.optimization.study import current_trial
-
         if (trial := current_trial.get()) is None:
             raise RuntimeError("TrialOutput() must be used inside an active optimization study.")
 
@@ -316,8 +310,6 @@ class TrialScore(Context):
     """
 
     def resolve(self) -> t.Any:
-        from dreadnode.optimization.study import current_trial
-
         if (trial := current_trial.get()) is None:
             raise RuntimeError("TrialScore() must be used inside an active optimization study.")
 

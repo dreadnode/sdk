@@ -1,10 +1,11 @@
 import typing as t
 
+from rigging.chat import Chat
+
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 
 if t.TYPE_CHECKING:
-    from rigging.chat import Chat
     from rigging.message import Message
 
 ChatFilterMode = t.Literal[
@@ -44,8 +45,6 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat
-
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):
             return await inner_scorer(chat)
