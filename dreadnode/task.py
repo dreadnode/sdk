@@ -6,6 +6,9 @@ from pathlib import Path
 import typing_extensions as te
 from opentelemetry.trace import Tracer
 
+from dreadnode import score
+from dreadnode.airt.target import CustomTarget
+from dreadnode.eval.eval import Eval
 from dreadnode.meta.context import Context
 from dreadnode.meta.types import Component, ConfigInfo
 from dreadnode.scorers.base import Scorer, ScorerCallable, ScorersLike
@@ -378,8 +381,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         scorers: "ScorersLike[R] | None" = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
     ) -> "Eval[t.Any, R]":
-        from dreadnode.eval.eval import Eval
-
         if isinstance(dataset, str):
             dataset = Path(dataset)
 
@@ -403,8 +404,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         self,
         input_param_name: str | None = None,
     ) -> "CustomTarget[R]":
-        from dreadnode.airt.target import CustomTarget
-
         return CustomTarget(task=self, input_param_name=input_param_name)
 
     async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
@@ -420,7 +419,6 @@ class Task(Component[P, R], t.Generic[P, R]):
         Returns:
             The span associated with task execution.
         """
-        from dreadnode import score
 
         run = current_run_span.get()
 

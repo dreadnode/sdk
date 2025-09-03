@@ -1,3 +1,5 @@
+from art import text2art
+
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 
@@ -6,11 +8,11 @@ def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, 
     """Converts text into ASCII art using the 'art' library."""
 
     try:
-        from art import text2art  # type: ignore[import-not-found,unused-ignore,import-untyped]
-    except ImportError as e:
+        text2art("test")  # Test if art is working
+    except (ImportError, AttributeError):
         raise ImportError(
             "ASCII art dependency is not installed. Install with: pip install art"
-        ) from e
+        ) from ImportError("art library not available")
 
     def transform(text: str, *, font: str = Config(font, help="The font to use")) -> str:
         return str(text2art(text, font=font))
