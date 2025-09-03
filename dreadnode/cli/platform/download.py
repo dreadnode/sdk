@@ -17,6 +17,7 @@ from dreadnode.cli.platform.utils.printing import (
 )
 from dreadnode.cli.platform.utils.versions import (
     confirm_with_context,
+    create_local_latest_tag,
     get_available_local_versions,
     get_cli_version,
     get_local_cache_dir,
@@ -111,7 +112,7 @@ def _download_version_files(tag: str) -> LocalVersionSchema:
     return new_local_version
 
 
-def download_platform(tag: str) -> LocalVersionSchema:
+def download_platform(tag: str | None = None) -> LocalVersionSchema:
     """Download platform version if not already available locally.
 
     Args:
@@ -120,6 +121,10 @@ def download_platform(tag: str) -> LocalVersionSchema:
     Returns:
         LocalVersionSchema: Local version schema for the downloaded/existing version.
     """
+    if not tag or tag == "latest":
+        # all remote images are tagged with architecture
+        tag = create_local_latest_tag()
+
     if "latest" in tag:
         tag = _resolve_latest(tag)
 

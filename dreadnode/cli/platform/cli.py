@@ -27,13 +27,13 @@ def stop() -> None:
 
 
 @cli.command()
-def download(tag: str) -> None:
+def download(tag: str | None = None) -> None:
     """Download platform files for a specific tag.
 
     Args:
-        tag: Image tag to download.
+        tag: Optional image tag to download.
     """
-    download_platform(tag)
+    download_platform(tag=tag)
 
 
 @cli.command()
