@@ -23,23 +23,7 @@ ScorerCallable
 --------------
 
 ```python
-ScorerCallable = (
-    Callable[[T], Awaitable[ScorerResult] | ScorerResult]
-    | Callable[
-        [T],
-        Awaitable[Sequence[ScorerResult]]
-        | Sequence[ScorerResult],
-    ]
-    | Callable[
-        Concatenate[T, ...],
-        Awaitable[ScorerResult] | ScorerResult,
-    ]
-    | Callable[
-        Concatenate[T, ...],
-        Awaitable[Sequence[ScorerResult]]
-        | Sequence[ScorerResult],
-    ]
-)
+ScorerCallable = Callable[[T], Awaitable[ScorerResult] | ScorerResult] | Callable[[T], Awaitable[Sequence[ScorerResult]] | Sequence[ScorerResult]] | Callable[Concatenate[T, ...], Awaitable[ScorerResult] | ScorerResult] | Callable[Concatenate[T, ...], Awaitable[Sequence[ScorerResult]] | Sequence[ScorerResult]]
 ```
 
 A callable that takes an object and returns a compatible score result.
@@ -57,19 +41,7 @@ Scorer
 ------
 
 ```python
-Scorer(
-    func: ScorerCallable[T],
-    *,
-    name: str | None = None,
-    attributes: JsonDict | None = None,
-    catch: bool = False,
-    step: int = 0,
-    auto_increment_step: bool = False,
-    log_all: bool = False,
-    config: dict[str, ConfigInfo] | None = None,
-    context: dict[str, Context] | None = None,
-    wraps: Callable[..., Any] | None = None,
-)
+Scorer(func: ScorerCallable[T], *, name: str | None = None, attributes: JsonDict | None = None, catch: bool = False, step: int = 0, auto_increment_step: bool = False, log_all: bool = False, config: dict[str, ConfigInfo] | None = None, context: dict[str, Context] | None = None, wraps: Callable[..., Any] | None = None)
 ```
 
 A stateful, configurable, and composable wrapper for a scoring function.
@@ -173,11 +145,7 @@ The step value to attach to metrics produced by this Scorer.
 ### adapt
 
 ```python
-adapt(
-    type: type[OuterT],
-    adapt: Callable[[OuterT], T],
-    name: str | None = None,
-) -> Scorer[OuterT]
+adapt(type: type[OuterT], adapt: Callable[[OuterT], T], name: str | None = None) -> Scorer[OuterT]
 ```
 
 Adapts a scorer to operate with some other type
@@ -260,11 +228,7 @@ def clone(self) -> "Scorer[T]":
 ### fit\_like
 
 ```python
-fit_like(
-    scorers: ScorersLike[T] | None,
-    *,
-    attributes: JsonDict | None = None,
-) -> list[Scorer[T]]
+fit_like(scorers: ScorersLike[T] | None, *, attributes: JsonDict | None = None) -> list[Scorer[T]]
 ```
 
 Convert a collection of scorer-like objects into a list of Scorer instances.
@@ -337,9 +301,7 @@ def fit_like(
 ### normalize\_and\_score
 
 ```python
-normalize_and_score(
-    object: T, *args: Any, **kwargs: Any
-) -> list[Metric]
+normalize_and_score(object: T, *args: Any, **kwargs: Any) -> list[Metric]
 ```
 
 Executes the scorer and returns all generated metrics,
@@ -506,9 +468,7 @@ async def score(self, object: T, *args: t.Any, **kwargs: t.Any) -> Metric:
 ### score\_composite
 
 ```python
-score_composite(
-    object: T, *args: Any, **kwargs: Any
-) -> tuple[Metric, list[Metric]]
+score_composite(object: T, *args: Any, **kwargs: Any) -> tuple[Metric, list[Metric]]
 ```
 
 Executes the scorer and returns both the primary Metric and a list of any
@@ -550,14 +510,7 @@ async def score_composite(
 ### with\_
 
 ```python
-with_(
-    name: str | None = None,
-    attributes: JsonDict | None = None,
-    step: int | None = None,
-    auto_increment_step: bool | None = None,
-    catch: bool | None = None,
-    log_all: bool | None = None,
-) -> Scorer[T]
+with_(name: str | None = None, attributes: JsonDict | None = None, step: int | None = None, auto_increment_step: bool | None = None, catch: bool | None = None, log_all: bool | None = None) -> Scorer[T]
 ```
 
 Create a new Scorer with updated properties.
@@ -650,13 +603,7 @@ add
 ---
 
 ```python
-add(
-    scorer: Scorer[T],
-    other: Scorer[T],
-    *,
-    average: bool = False,
-    name: str | None = None,
-) -> Scorer[T]
+add(scorer: Scorer[T], other: Scorer[T], *, average: bool = False, name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that adds the values of two scorers together.
@@ -734,12 +681,7 @@ and\_
 -----
 
 ```python
-and_(
-    scorer: Scorer[T],
-    other: Scorer[T],
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that performs logical AND between two scorers.
@@ -804,12 +746,7 @@ avg
 ---
 
 ```python
-avg(
-    scorer: Scorer[T],
-    other: Scorer[T],
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
 ```
 
 Average two scorers together.
@@ -853,13 +790,7 @@ clip
 ----
 
 ```python
-clip(
-    scorer: Scorer[T],
-    min_val: float,
-    max_val: float,
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+clip(scorer: Scorer[T], min_val: float, max_val: float, *, name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that clips the output of another scorer to a specified range.
@@ -982,12 +913,7 @@ invert
 ------
 
 ```python
-invert(
-    scorer: Scorer[T],
-    *,
-    known_max: float = 1.0,
-    name: str | None = None,
-) -> Scorer[T]
+invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None) -> Scorer[T]
 ```
 
 Invert the result of a scorer.
@@ -1102,13 +1028,7 @@ normalize
 ---------
 
 ```python
-normalize(
-    scorer: Scorer[T],
-    known_max: float,
-    known_min: float = 0.0,
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+normalize(scorer: Scorer[T], known_max: float, known_min: float = 0.0, *, name: str | None = None) -> Scorer[T]
 ```
 
 Normalize the output of a scorer to a range of [0.0, 1.0].
@@ -1188,9 +1108,7 @@ not\_
 -----
 
 ```python
-not_(
-    scorer: Scorer[T], *, name: str | None = None
-) -> Scorer[T]
+not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]
 ```
 
 Apply a logical NOT operation to a scorer - inverting its truthiness (non-zero).
@@ -1233,12 +1151,7 @@ or\_
 ----
 
 ```python
-or_(
-    scorer: Scorer[T],
-    other: Scorer[T],
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that performs logical OR between two scorers.
@@ -1303,15 +1216,7 @@ remap\_range
 ------------
 
 ```python
-remap_range(
-    scorer: Scorer[T],
-    *,
-    known_min: float,
-    known_max: float,
-    new_min: float,
-    new_max: float,
-    name: str | None = None,
-) -> Scorer[T]
+remap_range(scorer: Scorer[T], *, known_min: float, known_max: float, new_min: float, new_max: float, name: str | None = None) -> Scorer[T]
 ```
 
 Remap the output of a scorer from one range to another.
@@ -1434,12 +1339,7 @@ scale
 -----
 
 ```python
-scale(
-    scorer: Scorer[T],
-    factor: float,
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+scale(scorer: Scorer[T], factor: float, *, name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that scales the output of another scorer by a constant factor.
@@ -1507,12 +1407,7 @@ subtract
 --------
 
 ```python
-subtract(
-    scorer: Scorer[T],
-    other: Scorer[T],
-    *,
-    name: str | None = None,
-) -> Scorer[T]
+subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that subtracts one scorer's value from another's.
@@ -1577,19 +1472,7 @@ threshold
 ---------
 
 ```python
-threshold(
-    scorer: Scorer[T],
-    *,
-    gt: float | None = None,
-    gte: float | None = None,
-    lt: float | None = None,
-    lte: float | None = None,
-    eq: float | None = None,
-    ne: float | None = None,
-    pass_value: float = 1.0,
-    fail_value: float = 0.0,
-    name: str | None = None,
-) -> Scorer[T]
+threshold(scorer: Scorer[T], *, gt: float | None = None, gte: float | None = None, lt: float | None = None, lte: float | None = None, eq: float | None = None, ne: float | None = None, pass_value: float = 1.0, fail_value: float = 0.0, name: str | None = None) -> Scorer[T]
 ```
 
 Perform a threshold check on the output of a scorer and treat the result as a binary pass/fail.
@@ -1739,10 +1622,7 @@ weighted\_avg
 -------------
 
 ```python
-weighted_avg(
-    *scorers: tuple[Scorer[T], float],
-    name: str | None = None,
-) -> Scorer[T]
+weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> Scorer[T]
 ```
 
 Create a scorer that computes a weighted average of multiple scorers.
@@ -1833,9 +1713,7 @@ detect\_refusal\_with\_zero\_shot
 ---------------------------------
 
 ```python
-detect_refusal_with_zero_shot(
-    *, name: str = "refusal_zero_shot"
-) -> Scorer[t.Any]
+detect_refusal_with_zero_shot(*, name: str = 'refusal_zero_shot') -> Scorer[t.Any]
 ```
 
 Detect refusal to answer questions using zero-shot classification.
@@ -1878,13 +1756,7 @@ zero\_shot\_classification
 --------------------------
 
 ```python
-zero_shot_classification(
-    labels: list[str],
-    score_label: str,
-    *,
-    model_name: str = "facebook/bart-large-mnli",
-    name: str | None = None,
-) -> Scorer[t.Any]
+zero_shot_classification(labels: list[str], score_label: str, *, model_name: str = 'facebook/bart-large-mnli', name: str | None = None) -> Scorer[t.Any]
 ```
 
 Scores data using a zero-shot text classification model.
@@ -1941,7 +1813,7 @@ def zero_shot_classification(
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]  # noqa: PLC0415
+        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
             pipeline,
         )
     except ImportError:
@@ -1995,12 +1867,7 @@ character\_consistency
 ----------------------
 
 ```python
-character_consistency(
-    reference: str,
-    *,
-    max_ratio_diff: float = 2.0,
-    name: str = "char_consistency",
-) -> Scorer[t.Any]
+character_consistency(reference: str, *, max_ratio_diff: float = 2.0, name: str = 'char_consistency') -> Scorer[t.Any]
 ```
 
 Scores character type consistency between the data and a reference text.
@@ -2079,14 +1946,7 @@ contains
 --------
 
 ```python
-contains(
-    pattern: str | Pattern[str],
-    *,
-    case_sensitive: bool = False,
-    exact: bool = False,
-    regex: bool = False,
-    name: str = "contains",
-) -> Scorer[t.Any]
+contains(pattern: str | Pattern[str], *, case_sensitive: bool = False, exact: bool = False, regex: bool = False, name: str = 'contains') -> Scorer[t.Any]
 ```
 
 Score based on whether the data contains a specific string or regex pattern.
@@ -2178,11 +2038,7 @@ detect\_ansi\_escapes
 ---------------------
 
 ```python
-detect_ansi_escapes(
-    *,
-    extra_patterns: list[str] | None = None,
-    name: str = "ansi_escapes",
-) -> Scorer[t.Any]
+detect_ansi_escapes(*, extra_patterns: list[str] | None = None, name: str = 'ansi_escapes') -> Scorer[t.Any]
 ```
 
 Score the presence of ANSI escape codes in the data.
@@ -2225,11 +2081,7 @@ detect\_bias
 ------------
 
 ```python
-detect_bias(
-    *,
-    extra_patterns: list[str] | None = None,
-    name: str = "bias",
-) -> Scorer[t.Any]
+detect_bias(*, extra_patterns: list[str] | None = None, name: str = 'bias') -> Scorer[t.Any]
 ```
 
 Scores the presence of potentially biased language in the data.
@@ -2293,11 +2145,7 @@ detect\_refusal
 ---------------
 
 ```python
-detect_refusal(
-    *,
-    extra_patterns: list[str] | None = None,
-    name: str = "refusal",
-) -> Scorer[t.Any]
+detect_refusal(*, extra_patterns: list[str] | None = None, name: str = 'refusal') -> Scorer[t.Any]
 ```
 
 Score the presence of refusal patterns in the data.
@@ -2359,11 +2207,7 @@ detect\_sensitive\_keywords
 ---------------------------
 
 ```python
-detect_sensitive_keywords(
-    *,
-    extra_patterns: list[str] | None = None,
-    name: str = "sensitive_keywords",
-) -> Scorer[t.Any]
+detect_sensitive_keywords(*, extra_patterns: list[str] | None = None, name: str = 'sensitive_keywords') -> Scorer[t.Any]
 ```
 
 Score the presence of sensitive keywords in the data (e.g., passwords, API keys).
@@ -2431,11 +2275,7 @@ detect\_unsafe\_shell\_content
 ------------------------------
 
 ```python
-detect_unsafe_shell_content(
-    *,
-    extra_patterns: list[str] | None = None,
-    name: str = "unsafe_shell_content",
-) -> Scorer[t.Any]
+detect_unsafe_shell_content(*, extra_patterns: list[str] | None = None, name: str = 'unsafe_shell_content') -> Scorer[t.Any]
 ```
 
 Score the presence of unsafe shell commands/paths in the data.
@@ -2595,13 +2435,7 @@ detect\_harm\_with\_openai
 --------------------------
 
 ```python
-detect_harm_with_openai(
-    *,
-    api_key: str | None = None,
-    model: str = "text-moderation-stable",
-    client: AsyncOpenAI | None = None,
-    name: str = "openai_harm",
-) -> Scorer[t.Any]
+detect_harm_with_openai(*, api_key: str | None = None, model: str = 'text-moderation-stable', client: AsyncOpenAI | None = None, name: str = 'openai_harm') -> Scorer[t.Any]
 ```
 
 Scores content for harmfulness using the OpenAI Moderation API.
@@ -2661,7 +2495,7 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai  # noqa: PLC0415
+    import openai
 
     async def evaluate(
         data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)
@@ -2722,17 +2556,7 @@ llm\_judge
 ----------
 
 ```python
-llm_judge(
-    model: str | Generator,
-    rubric: str,
-    *,
-    expected_output: str | None = None,
-    model_params: GenerateParams | AnyDict | None = None,
-    passing: Callable[[float], bool] | None = None,
-    min_score: float | None = None,
-    max_score: float | None = None,
-    name: str = "llm_judge",
-) -> Scorer[t.Any]
+llm_judge(model: str | Generator, rubric: str, *, expected_output: str | None = None, model_params: GenerateParams | AnyDict | None = None, passing: Callable[[float], bool] | None = None, min_score: float | None = None, max_score: float | None = None, name: str = 'llm_judge') -> Scorer[t.Any]
 ```
 
 Score the output of a task using an LLM to judge it against a rubric.
@@ -2867,12 +2691,7 @@ length\_in\_range
 -----------------
 
 ```python
-length_in_range(
-    min_length: int = 0,
-    max_length: float = float("inf"),
-    *,
-    name: str = "length_in_range",
-) -> Scorer[t.Any]
+length_in_range(min_length: int = 0, max_length: float = float('inf'), *, name: str = 'length_in_range') -> Scorer[t.Any]
 ```
 
 Scores the length of the data against a specified range.
@@ -2956,13 +2775,7 @@ length\_ratio
 -------------
 
 ```python
-length_ratio(
-    reference: str,
-    *,
-    min_ratio: float = 0.1,
-    max_ratio: float = 5.0,
-    name: str = "length_ratio",
-) -> Scorer[t.Any]
+length_ratio(reference: str, *, min_ratio: float = 0.1, max_ratio: float = 5.0, name: str = 'length_ratio') -> Scorer[t.Any]
 ```
 
 Score the length of the data against a reference text.
@@ -3048,9 +2861,7 @@ length\_target
 --------------
 
 ```python
-length_target(
-    target_length: int, *, name: str = "length_target"
-) -> Scorer[t.Any]
+length_target(target_length: int, *, name: str = 'length_target') -> Scorer[t.Any]
 ```
 
 Scores the length of the data against a target length.
@@ -3118,11 +2929,7 @@ type\_token\_ratio
 ------------------
 
 ```python
-type_token_ratio(
-    target_ratio: float | None = None,
-    *,
-    name: str = "type_token_ratio",
-) -> Scorer[t.Any]
+type_token_ratio(target_ratio: float | None = None, *, name: str = 'type_token_ratio') -> Scorer[t.Any]
 ```
 
 Scores the lexical diversity of the text using Type-Token Ratio (TTR).
@@ -3215,14 +3022,7 @@ detect\_pii
 -----------
 
 ```python
-detect_pii(
-    types: Sequence[
-        Literal["email", "phone", "ip_address", "ssn"]
-    ] = ("email", "phone", "ip_address"),
-    *,
-    extra_patterns: list[str] | None = None,
-    name: str = "pii",
-) -> Scorer[t.Any]
+detect_pii(types: Sequence[Literal['email', 'phone', 'ip_address', 'ssn']] = ('email', 'phone', 'ip_address'), *, extra_patterns: list[str] | None = None, name: str = 'pii') -> Scorer[t.Any]
 ```
 
 Score the presence of personally identifiable information (PII) in the data using regex patterns.
@@ -3301,13 +3101,7 @@ detect\_pii\_with\_presidio
 ---------------------------
 
 ```python
-detect_pii_with_presidio(
-    *,
-    entities: list[str] | None = None,
-    threshold: float = 0.5,
-    invert: bool = False,
-    name: str = "pii_presidio",
-) -> Scorer[t.Any]
+detect_pii_with_presidio(*, entities: list[str] | None = None, threshold: float = 0.5, invert: bool = False, name: str = 'pii_presidio') -> Scorer[t.Any]
 ```
 
 Score the presence of PII (Personally Identifiable Information) in the data using Presidio.
@@ -3373,7 +3167,7 @@ def detect_pii_with_presidio(
     )
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401, PLC0415
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
     except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
@@ -3428,9 +3222,7 @@ readability
 -----------
 
 ```python
-readability(
-    target_grade: float = 8.0, *, name: str = "readability"
-) -> Scorer[t.Any]
+readability(target_grade: float = 8.0, *, name: str = 'readability') -> Scorer[t.Any]
 ```
 
 Score the readability of the text against a target grade level.
@@ -3513,12 +3305,7 @@ wrap\_chat
 ----------
 
 ```python
-wrap_chat(
-    inner_scorer: Scorer[Any],
-    *,
-    filter: ChatFilterMode | ChatFilterFunction = "last",
-    name: str | None = None,
-) -> Scorer[Chat]
+wrap_chat(inner_scorer: Scorer[Any], *, filter: ChatFilterMode | ChatFilterFunction = 'last', name: str | None = None) -> Scorer[Chat]
 ```
 
 Wraps a text-based scorer to work on a `rigging.Chat` object.
@@ -3589,7 +3376,7 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat  # noqa: PLC0415
+        from rigging.chat import Chat
 
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):
@@ -3628,10 +3415,7 @@ sentiment
 ---------
 
 ```python
-sentiment(
-    target: Sentiment = "neutral",
-    name: str = "score_sentiment",
-) -> Scorer[t.Any]
+sentiment(target: Sentiment = 'neutral', name: str = 'score_sentiment') -> Scorer[t.Any]
 ```
 
 Score the sentiment of the text against a target sentiment.
@@ -3726,12 +3510,7 @@ sentiment\_with\_perspective
 ----------------------------
 
 ```python
-sentiment_with_perspective(
-    *,
-    api_key: str | None = None,
-    attribute: PerspectiveAttribute = "TOXICITY",
-    name: str | None = None,
-) -> Scorer[t.Any]
+sentiment_with_perspective(*, api_key: str | None = None, attribute: PerspectiveAttribute = 'TOXICITY', name: str | None = None) -> Scorer[t.Any]
 ```
 
 Score the sentiment of the text using the Perspective API.
@@ -3815,12 +3594,7 @@ bleu
 ----
 
 ```python
-bleu(
-    reference: str,
-    *,
-    weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25),
-    name: str = "bleu",
-) -> Scorer[t.Any]
+bleu(reference: str, *, weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25), name: str = 'bleu') -> Scorer[t.Any]
 ```
 
 Scores the data using the BLEU score against a reference text.
@@ -3914,19 +3688,7 @@ distance
 --------
 
 ```python
-distance(
-    reference: str,
-    *,
-    method: Literal[
-        "levenshtein",
-        "hamming",
-        "jaro",
-        "jaro_winkler",
-        "damerau_levenshtein",
-    ] = "levenshtein",
-    normalize: bool = True,
-    name: str = "distance",
-) -> Scorer[t.Any]
+distance(reference: str, *, method: Literal['levenshtein', 'hamming', 'jaro', 'jaro_winkler', 'damerau_levenshtein'] = 'levenshtein', normalize: bool = True, name: str = 'distance') -> Scorer[t.Any]
 ```
 
 Score the distance between data and reference text using RapidFuzz distance metrics.
@@ -4048,15 +3810,7 @@ similarity
 ----------
 
 ```python
-similarity(
-    reference: str,
-    *,
-    method: Literal[
-        "ratio", "quick_ratio", "real_quick_ratio"
-    ] = "ratio",
-    case_sensitive: bool = False,
-    name: str = "similarity",
-) -> Scorer[t.Any]
+similarity(reference: str, *, method: Literal['ratio', 'quick_ratio', 'real_quick_ratio'] = 'ratio', case_sensitive: bool = False, name: str = 'similarity') -> Scorer[t.Any]
 ```
 
 Score the similarity of the data to a reference text using sequence matching.
@@ -4141,14 +3895,7 @@ similarity\_with\_litellm
 -------------------------
 
 ```python
-similarity_with_litellm(
-    reference: str,
-    model: str,
-    *,
-    api_key: str | None = None,
-    api_base: str | None = None,
-    name: str = "similarity",
-) -> Scorer[t.Any]
+similarity_with_litellm(reference: str, model: str, *, api_key: str | None = None, api_base: str | None = None, name: str = 'similarity') -> Scorer[t.Any]
 ```
 
 Scores semantic similarity using any embedding model supported by `litellm`.
@@ -4215,7 +3962,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    import litellm  # noqa: PLC0415
+    import litellm
 
     async def evaluate(
         data: t.Any,
@@ -4258,22 +4005,7 @@ similarity\_with\_rapidfuzz
 ---------------------------
 
 ```python
-similarity_with_rapidfuzz(
-    reference: str,
-    *,
-    method: Literal[
-        "ratio",
-        "partial_ratio",
-        "token_sort_ratio",
-        "token_set_ratio",
-        "WRatio",
-        "QRatio",
-    ] = "ratio",
-    normalize: bool = True,
-    preprocessor: bool = True,
-    score_cutoff: float | None = None,
-    name: str = "similarity",
-) -> Scorer[t.Any]
+similarity_with_rapidfuzz(reference: str, *, method: Literal['ratio', 'partial_ratio', 'token_sort_ratio', 'token_set_ratio', 'WRatio', 'QRatio'] = 'ratio', normalize: bool = True, preprocessor: bool = True, score_cutoff: float | None = None, name: str = 'similarity') -> Scorer[t.Any]
 ```
 
 Score the similarity of the data to a reference text using RapidFuzz.
@@ -4426,12 +4158,7 @@ similarity\_with\_sentence\_transformers
 ----------------------------------------
 
 ```python
-similarity_with_sentence_transformers(
-    reference: str,
-    *,
-    model_name: str = "all-MiniLM-L6-v2",
-    name: str = "similarity",
-) -> Scorer[t.Any]
+similarity_with_sentence_transformers(reference: str, *, model_name: str = 'all-MiniLM-L6-v2', name: str = 'similarity') -> Scorer[t.Any]
 ```
 
 Scores semantic similarity using a sentence-transformer embedding model.
@@ -4524,9 +4251,7 @@ similarity\_with\_tf\_idf
 -------------------------
 
 ```python
-similarity_with_tf_idf(
-    reference: str, *, name: str = "similarity"
-) -> Scorer[t.Any]
+similarity_with_tf_idf(reference: str, *, name: str = 'similarity') -> Scorer[t.Any]
 ```
 
 Scores semantic similarity using TF-IDF and cosine similarity.

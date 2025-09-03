@@ -10,7 +10,7 @@ MetricAggMode
 -------------
 
 ```python
-MetricAggMode = Literal["avg", "sum", "min", "max", "count"]
+MetricAggMode = Literal['avg', 'sum', 'min', 'max', 'count']
 ```
 
 Aggregation modes for metrics:"
@@ -66,9 +66,7 @@ An step value to indicate when this metric was reported.
 ### timestamp
 
 ```python
-timestamp: datetime = Field(
-    default_factory=lambda: now(utc)
-)
+timestamp: datetime = Field(default_factory=lambda: now(utc))
 ```
 
 The timestamp when the metric was reported.
@@ -84,9 +82,7 @@ The value of the metric, e.g. 0.5, 1.0, 2.0, etc.
 ### apply\_mode
 
 ```python
-apply_mode(
-    mode: MetricAggMode, others: list[Metric]
-) -> Metric
+apply_mode(mode: MetricAggMode, others: list[Metric]) -> Metric
 ```
 
 Apply an aggregation mode to the metric.
@@ -154,11 +150,7 @@ def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
 ### from\_many
 
 ```python
-from_many(
-    values: Sequence[tuple[str, float, float]],
-    step: int = 0,
-    **attributes: JsonValue,
-) -> Metric
+from_many(values: Sequence[tuple[str, float, float]], step: int = 0, **attributes: JsonValue) -> Metric
 ```
 
 Create a composite metric from individual values and weights.

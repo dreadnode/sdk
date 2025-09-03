@@ -206,11 +206,11 @@ class Eval(Model, t.Generic[In, Out]):
                     task_params = set(configured_task.signature.parameters)
                     task_kwargs = {k: v for k, v in row.items() if k in task_params}
 
-                task_kwargs["__dn_ctx_inputs__"] = {
-                    f"dataset_{k}": v for k, v in row.items() if k not in task_params
-                }
+                context = {f"dataset_{k}": v for k, v in row.items() if k not in task_params}
 
-                span = await configured_task.run_always(**task_kwargs)  # type: ignore[call-arg]
+                span = await configured_task.run_always(  # type: ignore[call-arg]
+                    **{**task_kwargs, "__dn_ctx_inputs__": context}
+                )
 
                 first_kwarg = next(iter(task_kwargs.values()), None)
                 task_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg
@@ -222,6 +222,7 @@ class Eval(Model, t.Generic[In, Out]):
                     scenario_params=scenario_params,
                     iteration=iteration,
                     index=index,
+                    context=context,
                 )
             finally:
                 current_sample_row.reset(token)
@@ -342,10 +343,10 @@ class Eval(Model, t.Generic[In, Out]):
     async def run(self) -> EvalResult[In, Out]:
         """Run the configured task evaluation."""
         async with self.stream() as stream:
-            async for sample_or_eval in stream:
-                if isinstance(sample_or_eval, EvalResult):
-                    return sample_or_eval
-            raise RuntimeError("Evaluation failed to complete")
+            async for event in stream:
+                if isinstance(event, EvalEnd):
+                    return event.result
+        raise RuntimeError("Evaluation failed to complete")
 
     async def console(self) -> EvalResult:
         """Run the evaluation with a live display in the console."""

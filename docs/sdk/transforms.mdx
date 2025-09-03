@@ -18,9 +18,7 @@ ascii\_art
 ----------
 
 ```python
-ascii_art(
-    font: str = "rand", *, name: str = "ascii_art"
-) -> Transform[str, str]
+ascii_art(font: str = 'rand', *, name: str = 'ascii_art') -> Transform[str, str]
 ```
 
 Converts text into ASCII art using the 'art' library.
@@ -49,10 +47,7 @@ TransformCallable
 -----------------
 
 ```python
-TransformCallable = (
-    Callable[[In], Awaitable[Out] | Out]
-    | Callable[Concatenate[In, ...], Awaitable[Out] | Out]
-)
+TransformCallable = Callable[[In], Awaitable[Out] | Out] | Callable[Concatenate[In, ...], Awaitable[Out] | Out]
 ```
 
 A callable that takes an object and returns a compatible transform result.
@@ -61,14 +56,7 @@ Transform
 ---------
 
 ```python
-Transform(
-    func: TransformCallable[In, Out],
-    *,
-    name: str | None = None,
-    catch: bool = False,
-    config: dict[str, ConfigInfo] | None = None,
-    context: dict[str, Context] | None = None,
-)
+Transform(func: TransformCallable[In, Out], *, name: str | None = None, catch: bool = False, config: dict[str, ConfigInfo] | None = None, context: dict[str, Context] | None = None)
 ```
 
 Represents a transformation operation that modifies the input data.
@@ -122,11 +110,7 @@ The name of the transform, used for reporting and logging.
 ### adapt
 
 ```python
-adapt(
-    adapt_in: Callable[[OuterIn], In],
-    adapt_out: Callable[[Out], OuterOut],
-    name: str | None = None,
-) -> Transform[OuterIn, OuterOut]
+adapt(adapt_in: Callable[[OuterIn], In], adapt_out: Callable[[Out], OuterOut], name: str | None = None) -> Transform[OuterIn, OuterOut]
 ```
 
 Adapts a transform to operate with some other in/out types.
@@ -211,9 +195,7 @@ def clone(self) -> "Transform[In, Out]":
 ### fit
 
 ```python
-fit(
-    transform: TransformLike[In, Out],
-) -> Transform[In, Out]
+fit(transform: TransformLike[In, Out]) -> Transform[In, Out]
 ```
 
 Ensures that the provided transform is a Transform instance.
@@ -329,9 +311,7 @@ async def transform(self, object: In, *args: t.Any, **kwargs: t.Any) -> Out:
 ### with\_
 
 ```python
-with_(
-    *, name: str | None = None, catch: bool | None = None
-) -> Transform[In, Out]
+with_(*, name: str | None = None, catch: bool | None = None) -> Transform[In, Out]
 ```
 
 Create a new Transform with updated properties.
@@ -389,9 +369,7 @@ atbash\_cipher
 --------------
 
 ```python
-atbash_cipher(
-    *, name: str = "atbash"
-) -> Transform[str, str]
+atbash_cipher(*, name: str = 'atbash') -> Transform[str, str]
 ```
 
 Encodes text using the Atbash cipher.
@@ -420,9 +398,7 @@ caesar\_cipher
 --------------
 
 ```python
-caesar_cipher(
-    offset: int, *, name: str = "caesar"
-) -> Transform[str, str]
+caesar_cipher(offset: int, *, name: str = 'caesar') -> Transform[str, str]
 ```
 
 Encodes text using the Caesar cipher.
@@ -511,9 +487,7 @@ ascii85\_encode
 ---------------
 
 ```python
-ascii85_encode(
-    *, name: str = "ascii85"
-) -> Transform[str, str]
+ascii85_encode(*, name: str = 'ascii85') -> Transform[str, str]
 ```
 
 Encodes text to ASCII85.
@@ -536,9 +510,7 @@ base32\_encode
 --------------
 
 ```python
-base32_encode(
-    *, name: str = "base32"
-) -> Transform[str, str]
+base32_encode(*, name: str = 'base32') -> Transform[str, str]
 ```
 
 Encodes text to Base32.
@@ -561,9 +533,7 @@ base64\_encode
 --------------
 
 ```python
-base64_encode(
-    *, name: str = "base64"
-) -> Transform[str, str]
+base64_encode(*, name: str = 'base64') -> Transform[str, str]
 ```
 
 Encodes text to Base64.
@@ -586,9 +556,7 @@ binary\_encode
 --------------
 
 ```python
-binary_encode(
-    bits_per_char: int = 16, *, name: str = "binary"
-) -> Transform[str, str]
+binary_encode(bits_per_char: int = 16, *, name: str = 'binary') -> Transform[str, str]
 ```
 
 Converts text into its binary representation.
@@ -644,9 +612,7 @@ html\_escape
 ------------
 
 ```python
-html_escape(
-    *, name: str = "html_escape"
-) -> Transform[str, str]
+html_escape(*, name: str = 'html_escape') -> Transform[str, str]
 ```
 
 Converts special characters to their HTML entities.
@@ -669,9 +635,7 @@ url\_encode
 -----------
 
 ```python
-url_encode(
-    *, name: str = "url_encode"
-) -> Transform[str, str]
+url_encode(*, name: str = 'url_encode') -> Transform[str, str]
 ```
 
 URL-encodes text.
@@ -693,13 +657,7 @@ llm\_refine
 -----------
 
 ```python
-llm_refine(
-    model: str | Generator,
-    guidance: str,
-    *,
-    model_params: AnyDict | None = None,
-    name: str = "llm_refine",
-) -> Transform[t.Any, str]
+llm_refine(model: str | Generator, guidance: str, *, model_params: AnyDict | None = None, name: str = 'llm_refine') -> Transform[t.Any, str]
 ```
 
 A generic transform that uses an LLM to refine a candidate.
@@ -794,9 +752,7 @@ character\_space
 ----------------
 
 ```python
-character_space(
-    *, name: str = "character_space"
-) -> Transform[str, str]
+character_space(*, name: str = 'character_space') -> Transform[str, str]
 ```
 
 Spaces out all characters and removes common punctuation.
@@ -821,14 +777,7 @@ diacritic
 ---------
 
 ```python
-diacritic(
-    target_chars: str = "aeiou",
-    accent: Literal[
-        "acute", "grave", "tilde", "umlaut"
-    ] = "acute",
-    *,
-    name: str = "diacritic",
-) -> Transform[str, str]
+diacritic(target_chars: str = 'aeiou', accent: Literal['acute', 'grave', 'tilde', 'umlaut'] = 'acute', *, name: str = 'diacritic') -> Transform[str, str]
 ```
 
 Applies diacritics (accent marks) to specified characters in text.
@@ -893,13 +842,7 @@ insert\_punctuation
 -------------------
 
 ```python
-insert_punctuation(
-    *,
-    ratio: float = 0.2,
-    punctuations: list[str] | None = None,
-    seed: int | None = None,
-    name: str = "insert_punctuation",
-) -> Transform[str, str]
+insert_punctuation(*, ratio: float = 0.2, punctuations: list[str] | None = None, seed: int | None = None, name: str = 'insert_punctuation') -> Transform[str, str]
 ```
 
 Inserts punctuation randomly between words in text.
@@ -983,12 +926,7 @@ random\_capitalization
 ----------------------
 
 ```python
-random_capitalization(
-    *,
-    ratio: float = 0.2,
-    seed: int | None = None,
-    name: str = "random_capitalization",
-) -> Transform[str, str]
+random_capitalization(*, ratio: float = 0.2, seed: int | None = None, name: str = 'random_capitalization') -> Transform[str, str]
 ```
 
 Randomly capitalizes a ratio of lowercase letters in text.
@@ -1058,9 +996,7 @@ underline
 ---------
 
 ```python
-underline(
-    *, name: str = "underline"
-) -> Transform[str, str]
+underline(*, name: str = 'underline') -> Transform[str, str]
 ```
 
 Adds an underline effect to each character using Unicode combining characters.
@@ -1083,13 +1019,7 @@ unicode\_confusable
 -------------------
 
 ```python
-unicode_confusable(
-    *,
-    ratio: float = 1.0,
-    deterministic: bool = False,
-    seed: int | None = None,
-    name: str = "unicode_confusable",
-) -> Transform[str, str]
+unicode_confusable(*, ratio: float = 1.0, deterministic: bool = False, seed: int | None = None, name: str = 'unicode_confusable') -> Transform[str, str]
 ```
 
 Replaces characters with visually similar Unicode characters (homoglyphs).
@@ -1187,11 +1117,7 @@ unicode\_replacement
 --------------------
 
 ```python
-unicode_replacement(
-    *,
-    encode_spaces: bool = False,
-    name: str = "unicode_replacement",
-) -> Transform[str, str]
+unicode_replacement(*, encode_spaces: bool = False, name: str = 'unicode_replacement') -> Transform[str, str]
 ```
 
 Converts text to its Unicode escape sequence representation (e.g., 'A' -> '\u0041').
@@ -1238,11 +1164,7 @@ unicode\_substitution
 ---------------------
 
 ```python
-unicode_substitution(
-    *,
-    start_value: int = 917504,
-    name: str = "unicode_substitution",
-) -> Transform[str, str]
+unicode_substitution(*, start_value: int = 917504, name: str = 'unicode_substitution') -> Transform[str, str]
 ```
 
 Substitutes characters with Unicode characters from a specified private use area.
@@ -1286,13 +1208,7 @@ zalgo
 -----
 
 ```python
-zalgo(
-    intensity: int = 10,
-    *,
-    ratio: float = 1.0,
-    seed: int | None = None,
-    name: str | None = None,
-) -> Transform[str, str]
+zalgo(intensity: int = 10, *, ratio: float = 1.0, seed: int | None = None, name: str | None = None) -> Transform[str, str]
 ```
 
 Converts text into 'zalgo' text by adding random combining characters.
@@ -1381,9 +1297,7 @@ zero\_width
 -----------
 
 ```python
-zero_width(
-    *, name: str = "zero_width"
-) -> Transform[str, str]
+zero_width(*, name: str = 'zero_width') -> Transform[str, str]
 ```
 
 Injects zero-width spaces between every character in the text.
@@ -1405,13 +1319,7 @@ affix
 -----
 
 ```python
-affix(
-    text_to_add: str,
-    *,
-    position: Literal["prefix", "suffix"] = "prefix",
-    delimiter: str = " ",
-    name: str = "affix",
-) -> Transform[str, str]
+affix(text_to_add: str, *, position: Literal['prefix', 'suffix'] = 'prefix', delimiter: str = ' ', name: str = 'affix') -> Transform[str, str]
 ```
 
 Adds text as a prefix or suffix to the input string.
@@ -1482,9 +1390,7 @@ char\_join
 ----------
 
 ```python
-char_join(
-    delimiter: str = "-", *, name: str = "char_join"
-) -> Transform[str, str]
+char_join(delimiter: str = '-', *, name: str = 'char_join') -> Transform[str, str]
 ```
 
 Joins each character of a string with a delimiter.
@@ -1516,12 +1422,7 @@ join
 ----
 
 ```python
-join(
-    delimiter: str,
-    *,
-    unit: Literal["char", "word"] = "char",
-    name: str = "join",
-) -> Transform[str, str]
+join(delimiter: str, *, unit: Literal['char', 'word'] = 'char', name: str = 'join') -> Transform[str, str]
 ```
 
 Joins the units (characters or words) of a string with a delimiter.
@@ -1577,9 +1478,7 @@ prefix
 ------
 
 ```python
-prefix(
-    text: str, *, name: str = "prefix"
-) -> Transform[str, str]
+prefix(text: str, *, name: str = 'prefix') -> Transform[str, str]
 ```
 
 Prepends a specified prefix to the input text with a space.
@@ -1621,16 +1520,7 @@ search\_replace
 ---------------
 
 ```python
-search_replace(
-    pattern: str | Pattern[str],
-    replacement: str | list[str],
-    *,
-    regex: bool = False,
-    case_sensitive: bool = False,
-    seed: int | None = None,
-    deterministic: bool = False,
-    name: str = "search_replace",
-) -> Transform[str, str]
+search_replace(pattern: str | Pattern[str], replacement: str | list[str], *, regex: bool = False, case_sensitive: bool = False, seed: int | None = None, deterministic: bool = False, name: str = 'search_replace') -> Transform[str, str]
 ```
 
 Replaces text matching a literal string or a regex pattern.
@@ -1730,9 +1620,7 @@ suffix
 ------
 
 ```python
-suffix(
-    text: str, *, name: str = "suffix"
-) -> Transform[str, str]
+suffix(text: str, *, name: str = 'suffix') -> Transform[str, str]
 ```
 
 Appends a specified suffix to the input text with a space.
@@ -1751,9 +1639,7 @@ word\_join
 ----------
 
 ```python
-word_join(
-    delimiter: str = "-", *, name: str = "word_join"
-) -> Transform[str, str]
+word_join(delimiter: str = '-', *, name: str = 'word_join') -> Transform[str, str]
 ```
 
 Joins each word of a string with a delimiter.
@@ -1814,9 +1700,7 @@ bubble\_text
 ------------
 
 ```python
-bubble_text(
-    *, name: str = "bubble_text"
-) -> Transform[str, str]
+bubble_text(*, name: str = 'bubble_text') -> Transform[str, str]
 ```
 
 Converts alphanumeric characters to their Unicode bubble equivalents.
@@ -1864,9 +1748,7 @@ double\_struck
 --------------
 
 ```python
-double_struck(
-    *, name: str = "double_struck"
-) -> Transform[str, str]
+double_struck(*, name: str = 'double_struck') -> Transform[str, str]
 ```
 
 Converts text to a double-struck (blackboard bold) style.
@@ -1890,9 +1772,7 @@ elder\_futhark
 --------------
 
 ```python
-elder_futhark(
-    *, name: str = "elder_futhark"
-) -> Transform[str, str]
+elder_futhark(*, name: str = 'elder_futhark') -> Transform[str, str]
 ```
 
 Converts Latin text to Elder Futhark runes.
@@ -1929,9 +1809,7 @@ greek\_letters
 --------------
 
 ```python
-greek_letters(
-    *, name: str = "greek_letters"
-) -> Transform[str, str]
+greek_letters(*, name: str = 'greek_letters') -> Transform[str, str]
 ```
 
 Replaces Latin letters with visually similar Greek letters.
@@ -1967,12 +1845,7 @@ leet\_speak
 -----------
 
 ```python
-leet_speak(
-    *,
-    deterministic: bool = False,
-    seed: int | None = None,
-    name: str = "leet_speak",
-) -> Transform[str, str]
+leet_speak(*, deterministic: bool = False, seed: int | None = None, name: str = 'leet_speak') -> Transform[str, str]
 ```
 
 Converts text to leetspeak.
@@ -2051,9 +1924,7 @@ monospace
 ---------
 
 ```python
-monospace(
-    *, name: str = "monospace"
-) -> Transform[str, str]
+monospace(*, name: str = 'monospace') -> Transform[str, str]
 ```
 
 Converts text to a Monospace style using Unicode.
@@ -2077,9 +1948,7 @@ morse\_code
 -----------
 
 ```python
-morse_code(
-    *, name: str = "morse_code"
-) -> Transform[str, str]
+morse_code(*, name: str = 'morse_code') -> Transform[str, str]
 ```
 
 Converts text to Morse code.
@@ -2103,9 +1972,7 @@ nato\_phonetic
 --------------
 
 ```python
-nato_phonetic(
-    *, name: str = "nato_phonetic"
-) -> Transform[str, str]
+nato_phonetic(*, name: str = 'nato_phonetic') -> Transform[str, str]
 ```
 
 Converts a string to the NATO phonetic alphabet.
@@ -2128,9 +1995,7 @@ pig\_latin
 ----------
 
 ```python
-pig_latin(
-    *, name: str = "pig_latin"
-) -> Transform[str, str]
+pig_latin(*, name: str = 'pig_latin') -> Transform[str, str]
 ```
 
 Converts text to Pig Latin.
@@ -2165,9 +2030,7 @@ small\_caps
 -----------
 
 ```python
-small_caps(
-    *, name: str = "small_caps"
-) -> Transform[str, str]
+small_caps(*, name: str = 'small_caps') -> Transform[str, str]
 ```
 
 Converts lowercase letters to Unicode small caps.
@@ -2190,15 +2053,7 @@ substitute
 ----------
 
 ```python
-substitute(
-    mapping: Mapping[str, str | list[str]],
-    *,
-    unit: Literal["char", "word"] = "word",
-    case_sensitive: bool = False,
-    deterministic: bool = False,
-    seed: int | None = None,
-    name: str = "substitute",
-) -> Transform[str, str]
+substitute(mapping: Mapping[str, str | list[str]], *, unit: Literal['char', 'word'] = 'word', case_sensitive: bool = False, deterministic: bool = False, seed: int | None = None, name: str = 'substitute') -> Transform[str, str]
 ```
 
 Substitutes characters or words based on a provided mapping.
@@ -2297,9 +2152,7 @@ wingdings
 ---------
 
 ```python
-wingdings(
-    *, name: str = "wingdings"
-) -> Transform[str, str]
+wingdings(*, name: str = 'wingdings') -> Transform[str, str]
 ```
 
 Converts text to Wingdings-like symbols using a best-effort Unicode mapping.
@@ -2321,12 +2174,7 @@ adjacent\_char\_swap
 --------------------
 
 ```python
-adjacent_char_swap(
-    *,
-    ratio: float = 0.1,
-    seed: int | None = None,
-    name: str = "adjacent_char_swap",
-) -> Transform[str, str]
+adjacent_char_swap(*, ratio: float = 0.1, seed: int | None = None, name: str = 'adjacent_char_swap') -> Transform[str, str]
 ```
 
 Perturbs text by swapping a ratio of adjacent characters.
@@ -2375,12 +2223,7 @@ random\_word\_reorder
 ---------------------
 
 ```python
-random_word_reorder(
-    *,
-    ratio: float = 0.1,
-    seed: int | None = None,
-    name: str = "random_word_reorder",
-) -> Transform[str, str]
+random_word_reorder(*, ratio: float = 0.1, seed: int | None = None, name: str = 'random_word_reorder') -> Transform[str, str]
 ```
 
 Randomly reorders a ratio of words within the text.
@@ -2429,14 +2272,7 @@ swap
 ----
 
 ```python
-swap(
-    *,
-    unit: Literal["char", "word"] = "char",
-    mode: Literal["adjacent", "random"] = "adjacent",
-    ratio: float = 0.1,
-    seed: int | None = None,
-    name: str = "general_swap",
-) -> Transform[str, str]
+swap(*, unit: Literal['char', 'word'] = 'char', mode: Literal['adjacent', 'random'] = 'adjacent', ratio: float = 0.1, seed: int | None = None, name: str = 'general_swap') -> Transform[str, str]
 ```
 
 Swaps text units (characters or words) in a string.

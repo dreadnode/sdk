@@ -10,19 +10,7 @@ Dreadnode
 ---------
 
 ```python
-Dreadnode(
-    *,
-    server: str | None = None,
-    token: str | None = None,
-    local_dir: str | Path | Literal[False] = False,
-    project: str | None = None,
-    service_name: str | None = None,
-    service_version: str | None = None,
-    console: ConsoleOptions | bool = False,
-    send_to_logfire: bool
-    | Literal["if-token-present"] = False,
-    otel_scope: str = "dreadnode",
-)
+Dreadnode(*, server: str | None = None, token: str | None = None, local_dir: str | Path | Literal[False] = False, project: str | None = None, service_name: str | None = None, service_version: str | None = None, console: ConsoleOptions | bool = False, send_to_logfire: bool | Literal['if-token-present'] = False, otel_scope: str = 'dreadnode')
 ```
 
 The core Dreadnode SDK class.
@@ -73,9 +61,7 @@ def __init__(
 ### api
 
 ```python
-api(
-    *, server: str | None = None, token: str | None = None
-) -> ApiClient
+api(*, server: str | None = None, token: str | None = None) -> ApiClient
 ```
 
 Get an API client based on the current configuration or the provided server and token.
@@ -135,20 +121,7 @@ def api(self, *, server: str | None = None, token: str | None = None) -> ApiClie
 ### configure
 
 ```python
-configure(
-    *,
-    server: str | None = None,
-    token: str | None = None,
-    profile: str | None = None,
-    local_dir: str | Path | Literal[False] = False,
-    project: str | None = None,
-    service_name: str | None = None,
-    service_version: str | None = None,
-    console: ConsoleOptions | bool | None = None,
-    send_to_logfire: bool
-    | Literal["if-token-present"] = False,
-    otel_scope: str = "dreadnode",
-) -> None
+configure(*, server: str | None = None, token: str | None = None, profile: str | None = None, local_dir: str | Path | Literal[False] = False, project: str | None = None, service_name: str | None = None, service_version: str | None = None, console: ConsoleOptions | bool | None = None, send_to_logfire: bool | Literal['if-token-present'] = False, otel_scope: str = 'dreadnode') -> None
 ```
 
 Configure the Dreadnode SDK and call `initialize()`.
@@ -558,11 +531,7 @@ def initialize(self) -> None:
 ### link\_objects
 
 ```python
-link_objects(
-    origin: Any,
-    link: Any,
-    attributes: AnyDict | None = None,
-) -> None
+link_objects(origin: Any, link: Any, attributes: AnyDict | None = None) -> None
 ```
 
 Associate two runtime objects with each other.
@@ -738,14 +707,7 @@ def log_artifact(
 ### log\_input
 
 ```python
-log_input(
-    name: str,
-    value: Any,
-    *,
-    label: str | None = None,
-    to: ToObject = "task-or-run",
-    attributes: AnyDict | None = None,
-) -> None
+log_input(name: str, value: Any, *, label: str | None = None, to: ToObject = 'task-or-run', attributes: AnyDict | None = None) -> None
 ```
 
 Log a single input to the current task or run.
@@ -819,9 +781,7 @@ def log_input(
 ### log\_inputs
 
 ```python
-log_inputs(
-    to: ToObject = "task-or-run", **inputs: Any
-) -> None
+log_inputs(to: ToObject = 'task-or-run', **inputs: Any) -> None
 ```
 
 Log multiple inputs to the current task or run.
@@ -851,42 +811,15 @@ def log_inputs(
 ### log\_metric
 
 ```python
-log_metric(
-    name: str,
-    value: float | bool,
-    *,
-    step: int = 0,
-    origin: Any | None = None,
-    timestamp: datetime | None = None,
-    mode: MetricAggMode | None = None,
-    attributes: AnyDict | None = None,
-    to: ToObject = "task-or-run",
-) -> Metric
+log_metric(name: str, value: float | bool, *, step: int = 0, origin: Any | None = None, timestamp: datetime | None = None, mode: MetricAggMode | None = None, attributes: AnyDict | None = None, to: ToObject = 'task-or-run') -> Metric
 ```
 
 ```python
-log_metric(
-    name: str,
-    value: Metric,
-    *,
-    origin: Any | None = None,
-    mode: MetricAggMode | None = None,
-    to: ToObject = "task-or-run",
-) -> Metric
+log_metric(name: str, value: Metric, *, origin: Any | None = None, mode: MetricAggMode | None = None, to: ToObject = 'task-or-run') -> Metric
 ```
 
 ```python
-log_metric(
-    name: str,
-    value: float | bool | Metric,
-    *,
-    step: int = 0,
-    origin: Any | None = None,
-    timestamp: datetime | None = None,
-    mode: MetricAggMode | None = None,
-    attributes: AnyDict | None = None,
-    to: ToObject = "task-or-run",
-) -> Metric
+log_metric(name: str, value: float | bool | Metric, *, step: int = 0, origin: Any | None = None, timestamp: datetime | None = None, mode: MetricAggMode | None = None, attributes: AnyDict | None = None, to: ToObject = 'task-or-run') -> Metric
 ```
 
 Log a single metric to the current task or run.
@@ -972,7 +905,7 @@ with dreadnode.run("my_run"):
 def log_metric(
     self,
     name: str,
-    value: float | bool | Metric,  # noqa: FBT001
+    value: float | bool | Metric,
     *,
     step: int = 0,
     origin: t.Any | None = None,
@@ -1056,42 +989,15 @@ def log_metric(
 ### log\_metrics
 
 ```python
-log_metrics(
-    metrics: dict[str, float | bool],
-    *,
-    step: int = 0,
-    timestamp: datetime | None = None,
-    mode: MetricAggMode | None = None,
-    attributes: AnyDict | None = None,
-    origin: Any | None = None,
-    to: ToObject = "task-or-run",
-) -> list[Metric]
+log_metrics(metrics: dict[str, float | bool], *, step: int = 0, timestamp: datetime | None = None, mode: MetricAggMode | None = None, attributes: AnyDict | None = None, origin: Any | None = None, to: ToObject = 'task-or-run') -> list[Metric]
 ```
 
 ```python
-log_metrics(
-    metrics: list[MetricDict],
-    *,
-    step: int = 0,
-    timestamp: datetime | None = None,
-    mode: MetricAggMode | None = None,
-    attributes: AnyDict | None = None,
-    origin: Any | None = None,
-    to: ToObject = "task-or-run",
-) -> list[Metric]
+log_metrics(metrics: list[MetricDict], *, step: int = 0, timestamp: datetime | None = None, mode: MetricAggMode | None = None, attributes: AnyDict | None = None, origin: Any | None = None, to: ToObject = 'task-or-run') -> list[Metric]
 ```
 
 ```python
-log_metrics(
-    metrics: MetricsLike,
-    *,
-    step: int = 0,
-    timestamp: datetime | None = None,
-    mode: MetricAggMode | None = None,
-    attributes: AnyDict | None = None,
-    origin: Any | None = None,
-    to: ToObject = "task-or-run",
-) -> list[Metric]
+log_metrics(metrics: MetricsLike, *, step: int = 0, timestamp: datetime | None = None, mode: MetricAggMode | None = None, attributes: AnyDict | None = None, origin: Any | None = None, to: ToObject = 'task-or-run') -> list[Metric]
 ```
 
 Log multiple metrics to the current task or run.
@@ -1274,14 +1180,7 @@ def log_metrics(
 ### log\_output
 
 ```python
-log_output(
-    name: str,
-    value: Any,
-    *,
-    label: str | None = None,
-    to: ToObject = "task-or-run",
-    attributes: AnyDict | None = None,
-) -> None
+log_output(name: str, value: Any, *, label: str | None = None, to: ToObject = 'task-or-run', attributes: AnyDict | None = None) -> None
 ```
 
 Log a single output to the current task or run.
@@ -1391,9 +1290,7 @@ def log_output(
 ### log\_outputs
 
 ```python
-log_outputs(
-    to: ToObject = "task-or-run", **outputs: Any
-) -> None
+log_outputs(to: ToObject = 'task-or-run', **outputs: Any) -> None
 ```
 
 Log multiple outputs to the current task or run.
@@ -1548,14 +1445,7 @@ def log_params(self, **params: JsonValue) -> None:
 ### log\_sample
 
 ```python
-log_sample(
-    label: str,
-    input: Any,
-    output: Any,
-    metrics: MetricsLike | None = None,
-    *,
-    step: int = 0,
-) -> None
+log_sample(label: str, input: Any, output: Any, metrics: MetricsLike | None = None, *, step: int = 0) -> None
 ```
 
 Convenience method to log an input/output pair with metrics as a ephemeral task.
@@ -1596,12 +1486,7 @@ def log_sample(
 ### log\_samples
 
 ```python
-log_samples(
-    name: str,
-    samples: list[
-        tuple[Any, Any] | tuple[Any, Any, MetricsLike]
-    ],
-) -> None
+log_samples(name: str, samples: list[tuple[Any, Any] | tuple[Any, Any, MetricsLike]]) -> None
 ```
 
 Log multiple input/output samples as ephemeral tasks.
@@ -1738,16 +1623,7 @@ def push_update(self) -> None:
 ### run
 
 ```python
-run(
-    name: str | None = None,
-    *,
-    tags: Sequence[str] | None = None,
-    params: AnyDict | None = None,
-    project: str | None = None,
-    autolog: bool = True,
-    name_prefix: str | None = None,
-    attributes: AnyDict | None = None,
-) -> RunSpan
+run(name: str | None = None, *, tags: Sequence[str] | None = None, params: AnyDict | None = None, project: str | None = None, autolog: bool = True, name_prefix: str | None = None, attributes: AnyDict | None = None) -> RunSpan
 ```
 
 Create a new run.
@@ -1875,12 +1751,7 @@ def run(
 ### score
 
 ```python
-score(
-    object: T,
-    scorers: ScorersLike[T],
-    step: int | None = None,
-    assert_scores: list[str] | Literal[True] | None = None,
-) -> dict[str, list[Metric]]
+score(object: T, scorers: ScorersLike[T], step: int | None = None, assert_scores: list[str] | Literal[True] | None = None) -> dict[str, list[Metric]]
 ```
 
 Score an object using all the provided scorers.
@@ -1978,13 +1849,7 @@ async def score(
 ### scorer
 
 ```python
-scorer(
-    func: None = None,
-    /,
-    *,
-    name: str | None = None,
-    attributes: AnyDict | None = None,
-) -> t.Callable[[ScorerCallable[T]], Scorer[T]]
+scorer(func: None = None, /, *, name: str | None = None, attributes: AnyDict | None = None) -> t.Callable[[ScorerCallable[T]], Scorer[T]]
 ```
 
 ```python
@@ -1992,12 +1857,7 @@ scorer(func: ScorerCallable[T]) -> Scorer[T]
 ```
 
 ```python
-scorer(
-    func: ScorerCallable[T] | None = None,
-    *,
-    name: str | None = None,
-    attributes: AnyDict | None = None,
-) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]
+scorer(func: ScorerCallable[T] | None = None, *, name: str | None = None, attributes: AnyDict | None = None) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]
 ```
 
 Make a scorer from a callable function.
@@ -2126,12 +1986,7 @@ def shutdown(self) -> None:
 ### span
 
 ```python
-span(
-    name: str,
-    *,
-    tags: Sequence[str] | None = None,
-    attributes: AnyDict | None = None,
-) -> Span
+span(name: str, *, tags: Sequence[str] | None = None, attributes: AnyDict | None = None) -> Span
 ```
 
 Create a new OpenTelemety span.
@@ -2279,68 +2134,19 @@ def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
 ### task
 
 ```python
-task(
-    func: None = None,
-    /,
-    *,
-    scorers: None = None,
-    assert_scores: None = None,
-    name: str | None = None,
-    label: str | None = None,
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited = INHERITED,
-    log_output: bool | Inherited = INHERITED,
-    log_execution_metrics: bool = False,
-    tags: Sequence[str] | None = None,
-    attributes: AnyDict | None = None,
-) -> TaskDecorator
+task(func: None = None, /, *, scorers: None = None, assert_scores: None = None, name: str | None = None, label: str | None = None, log_inputs: Sequence[str] | bool | Inherited = INHERITED, log_output: bool | Inherited = INHERITED, log_execution_metrics: bool = False, tags: Sequence[str] | None = None, attributes: AnyDict | None = None) -> TaskDecorator
 ```
 
 ```python
-task(
-    func: None = None,
-    /,
-    *,
-    scorers: ScorersLike[R],
-    assert_scores: list[str] | Literal[True] | None = None,
-    name: str | None = None,
-    label: str | None = None,
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited = INHERITED,
-    log_output: bool | Inherited = INHERITED,
-    log_execution_metrics: bool = False,
-    tags: Sequence[str] | None = None,
-    attributes: AnyDict | None = None,
-) -> ScoredTaskDecorator[R]
+task(func: None = None, /, *, scorers: ScorersLike[R], assert_scores: list[str] | Literal[True] | None = None, name: str | None = None, label: str | None = None, log_inputs: Sequence[str] | bool | Inherited = INHERITED, log_output: bool | Inherited = INHERITED, log_execution_metrics: bool = False, tags: Sequence[str] | None = None, attributes: AnyDict | None = None) -> ScoredTaskDecorator[R]
 ```
 
 ```python
-task(
-    func: Callable[P, Awaitable[R]] | Callable[P, R],
-) -> Task[P, R]
+task(func: Callable[P, Awaitable[R]] | Callable[P, R]) -> Task[P, R]
 ```
 
 ```python
-task(
-    func: Callable[P, Awaitable[R]]
-    | Callable[P, R]
-    | None = None,
-    /,
-    *,
-    scorers: ScorersLike[Any] | None = None,
-    assert_scores: list[str] | Literal[True] | None = None,
-    name: str | None = None,
-    label: str | None = None,
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited = INHERITED,
-    log_output: bool | Inherited = INHERITED,
-    log_execution_metrics: bool = False,
-    tags: Sequence[str] | None = None,
-    attributes: AnyDict | None = None,
-) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]
+task(func: Callable[P, Awaitable[R]] | Callable[P, R] | None = None, /, *, scorers: ScorersLike[Any] | None = None, assert_scores: list[str] | Literal[True] | None = None, name: str | None = None, label: str | None = None, log_inputs: Sequence[str] | bool | Inherited = INHERITED, log_output: bool | Inherited = INHERITED, log_execution_metrics: bool = False, tags: Sequence[str] | None = None, attributes: AnyDict | None = None) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]
 ```
 
 Create a new task from a function.
@@ -2501,13 +2307,7 @@ def task(
 ### task\_span
 
 ```python
-task_span(
-    name: str,
-    *,
-    label: str | None = None,
-    tags: Sequence[str] | None = None,
-    attributes: AnyDict | None = None,
-) -> TaskSpan[t.Any]
+task_span(name: str, *, label: str | None = None, tags: Sequence[str] | None = None, attributes: AnyDict | None = None) -> TaskSpan[t.Any]
 ```
 
 Create a task span without an explicit associated function.

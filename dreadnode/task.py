@@ -1,7 +1,6 @@
 import contextlib
 import inspect
 import typing as t
-from copy import deepcopy
 from pathlib import Path
 
 import typing_extensions as te
@@ -264,6 +263,8 @@ class Task(Component[P, R], t.Generic[P, R]):
             tags=self.tags.copy(),
             log_inputs=self.log_inputs,
             log_output=self.log_output,
+            config=self.__dn_param_config__,
+            context=self.__dn_context__,
         )
 
     def __deepcopy__(self, memo: dict[int, t.Any]) -> "Task[P, R]":
@@ -279,8 +280,8 @@ class Task(Component[P, R], t.Generic[P, R]):
             log_execution_metrics=self.log_execution_metrics,
             tags=self.tags.copy(),
             attributes=self.attributes.copy(),
-            config=deepcopy(self.__dn_param_config__, memo),
-            context=deepcopy(self.__dn_context__, memo),
+            config=dict(self.__dn_param_config__),
+            context=dict(self.__dn_context__),
         )
 
     def clone(self) -> "Task[P, R]":

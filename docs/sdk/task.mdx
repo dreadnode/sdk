@@ -10,24 +10,7 @@ Task
 ----
 
 ```python
-Task(
-    func: Callable[P, R],
-    tracer: Tracer,
-    *,
-    name: str | None = None,
-    label: str | None = None,
-    scorers: ScorersLike[R] | None = None,
-    assert_scores: list[str] | Literal[True] | None = None,
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited = INHERITED,
-    log_output: bool | Inherited = INHERITED,
-    log_execution_metrics: bool = False,
-    tags: Sequence[str] | None = None,
-    attributes: AnyDict | None = None,
-    config: dict[str, ConfigInfo] | None = None,
-    context: dict[str, Context] | None = None,
-)
+Task(func: Callable[P, R], tracer: Tracer, *, name: str | None = None, label: str | None = None, scorers: ScorersLike[R] | None = None, assert_scores: list[str] | Literal[True] | None = None, log_inputs: Sequence[str] | bool | Inherited = INHERITED, log_output: bool | Inherited = INHERITED, log_execution_metrics: bool = False, tags: Sequence[str] | None = None, attributes: AnyDict | None = None, config: dict[str, ConfigInfo] | None = None, context: dict[str, Context] | None = None)
 ```
 
 Structured task wrapper for a function that can be executed within a run.
@@ -115,11 +98,7 @@ def __init__(
 ### assert\_scores
 
 ```python
-assert_scores = (
-    scorer_names
-    if assert_scores is True
-    else list(assert_scores or [])
-)
+assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
 ```
 
 A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError.
@@ -151,11 +130,7 @@ Track execution metrics such as success rate and run count.
 ### log\_inputs
 
 ```python
-log_inputs = (
-    log_inputs
-    if isinstance(log_inputs, bool | Inherited)
-    else list(log_inputs)
-)
+log_inputs = log_inputs if isinstance(log_inputs, bool | Inherited) else list(log_inputs)
 ```
 
 Log all, or specific, incoming arguments to the function as inputs.
@@ -273,11 +248,7 @@ async def many(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
 ### map
 
 ```python
-map(
-    args: list[Any] | dict[str, Any | list[Any]],
-    *,
-    concurrency: int | None = None,
-) -> list[R]
+map(args: list[Any] | dict[str, Any | list[Any]], *, concurrency: int | None = None) -> list[R]
 ```
 
 Runs this task multiple times by mapping over iterable arguments.
@@ -647,11 +618,7 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
 ### stream\_many
 
 ```python
-stream_many(
-    count: int, *args: args, **kwargs: kwargs
-) -> t.AsyncContextManager[
-    t.AsyncGenerator[TaskSpan[R], None]
-]
+stream_many(count: int, *args: args, **kwargs: kwargs) -> t.AsyncContextManager[t.AsyncGenerator[TaskSpan[R], None]]
 ```
 
 Run the task multiple times concurrently and yield each TaskSpan as it completes.
@@ -706,13 +673,7 @@ def stream_many(
 ### stream\_map
 
 ```python
-stream_map(
-    args: list[Any] | dict[str, Any | list[Any]],
-    *,
-    concurrency: int | None = None,
-) -> t.AsyncContextManager[
-    t.AsyncGenerator[TaskSpan[R], None]
-]
+stream_map(args: list[Any] | dict[str, Any | list[Any]], *, concurrency: int | None = None) -> t.AsyncContextManager[t.AsyncGenerator[TaskSpan[R], None]]
 ```
 
 Runs this task multiple times by mapping over iterable arguments.
@@ -818,9 +779,7 @@ async def try_(self, *args: P.args, **kwargs: P.kwargs) -> R | None:
 ### try\_many
 
 ```python
-try_many(
-    count: int, *args: args, **kwargs: kwargs
-) -> list[R]
+try_many(count: int, *args: args, **kwargs: kwargs) -> list[R]
 ```
 
 Attempt to run the task multiple times and return a list of outputs.
@@ -877,11 +836,7 @@ async def try_many(
 ### try\_map
 
 ```python
-try_map(
-    args: list[Any] | dict[str, Any | list[Any]],
-    *,
-    concurrency: int | None = None,
-) -> list[R]
+try_map(args: list[Any] | dict[str, Any | list[Any]], *, concurrency: int | None = None) -> list[R]
 ```
 
 Attempt to run this task multiple times by mapping over iterable arguments.
@@ -938,25 +893,7 @@ async def try_map(
 ### with\_
 
 ```python
-with_(
-    *,
-    scorers: Sequence[Scorer[R] | ScorerCallable[R]]
-    | None = None,
-    assert_scores: Sequence[str]
-    | Literal[True]
-    | None = None,
-    name: str | None = None,
-    tags: Sequence[str] | None = None,
-    label: str | None = None,
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited
-    | None = None,
-    log_output: bool | Inherited | None = None,
-    log_execution_metrics: bool | None = None,
-    append: bool = False,
-    attributes: AnyDict | None = None,
-) -> Task[P, R]
+with_(*, scorers: Sequence[Scorer[R] | ScorerCallable[R]] | None = None, assert_scores: Sequence[str] | Literal[True] | None = None, name: str | None = None, tags: Sequence[str] | None = None, label: str | None = None, log_inputs: Sequence[str] | bool | Inherited | None = None, log_output: bool | Inherited | None = None, log_execution_metrics: bool | None = None, append: bool = False, attributes: AnyDict | None = None) -> Task[P, R]
 ```
 
 Clone a task and modify its attributes.
@@ -1151,30 +1088,15 @@ def sorted(self, *, reverse: bool = True) -> "TaskSpanList[R]":
 ### top\_n
 
 ```python
-top_n(
-    n: int,
-    *,
-    as_outputs: Literal[False] = False,
-    reverse: bool = True,
-) -> TaskSpanList[R]
+top_n(n: int, *, as_outputs: Literal[False] = False, reverse: bool = True) -> TaskSpanList[R]
 ```
 
 ```python
-top_n(
-    n: int,
-    *,
-    as_outputs: Literal[True],
-    reverse: bool = True,
-) -> list[R]
+top_n(n: int, *, as_outputs: Literal[True], reverse: bool = True) -> list[R]
 ```
 
 ```python
-top_n(
-    n: int,
-    *,
-    as_outputs: bool = False,
-    reverse: bool = True,
-) -> TaskSpanList[R] | list[R]
+top_n(n: int, *, as_outputs: bool = False, reverse: bool = True) -> TaskSpanList[R] | list[R]
 ```
 
 Take the top n spans from this list, sorted by their average metric value.

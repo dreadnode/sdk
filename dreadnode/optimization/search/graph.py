@@ -1,73 +1,183 @@
 import asyncio
+import typing as t
 
+from pydantic import ConfigDict, PrivateAttr
+
+from dreadnode.meta.types import Config, Model
+from dreadnode.optimization.collectors import lineage, local_neighborhood
+from dreadnode.optimization.sampling import top_k
 from dreadnode.optimization.search.base import Search
-from dreadnode.optimization.trial import CandidateT, Trial, TrialCollector, TrialFilter, Trials
+from dreadnode.optimization.trial import Trial, TrialCollector, Trials, TrialSampler
 from dreadnode.transforms import Transform
 from dreadnode.transforms.base import TransformLike
+from dreadnode.util import get_callable_name
+
+T = t.TypeVar("T")
 
 
-class LineageCollector(TrialCollector):
-    """Collects trials by tracing the direct parent lineage of the current trial."""
+class GraphSearch(Model, Search[T]):
+    """
+    A generalized, stateful strategy for generative graph-based search.
 
-    def __call__(self, current_trial: Trial, all_trials: Trials) -> Trials:
-        path = [current_trial]
-        parent = (
-            next((t for t in all_trials if t.id == current_trial.parent_id), None)
-            if current_trial.parent_id
-            else None
-        )
-        while parent:
-            path.insert(0, parent)
-            parent = all_trials.get(parent.parent_id) if parent.parent_id else None
-        return path
+    Formally, the structure is a connected directed acyclic graph (DAG) where nodes represent
+    trials and edges are parent-child relationships.
 
+    For each step, it:
+        1 - Gathers related trials using `context_collector` for every leaf node
+        2 - Applies the `transform` to [leaf, *context] `branching_factor` times for each leaf
+        3 - Suggests all new children for evaluation
 
-class GraphSearch(Search[CandidateT]):
-    """A generalized, stateful strategy for generative graph-based search."""
+    When completed trials are observed, it:
+        1 - Filters out unsuccessful trials
+        2 - Adds new children to the graph
+        3 - Prunes with `pruning_sampler` to establish leaves for the next step
+    """
 
-    def __init__(
-        self,
-        transform: TransformLike[Trials[CandidateT], CandidateT],
-        initial_candidate: CandidateT,
-        *,
-        branching_factor: int = 3,
-        trial_collector: TrialCollector = LineageContext(),
-        leaf_selector: TrialFilter,  # e.g., top-k by score
-    ):
-        self.transform = Transform.fit(transform)
-        self.initial_candidate = initial_candidate
-        self.context_collector = context_collector
-        self.branching_factor = branching_factor
-        self.select_leaves = leaf_selection_strategy
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-        self._all_trials: dict[UUID, Trial[CandidateT]] = {}
-        self.leaves: list[Trial[CandidateT]] = []
+    transform: Transform[Trials[T], T]
+    """The transform for generating new nodes from the current trial and related context."""
+    initial_candidate: T
+    """The initial candidate for the search."""
 
-    async def suggest(self, step: int) -> list[Trial[CandidateT]]:
-        if not self.leaves:
+    branching_factor: int = Config(default=3)
+    """The number of new candidates to generate from each leaf node."""
+    max_leaves: int = Config(default=10)
+    """The maximum number of leaf nodes to maintain in the search."""
+
+    context_collector: TrialCollector[T] = Config(lineage)
+    """A trial collector to gather relevant trials before branching."""
+    pruning_sampler: TrialSampler[T] = Config(top_k)
+    """A trial sampler to prune new children after each branching."""
+
+    _trials: Trials[T] = PrivateAttr(default_factory=list)
+    _leaves: Trials[T] = PrivateAttr(default_factory=list)
+
+    def __repr__(self) -> str:
+        parts = [
+            f"transform={get_callable_name(self.transform, short=True)}"
+            f"context_collector={get_callable_name(self.context_collector, short=True)}"
+            f"pruning_sampler={get_callable_name(self.pruning_sampler, short=True)}"
+            f"branching_factor={self.branching_factor}"
+        ]
+        return f"GraphSearch({', '.join(parts)})"
+
+    def reset(self) -> None:
+        self._trials = []
+        self._leaves = []
+
+    async def suggest(self, step: int) -> Trials[T]:
+        if not self._leaves:
             return [Trial(candidate=self.initial_candidate, step=step)]
 
-        all_new_trials = []
-        for leaf in self.leaves:
-            context = self.context_collector(leaf, self._all_trials)
+        trials: Trials[T] = []
+        for leaf in self._leaves:
+            context = [leaf, *self.context_collector(leaf, self._trials)]
             coroutines = [self.transform(context) for _ in range(self.branching_factor)]
-            new_candidates = await asyncio.gather(*coroutines)
+            for candidate in await asyncio.gather(*coroutines):
+                trials.append(Trial(candidate=candidate, parent_id=leaf.id, step=step))
 
-            # 3. Create the new trial objects with correct parentage.
-            for candidate in new_candidates:
-                all_new_trials.append(
-                    Trial(candidate=candidate, parent_id=leaf.trial_id, step=step)
-                )
-        return all_new_trials
+        return trials
 
-    def observe(self, trials: list[Trial[CandidateT]]) -> None:
-        # Add all new trials to our graph representation.
-        for trial in trials:
-            self._all_trials[trial.trial_id] = trial
+    async def observe(self, trials: list[Trial[T]]) -> None:
+        successful_trials = [t for t in trials if t.status == "success"]
+        self._trials.extend(successful_trials)
+        self._leaves = self.pruning_sampler(successful_trials)
 
-        if not self.leaves:
-            self.leaves = trials  # First step
-            return
 
-        combined = self.leaves + [t for t in trials if t.status == "success"]
-        self.leaves = self.select_leaves(combined)
+def iterative_search(
+    transform: TransformLike[Trials[T], T],
+    initial_candidate: T,
+    *,
+    branching_factor: int = 3,
+) -> GraphSearch[T]:
+    """
+    Creates a GraphSearch configured for single-path iterative refinement.
+
+    This strategy maintains a single path of reasoning by always expanding from the
+    single best trial of the previous step. The context for refinement is the
+    direct lineage of that best trial.
+
+    Args:
+        transform: The function that takes the history and generates new candidates.
+        initial_candidate: The starting point for the refinement chain.
+        branching_factor: How many new candidates to generate from the best trial at each step.
+                          The best of these will be chosen for the next step.
+
+    Returns:
+        A pre-configured GraphSearch instance.
+    """
+    return GraphSearch[T](
+        transform=transform,
+        initial_candidate=initial_candidate,
+        branching_factor=branching_factor,
+        context_collector=lineage(),
+        pruning_sampler=top_k(k=1),
+    )
+
+
+def beam_search(
+    transform: TransformLike[Trials[T], T],
+    initial_candidate: T,
+    *,
+    beam_width: int = 3,
+    branching_factor: int = 3,
+) -> GraphSearch[T]:
+    """
+    Creates a GraphSearch configured for classic beam search.
+
+    This strategy maintains parallel reasoning paths by keeping a "beam" of the top `k`
+    best trials from the previous step. Each trial in the beam is expanded independently,
+    using its own lineage for context.
+
+    Args:
+        transform: The function that takes the history and generates new candidates.
+        initial_candidate: The starting point for the refinement chain.
+        beam_width: The number of top candidates to keep at each step (the 'k').
+        branching_factor: How many new candidates to generate from each trial in the beam.
+
+    Returns:
+        A pre-configured GraphSearch instance.
+    """
+    return GraphSearch[T](
+        transform=transform,
+        initial_candidate=initial_candidate,
+        branching_factor=branching_factor,
+        context_collector=lineage,
+        pruning_sampler=top_k.configure(k=beam_width),
+    )
+
+
+def graph_search(
+    transform: TransformLike[Trials[T], T],
+    initial_candidate: T,
+    *,
+    neighborhood_depth: int = 2,
+    frontier_size: int = 5,
+    branching_factor: int = 3,
+) -> GraphSearch[T]:
+    """
+    Creates a GraphSearch configured with a local neighborhood context, where the trial context
+    passed to the transform includes the trials in the local neighborhood up to `2h-1` distance
+    away where `h` is the neighborhood depth.
+
+    This advanced strategy uses a local neighborhood graph context for refinement and selects
+    a new frontier of the best `k` candidates from all new generations.
+
+    Args:
+        transform: The function that takes the neighborhood context and generates new candidates.
+        initial_candidate: The starting point for the search.
+        neighborhood_depth: The depth 'h' used to calculate the size of the local neighborhood context.
+        frontier_size: The number of top candidates to form the next generation's frontier ('d').
+        branching_factor: How many new candidates to generate from each current leaf node.
+
+    Returns:
+        A pre-configured GraphSearch instance.
+    """
+    return GraphSearch[T](
+        transform=transform,
+        initial_candidate=initial_candidate,
+        branching_factor=branching_factor,
+        context_collector=local_neighborhood.configure(depth=neighborhood_depth),
+        pruning_sampler=top_k.configure(k=frontier_size),
+    )

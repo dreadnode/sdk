@@ -18,6 +18,12 @@ dependencies = [
     "cyclopts>=3.22.2,<4.0.0",
     "taskgroup>=0.2.2,<1.0.0",
     "rigging>=3.2.1,<4.0.0",
+    "ipykernel[dev] (>=6.30.1,<7.0.0)",
+    "ipywidgets[dev] (>=8.1.7,<9.0.0)",
+    "optuna[optimization] (>=4.5.0,<5.0.0)",
+    "markdown[dev] (>=3.8.2,<4.0.0)",
+    "mkdocstrings-python[dev] (>=1.18.2,<2.0.0)",
+    "markdownify[dev] (>=1.2.0,<2.0.0)",
 ]
 
 [project.optional-dependencies]
@@ -97,6 +103,12 @@ asyncio_default_fixture_loop_scope = "function"
 strict = true
 python_version = "3.10"
 exclude = "tests"
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+exclude = [".hooks", "tests"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]

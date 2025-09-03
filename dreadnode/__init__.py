@@ -3,7 +3,7 @@ import typing as t
 
 from loguru import logger
 
-from dreadnode import agent, convert, data_types, eval, meta, transforms  # noqa: A004
+from dreadnode import agent, airt, convert, data_types, eval, meta, transforms  # noqa: A004
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.eval import Eval
 from dreadnode.logging import configure_logging
@@ -94,6 +94,7 @@ __all__ = [
     "Video",
     "__version__",
     "agent",
+    "airt",
     "api",
     "configure",
     "configure_logging",

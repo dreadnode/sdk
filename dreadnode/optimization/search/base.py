@@ -14,11 +14,11 @@ class Search(ABC, t.Generic[CandidateT]):
         """Resets the search strategy to its initial state."""
 
     @abstractmethod
-    async def suggest(self) -> Trials[CandidateT]:
+    async def suggest(self, step: int) -> Trials[CandidateT]:
         """Suggests the next batch of candidates."""
 
     @abstractmethod
-    def observe(self, trials: Trials[CandidateT]) -> None:
+    async def observe(self, trials: Trials[CandidateT]) -> None:
         """Informs the strategy of the results of recent trials."""
 
 

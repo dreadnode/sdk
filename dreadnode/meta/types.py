@@ -355,8 +355,8 @@ class Component(t.Generic[P, R]):
         "The underlying function to call"
         self.signature = getattr(wraps or func, "__signature__", inspect.signature(func))
         "The underlying function signature"
-        self.__dn_param_config__: dict[str, ConfigInfo] = (
-            config or wraps.__dn_param_config__
+        self.__dn_param_config__: dict[str, ConfigInfo] = config or (
+            wraps.__dn_param_config__
             if isinstance(wraps, Component)
             else ConfigInfo.from_defaults_and_annotations(
                 {
@@ -368,8 +368,8 @@ class Component(t.Generic[P, R]):
             )
         )
         self.__dn_attr_config__: dict[str, ConfigInfo] = {}
-        self.__dn_context__: dict[str, Context] = (
-            context or wraps.__dn_context__
+        self.__dn_context__: dict[str, Context] = context or (
+            wraps.__dn_context__
             if isinstance(wraps, Component)
             else {
                 n: p.default

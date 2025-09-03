@@ -10,12 +10,7 @@ Audio
 -----
 
 ```python
-Audio(
-    data: AudioDataType,
-    sample_rate: int | None = None,
-    caption: str | None = None,
-    format: str | None = None,
-)
+Audio(data: AudioDataType, sample_rate: int | None = None, caption: str | None = None, format: str | None = None)
 ```
 
 Audio media type for Dreadnode logging.
@@ -140,12 +135,7 @@ Image
 -----
 
 ```python
-Image(
-    data: ImageDataOrPathType,
-    mode: str | None = None,
-    caption: str | None = None,
-    format: str | None = None,
-)
+Image(data: ImageDataOrPathType, mode: str | None = None, caption: str | None = None, format: str | None = None)
 ```
 
 Image media type for Dreadnode logging.
@@ -274,11 +264,7 @@ Object3D
 --------
 
 ```python
-Object3D(
-    data: Object3DDataType,
-    caption: str | None = None,
-    format: str | None = None,
-)
+Object3D(data: Object3DDataType, caption: str | None = None, format: str | None = None)
 ```
 
 3D object media type for Dreadnode logging.
@@ -370,13 +356,7 @@ Table
 -----
 
 ```python
-Table(
-    data: TableDataType,
-    caption: str | None = None,
-    format: str | None = None,
-    *,
-    index: bool = False,
-)
+Table(data: TableDataType, caption: str | None = None, format: str | None = None, *, index: bool = False)
 ```
 
 Table data type for Dreadnode logging.
@@ -525,14 +505,7 @@ Video
 -----
 
 ```python
-Video(
-    data: VideoDataType,
-    fps: float | None = None,
-    caption: str | None = None,
-    format: str | None = None,
-    width: int | None = None,
-    height: int | None = None,
-)
+Video(data: VideoDataType, fps: float | None = None, caption: str | None = None, format: str | None = None, width: int | None = None, height: int | None = None)
 ```
 
 Video media type for Dreadnode logging.
@@ -643,7 +616,7 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     Returns:
         A tuple of (video_bytes, metadata_dict)
     """
-    import numpy as np  # type: ignore[import,unused-ignore]  # noqa: PLC0415
+    import numpy as np  # type: ignore[import,unused-ignore]
 
     try:
         from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]

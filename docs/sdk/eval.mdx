@@ -15,9 +15,7 @@ Prepared evaluation of a task with an associated dataset and configuration.
 ### assert\_scores
 
 ```python
-assert_scores: list[str] | Literal[True] = Config(
-    default_factory=list
-)
+assert_scores: list[str] | Literal[True] = Config(default_factory=list)
 ```
 
 Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions).
@@ -33,10 +31,7 @@ Maximum number of tasks to run in parallel.
 ### dataset
 
 ```python
-dataset: Annotated[
-    InputDataset[In] | list[AnyDict] | FilePath,
-    Config(expose_as=FilePath),
-]
+dataset: Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=FilePath)]
 ```
 
 The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
@@ -44,9 +39,7 @@ The dataset to use for the evaluation. Can be a list of inputs or a file path to
 ### dataset\_input\_mapping
 
 ```python
-dataset_input_mapping: list[str] | dict[str, str] | None = (
-    Config(default=None)
-)
+dataset_input_mapping: list[str] | dict[str, str] | None = Config(default=None)
 ```
 
 A list of dataset keys to pass as input parameters to the task, or an
@@ -89,9 +82,7 @@ The name of the evaluation.
 ### parameters
 
 ```python
-parameters: dict[str, list[Any]] | None = Config(
-    default=None
-)
+parameters: dict[str, list[Any]] | None = Config(default=None)
 ```
 
 A dictionary defining a parameter space to run experiments against.
@@ -126,9 +117,7 @@ A list of tags associated with the evaluation.
 ### task
 
 ```python
-task: Annotated[
-    Task[[In], Out] | str, Config(expose_as=str)
-]
+task: Annotated[Task[[In], Out] | str, Config(expose_as=str)]
 ```
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.
@@ -167,10 +156,10 @@ Run the configured task evaluation.
 async def run(self) -> EvalResult[In, Out]:
     """Run the configured task evaluation."""
     async with self.stream() as stream:
-        async for sample_or_eval in stream:
-            if isinstance(sample_or_eval, EvalResult):
-                return sample_or_eval
-        raise RuntimeError("Evaluation failed to complete")
+        async for event in stream:
+            if isinstance(event, EvalEnd):
+                return event.result
+    raise RuntimeError("Evaluation failed to complete")
 ```
 
 
@@ -179,9 +168,7 @@ async def run(self) -> EvalResult[In, Out]:
 ### stream
 
 ```python
-stream() -> t.AsyncIterator[
-    t.AsyncGenerator[EvalEvent[In, Out], None]
-]
+stream() -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]
 ```
 
 Create an event stream to monitor the evaluation process.
@@ -206,9 +193,7 @@ load\_dataset
 -------------
 
 ```python
-load_dataset(
-    path: Path, *, file_format: FileFormat | None = None
-) -> list[AnyDict]
+load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]
 ```
 
 Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.

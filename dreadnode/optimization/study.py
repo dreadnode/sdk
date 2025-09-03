@@ -1,10 +1,13 @@
 import contextlib
 import typing as t
 
-from pydantic import BaseModel, ConfigDict, Field, FilePath, PrivateAttr
+from pydantic import ConfigDict, FilePath, PrivateAttr
 
 from dreadnode.eval import Eval
 from dreadnode.eval.result import EvalResult
+from dreadnode.eval.sample import InputDataset
+from dreadnode.meta import Model
+from dreadnode.meta.types import Config
 from dreadnode.optimization.events import (
     CandidatePruned,
     CandidatesSuggested,
@@ -12,57 +15,71 @@ from dreadnode.optimization.events import (
     NewBestTrialFound,
     StepEnd,
     StepStart,
-    StopReason,
     StudyEnd,
     StudyEvent,
     StudyStart,
     TrialComplete,
 )
-from dreadnode.optimization.trial import Trial
+from dreadnode.optimization.result import StudyResult
+from dreadnode.optimization.search import Search
+from dreadnode.optimization.trial import Trial, Trials
 from dreadnode.scorers import Scorer, ScorerLike
 from dreadnode.task import Task
 from dreadnode.types import AnyDict
-from dreadnode.util import concurrent_gen
+from dreadnode.util import concurrent_gen, get_callable_name
 
 if t.TYPE_CHECKING:
-    from dreadnode.optimization.search import Search
+    from dreadnode.eval.events import EvalStopReason
+
+Direction = t.Literal["maximize", "minimize"]
+"""The direction of optimization for the objective score."""
 
 
-class Study(BaseModel, t.Generic[CandidateT]):
+class Study(Model, t.Generic[CandidateT]):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    strategy: "Search[CandidateT]"
-    apply_candidate_fn: t.Callable[[CandidateT], Task[..., t.Any]]
-    dataset: list[AnyDict] | FilePath
-    objective: ScorerLike[t.Any] | str
+    name: str | None = Config(default=None)
+    """The name of the study - otherwise derived from the task."""
+    description: str = Config(default="")
+    """A brief description of the study's purpose."""
+    tags: list[str] = Config(default_factory=lambda: ["study"])
+    """A list of tags associated with the study."""
 
-    objective_fn: t.Callable[[EvalResult], float] | None = None
-    direction: t.Literal["maximize", "minimize"] = "maximize"
-    max_steps: int = 100
-    concurrency: int = 1
-    constraints: list[Scorer[CandidateT]] | None = None
-    patience: int | None = None
-    target_score: float | None = None
-    stop_reason: StopReason = "unknown"
-    trials: list[Trial[CandidateT]] = Field(default_factory=list, repr=False)
-    best_trial: Trial[CandidateT] | None = None
+    strategy: t.Annotated[Search[CandidateT], Config()]
+    """The search strategy to use for suggesting new trials."""
+    task_factory: t.Callable[[CandidateT], Task[..., t.Any]]
+    """A function that accepts a candidate and returns a configured Task ready for evaluation."""
+    objective: ScorerLike[t.Any] | str = Config(default_factory=list)
+    """The objective to optimize. Can be a scorer instance, a scorer-like callable, or a string name of scorer already on the task."""
+    dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = Config(
+        default=None, expose_as=FilePath | None
+    )
+    """
+    The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
+    If `None`, an empty dataset with a single empty input will be used.
+    """
+
+    # Config
+    direction: Direction = Config(default="maximize")
+    """The direction of optimization for the objective score."""
+    concurrency: int = Config(default=1, ge=1)
+    """The maximum number of trials to evaluate in parallel."""
+    constraints: list[Scorer[CandidateT]] | None = Config(default=None)
+    """A list of Scorer-like constraints to apply to candidates. If any constraint scores to a falsy value, the candidate is pruned."""
+    objective_fn: t.Callable[[EvalResult], float] | None = Config(default=None)
+    """An optional function to compute a score from a full EvalResult, overriding the default averaging behavior."""
+
+    # Stopping conditions
+    max_steps: int = Config(default=100, ge=1)
+    """The maximum number of optimization steps to run."""
+    patience: int | None = Config(default=None, ge=1)
+    """The number of steps to wait for an improvement before stopping. If None, this is disabled."""
+    target_score: float | None = Config(default=None)
+    """A target score to achieve. The study will stop if a trial meets or exceeds this score."""
 
     _steps_since_best: int = PrivateAttr(0)
 
-    async def _run_assertions(self, candidate: CandidateT) -> tuple[bool, str]:
-        """
-        Validate a candidate against all configured constraint scorers.
-
-        This method checks if the candidate satisfies all constraints defined for the study.
-        Constraints are boolean scorers that must return True for a candidate to be considered valid.
-
-        Args:
-            candidate: The candidate to validate against constraints.
-
-        Returns:
-            A tuple containing (is_valid, reason) where is_valid indicates if all
-            constraints passed and reason provides details for any failed constraint.
-        """
+    async def _check_constraints(self, candidate: CandidateT) -> tuple[bool, str]:
         if not self.constraints:
             return True, ""
 
@@ -74,22 +91,7 @@ class Study(BaseModel, t.Generic[CandidateT]):
         return True, ""
 
     async def _evaluate_candidate(self, trial: Trial[CandidateT]) -> Trial[CandidateT]:
-        """
-        Execute a complete evaluation of a candidate trial.
-
-        This method performs the core evaluation workflow: applies the candidate to create
-        a task variant, runs evaluation with the dataset and scorers, computes the final
-        score, and updates the trial with results. Handles both string-based and
-        callable objectives.
-
-        Args:
-            trial: The trial containing the candidate to evaluate.
-
-        Returns:
-            The updated trial with evaluation results, score, and status set.
-            Status will be 'success' if evaluation completed or 'failed' if an exception occurred.
-        """
-        task_variant = self.apply_candidate_fn(trial.candidate)
+        task_variant = self.task_factory(trial.candidate)
 
         scorers: list[ScorerLike[t.Any]] = []
         objective_scorer_name: str
@@ -104,7 +106,7 @@ class Study(BaseModel, t.Generic[CandidateT]):
         try:
             evaluator = Eval(
                 task=task_variant,
-                dataset=self.dataset,
+                dataset=self.dataset or [{}],
                 scorers=scorers,
             )
 
@@ -114,12 +116,9 @@ class Study(BaseModel, t.Generic[CandidateT]):
             if self.objective_fn is not None:
                 score = self.objective_fn(trial.eval_result)
             else:
-                sample_scores = [
-                    s.get_average_metric_value(objective_scorer_name)
-                    for s in trial.eval_result.samples
-                ]
-                if sample_scores:
-                    score = sum(sample_scores) / len(sample_scores)
+                score = trial.eval_result.metrics_summary.get(objective_scorer_name, {}).get(
+                    "mean", score
+                )
 
             trial.score = score if self.direction == "maximize" else -score
             trial.status = "success"
@@ -128,87 +127,53 @@ class Study(BaseModel, t.Generic[CandidateT]):
             trial.error = str(e)
         return trial
 
-    def _reset(self) -> None:
-        self.trials = []
-        self.best_trial = None
-        self.stop_reason = "unknown"
-        self._steps_since_best = 0
-        self.strategy.reset()
-
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:  # noqa: PLR0912, PLR0915
         """
         Execute the complete optimization study and yield events for each phase.
-
-        This is the core optimization loop that coordinates the entire study execution.
-        It manages the search strategy, candidate evaluation, constraint validation,
-        and stopping criteria. The method yields a stream of events that provide
-        real-time visibility into the optimization process.
-
-        The optimization follows this workflow for each step:
-        1. Request candidates from the search strategy
-        2. Validate candidates against constraints (prune invalid ones)
-        3. Evaluate remaining candidates concurrently
-        4. Update best trial and notify strategy of results
-        5. Check stopping criteria (target score, patience, max steps)
-
-        Yields:
-            StudyEvent objects representing different phases of the optimization:
-            - StudyStart: Signals the beginning of optimization
-            - StepStart/StepEnd: Mark the beginning and end of each optimization step
-            - CandidatesSuggested: Reports candidates proposed by the search strategy
-            - CandidatePruned: Reports candidates that failed constraint validation
-            - TrialComplete: Reports completion of candidate evaluation
-            - NewBestTrialFound: Reports when a new best score is achieved
-            - StudyEnd: Signals completion with final results and stop reason
         """
-        self._reset()
+        self._steps_since_best = 0
+        self.strategy.reset()
 
-        yield StudyStart(
-            study=self, initial_candidate=getattr(self.strategy, "initial_candidate", None)
-        )
+        stop_reason: EvalStopReason = "unknown"
+        all_trials: Trials[CandidateT] = []
+        best_trial: Trial[CandidateT] | None = None
+
+        yield StudyStart(study=self, trials=all_trials, max_steps=self.max_steps)
 
         for step in range(1, self.max_steps + 1):
-            yield StepStart(study=self, step=step)
+            yield StepStart(study=self, trials=all_trials, step=step)
 
-            trials = await self.strategy.suggest()
-            candidates = [trial.candidate for trial in trials]
-            if not trials:
-                self.stop_reason = "no_more_candidates"
+            new_trials = await self.strategy.suggest(step)
+            if not new_trials:
+                stop_reason = "no_more_candidates"
                 break
 
-            yield CandidatesSuggested(study=self, candidates=candidates)
+            all_trials.extend(new_trials)
+
+            yield CandidatesSuggested(
+                study=self, trials=all_trials, candidates=[trial.candidate for trial in new_trials]
+            )
 
             pending_trials: list[Trial[CandidateT]] = []
             pruned_trials: list[Trial[CandidateT]] = []
 
-            for candidate in candidates:
+            for trial in new_trials:
                 try:
-                    is_valid, reason = await self._run_assertions(candidate)
-                    trial = Trial(candidate=candidate, step=step)
+                    is_valid, reason = await self._check_constraints(trial.candidate)
                     if is_valid:
                         pending_trials.append(trial)
                     else:
                         trial.status = "pruned"
                         trial.pruning_reason = reason
                         pruned_trials.append(trial)
-                        yield CandidatePruned(study=self, trial=trial)
+                        yield CandidatePruned(study=self, trials=all_trials, trial=trial)
                 except Exception as e:  # noqa: BLE001, PERF203
-                    from dreadnode.tracing.span import TaskSpan  # noqa: F401
-
-                    Trial.model_rebuild()
-                    trial = Trial(
-                        candidate=candidate,
-                        status="failed",
-                        error=str(e),
-                    )
+                    trial.status = "failed"
+                    trial.error = str(e)
                     pruned_trials.append(trial)
 
-            if pruned_trials:
-                self.trials.extend(pruned_trials)
-                self.strategy.observe(pruned_trials)
-
             if not pending_trials:
-                yield StepEnd(study=self, step=step)
+                yield StepEnd(study=self, trials=all_trials, step=step)
                 continue
 
             new_best_found_this_step = False
@@ -219,18 +184,18 @@ class Study(BaseModel, t.Generic[CandidateT]):
             ) as results_stream:
                 async for trial in results_stream:
                     completed_trials.append(trial)
-                    yield TrialComplete(study=self, trial=trial)
+                    yield TrialComplete(study=self, trials=all_trials, trial=trial)
 
                     if trial.status == "success" and (
-                        self.best_trial is None or trial.score > self.best_trial.score
+                        best_trial is None or trial.score > best_trial.score
                     ):
-                        self.best_trial = trial
+                        best_trial = trial
                         new_best_found_this_step = True
-                        yield NewBestTrialFound(study=self, trial=self.best_trial)
+                        yield NewBestTrialFound(study=self, trials=all_trials, trial=best_trial)
 
-            self.trials.extend(completed_trials)
-            self.strategy.observe(completed_trials)
-            yield StepEnd(study=self, step=step)
+            await self.strategy.observe(new_trials)
+
+            yield StepEnd(study=self, trials=all_trials, step=step)
 
             if new_best_found_this_step:
                 self._steps_since_best = 0
@@ -241,20 +206,83 @@ class Study(BaseModel, t.Generic[CandidateT]):
             if (
                 new_best_found_this_step
                 and self.target_score is not None
-                and self.best_trial
-                and self.best_trial.score >= self.target_score
+                and best_trial
+                and best_trial.score >= self.target_score
             ):
-                self.stop_reason = "target_score"
+                stop_reason = "target_score"
                 break
 
             # Check if we've run out of patience
             if self.patience is not None and self._steps_since_best >= self.patience:
-                self.stop_reason = "patience"
+                stop_reason = "patience"
                 break
 
+        # Final event creation is updated to use StudyResult
         yield StudyEnd(
-            study=self, steps=step, stop_reason=self.stop_reason, best_trial=self.best_trial
+            study=self,
+            trials=all_trials,
+            result=StudyResult(trials=all_trials, stop_reason=stop_reason),
         )
+
+    def _log_event_metrics(self, event: StudyEvent) -> None:
+        from dreadnode import log_metric
+
+        if isinstance(event, TrialComplete):
+            trial = event.trial
+            if trial.status == "success":
+                log_metric("successful_trials", 1, step=trial.step, mode="count")
+                log_metric("trial_score", trial.score, step=trial.step)
+            elif trial.status == "failed":
+                log_metric("failed_trials", 1, step=trial.step, mode="count")
+            elif trial.status == "pruned":
+                log_metric("pruned_trials", 1, step=trial.step, mode="count")
+        elif isinstance(event, NewBestTrialFound):
+            log_metric("best_score", event.trial.score, step=event.trial.step)
+
+    async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
+        from dreadnode import log_inputs, log_outputs, log_params, run, task_span
+        from dreadnode.tracing.span import current_run_span
+
+        objective_name = (
+            self.objective
+            if isinstance(self.objective, str)
+            else get_callable_name(self.objective, short=True)
+        )
+        name = self.name or f"optimize-{objective_name}"
+
+        run_using_tasks = current_run_span.get() is not None
+        trace_context = (
+            task_span(name, tags=self.tags)
+            if run_using_tasks
+            else run(name_prefix=name, tags=self.tags)
+        )
+
+        # config_model = get_config_model(self)
+        # flat_config = {k: v for k, v in flatten_model(config_model()).items() if v is not None}
+        flat_config = {}
+
+        with trace_context:
+            if run_using_tasks:
+                log_inputs(**flat_config)
+            else:
+                log_params(**flat_config)
+
+            last_event: StudyEvent | None = None
+            try:
+                async with contextlib.aclosing(self._stream()) as stream:
+                    async for event in stream:
+                        last_event = event
+                        self._log_event_metrics(event)
+                        yield event
+            finally:
+                if isinstance(last_event, StudyEnd):
+                    result = last_event.result
+                    outputs = {"stop_reason": result.stop_reason}
+                    if result.best_trial:
+                        outputs["best_score"] = result.best_trial.score
+                        outputs["best_candidate"] = result.best_trial.candidate
+                        outputs["best_output"] = result.best_trial.output
+                    log_outputs(**outputs)
 
     @contextlib.asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:
@@ -274,10 +302,10 @@ class Study(BaseModel, t.Generic[CandidateT]):
         Yields:
             An async generator that produces StudyEvent objects throughout the optimization.
         """
-        async with contextlib.aclosing(self._stream()) as gen:
+        async with contextlib.aclosing(self._stream_traced()) as gen:
             yield gen
 
-    async def run(self) -> StudyEnd[CandidateT]:
+    async def run(self) -> StudyResult[CandidateT]:
         """
         Execute the optimization study to completion and return final results.
 
@@ -287,17 +315,19 @@ class Study(BaseModel, t.Generic[CandidateT]):
 
         For real-time monitoring of the optimization process, use the stream() method instead.
 
-        Returns:
-            StudyEnd event containing the final optimization results including:
-            - best_trial: The best trial found during optimization (or None)
-            - steps: Total number of optimization steps completed
-            - stop_reason: Why the optimization terminated
-
         Raises:
             RuntimeError: If the evaluation fails to complete properly.
         """
         async with self.stream() as stream:
             async for event in stream:
                 if isinstance(event, StudyEnd):
-                    return event
-            raise RuntimeError("Evaluation failed to complete")
+                    return event.result
+
+        raise RuntimeError("Evaluation failed to complete")
+
+    async def console(self) -> StudyResult[CandidateT]:
+        """Runs the optimization study with a live progress dashboard in the console."""
+        from dreadnode.optimization.console import StudyConsoleAdapter
+
+        adapter = StudyConsoleAdapter(self)
+        return await adapter.run()

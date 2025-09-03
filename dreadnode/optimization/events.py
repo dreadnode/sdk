@@ -2,6 +2,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 if t.TYPE_CHECKING:
+    from dreadnode.optimization.result import StudyResult
     from dreadnode.optimization.study import Study
     from dreadnode.optimization.trial import Trial
 
@@ -12,11 +13,12 @@ StopReason = t.Literal["max_steps", "patience", "target_score", "no_more_candida
 @dataclass
 class StudyEvent(t.Generic[CandidateT]):
     study: "Study[CandidateT]" = field(repr=False)
+    trials: list["Trial[CandidateT]"] = field(repr=False)
 
 
 @dataclass
 class StudyStart(StudyEvent[CandidateT]):
-    initial_candidate: CandidateT | None
+    max_steps: int
 
 
 @dataclass
@@ -56,6 +58,4 @@ class StepEnd(StudyEvent[CandidateT]):
 
 @dataclass
 class StudyEnd(StudyEvent[CandidateT]):
-    steps: int
-    stop_reason: StopReason
-    best_trial: "Trial[CandidateT] | None"
+    result: "StudyResult[CandidateT]"

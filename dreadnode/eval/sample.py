@@ -1,12 +1,12 @@
 import typing as t
-from dataclasses import dataclass, field
 
 import typing_extensions as te
-from pydantic.type_adapter import TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field
 
 from dreadnode.error import AssertionFailedError
 from dreadnode.metric import Metric
 from dreadnode.tracing.span import TaskSpan
+from dreadnode.types import ErrorField
 
 if t.TYPE_CHECKING:
     from dreadnode.task import Task
@@ -21,8 +21,9 @@ InputDataset = list[In]
 InputDatasetProcessor = t.Callable[[InputDataset], InputDataset]
 
 
-@dataclass
-class Sample(t.Generic[In, Out]):
+class Sample(BaseModel, t.Generic[In, Out]):
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
+
     input: In
     """The sample input value."""
     output: Out | None = None
@@ -32,16 +33,18 @@ class Sample(t.Generic[In, Out]):
     """The index of the sample in the dataset."""
     iteration: int = 0
     """The iteration this sample belongs to."""
-    scenario_params: dict[str, t.Any] = field(default_factory=dict)
+    scenario_params: dict[str, t.Any] = Field(default_factory=dict)
     """The parameters defining the scenario this sample belongs to."""
 
-    metrics: dict[str, list[Metric]] = field(default_factory=dict)
+    metrics: dict[str, list[Metric]] = Field(default_factory=dict)
     """Metrics collected during measurement."""
-    assertions: dict[str, bool] = field(default_factory=dict)
+    assertions: dict[str, bool] = Field(default_factory=dict)
     """Assertions made during measurement."""
-    error: BaseException | None = field(default=None, repr=False)
+    context: dict[str, t.Any] | None = Field(default=None, repr=False)
+    """Contextual information about the sample - like originating dataset fields."""
+    error: ErrorField | None = Field(default=None, repr=False)
     """Any error that occurred."""
-    task: TaskSpan[Out] | None = field(default=None, repr=False)
+    task: TaskSpan[Out] | None = Field(default=None, repr=False)
     """Associated task span."""
 
     @property
@@ -82,6 +85,7 @@ class Sample(t.Generic[In, Out]):
         scenario_params: dict[str, t.Any] | None = None,
         iteration: int = 0,
         index: int = 0,
+        context: dict[str, t.Any] | None = None,
     ) -> "Sample[In, Out]":
         # Assume false for all
         assertions = dict.fromkeys(task.assert_scores, False)
@@ -103,6 +107,7 @@ class Sample(t.Generic[In, Out]):
             scenario_params=scenario_params or {},
             metrics=span.metrics,
             assertions=assertions,
+            context=context,
             error=span.exception,
             task=span,  # The sample is associated with the span, not the task blueprint.
         )
@@ -112,15 +117,13 @@ class Sample(t.Generic[In, Out]):
         Flattens the sample's data, performing necessary transformations
         (like metric pivoting) suitable for DataFrame conversion.
         """
-        record: AnyDict = TypeAdapter(type(self)).dump_python(
-            self,
-            exclude={"metrics", "assertions", "task", "error"},
+        record: AnyDict = self.model_dump(
+            exclude={"metrics", "assertions", "task"},
             mode="json",
         )
 
         record["passed"] = self.passed
         record["failed"] = self.failed
-        record["error"] = str(self.error) if self.error else None
         record["task"] = self.task.name if self.task else None
 
         for name, value in record.pop("scenario_params", {}).items():
@@ -128,6 +131,11 @@ class Sample(t.Generic[In, Out]):
 
         for assertion_name, passed in self.assertions.items():
             record[f"assertion_{assertion_name}"] = passed
+
+        record_inputs = record.get("input", {})
+        if isinstance(record_inputs, dict):
+            for name, value in record_inputs.items():
+                record[f"input_{name}"] = value
 
         for name, metrics in self.metrics.items():
             if metrics:
