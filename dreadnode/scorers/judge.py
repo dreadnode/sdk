@@ -35,7 +35,8 @@ def llm_judge(
     model: str | rg.Generator,
     rubric: str,
     *,
-    expected_output: str | None = None,
+    input: t.Any | None = None,
+    expected_output: t.Any | None = None,
     model_params: rg.GenerateParams | AnyDict | None = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
@@ -48,6 +49,7 @@ def llm_judge(
     Args:
         model: The model to use for judging.
         rubric: The rubric to use for judging.
+        input: The input which produced the output for context, if applicable.
         expected_output: The expected output to compare against, if applicable.
         model_params: Optional parameters for the model.
         passing: Optional callback to determine if the score is passing based on the score value - overrides any model-specified value.
@@ -63,7 +65,8 @@ def llm_judge(
             model, help="The model to use for judging.", expose_as=str
         ),
         rubric: str = rubric,
-        expected_output: str | None = expected_output,
+        input: t.Any | None = input,
+        expected_output: t.Any | None = expected_output,
         model_params: rg.GenerateParams | AnyDict | None = model_params,
         min_score: float | None = min_score,
         max_score: float | None = max_score,
@@ -84,8 +87,8 @@ def llm_judge(
             raise TypeError("Model must be a string identifier or a Generator instance.")
 
         input_data = JudgeInput(
-            input=str(data),
-            expected_output=expected_output,
+            input=str(input) if input is not None else None,
+            expected_output=str(expected_output) if expected_output is not None else None,
             output=str(data),
             rubric=rubric,
         )

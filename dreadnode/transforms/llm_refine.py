@@ -1,10 +1,14 @@
 import typing as t
+from textwrap import dedent
 
 import rigging as rg
 
 from dreadnode.meta import Config
+from dreadnode.optimization.trial import Trials
 from dreadnode.transforms.base import Transform
 from dreadnode.types import AnyDict
+
+T = t.TypeVar("T")
 
 
 class Input(rg.Model):
@@ -64,3 +68,25 @@ def llm_refine(
         return refinement.prompt
 
     return Transform(transform, name=name)
+
+
+def prompt_trials_adapter(trials: "Trials[str]") -> str:
+    """
+    Adapter which can be used to create attempt context from a set of prompt/response trials.
+
+    Trials are assumed to be a str candidate holding the prompt, and an output object
+    that is (or includes) the model's response to the prompt.
+
+    The list is assumed to be ordered by relevancy, and is reversed when
+    formatting so the context is presented in ascending order of relevancy to the model.
+    """
+    context_parts = [
+        dedent(f"""
+        <attempt score={trial.score:.2f}>
+            <prompt>{trial.candidate}</prompt>
+            <response>{trial.output}</response>
+        </attempt>
+        """)
+        for trial in reversed(trials)
+    ]
+    return "\n".join(context_parts)

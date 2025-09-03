@@ -1,5 +1,7 @@
+import itertools
 import random
 import typing as t
+from collections import defaultdict
 
 from dreadnode.meta import Config, component
 from dreadnode.optimization.trial import Trials
@@ -127,3 +129,31 @@ def proportional(
             break
 
     return winners
+
+
+# Utils
+
+
+def interleave_by_parent(trials: Trials[T]) -> Trials[T]:
+    """
+    Reorders a list of trials to maximize parent diversity (if parent information exists).
+
+    This helps prevent samplers which use `sorted` from
+    favoring any particular parent when scores are identical.
+
+    Example: `[P1, P1, P2, P2, P3]` -> [P1, P2, P3, P1, P2]
+    """
+    if not trials:
+        return []
+
+    parent_to_children = defaultdict(list)
+    for trial in trials:
+        parent_to_children[trial.parent_id].append(trial)
+
+    interleaved_list = []
+    for trial_tuple in itertools.zip_longest(*parent_to_children.values()):
+        for trial in trial_tuple:
+            if trial is not None:
+                interleaved_list.append(trial)  # noqa: PERF401
+
+    return interleaved_list

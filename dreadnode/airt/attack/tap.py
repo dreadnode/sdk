@@ -1,12 +1,12 @@
 import typing as t
 
 from dreadnode.airt.attack import Attack
-from dreadnode.optimization.blueprints import refine_prompt
 from dreadnode.optimization.search.graph import beam_search
 from dreadnode.scorers import Scorer, llm_judge
+from dreadnode.transforms.llm_refine import llm_refine, prompt_trials_adapter
 
 if t.TYPE_CHECKING:
-    from dreadnode.airt.target import Target
+    from dreadnode.airt.target.base import Target
 
 
 def tap_attack(
@@ -15,7 +15,6 @@ def tap_attack(
     attacker_model: str,
     evaluator_model: str,
     *,
-    refine_guidance: str | None = None,
     beam_width: int = 10,
     branching_factor: int = 3,
     max_steps: int = 10,
@@ -28,8 +27,10 @@ def tap_attack(
 
     # Prompt refining
 
-    guidance = refine_guidance if refine_guidance is not None else REFINE_GUIDANCE.format(goal=goal)
-    refiner = refine_prompt(model=attacker_model, guidance=guidance)
+    guidance = REFINE_GUIDANCE.format(goal=goal)
+    refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
+        prompt_trials_adapter, lambda x: x
+    )
 
     # Objective
 
@@ -38,6 +39,7 @@ def tap_attack(
         EVALUATION_RUBRIC.format(goal=goal),
         min_score=1,
         max_score=10,
+        name="prompt_judge",
     )
 
     # Constraints
@@ -58,6 +60,7 @@ def tap_attack(
         search=search,
         objective=objective,
         max_steps=max_steps,
+        constraints=constraints,
         target_score=10,
     )
 

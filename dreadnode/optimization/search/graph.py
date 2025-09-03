@@ -5,7 +5,7 @@ from pydantic import ConfigDict, PrivateAttr
 
 from dreadnode.meta.types import Config, Model
 from dreadnode.optimization.collectors import lineage, local_neighborhood
-from dreadnode.optimization.sampling import top_k
+from dreadnode.optimization.sampling import interleave_by_parent, top_k
 from dreadnode.optimization.search.base import Search
 from dreadnode.optimization.trial import Trial, TrialCollector, Trials, TrialSampler
 from dreadnode.transforms import Transform
@@ -82,7 +82,8 @@ class GraphSearch(Model, Search[T]):
     async def observe(self, trials: list[Trial[T]]) -> None:
         successful_trials = [t for t in trials if t.status == "success"]
         self._trials.extend(successful_trials)
-        self._leaves = self.pruning_sampler(successful_trials)
+        interleaved_trials = interleave_by_parent(successful_trials)  # Prevent parent bias
+        self._leaves = self.pruning_sampler(interleaved_trials)
 
 
 def iterative_search(

@@ -5,7 +5,7 @@ import typing as t
 import typing_extensions as te
 from pydantic import ConfigDict
 
-from dreadnode.airt.target.base import BaseTarget
+from dreadnode.airt.target.base import Target
 from dreadnode.meta.types import Config, Model
 from dreadnode.optimization import Study
 from dreadnode.optimization.events import StudyEvent
@@ -35,7 +35,7 @@ class Attack(Model, abc.ABC, t.Generic[In, Out]):
     tags: list[str] = Config(default_factory=lambda: ["attack"])
     """A list of tags associated with the attack."""
 
-    target: t.Annotated[BaseTarget[In, Out], Config()]
+    target: t.Annotated[Target[In, Out], Config()]
     """The target to attack."""
     search: t.Annotated[Search[In], Config()]
     """The fully configured search strategy to generate attempts."""

@@ -2,6 +2,7 @@ from dreadnode.meta.context import (
     Context,
     CurrentRun,
     CurrentTask,
+    CurrentTrial,
     DatasetField,
     ParentTask,
     RunInput,
@@ -9,6 +10,9 @@ from dreadnode.meta.context import (
     RunParam,
     TaskInput,
     TaskOutput,
+    TrialCandidate,
+    TrialOutput,
+    TrialScore,
 )
 from dreadnode.meta.hydrate import hydrate
 from dreadnode.meta.introspect import get_config_model, get_config_schema, get_model_schema
@@ -21,6 +25,7 @@ __all__ = [
     "Context",
     "CurrentRun",
     "CurrentTask",
+    "CurrentTrial",
     "DatasetField",
     "Model",
     "ParentTask",
@@ -29,6 +34,10 @@ __all__ = [
     "RunParam",
     "TaskInput",
     "TaskOutput",
+    "TrialCandidate",
+    "TrialInput",
+    "TrialOutput",
+    "TrialScore",
     "component",
     "get_config_model",
     "get_config_schema",

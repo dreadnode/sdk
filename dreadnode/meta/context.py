@@ -253,9 +253,9 @@ class DatasetField(Context):
         return f"DatasetField(name='{self.ref_name}')"
 
     def resolve(self) -> t.Any:
-        from dreadnode.eval.eval import current_sample_row
+        from dreadnode.eval.eval import current_dataset_row
 
-        if (row := current_sample_row.get()) is None:
+        if (row := current_dataset_row.get()) is None:
             raise RuntimeError("DatasetField() can only be used within an active Eval.")
 
         try:
@@ -266,3 +266,59 @@ class DatasetField(Context):
                 f"Field '{self.ref_name}' not found in dataset sample. "
                 f"Available fields: {available}"
             ) from e
+
+
+class CurrentTrial(Context):
+    """
+    Retrieve the current trial during an optimization study.
+    """
+
+    def resolve(self) -> t.Any:
+        from dreadnode.optimization.study import current_trial
+
+        if (trial := current_trial.get()) is None:
+            raise RuntimeError("CurrentTrial() must be used inside an active optimization study.")
+
+        return trial
+
+
+class TrialCandidate(Context):
+    """
+    Retrieve the candidate of the current trial during an optimization study.
+    """
+
+    def resolve(self) -> t.Any:
+        from dreadnode.optimization.study import current_trial
+
+        if (trial := current_trial.get()) is None:
+            raise RuntimeError("TrialCandidate() must be used inside an active optimization study.")
+
+        return trial.candidate
+
+
+class TrialOutput(Context):
+    """
+    Retrieve the output of the current trial during an optimization study.
+    """
+
+    def resolve(self) -> t.Any:
+        from dreadnode.optimization.study import current_trial
+
+        if (trial := current_trial.get()) is None:
+            raise RuntimeError("TrialOutput() must be used inside an active optimization study.")
+
+        return trial.output
+
+
+class TrialScore(Context):
+    """
+    Retrieve the score of the current trial during an optimization study.
+    """
+
+    def resolve(self) -> t.Any:
+        from dreadnode.optimization.study import current_trial
+
+        if (trial := current_trial.get()) is None:
+            raise RuntimeError("TrialScore() must be used inside an active optimization study.")
+
+        return trial.score

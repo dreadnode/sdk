@@ -12,6 +12,7 @@ from dreadnode.meta import (
     Config,
     CurrentRun,
     CurrentTask,
+    CurrentTrial,
     DatasetField,
     ParentTask,
     RunInput,
@@ -19,6 +20,9 @@ from dreadnode.meta import (
     RunParam,
     TaskInput,
     TaskOutput,
+    TrialCandidate,
+    TrialOutput,
+    TrialScore,
 )
 from dreadnode.metric import Metric, MetricDict
 from dreadnode.object import Object
@@ -68,6 +72,7 @@ __all__ = [
     "Config",
     "CurrentRun",
     "CurrentTask",
+    "CurrentTrial",
     "DatasetField",
     "Dreadnode",
     "Eval",
@@ -91,6 +96,10 @@ __all__ = [
     "TaskOutput",
     "TaskSpan",
     "Text",
+    "TrialCandidate",
+    "TrialInput",
+    "TrialOutput",
+    "TrialScore",
     "Video",
     "__version__",
     "agent",

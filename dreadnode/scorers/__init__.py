@@ -18,6 +18,7 @@ from dreadnode.scorers.base import (
     scale,
     subtract,
     threshold,
+    weighted_avg,
 )
 from dreadnode.scorers.classification import detect_refusal_with_zero_shot, zero_shot_classification
 from dreadnode.scorers.consistency import character_consistency
@@ -103,6 +104,7 @@ __all__ = [
     "subtract",
     "threshold",
     "type_token_ratio",
+    "weighted_avg",
     "wrap_chat",
     "wrap_chat",
     "zero_shot_classification",

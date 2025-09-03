@@ -1,4 +1,5 @@
 import contextlib
+import contextvars
 import typing as t
 
 from pydantic import ConfigDict, FilePath, PrivateAttr
@@ -33,6 +34,8 @@ if t.TYPE_CHECKING:
 
 Direction = t.Literal["maximize", "minimize"]
 """The direction of optimization for the objective score."""
+
+current_trial = contextvars.ContextVar[Trial | None]("current_trial", default=None)
 
 
 class Study(Model, t.Generic[CandidateT]):
@@ -103,6 +106,8 @@ class Study(Model, t.Generic[CandidateT]):
             scorers.append(scorer)
             objective_scorer_name = scorer.name
 
+        token = current_trial.set(trial)
+
         try:
             evaluator = Eval(
                 task=task_variant,
@@ -125,6 +130,9 @@ class Study(Model, t.Generic[CandidateT]):
         except Exception as e:  # noqa: BLE001
             trial.status = "failed"
             trial.error = str(e)
+        finally:
+            current_trial.reset(token)
+
         return trial
 
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:  # noqa: PLR0912, PLR0915

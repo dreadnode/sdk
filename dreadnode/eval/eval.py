@@ -42,8 +42,8 @@ Out = te.TypeVar("Out", default=t.Any)
 InputDataset = list[In]
 InputDatasetProcessor = t.Callable[[InputDataset], InputDataset]
 
-current_sample_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
-    "current_sample_row", default=None
+current_dataset_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
+    "current_dataset_row", default=None
 )
 
 
@@ -192,7 +192,7 @@ class Eval(Model, t.Generic[In, Out]):
         iteration: int,
     ) -> t.AsyncIterator[t.AsyncGenerator[Sample[In, Out], None]]:
         async def _run_sample_with_context(index: int, row: AnyDict) -> Sample[In, Out]:
-            token = current_sample_row.set(row)
+            token = current_dataset_row.set(row)
             try:
                 if self.dataset_input_mapping:
                     if isinstance(self.dataset_input_mapping, list):
@@ -225,7 +225,7 @@ class Eval(Model, t.Generic[In, Out]):
                     context=context,
                 )
             finally:
-                current_sample_row.reset(token)
+                current_dataset_row.reset(token)
 
         coroutines = [_run_sample_with_context(index, row) for index, row in enumerate(dataset)]
         async with concurrent_gen(coroutines, self.concurrency) as sample_stream:

@@ -20,6 +20,7 @@ from dreadnode.util import (
 )
 
 if t.TYPE_CHECKING:
+    from dreadnode.airt.target.custom import CustomTarget
     from dreadnode.eval.eval import (
         Eval,
         InputDataset,
@@ -397,6 +398,14 @@ class Task(Component[P, R], t.Generic[P, R]):
             scorers=scorers or [],
             assert_scores=assert_scores or [],
         )
+
+    def as_target(
+        self,
+        input_param_name: str | None = None,
+    ) -> "CustomTarget[R]":
+        from dreadnode.airt.target import CustomTarget
+
+        return CustomTarget(task=self, input_param_name=input_param_name)
 
     async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         """
