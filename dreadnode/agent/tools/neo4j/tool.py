@@ -160,6 +160,75 @@ class Neo4jTool(Toolset):
         except Exception as e:
             logger.error(f"Failed to store SSRF finding: {e}")
             return f"Failed to store SSRF finding: {e}"
+
+    @tool_method()
+    async def store_sqli_finding(
+        self,
+        url: str,
+        parameter: str,
+        vulnerability_type: str,
+        risk_level: str,
+        payload: str,
+        response_evidence: str,
+        database_type: str = "",
+        injection_point: str = "",
+    ) -> str:
+        """Store a SQL injection vulnerability finding in Neo4j.
+        
+        Args:
+            url: Target URL with vulnerable parameter
+            parameter: Parameter name that's vulnerable
+            vulnerability_type: Type of SQLi (e.g., "union_based", "boolean_blind", "time_based", "error_based")
+            risk_level: Risk level (low/medium/high/critical)
+            payload: Successful SQL injection payload used
+            response_evidence: Evidence of SQLi (error messages, data extraction, timing differences)
+            database_type: Detected database type (MySQL, PostgreSQL, MSSQL, etc.)
+            injection_point: Where injection occurs (GET, POST, Cookie, etc.)
+            
+        Returns:
+            Confirmation message with finding ID
+        """
+        driver = await self._get_driver()
+        
+        try:
+            query = """
+            CREATE (f:SQLInjectionVulnerability {
+                url: $url,
+                parameter: $parameter,
+                vulnerability_type: $vulnerability_type,
+                risk_level: $risk_level,
+                timestamp: $timestamp,
+                payload: $payload,
+                response_evidence: $response_evidence,
+                database_type: $database_type,
+                injection_point: $injection_point,
+                finding_id: randomUUID()
+            })
+            RETURN f.finding_id as finding_id
+            """
+            
+            params = {
+                "url": url,
+                "parameter": parameter,
+                "vulnerability_type": vulnerability_type,
+                "risk_level": risk_level.upper(),
+                "timestamp": datetime.now().isoformat(),
+                "payload": payload,
+                "response_evidence": response_evidence,
+                "database_type": database_type,
+                "injection_point": injection_point,
+            }
+            
+            async with driver.session() as session:
+                result = await session.run(query, params)
+                record = await result.single()
+                
+            logger.info(f"Stored SQL injection finding for {url}")
+            return f"Successfully stored SQL injection finding: {record['finding_id'] if record else 'unknown'}"
+            
+        except Exception as e:
+            logger.error(f"Failed to store SQL injection finding: {e}")
+            return f"Failed to store SQL injection finding: {e}"
     
     @tool_method()
     async def query_findings(
