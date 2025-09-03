@@ -239,12 +239,14 @@ async def hunt_from_bbot_scan(
             try:
                 console.print(f"[*] Scanning {target} for SQL injection parameters...")
                 
+                scan_config = config or {"omit_event_types": []}
+                
                 events = tool.run(
                     target=target,
                     presets=presets,
                     modules=scan_modules,
                     flags=flags,
-                    config=config,
+                    config=scan_config,
                 )
                 
                 async for event in events:
