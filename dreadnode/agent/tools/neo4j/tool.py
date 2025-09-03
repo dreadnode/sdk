@@ -95,6 +95,71 @@ class Neo4jTool(Toolset):
         except Exception as e:
             logger.error(f"Failed to store finding: {e}")
             return f"Failed to store finding: {e}"
+
+    @tool_method()
+    async def store_ssrf_finding(
+        self,
+        url: str,
+        parameter: str,
+        vulnerability_type: str,
+        risk_level: str,
+        payload: str,
+        response_evidence: str,
+        internal_service_accessed: str = "",
+    ) -> str:
+        """Store an SSRF vulnerability finding in Neo4j.
+        
+        Args:
+            url: Target URL with vulnerable parameter
+            parameter: Parameter name that's vulnerable
+            vulnerability_type: Type of SSRF (e.g., "blind_ssrf", "full_response_ssrf")
+            risk_level: Risk level (low/medium/high/critical)
+            payload: Successful SSRF payload used
+            response_evidence: Evidence of SSRF (response differences, error messages)
+            internal_service_accessed: Internal service that was accessed (if any)
+            
+        Returns:
+            Confirmation message with finding ID
+        """
+        driver = await self._get_driver()
+        
+        try:
+            query = """
+            CREATE (f:SSRFVulnerability {
+                url: $url,
+                parameter: $parameter,
+                vulnerability_type: $vulnerability_type,
+                risk_level: $risk_level,
+                timestamp: $timestamp,
+                payload: $payload,
+                response_evidence: $response_evidence,
+                internal_service_accessed: $internal_service_accessed,
+                finding_id: randomUUID()
+            })
+            RETURN f.finding_id as finding_id
+            """
+            
+            params = {
+                "url": url,
+                "parameter": parameter,
+                "vulnerability_type": vulnerability_type,
+                "risk_level": risk_level.upper(),
+                "timestamp": datetime.now().isoformat(),
+                "payload": payload,
+                "response_evidence": response_evidence,
+                "internal_service_accessed": internal_service_accessed,
+            }
+            
+            async with driver.session() as session:
+                result = await session.run(query, params)
+                record = await result.single()
+                
+            logger.info(f"Stored SSRF finding for {url}")
+            return f"Successfully stored SSRF finding: {record['finding_id'] if record else 'unknown'}"
+            
+        except Exception as e:
+            logger.error(f"Failed to store SSRF finding: {e}")
+            return f"Failed to store SSRF finding: {e}"
     
     @tool_method()
     async def query_findings(
