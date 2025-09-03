@@ -20,6 +20,7 @@ from rigging.transform import (
     tools_to_json_with_tag_transform,
 )
 
+from dreadnode import log_inputs, log_metric, log_outputs, score, task_span
 from dreadnode.agent.error import MaxStepsError
 from dreadnode.agent.events import (
     AgentEnd,
@@ -51,6 +52,8 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.stop import StopCondition, stop_never
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
+from dreadnode.agent.tools.planning import update_todo
+from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
 from dreadnode.agent.types import Message, ToolCall
 from dreadnode.meta import Component, Config, Model, component
 from dreadnode.scorers import ScorersLike
@@ -603,8 +606,6 @@ class Agent(Model):
         )
 
     def _log_event_metrics(self, event: AgentEvent) -> None:
-        from dreadnode import log_metric
-
         if isinstance(event, AgentEnd):
             log_metric("steps_taken", min(0, event.result.steps - 1))
             log_metric(f"stop_{event.stop_reason}", 1)
@@ -641,8 +642,6 @@ class Agent(Model):
         *,
         commit: CommitBehavior = "on-success",
     ) -> t.AsyncGenerator[AgentEvent, None]:
-        from dreadnode import log_inputs, log_outputs, score, task_span
-
         hooks = self._get_hooks()
         tool_names = [t.name for t in self.all_tools]
         stop_names = [s.name for s in self.stop_conditions]
@@ -745,9 +744,6 @@ class TaskAgent(Agent):
     """
 
     def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools.planning import update_todo
-        from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
-
         if not any(tool for tool in self.tools if tool.name == "finish_task"):
             self.tools.append(finish_task)
 

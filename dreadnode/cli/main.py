@@ -1,5 +1,7 @@
 import contextlib
+import importlib.metadata
 import pathlib
+import platform
 import shutil
 import sys
 import typing as t
@@ -202,10 +204,6 @@ def clone(
 
 @cli.command(help="Show versions and exit.", group="Meta")
 def version() -> None:
-    import importlib.metadata
-    import platform
-    import sys
-
     version = importlib.metadata.version("dreadnode")
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 

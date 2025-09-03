@@ -3,11 +3,10 @@ import typing as t
 from pathlib import Path
 from typing import ClassVar
 
-from dreadnode.data_types.base import DataType
+import numpy as np
+import pandas as pd
 
-if t.TYPE_CHECKING:
-    import numpy as np
-    import pandas as pd
+from dreadnode.data_types.base import DataType
 
 TableDataType = t.Union[
     "pd.DataFrame", dict[t.Any, t.Any], list[t.Any], str, Path, "np.ndarray[t.Any, t.Any]"
@@ -78,8 +77,6 @@ class Table(DataType):
         Returns:
             A pandas DataFrame representation of the input data
         """
-        import numpy as np
-        import pandas as pd
 
         if isinstance(self._data, pd.DataFrame):
             return self._data
@@ -134,8 +131,6 @@ class Table(DataType):
         Returns:
             A dictionary of metadata
         """
-        import numpy as np
-        import pandas as pd
 
         metadata = {
             "extension": self._format,
