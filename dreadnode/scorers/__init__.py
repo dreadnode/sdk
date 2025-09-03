@@ -46,6 +46,7 @@ from dreadnode.scorers.similarity import (
     similarity_with_sentence_transformers,
     similarity_with_tf_idf,
 )
+from dreadnode.scorers.data_obj_equivalence import data_obj_equivalence
 
 __all__ = [
     "Scorer",

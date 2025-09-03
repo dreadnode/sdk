@@ -2,6 +2,7 @@ import inspect
 import typing as t
 from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
+from datetime import datetime, timezone
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator
 from rigging import get_generator
@@ -766,3 +767,63 @@ class TaskAgent(Agent):
                 feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
             ),
         )
+
+
+class Seasmoke(TaskAgent):
+    """ A specialized Task Agent for completeing GOAD tasks. """
+
+    name: str = "seasmoke"
+    description: str = "A specialized Task Agent for completeing GOAD tasks."
+    tags: list[str] = ["agent", "goad", "mythic"]
+    instructions: str = \
+    """
+    You are a senior security red teamer with years of experience using malware in windows active directory networks. You are currently on a Windows system through a callback via the Mythic agent and have access to local run environment.
+
+    If the supplied task involves gathering or returning data, use the 'store_output' tool to return the specific data objects to the user. Data can be returned at any time while completing the task with the 'store_output' tool, not just at the end of the task.
+
+    Use the 'finish_task' or 'give_up_on_task' tools to signal task completion or stopping.
+    """
+    hooks: list[Hook] = [
+
+    ]
+
+    def model_post_init(self, _: t.Any) -> None:
+
+        # add memory tool
+        from dreadnode.agent.tools import TaskMemory
+        
+        self.memory = TaskMemory()
+        self.tools.extend([
+            self.memory.note,
+            self.memory.store_data,
+            self.memory.get_data, self.memory.output
+        ])
+
+        # var expected output data models, to be supplied from Task when run method called
+        #self.output_data_models_instructions = ""
+
+        # wrap run methods with timestampers
+        self.stream = self._timestamp_wrapper(self.stream)
+        self.run = self._timestamp_wrapper(self.run)
+
+    def get_prompt(self) -> str:
+        #system_prompt =  "You are a senior security red teamer with years of experience using malware in windows active directory networks. You are currently on a Windows system through a callback via the Mythic agent and have access to local run environment."
+        #data_output_instructions = "If the supplied task involves gathering or returning data, use the 'output' tool to return the specific data objects to the user. Data can be returned at any time while completing the task with the 'output' tool, not just at the end of the task."
+        #data_output_instructions += f"\n\n{self.output_data_models_instructions}"
+        #completion_instructions = "Use the 'finish_task' or 'give_up_on_task' tools to signal task completion or stopping."
+        return self.instructions
+
+    
+    def _timestamp_wrapper(self, func: t.Callable) -> t.Callable:
+
+        async def _wrapper(*args, **kwargs):
+            self.memory.timestamps["start"] = self._get_utc_timestamp()
+            output = await func(*args, **kwargs)
+            self.memory.timestamps["stop"] = self._get_utc_timestamp()
+            return output
+
+        return _wrapper
+    
+    def _get_utc_timestamp():
+        """ """
+        return str(int(datetime.now(timezone.utc).timestamp()))

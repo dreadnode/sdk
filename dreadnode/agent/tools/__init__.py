@@ -2,6 +2,8 @@ import importlib
 import typing as t
 
 from dreadnode.agent.tools import planning, reporting, tasking
+from dreadnode.agent.tools.task_memory import TaskMemory
+
 from dreadnode.agent.tools.base import (
     AnyTool,
     Tool,

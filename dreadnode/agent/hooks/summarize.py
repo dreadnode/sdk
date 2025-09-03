@@ -20,7 +20,7 @@ CONTEXT_LENGTH_ERROR_PATTERNS = [
 ]
 
 
-def _is_context_length_error(error: BaseException) -> bool:
+def is_context_length_error(error: BaseException) -> bool:
     """Checks if an exception is likely due to exceeding the context window."""
     with contextlib.suppress(ImportError):
         from litellm.exceptions import ContextWindowExceededError
@@ -32,10 +32,10 @@ def _is_context_length_error(error: BaseException) -> bool:
     return any(pattern in error_str for pattern in CONTEXT_LENGTH_ERROR_PATTERNS)
 
 
-def _get_last_input_tokens(event: AgentEvent) -> int:
+def get_last_input_tokens(event: AgentEvent) -> int:
     """
     Finds the input token count from the most recent GenerationEnd event in the thread.
-    This represents the size of the context for the last successful model call.
+    This represents the size of the context for the last ssum_contextcessful model call.
     """
     last_generation_event = event.get_latest_event_by_type(GenerationEnd)
     if not last_generation_event:
@@ -89,13 +89,13 @@ def summarize_when_long(
 
         # Proactive check using the last known token count
         if max_tokens is not None and isinstance(event, StepStart):
-            last_token_count = _get_last_input_tokens(event)
+            last_token_count = get_last_input_tokens(event)
             if last_token_count > 0 and last_token_count > max_tokens:
                 should_summarize = True
 
         # Reactive check based on the error message
         elif isinstance(event, AgentError):
-            if _is_context_length_error(event.error):
+            if is_context_length_error(event.error):
                 should_summarize = True
 
         if not should_summarize:
