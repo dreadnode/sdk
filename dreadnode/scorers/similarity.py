@@ -6,7 +6,7 @@ import nltk  # type: ignore[import-untyped]
 from nltk.tokenize import word_tokenize  # type: ignore[import-untyped]
 from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-untyped]
 from rapidfuzz import distance, fuzz, utils
-from sentence_transformers import SentenceTransformer, util  # type: ignore  # noqa: PGH003
+from sentence_transformers import SentenceTransformer, util
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-untyped]
 from sklearn.metrics.pairwise import (  # type: ignore  # noqa: PGH003
     cosine_similarity as sklearn_cosine_similarity,

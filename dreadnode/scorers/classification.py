@@ -1,6 +1,6 @@
 import typing as t
 
-from transformers import pipeline  # type: ignore[import-not-found]
+from transformers import pipeline
 
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
