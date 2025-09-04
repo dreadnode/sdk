@@ -157,52 +157,97 @@ When you find CONFIRMED takeover vulnerabilities, store them using Neo4jTool.sto
 
 
 def is_subdomain_takeover_event(event: dict) -> bool:
-    """Check if a BBOT event is a DNS_NAME with potential subdomain takeover indicators."""
-    if event.get('type') != 'DNS_NAME':
-        return False
+    """Check if a BBOT event is related to potential subdomain takeover."""
+    event_type = event.get('type')
     
-    # Look for CNAME records pointing to cloud services
-    dns_children = event.get('dns_children', {})
-    cname_records = dns_children.get('CNAME', [])
+    # Handle DNS_NAME events with CNAME records
+    if event_type == 'DNS_NAME':
+        dns_children = event.get('dns_children', {})
+        cname_records = dns_children.get('CNAME', [])
+        
+        if not cname_records:
+            return False
+        
+        # Check for cloud service indicators in CNAME targets
+        cloud_indicators = [
+            'amazonaws.com', 'elb.amazonaws.com', 's3.amazonaws.com',
+            'azurewebsites.net', 'cloudfront.net', 'herokuapp.com',
+            'github.io', 'netlify.com', 'vercel.app', 'surge.sh',
+            'shopify.com', 'myshopify.com', 'fastly.com'
+        ]
+        
+        for cname in cname_records:
+            if any(indicator in cname.lower() for indicator in cloud_indicators):
+                return True
     
-    if not cname_records:
-        return False
-    
-    # Check for cloud service indicators in CNAME targets
-    cloud_indicators = [
-        'amazonaws.com', 'elb.amazonaws.com', 's3.amazonaws.com',
-        'azurewebsites.net', 'cloudfront.net', 'herokuapp.com',
-        'github.io', 'netlify.com', 'vercel.app', 'surge.sh',
-        'shopify.com', 'myshopify.com', 'fastly.com'
-    ]
-    
-    for cname in cname_records:
-        if any(indicator in cname.lower() for indicator in cloud_indicators):
+    # Handle VULNERABILITY events from baddns module
+    elif event_type == 'VULNERABILITY':
+        description = event.get('data', {}).get('description', '').lower()
+        tags = event.get('tags', [])
+        
+        # Look for NS record issues that could lead to subdomain takeover
+        ns_indicators = [
+            'dangling ns', 'ns records without soa', 'baddns-ns'
+        ]
+        
+        if any(indicator in description for indicator in ns_indicators) or 'baddns-ns' in tags:
             return True
     
     return False
 
 
-@dn.task(name="Analyze DNS Event for Subdomain Takeover", label="analyze_dns_event_takeover")
+@dn.task(name="Analyze Event for Subdomain Takeover", label="analyze_event_takeover")
 async def analyze_dns_event(event_data: dict) -> dict:
-    """Analyze a BBOT DNS_NAME event for subdomain takeover vulnerability."""
+    """Analyze a BBOT event for subdomain takeover vulnerability."""
     takeover_agent = create_takeover_agent()
     
-    subdomain = event_data.get('data', '')
-    host = event_data.get('host', subdomain)
-    dns_children = event_data.get('dns_children', {})
-    cname_records = dns_children.get('CNAME', [])
+    event_type = event_data.get('type')
+    host = event_data.get('host', '')
     
-    console.print(f"[*] Analyzing DNS event for subdomain takeover on {host}")
-    console.print(f"    Subdomain: {subdomain}")
-    if cname_records:
+    if event_type == 'DNS_NAME':
+        subdomain = event_data.get('data', '')
+        dns_children = event_data.get('dns_children', {})
+        cname_records = dns_children.get('CNAME', [])
+        
+        console.print(f"[*] Analyzing DNS_NAME event for subdomain takeover on {host}")
+        console.print(f"    Subdomain: {subdomain}")
         console.print(f"    CNAME targets: {', '.join(cname_records)}")
+        
+        prompt = (
+            f"Analyze the subdomain '{subdomain}' for subdomain takeover vulnerability. "
+            f"The subdomain has CNAME records pointing to: {', '.join(cname_records)}. "
+            f"Use the tools available to you to test if this subdomain can be taken over."
+        )
+        
+    elif event_type == 'VULNERABILITY':
+        subdomain = host
+        description = event_data.get('data', {}).get('description', '')
+        severity = event_data.get('data', {}).get('severity', '')
+        
+        console.print(f"[*] Analyzing VULNERABILITY event for subdomain takeover on {host}")
+        console.print(f"    Subdomain: {subdomain}")
+        console.print(f"    Severity: {severity}")
+        console.print(f"    Description: {description[:100]}...")
+        
+        # Extract NS records from description if available
+        ns_records = []
+        if 'trigger:' in description.lower():
+            trigger_part = description.split('Trigger: [')[1].split(']')[0] if 'Trigger: [' in description else ''
+            if trigger_part:
+                ns_records = [ns.strip() for ns in trigger_part.split(',')]
+        
+        prompt = (
+            f"Analyze the subdomain '{subdomain}' for NS record takeover vulnerability. "
+            f"BBOT detected: {description}. "
+            f"This indicates dangling NS records without SOA records. "
+            f"NS records found: {', '.join(ns_records)}. "
+            f"Use DNS tools to verify if NS records exist but no SOA record is present, "
+            f"which could indicate a zone takeover opportunity."
+        )
+    else:
+        raise ValueError(f"Unsupported event type: {event_type}")
     
-    result = await takeover_agent.run(
-        f"Analyze the subdomain '{subdomain}' for subdomain takeover vulnerability. "
-        f"The subdomain has CNAME records pointing to: {', '.join(cname_records)}. "
-        f"Use the tools available to you to test if this subdomain can be taken over."
-    )
+    result = await takeover_agent.run(prompt)
 
     tool_outputs = {}
     tools_used = []
@@ -242,10 +287,11 @@ async def analyze_dns_event(event_data: dict) -> dict:
     dn.log_metric("stored_in_db", 1 if finding_stored else 0)
     dn.log_output("raw_tool_data", tool_outputs)
     
+    # Build analysis result based on event type
     analysis_result = {
+        "event_type": event_type,
         "subdomain": subdomain,
         "host": host,
-        "cname_targets": cname_records,
         "tools_used": tools_used,
         "tool_outputs": tool_outputs,
         "analysis": result.messages[-1].content if result.messages else None,
@@ -254,6 +300,14 @@ async def analyze_dns_event(event_data: dict) -> dict:
         "stored_in_db": finding_stored,
         "original_event": event_data
     }
+    
+    # Add event-specific fields
+    if event_type == 'DNS_NAME':
+        analysis_result["cname_targets"] = cname_records
+    elif event_type == 'VULNERABILITY':
+        analysis_result["vulnerability_description"] = description
+        analysis_result["severity"] = severity
+        analysis_result["ns_records"] = ns_records
 
     return analysis_result
 
@@ -547,7 +601,10 @@ async def analyze_dns_events_file(dns_events_file: Path, debug: bool = False) ->
                     
                     if debug:
                         console.print(f"Tools used: {', '.join(analysis_result['tools_used'])}")
-                        console.print(f"CNAME targets: {', '.join(analysis_result['cname_targets'])}")
+                        if analysis_result['event_type'] == 'DNS_NAME':
+                            console.print(f"CNAME targets: {', '.join(analysis_result['cname_targets'])}")
+                        elif analysis_result['event_type'] == 'VULNERABILITY':
+                            console.print(f"Vulnerability: {analysis_result['vulnerability_description'][:100]}...")
                         console.print(f"Analysis: {analysis_result['analysis'][:200]}...")
                     
                     if analysis_result["has_takeover"]:
