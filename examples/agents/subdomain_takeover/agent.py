@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import json
 import re
 import time
 import typing as t
@@ -153,6 +154,108 @@ Report ONLY actual takeover vulnerabilities, not general DNS misconfigurations.
 
 When you find CONFIRMED takeover vulnerabilities, store them using Neo4jTool.store_subdomain_takeover_finding(subdomain, vulnerability_type, risk_level, cname_target, error_message, service_provider).""",
     )
+
+
+def is_subdomain_takeover_event(event: dict) -> bool:
+    """Check if a BBOT event is a DNS_NAME with potential subdomain takeover indicators."""
+    if event.get('type') != 'DNS_NAME':
+        return False
+    
+    # Look for CNAME records pointing to cloud services
+    dns_children = event.get('dns_children', {})
+    cname_records = dns_children.get('CNAME', [])
+    
+    if not cname_records:
+        return False
+    
+    # Check for cloud service indicators in CNAME targets
+    cloud_indicators = [
+        'amazonaws.com', 'elb.amazonaws.com', 's3.amazonaws.com',
+        'azurewebsites.net', 'cloudfront.net', 'herokuapp.com',
+        'github.io', 'netlify.com', 'vercel.app', 'surge.sh',
+        'shopify.com', 'myshopify.com', 'fastly.com'
+    ]
+    
+    for cname in cname_records:
+        if any(indicator in cname.lower() for indicator in cloud_indicators):
+            return True
+    
+    return False
+
+
+@dn.task(name="Analyze DNS Event for Subdomain Takeover", label="analyze_dns_event_takeover")
+async def analyze_dns_event(event_data: dict) -> dict:
+    """Analyze a BBOT DNS_NAME event for subdomain takeover vulnerability."""
+    takeover_agent = create_takeover_agent()
+    
+    subdomain = event_data.get('data', '')
+    host = event_data.get('host', subdomain)
+    dns_children = event_data.get('dns_children', {})
+    cname_records = dns_children.get('CNAME', [])
+    
+    console.print(f"[*] Analyzing DNS event for subdomain takeover on {host}")
+    console.print(f"    Subdomain: {subdomain}")
+    if cname_records:
+        console.print(f"    CNAME targets: {', '.join(cname_records)}")
+    
+    result = await takeover_agent.run(
+        f"Analyze the subdomain '{subdomain}' for subdomain takeover vulnerability. "
+        f"The subdomain has CNAME records pointing to: {', '.join(cname_records)}. "
+        f"Use the tools available to you to test if this subdomain can be taken over."
+    )
+
+    tool_outputs = {}
+    tools_used = []
+    
+    for message in result.messages:
+        if message.role == "assistant" and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tools_used.append(tool_name)
+                console.print(f"[*] Agent calling tool: {tool_name}")
+                console.print(f"    Arguments: {tool_call.function.arguments}")
+        elif message.role == "tool":
+            tool_name = getattr(message, "name", "unknown")
+            tool_outputs[tool_name] = message.content
+            console.print(f"[*] Tool {tool_name} output:")
+            console.print(f"    {message.content[:200]}...")
+            dn.log_output(f"tool_output_{tool_name}", message.content)
+
+    finding_stored = "store_subdomain_takeover_finding" in tools_used
+    has_takeover = finding_stored
+    if result.messages and result.messages[-1].content:
+        has_takeover = has_takeover or any(
+            phrase in result.messages[-1].content.lower()
+            for phrase in [
+                "subdomain takeover confirmed",
+                "takeover vulnerability confirmed", 
+                "vulnerable to takeover",
+                "dangling cname",
+                "unclaimed resource",
+                "takeover possible",
+                "subdomain can be taken over"
+            ]
+        )
+
+    dn.log_metric("tools_used", len(tools_used))
+    dn.log_metric("has_takeover", 1 if has_takeover else 0)
+    dn.log_metric("stored_in_db", 1 if finding_stored else 0)
+    dn.log_output("raw_tool_data", tool_outputs)
+    
+    analysis_result = {
+        "subdomain": subdomain,
+        "host": host,
+        "cname_targets": cname_records,
+        "tools_used": tools_used,
+        "tool_outputs": tool_outputs,
+        "analysis": result.messages[-1].content if result.messages else None,
+        "steps": result.steps,
+        "has_takeover": has_takeover,
+        "stored_in_db": finding_stored,
+        "original_event": event_data
+    }
+
+    return analysis_result
 
 
 def display_analysis_result(result: AgentResult, subdomain: str, debug: bool = False) -> None:
@@ -419,6 +522,51 @@ async def validate(subdomain: str, debug: bool = False) -> None:
             dn.log_output("error", str(e))
 
 
+async def analyze_dns_events_file(dns_events_file: Path, debug: bool = False) -> None:
+    """Analyze DNS_NAME events from a JSON file for subdomain takeover vulnerabilities."""
+    
+    with dn.run("dns-events-analysis"):
+        console.print(f"Analyzing DNS events from {dns_events_file}")
+        
+        try:
+            with open(dns_events_file) as f:
+                events = json.load(f)
+            
+            if not isinstance(events, list):
+                events = [events]
+            
+            takeover_count = 0
+            total_dns_events = 0
+            
+            for event in events:
+                if is_subdomain_takeover_event(event):
+                    total_dns_events += 1
+                    console.print(f"[*] Found potential subdomain takeover DNS event...")
+                    
+                    analysis_result = await analyze_dns_event(event)
+                    
+                    if debug:
+                        console.print(f"Tools used: {', '.join(analysis_result['tools_used'])}")
+                        console.print(f"CNAME targets: {', '.join(analysis_result['cname_targets'])}")
+                        console.print(f"Analysis: {analysis_result['analysis'][:200]}...")
+                    
+                    if analysis_result["has_takeover"]:
+                        takeover_count += 1
+                        console.print(f"SUBDOMAIN TAKEOVER CONFIRMED: {analysis_result['subdomain']}")
+                    else:
+                        console.print(f"No subdomain takeover found for {analysis_result['subdomain']}")
+            
+            dn.log_metric("dns_events_analyzed", total_dns_events)
+            dn.log_metric("takeover_vulnerabilities", takeover_count)
+            
+            console.print(f"\nDNS Events Analysis Summary:")
+            console.print(f"   DNS events with takeover indicators: {total_dns_events}")
+            console.print(f"   Confirmed subdomain takeover vulnerabilities: {takeover_count}")
+            
+        except Exception as e:
+            console.print(f"Error analyzing DNS events file: {e}")
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Subdomain takeover vulnerability scanner")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -438,6 +586,11 @@ async def main():
     validate_parser.add_argument("subdomain", help="Subdomain to validate")
     validate_parser.add_argument("--debug", action="store_true", help="Show raw tool outputs")
 
+    # Analyze DNS events command
+    analyze_parser = subparsers.add_parser("analyze-dns", help="Analyze DNS_NAME events from BBOT for subdomain takeover")
+    analyze_parser.add_argument("dns_events_file", type=Path, help="JSON file containing BBOT DNS_NAME events")
+    analyze_parser.add_argument("--debug", action="store_true", help="Show debug information")
+
     # Info commands
     subparsers.add_parser("modules", help="List available BBOT modules")
     subparsers.add_parser("presets", help="List available BBOT presets")
@@ -450,6 +603,8 @@ async def main():
         await hunt(args.targets, args.presets, args.modules, args.flags, args.config)
     elif args.command == "validate":
         await validate(args.subdomain, args.debug)
+    elif args.command == "analyze-dns":
+        await analyze_dns_events_file(args.dns_events_file, args.debug)
     elif args.command == "modules":
         await modules()
     elif args.command == "presets":
