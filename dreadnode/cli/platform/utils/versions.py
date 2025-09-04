@@ -12,6 +12,7 @@ from dreadnode.cli.platform.constants import (
     SupportedArchitecture,
 )
 from dreadnode.cli.platform.schemas import LocalVersionSchema, LocalVersionsSchema
+from dreadnode.constants import DEFAULT_LOCAL_STORAGE_DIR
 
 
 def _get_local_arch() -> SupportedArchitecture:
@@ -36,9 +37,9 @@ def get_local_cache_dir() -> Path:
     """Get the local cache directory path for dreadnode platform files.
 
     Returns:
-        Path: Path to the local cache directory (~/.dreadnode/platform).
+        Path: Path to the local cache directory (~/<DEFAULT_LOCAL_STORAGE_DIR>/platform).
     """
-    return Path.home() / ".dreadnode" / "platform"
+    return DEFAULT_LOCAL_STORAGE_DIR / "platform"
 
 
 def get_cli_version() -> str:

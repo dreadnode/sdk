@@ -23,6 +23,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from dreadnode.api.client import ApiClient
 from dreadnode.config import UserConfig
 from dreadnode.constants import (
+    DEFAULT_LOCAL_STORAGE_DIR,
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
     ENV_API_TOKEN,
@@ -138,7 +139,7 @@ class Dreadnode:
         self._logfire.config.ignore_no_config = True
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
-        self._fs_prefix: str = ".dreadnode/storage/"
+        self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
 
         self._initialized = False
 
