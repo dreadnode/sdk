@@ -130,7 +130,7 @@ class Filesystem(Toolset):
             return content.decode("utf-8")
         except UnicodeDecodeError as e:
             if self.multi_modal:
-                return rg.ContentImageUrl.from_file(path)  # type: ignore[no-any-return]
+                return rg.ContentImageUrl.from_file(path)
             raise ValueError("File is not a valid text file.") from e
 
     @tool_method(variants=["read", "write"], catch=True)

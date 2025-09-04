@@ -53,7 +53,7 @@ class OptunaSearch(Search[AnyDict]):
 
         return [trial]
 
-    def observe(self, trials: list[Trial[AnyDict]]) -> None:
+    async def observe(self, trials: list[Trial[AnyDict]]) -> None:
         for trial in trials:
             optuna_trial = self._trial_map[trial.id]
             if trial.status == "success":

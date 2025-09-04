@@ -92,7 +92,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf
+        import soundfile as sf  # type: ignore[import-untyped]
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
@@ -111,7 +111,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf
+        import soundfile as sf  # type: ignore[import-untyped]
 
         if self._sample_rate is None:
             raise ValueError('Argument "sample_rate" is required when using numpy arrays.')

@@ -1,6 +1,6 @@
 import typing as t
 
-import textstat
+import textstat  # type: ignore[import-untyped]
 
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer

@@ -1,4 +1,4 @@
-from art import text2art
+from art import text2art  # type: ignore[import-untyped]
 
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform

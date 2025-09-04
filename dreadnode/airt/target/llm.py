@@ -57,7 +57,8 @@ class LLMTarget(Model, Target[t.Any, str]):
         ) -> str:
             if self._generator is None:
                 raise ValueError("Generator not initialized")
-            generated = (await self._generator.generate_messages([messages], [params]))[0]
+            params_list = [params] if params is not None else [rg.GenerateParams()]
+            generated = (await self._generator.generate_messages([messages], params_list))[0]
             if isinstance(generated, BaseException):
                 raise generated
             return generated.message.content
