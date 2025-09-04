@@ -8,7 +8,6 @@ from pathlib import Path
 import typing_extensions as te
 from pydantic import ConfigDict, FilePath, TypeAdapter
 
-from dreadnode import log_inputs, log_params, run, task_span
 from dreadnode.discovery import find
 from dreadnode.eval.console import EvalConsoleAdapter
 from dreadnode.eval.dataset import load_dataset
@@ -234,6 +233,8 @@ class Eval(Model, t.Generic[In, Out]):
             yield sample_stream
 
     async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
+        from dreadnode import log_inputs, log_params, run, task_span
+
         base_task, dataset = await self._prepare_task_and_dataset()
         param_combinations = self._get_param_combinations()
         eval_name = self.name or base_task.name
