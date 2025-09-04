@@ -1,3 +1,4 @@
+import importlib.util
 import io
 import typing as t
 from pathlib import Path
@@ -8,19 +9,15 @@ from dreadnode.data_types.base import DataType
 
 
 def check_imports() -> None:
-    try:
-        import soundfile  # noqa: F401  # type: ignore[import-untyped]
-    except ImportError as e:
+    if importlib.util.find_spec("soundfile") is None:
         raise ImportError(
             "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
-        ) from e
+        )
 
-    try:
-        import numpy  # noqa: F401, ICN001
-    except (ImportError, AttributeError) as e:
+    if importlib.util.find_spec("numpy") is None:
         raise ImportError(
             "Audio processing requires NumPy. Install with: pip install dreadnode[multimodal]"
-        ) from e
+        )
 
 
 AudioDataType: t.TypeAlias = "str | Path | np.ndarray[t.Any, t.Any] | bytes"
@@ -92,7 +89,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore[import-untyped]
+        import soundfile as sf
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
