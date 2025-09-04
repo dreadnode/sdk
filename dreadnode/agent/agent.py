@@ -20,7 +20,6 @@ from rigging.transform import (
     tools_to_json_with_tag_transform,
 )
 
-from dreadnode import log_inputs, log_metric, log_outputs, score, task_span
 from dreadnode.agent.error import MaxStepsError
 from dreadnode.agent.events import (
     AgentEnd,
@@ -606,6 +605,8 @@ class Agent(Model):
         )
 
     def _log_event_metrics(self, event: AgentEvent) -> None:
+        from dreadnode import log_metric
+
         if isinstance(event, AgentEnd):
             log_metric("steps_taken", min(0, event.result.steps - 1))
             log_metric(f"stop_{event.stop_reason}", 1)
@@ -642,6 +643,8 @@ class Agent(Model):
         *,
         commit: CommitBehavior = "on-success",
     ) -> t.AsyncGenerator[AgentEvent, None]:
+        from dreadnode import log_inputs, log_outputs, score, task_span
+
         hooks = self._get_hooks()
         tool_names = [t.name for t in self.all_tools]
         stop_names = [s.name for s in self.stop_conditions]

@@ -4,7 +4,6 @@ import typing as t
 
 from pydantic import ConfigDict, FilePath, PrivateAttr
 
-from dreadnode import log_inputs, log_metric, log_outputs, log_params, run, task_span
 from dreadnode.eval import Eval
 from dreadnode.eval.result import EvalResult
 from dreadnode.eval.sample import InputDataset
@@ -233,6 +232,8 @@ class Study(Model, t.Generic[CandidateT]):
         )
 
     def _log_event_metrics(self, event: StudyEvent[t.Any]) -> None:
+        from dreadnode import log_metric
+
         if isinstance(event, TrialComplete):
             trial = event.trial
             if trial.status == "success":
@@ -246,6 +247,8 @@ class Study(Model, t.Generic[CandidateT]):
             log_metric("best_score", event.trial.score, step=event.trial.step)
 
     async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
+        from dreadnode import log_inputs, log_outputs, log_params, run, task_span
+
         objective_name = (
             self.objective
             if isinstance(self.objective, str)
