@@ -9,7 +9,7 @@ from dreadnode.data_types.base import DataType
 
 def check_imports() -> None:
     try:
-        import soundfile  # noqa: F401
+        import soundfile  # noqa: F401  # type: ignore[import-untyped]
     except ImportError as e:
         raise ImportError(
             "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
@@ -26,7 +26,7 @@ def check_imports() -> None:
 AudioDataType: t.TypeAlias = "str | Path | np.ndarray[t.Any, t.Any] | bytes"
 
 
-class Audio(DataType):  # type: ignore[misc]
+class Audio(DataType):
     """
     Audio media type for Dreadnode logging.
 
