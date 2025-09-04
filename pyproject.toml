@@ -149,6 +149,9 @@ ignore = [
     "FIX002",  # contains todo, consider fixing
     "COM812",  # disabled for formatting
     "ISC001",  # disabled for formatting
+    "PLC0415",  # import should be at top-level (lazy imports)
+    "FBT001",   # boolean positional argument (legitimate cases)  
+    "FURB122",  # use f.writelines (minor optimization)
 ]
 
 [tool.ruff.format]
