@@ -8,7 +8,7 @@ from dreadnode.agent.hooks.summarize import (
     get_last_input_tokens,
 )
 from dreadnode.agent.types import Message
-from dreadnode.agent.reactions import Continue, Reaction, ToolEnd
+from dreadnode.agent.reactions import Retry, Reaction, ToolEnd
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.hooks.base import Hook
@@ -105,7 +105,7 @@ def summarize(
             Message("user", sum_context, metadata={"summary": True}),
         ]
 
-        return Continue(messages=new_messages)
+        return Retry(messages=new_messages)
 
     return _summarize
 

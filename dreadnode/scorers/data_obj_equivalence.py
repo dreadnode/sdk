@@ -1,6 +1,7 @@
 import rigging as rg
 import typing as t
 
+from dreadnode.agent.result import AgentResult
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
@@ -10,13 +11,19 @@ from loguru import logger
 def data_obj_equivalence(expected: t.Any) -> "Scorer[t.Any]":
     """ """
 
-    async def _evaluate(
-        candidate: t.Any,
+    async def _data_obj_equivalence(
+        candidate: t.Any = None,
+        candidate_agent_result: AgentResult = None,
         expected: t.Any = expected,
-        _recursion_depth: int = 0
+        _recursion_depth: int = 0,
     ) -> bool:
+        assert any([candidate, candidate_agent_result])
+
+        if candidate_agent_result:
+            candidate = await candidate_agent_result.agent.memory.get_output()
+
         score, total = 0.0, 0.0
-        #logger.debug(f"Rec: {_recursion_depth} \n Exp: {expected} \n Cand: {candidate}")
+        # logger.debug(f"Rec: {_recursion_depth} \n Exp: {expected} \n Cand: {candidate}")
 
         if type(expected) != type(candidate):
             score += 0.0
@@ -26,7 +33,7 @@ def data_obj_equivalence(expected: t.Any) -> "Scorer[t.Any]":
             score += 1.0 if expected == candidate else 0.0
             total += 1.0
 
-        elif type(expected) is list:    
+        elif type(expected) is list:
             try:
                 if len(expected) == 0 and expected == candidate:
                     pass
@@ -45,7 +52,7 @@ def data_obj_equivalence(expected: t.Any) -> "Scorer[t.Any]":
                 )
 
             for i, j in zip(expected, candidate):
-                score += await _evaluate(
+                score += await _data_obj_equivalence(
                     expected=i, candidate=j, _recursion_depth=(_recursion_depth + 1)
                 )
                 total += 1.0
@@ -57,7 +64,7 @@ def data_obj_equivalence(expected: t.Any) -> "Scorer[t.Any]":
                 if v is None:
                     continue
                 if k in o2:
-                    score += await _evaluate(
+                    score += await _data_obj_equivalence(
                         expected=v,
                         candidate=o2[k],
                         _recursion_depth=(_recursion_depth + 1),
@@ -69,10 +76,4 @@ def data_obj_equivalence(expected: t.Any) -> "Scorer[t.Any]":
 
         return Metric(value=float(score) / float(total), attributes={})
 
-    # async def _wrapper(chat: rg.Chat) -> rg.Chat:
-    #     chat.metadata["metrics"]["episode_reward"] = await _evaluate(
-    #         expected=expected, candidate=chat.metadata["output"], _recursion_depth=0
-    #     )
-    #     return chat
-
-    return Scorer(_evaluate, name="data_obj_equivalence")
+    return Scorer(_data_obj_equivalence, name="data_obj_equivalence")
