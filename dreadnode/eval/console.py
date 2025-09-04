@@ -19,7 +19,6 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from dreadnode.eval.eval import In, Out
 from dreadnode.eval.events import (
     EvalEnd,
     EvalEvent,
@@ -33,12 +32,14 @@ from dreadnode.util import format_dict
 
 if t.TYPE_CHECKING:
     from dreadnode.eval import Eval
+    from dreadnode.eval.eval import In, Out
+
 
 # Type variable for the generic Eval object
 EvalT = t.TypeVar("EvalT", bound="Eval")
 
 
-class EvalConsoleAdapter(t.Generic[In, Out]):
+class EvalConsoleAdapter(t.Generic["In", "Out"]):
     """
     Consumes an Eval's event stream and renders a live progress dashboard.
     """

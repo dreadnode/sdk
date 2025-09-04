@@ -108,7 +108,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore[import-untyped]
+        import soundfile as sf  # type: ignore  # noqa: PGH003
 
         if self._sample_rate is None:
             raise ValueError('Argument "sample_rate" is required when using numpy arrays.')
