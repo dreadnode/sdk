@@ -152,6 +152,7 @@ ignore = [
     "PLC0415",  # import should be at top-level (lazy imports)
     "FBT001",   # boolean positional argument (legitimate cases)  
     "FURB122",  # use f.writelines (minor optimization)
+    "F401", # ignore imported but unused
 ]
 
 [tool.ruff.format]
