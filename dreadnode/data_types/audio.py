@@ -2,23 +2,22 @@ import io
 import typing as t
 from pathlib import Path
 
-from dreadnode.data_types.base import DataType
+import numpy as np
 
-if t.TYPE_CHECKING:
-    import numpy as np
+from dreadnode.data_types.base import DataType
 
 
 def check_imports() -> None:
     try:
-        import soundfile as sf  # noqa: PLC0415
+        import soundfile  # noqa: F401
     except ImportError as e:
         raise ImportError(
             "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
         ) from e
 
     try:
-        import numpy as np  # noqa: PLC0415
-    except ImportError as e:
+        import numpy  # noqa: F401, ICN001
+    except (ImportError, AttributeError) as e:
         raise ImportError(
             "Audio processing requires NumPy. Install with: pip install dreadnode[multimodal]"
         ) from e
@@ -27,7 +26,7 @@ def check_imports() -> None:
 AudioDataType: t.TypeAlias = "str | Path | np.ndarray[t.Any, t.Any] | bytes"
 
 
-class Audio(DataType):
+class Audio(DataType):  # type: ignore[misc]
     """
     Audio media type for Dreadnode logging.
 
@@ -93,7 +92,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # noqa: PLC0415
+        import soundfile as sf
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
@@ -112,8 +111,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import numpy as np  # noqa: PLC0415
-        import soundfile as sf  # noqa: PLC0415
+        import soundfile as sf
 
         if self._sample_rate is None:
             raise ValueError('Argument "sample_rate" is required when using numpy arrays.')
@@ -150,8 +148,6 @@ class Audio(DataType):
         Returns:
             A dictionary of metadata
         """
-        import numpy as np  # noqa: PLC0415
-
         metadata: dict[str, str | int | float | None] = {
             "extension": format_name.lower(),
             "x-python-datatype": "dreadnode.Audio.bytes",
