@@ -32,16 +32,12 @@ from dreadnode.util import format_dict
 
 if t.TYPE_CHECKING:
     from dreadnode.eval import Eval
-    from dreadnode.eval.eval import In, Out
-
 
 # Type variable for the generic Eval object
 EvalT = t.TypeVar("EvalT", bound="Eval")
-InT = t.TypeVar("InT", bound="In")
-OutT = t.TypeVar("OutT", bound="Out")
 
 
-class EvalConsoleAdapter(t.Generic[InT, OutT]):
+class EvalConsoleAdapter:
     """
     Consumes an Eval's event stream and renders a live progress dashboard.
     """
