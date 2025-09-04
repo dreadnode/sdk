@@ -24,6 +24,7 @@ dependencies = [
     "markdown[dev] (>=3.8.2,<4.0.0)",
     "mkdocstrings-python[dev] (>=1.18.2,<2.0.0)",
     "markdownify[dev] (>=1.2.0,<2.0.0)",
+    "networkx>=3.3,<4.0.0",
 ]
 
 [project.optional-dependencies]
