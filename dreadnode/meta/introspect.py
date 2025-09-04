@@ -155,7 +155,9 @@ def _find_nested_configurable(obj: t.Any) -> t.Any | None:
     if isinstance(obj, Component | Model):
         return obj
 
-    if isinstance(obj, str | int | float | bool | type(None) | type) or not hasattr(obj, "__dict__"):
+    if isinstance(obj, str | int | float | bool | type(None) | type) or not hasattr(
+        obj, "__dict__"
+    ):
         return None
 
     with contextlib.suppress(Exception):
