@@ -32,9 +32,6 @@ from dreadnode.tracing.span import current_run_span
 from dreadnode.types import AnyDict
 from dreadnode.util import concurrent_gen, get_callable_name
 
-if t.TYPE_CHECKING:
-    from dreadnode.eval.events import EvalStopReason
-
 Direction = t.Literal["maximize", "minimize"]
 """The direction of optimization for the objective score."""
 
@@ -55,7 +52,7 @@ class Study(Model, t.Generic[CandidateT]):
     """The search strategy to use for suggesting new trials."""
     task_factory: t.Callable[[CandidateT], Task[..., t.Any]]
     """A function that accepts a candidate and returns a configured Task ready for evaluation."""
-    objective: ScorerLike[t.Any] | str = Config(default_factory=list)
+    objective: ScorerLike[t.Any] | str = Config(default_factory=list)  # type: ignore[assignment]
     """The objective to optimize. Can be a scorer instance, a scorer-like callable, or a string name of scorer already on the task."""
     dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = Config(
         default=None, expose_as=FilePath | None
@@ -145,8 +142,8 @@ class Study(Model, t.Generic[CandidateT]):
         self._steps_since_best = 0
         self.strategy.reset()
 
-        stop_reason: EvalStopReason = "unknown"
-        all_trials: Trials[CandidateT] = []
+        stop_reason: t.Any = "unknown"
+        all_trials: Trials[CandidateT] = []  # type: ignore[assignment]
         best_trial: Trial[CandidateT] | None = None
 
         yield StudyStart(study=self, trials=all_trials, max_steps=self.max_steps)
@@ -156,7 +153,7 @@ class Study(Model, t.Generic[CandidateT]):
 
             new_trials = await self.strategy.suggest(step)
             if not new_trials:
-                stop_reason = "no_more_candidates"
+                stop_reason = "no_more_candidates"  # type: ignore[assignment]
                 break
 
             all_trials.extend(new_trials)
@@ -220,22 +217,22 @@ class Study(Model, t.Generic[CandidateT]):
                 and best_trial
                 and best_trial.score >= self.target_score
             ):
-                stop_reason = "target_score"
+                stop_reason = "target_score"  # type: ignore[assignment]
                 break
 
             # Check if we've run out of patience
             if self.patience is not None and self._steps_since_best >= self.patience:
-                stop_reason = "patience"
+                stop_reason = "patience"  # type: ignore[assignment]
                 break
 
         # Final event creation is updated to use StudyResult
         yield StudyEnd(
             study=self,
             trials=all_trials,
-            result=StudyResult(trials=all_trials, stop_reason=stop_reason),
+            result=StudyResult(trials=all_trials, stop_reason=stop_reason),  # type: ignore[arg-type]
         )
 
-    def _log_event_metrics(self, event: StudyEvent) -> None:
+    def _log_event_metrics(self, event: StudyEvent[t.Any]) -> None:
         if isinstance(event, TrialComplete):
             trial = event.trial
             if trial.status == "success":
@@ -265,7 +262,7 @@ class Study(Model, t.Generic[CandidateT]):
 
         # config_model = get_config_model(self)
         # flat_config = {k: v for k, v in flatten_model(config_model()).items() if v is not None}
-        flat_config = {}
+        flat_config: dict[str, t.Any] = {}
 
         with trace_context:
             if run_using_tasks:
@@ -273,7 +270,7 @@ class Study(Model, t.Generic[CandidateT]):
             else:
                 log_params(**flat_config)
 
-            last_event: StudyEvent | None = None
+            last_event: StudyEvent[t.Any] | None = None
             try:
                 async with contextlib.aclosing(self._stream()) as stream:
                     async for event in stream:
@@ -285,10 +282,10 @@ class Study(Model, t.Generic[CandidateT]):
                     result = last_event.result
                     outputs = {"stop_reason": result.stop_reason}
                     if result.best_trial:
-                        outputs["best_score"] = result.best_trial.score
-                        outputs["best_candidate"] = result.best_trial.candidate
+                        outputs["best_score"] = result.best_trial.score  # type: ignore[assignment]
+                        outputs["best_candidate"] = result.best_trial.candidate  # type: ignore[assignment]
                         outputs["best_output"] = result.best_trial.output
-                    log_outputs(**outputs)
+                    log_outputs(**outputs)  # type: ignore[arg-type]
 
     @contextlib.asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:

@@ -83,7 +83,7 @@ class GraphSearch(Model, Search[T]):
         successful_trials = [t for t in trials if t.status == "success"]
         self._trials.extend(successful_trials)
         interleaved_trials: list[Trial[T]] = interleave_by_parent(successful_trials)  # type: ignore[arg-type]
-        self._leaves = self.pruning_sampler(interleaved_trials)
+        self._leaves = self.pruning_sampler(interleaved_trials)  # type: ignore[arg-type]
 
 
 def iterative_search(
@@ -112,8 +112,8 @@ def iterative_search(
         transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage(),
-        pruning_sampler=top_k(k=1),
+        context_collector=lineage(),  # type: ignore[arg-type]
+        pruning_sampler=top_k(k=1),  # type: ignore[arg-type]
     )
 
 
@@ -144,8 +144,8 @@ def beam_search(
         transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,
-        pruning_sampler=top_k.configure(k=beam_width),
+        context_collector=lineage,  # type: ignore[arg-type]
+        pruning_sampler=top_k.configure(k=beam_width),  # type: ignore[arg-type]
     )
 
 
@@ -179,6 +179,6 @@ def graph_search(
         transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=local_neighborhood.configure(depth=neighborhood_depth),
-        pruning_sampler=top_k.configure(k=frontier_size),
+        context_collector=local_neighborhood.configure(depth=neighborhood_depth),  # type: ignore[arg-type]
+        pruning_sampler=top_k.configure(k=frontier_size),  # type: ignore[arg-type]
     )

@@ -23,13 +23,13 @@ def lineage(current_trial: Trial[T], all_trials: Trials[T], *, depth: int = Conf
             else None
         )
 
-    trials: Trials[T] = []
+    trials: Trials[T] = []  # type: ignore[assignment]
     parent = get_parent(current_trial)
     while parent:
         trials.insert(0, parent)
         parent = get_parent(parent)
 
-    return trials[:depth]
+    return trials[:depth]  # type: ignore[return-value]
 
 
 @component
@@ -37,7 +37,7 @@ def all_successful(_: Trial[T], all_trials: Trials[T]) -> Trials[T]:
     """
     Collects all successful trials, regardless of lineage.
     """
-    return [t for t in all_trials if t.status == "success"]
+    return [t for t in all_trials if t.status == "success"]  # type: ignore[return-value]
 
 
 @component
@@ -53,14 +53,15 @@ def local_neighborhood(
     The maximum distance for any discovered node is `2h-1`.
     """
     if not all_trials:
-        return []
+        return []  # type: ignore[return-value]
 
     # 1 - Build a bi-directional graph for efficient traversal
 
     all_trials_map: dict[UUID, Trial] = {t.id: t for t in all_trials}
     children_map: dict[UUID, list[UUID]] = {tid: [] for tid in all_trials_map}
     for trial in [t_ for t_ in all_trials if t_.parent_id]:
-        children_map.setdefault(trial.parent_id, []).append(trial.id)
+        if trial.parent_id:
+            children_map.setdefault(trial.parent_id, []).append(trial.id)
 
     # 2 - Perform a BFS staying within 2h-1
 
@@ -92,4 +93,4 @@ def local_neighborhood(
                 visited.add(child_id)
                 queue.append((child_id, distance + 1))
 
-    return [all_trials_map[tid] for tid in neighborhood_ids]
+    return [all_trials_map[tid] for tid in neighborhood_ids]  # type: ignore[return-value]
