@@ -37,9 +37,11 @@ if t.TYPE_CHECKING:
 
 # Type variable for the generic Eval object
 EvalT = t.TypeVar("EvalT", bound="Eval")
+InT = t.TypeVar("InT", bound="In")
+OutT = t.TypeVar("OutT", bound="Out")
 
 
-class EvalConsoleAdapter(t.Generic["In", "Out"]):
+class EvalConsoleAdapter(t.Generic[InT, OutT]):
     """
     Consumes an Eval's event stream and renders a live progress dashboard.
     """
