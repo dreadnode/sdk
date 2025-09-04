@@ -112,8 +112,8 @@ def iterative_search(
         transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage(),  # type: ignore[arg-type]
-        pruning_sampler=top_k(k=1),  # type: ignore[arg-type]
+        context_collector=lineage(),  # type: ignore[arg-type,call-arg]
+        pruning_sampler=top_k(k=1),  # type: ignore[arg-type,call-arg]
     )
 
 
@@ -144,8 +144,8 @@ def beam_search(
         transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,  # type: ignore[arg-type]
-        pruning_sampler=top_k.configure(k=beam_width),  # type: ignore[arg-type]
+        context_collector=lineage,
+        pruning_sampler=top_k.configure(k=beam_width),
     )
 
 
@@ -179,6 +179,6 @@ def graph_search(
         transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=local_neighborhood.configure(depth=neighborhood_depth),  # type: ignore[arg-type]
-        pruning_sampler=top_k.configure(k=frontier_size),  # type: ignore[arg-type]
+        context_collector=local_neighborhood.configure(depth=neighborhood_depth),
+        pruning_sampler=top_k.configure(k=frontier_size),
     )

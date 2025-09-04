@@ -153,7 +153,7 @@ class Study(Model, t.Generic[CandidateT]):
 
             new_trials = await self.strategy.suggest(step)
             if not new_trials:
-                stop_reason = "no_more_candidates"  # type: ignore[assignment]
+                stop_reason = "no_more_candidates"
                 break
 
             all_trials.extend(new_trials)
@@ -217,19 +217,19 @@ class Study(Model, t.Generic[CandidateT]):
                 and best_trial
                 and best_trial.score >= self.target_score
             ):
-                stop_reason = "target_score"  # type: ignore[assignment]
+                stop_reason = "target_score"
                 break
 
             # Check if we've run out of patience
             if self.patience is not None and self._steps_since_best >= self.patience:
-                stop_reason = "patience"  # type: ignore[assignment]
+                stop_reason = "patience"
                 break
 
         # Final event creation is updated to use StudyResult
         yield StudyEnd(
             study=self,
             trials=all_trials,
-            result=StudyResult(trials=all_trials, stop_reason=stop_reason),  # type: ignore[arg-type]
+            result=StudyResult(trials=all_trials, stop_reason=stop_reason),
         )
 
     def _log_event_metrics(self, event: StudyEvent[t.Any]) -> None:
@@ -283,8 +283,8 @@ class Study(Model, t.Generic[CandidateT]):
                     outputs = {"stop_reason": result.stop_reason}
                     if result.best_trial:
                         outputs["best_score"] = result.best_trial.score  # type: ignore[assignment]
-                        outputs["best_candidate"] = result.best_trial.candidate  # type: ignore[assignment]
-                        outputs["best_output"] = result.best_trial.output
+                        outputs["best_candidate"] = result.best_trial.candidate
+                        outputs["best_output"] = result.best_trial.output  # type: ignore[assignment]
                     log_outputs(**outputs)  # type: ignore[arg-type]
 
     @contextlib.asynccontextmanager
