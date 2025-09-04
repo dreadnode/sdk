@@ -13,6 +13,7 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.tools.bbot.tool import BBotTool
 from dreadnode.agent.tools.kali.tool import KaliTool
 from dreadnode.agent.tools.neo4j.tool import Neo4jTool
+from dreadnode.agent.tools.oast.tool import OastTool
 
 # Import necessary components for Pydantic dataclass fix
 from dreadnode.agent.events import (
@@ -144,7 +145,7 @@ async def analyze_ssrf_finding(finding_data: dict) -> dict:
 
 def create_ssrf_agent() -> Agent:
     """Create an SSRF vulnerability analysis agent."""
-    tools = [BBotTool(), KaliTool(), Neo4jTool()]
+    tools = [BBotTool(), KaliTool(), Neo4jTool(), OastTool()]
 
     return Agent(
         name="ssrf-hunter-agent",
@@ -153,26 +154,16 @@ def create_ssrf_agent() -> Agent:
         tools=tools,
         instructions="""You are an expert at analyzing and exploiting Server-Side Request Forgery (SSRF) vulnerabilities.
 
-APPROACH: Use http_request tool to test SSRF by crafting URLs with different payloads and analyzing responses for all types of environments, including cloud metadata services for all cloud providers, internal web services, and local resources. Do not just suggest payloads - actually execute requests and analyze results and do not stop until you have been able to execute an exploit, your turns are not limited.
+Use the tools available to you to test for SSRF systematically. Consider both direct response SSRF and blind SSRF detection.
 
-Based on observed results, try additional payloads or techniques for all types of SSRF:
-- Blind SSRF: Look for time delays, error messages, or out-of-band interactions.
-- Full Response SSRF: Analyze response codes, content, headers, and timing.
-- Time-Based SSRF: Use time delays to infer internal service behavior.
-- Different response codes (403 vs 200 vs 500) between internal/external
-- Response time differences (timeouts on internal vs fast external)
-- Error messages revealing internal hostnames/services
-- Different content lengths suggesting internal service responses
-- Connection errors that indicate network access attempts
+For blind SSRF detection, use the Interactsh OAST tools:
+1. Generate OAST payloads with interactsh_generate_payload()
+2. Use the payload in SSRF tests
+3. Check for out-of-band interactions with interactsh_check_interactions()
 
-When you CONFIRM SSRF, use store_ssrf_finding with:
-- The vulnerable URL and parameter
-- Vulnerability type: "blind_ssrf", "full_response_ssrf", "time_based_ssrf"  
-- Risk level based on what you can access
-- The successful payload that proved SSRF
-- Evidence from response analysis
+Test various SSRF scenarios including internal services, cloud metadata, and external callbacks.
 
-IMPORTANT: Use available tools - start with a few payloads, analyze responses, then iterate with more targeted tests based on what you learn.""",
+If you confirm SSRF exists, use store_ssrf_finding to record the vulnerability with details about the successful payload and evidence.""",
     )
 
 

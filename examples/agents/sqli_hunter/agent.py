@@ -13,6 +13,7 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.tools.bbot.tool import BBotTool
 from dreadnode.agent.tools.kali.tool import KaliTool
 from dreadnode.agent.tools.neo4j.tool import Neo4jTool
+from dreadnode.agent.tools.oast.tool import OastTool
 
 from dreadnode.agent.events import (
     AgentEnd,
@@ -145,7 +146,7 @@ async def analyze_sqli_finding(finding_data: dict) -> dict:
 
 def create_sqli_agent() -> Agent:
     """Create a SQL injection vulnerability analysis agent."""
-    tools = [BBotTool(), KaliTool(), Neo4jTool()]
+    tools = [BBotTool(), KaliTool(), Neo4jTool(), OastTool()]
 
     return Agent(
         name="sqli-hunter-agent",
