@@ -33,7 +33,7 @@ if t.TYPE_CHECKING:
     from dreadnode.optimization.study import Study
     from dreadnode.optimization.trial import Trial
 
-StudyT = t.TypeVar("StudyT", bound="Study")
+StudyT = t.TypeVar("StudyT", bound="Study[t.Any]")
 
 
 class StudyConsoleAdapter(t.Generic[StudyT]):
@@ -61,7 +61,7 @@ class StudyConsoleAdapter(t.Generic[StudyT]):
             expand=True,
         )
         self._trial_log: deque[Trial] = deque(maxlen=max_log_entries)
-        self._best_trial_summary = Text("No successful trials yet.", style="dim")
+        self._best_trial_summary: Text | Table = Text("No successful trials yet.", style="dim")
         self._summary_stats = {
             "Successful": 0,
             "Failed": 0,
@@ -143,7 +143,8 @@ class StudyConsoleAdapter(t.Generic[StudyT]):
             Layout(trials_panel, name="trials_log", ratio=1, minimum_size=5),
         )
 
-        name = self.study.name or get_callable_name(self.study.objective, short=True)
+        objective_func = t.cast("t.Callable[..., t.Any]", self.study.objective)
+        name = self.study.name or get_callable_name(objective_func, short=True)
 
         return Panel(
             layout,
@@ -151,7 +152,7 @@ class StudyConsoleAdapter(t.Generic[StudyT]):
             border_style="cyan",
         )
 
-    def _handle_event(self, event: StudyEvent) -> None:  # noqa: PLR0912
+    def _handle_event(self, event: StudyEvent[t.Any]) -> None:  # noqa: PLR0912
         if isinstance(event, StudyStart):
             self._steps_task_id = self._progress.add_task(
                 "[bold]Overall Steps", total=self.study.max_steps
@@ -206,7 +207,7 @@ class StudyConsoleAdapter(t.Generic[StudyT]):
             if self._steps_task_id is not None:
                 self._progress.update(self._steps_task_id, advance=1)
             if self._patience_task_id is not None:
-                if self.study._steps_since_best > 0:
+                if self.study._steps_since_best > 0:  # noqa: SLF001
                     self._progress.update(self._patience_task_id, advance=1)
                 else:
                     self._progress.reset(self._patience_task_id)

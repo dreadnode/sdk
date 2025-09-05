@@ -9,6 +9,7 @@ import typing_extensions as te
 from pydantic import ConfigDict, FilePath, TypeAdapter
 
 from dreadnode.discovery import find
+from dreadnode.eval.console import EvalConsoleAdapter
 from dreadnode.eval.dataset import load_dataset
 from dreadnode.eval.events import (
     EvalEnd,
@@ -350,7 +351,6 @@ class Eval(Model, t.Generic[In, Out]):
 
     async def console(self) -> EvalResult:
         """Run the evaluation with a live display in the console."""
-        from dreadnode.eval.console import EvalConsoleAdapter
 
         adapter = EvalConsoleAdapter(self)
         return await adapter.run()

@@ -1,14 +1,10 @@
 import typing as t
 
+import openai
+
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
-
-if t.TYPE_CHECKING:
-    import openai
-
-if t.TYPE_CHECKING:
-    import openai
 
 
 def detect_harm_with_openai(
@@ -36,7 +32,6 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai
 
     async def evaluate(
         data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)

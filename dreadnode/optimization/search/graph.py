@@ -50,8 +50,8 @@ class GraphSearch(Model, Search[T]):
     pruning_sampler: TrialSampler[T] = Config(top_k)
     """A trial sampler to prune new children after each branching."""
 
-    _trials: Trials[T] = PrivateAttr(default_factory=list)
-    _leaves: Trials[T] = PrivateAttr(default_factory=list)
+    _trials: Trials[T] = PrivateAttr(default_factory=list)  # type: ignore[arg-type]
+    _leaves: Trials[T] = PrivateAttr(default_factory=list)  # type: ignore[arg-type]
 
     def __repr__(self) -> str:
         parts = [
@@ -63,17 +63,17 @@ class GraphSearch(Model, Search[T]):
         return f"GraphSearch({', '.join(parts)})"
 
     def reset(self) -> None:
-        self._trials = []
-        self._leaves = []
+        self._trials = []  # type: ignore[assignment]
+        self._leaves = []  # type: ignore[assignment]
 
     async def suggest(self, step: int) -> Trials[T]:
         if not self._leaves:
-            return [Trial(candidate=self.initial_candidate, step=step)]
+            return [Trial(candidate=self.initial_candidate, step=step)]  # type: ignore[return-value]
 
-        trials: Trials[T] = []
+        trials: Trials[T] = []  # type: ignore[assignment]
         for leaf in self._leaves:
             context = [leaf, *self.context_collector(leaf, self._trials)]
-            coroutines = [self.transform(context) for _ in range(self.branching_factor)]
+            coroutines = [self.transform(context) for _ in range(self.branching_factor)]  # type: ignore[arg-type]
             for candidate in await asyncio.gather(*coroutines):
                 trials.append(Trial(candidate=candidate, parent_id=leaf.id, step=step))
 
@@ -82,8 +82,8 @@ class GraphSearch(Model, Search[T]):
     async def observe(self, trials: list[Trial[T]]) -> None:
         successful_trials = [t for t in trials if t.status == "success"]
         self._trials.extend(successful_trials)
-        interleaved_trials = interleave_by_parent(successful_trials)  # Prevent parent bias
-        self._leaves = self.pruning_sampler(interleaved_trials)
+        interleaved_trials: list[Trial[T]] = interleave_by_parent(successful_trials)  # type: ignore[arg-type]
+        self._leaves = self.pruning_sampler(interleaved_trials)  # type: ignore[arg-type]
 
 
 def iterative_search(
@@ -109,11 +109,11 @@ def iterative_search(
         A pre-configured GraphSearch instance.
     """
     return GraphSearch[T](
-        transform=transform,
+        transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage(),
-        pruning_sampler=top_k(k=1),
+        context_collector=lineage(),  # type: ignore[arg-type,call-arg]
+        pruning_sampler=top_k(k=1),  # type: ignore[arg-type,call-arg]
     )
 
 
@@ -141,7 +141,7 @@ def beam_search(
         A pre-configured GraphSearch instance.
     """
     return GraphSearch[T](
-        transform=transform,
+        transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
         context_collector=lineage,
@@ -176,7 +176,7 @@ def graph_search(
         A pre-configured GraphSearch instance.
     """
     return GraphSearch[T](
-        transform=transform,
+        transform=transform,  # type: ignore[arg-type]
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
         context_collector=local_neighborhood.configure(depth=neighborhood_depth),

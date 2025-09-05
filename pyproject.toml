@@ -24,10 +24,11 @@ dependencies = [
     "markdown[dev] (>=3.8.2,<4.0.0)",
     "mkdocstrings-python[dev] (>=1.18.2,<2.0.0)",
     "markdownify[dev] (>=1.2.0,<2.0.0)",
+    "networkx>=3.3,<4.0.0",
 ]
 
 [project.optional-dependencies]
-training = ["transformers>=4.41.0,<5.0.0"]
+training = ["transformers>=4.41.0,<5.0.0", "sentence-transformers>=5.1.0,<6.0.0",]
 
 multimodal = [
     "pillow>=11.2.1,<12.0.0",
@@ -149,6 +150,10 @@ ignore = [
     "FIX002",  # contains todo, consider fixing
     "COM812",  # disabled for formatting
     "ISC001",  # disabled for formatting
+    "PLC0415",  # import should be at top-level (lazy imports)
+    "FBT001",   # boolean positional argument (legitimate cases)  
+    "FURB122",  # use f.writelines (minor optimization)
+    "F401", # ignore imported but unused
 ]
 
 [tool.ruff.format]

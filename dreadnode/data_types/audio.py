@@ -1,27 +1,23 @@
+import importlib.util
 import io
 import typing as t
 from pathlib import Path
 
-from dreadnode.data_types.base import DataType
+import numpy as np
 
-if t.TYPE_CHECKING:
-    import numpy as np
+from dreadnode.data_types.base import DataType
 
 
 def check_imports() -> None:
-    try:
-        import soundfile as sf  # type: ignore[import-untyped,unused-ignore]  # noqa: F401
-    except ImportError as e:
+    if importlib.util.find_spec("soundfile") is None:
         raise ImportError(
             "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
-        ) from e
+        )
 
-    try:
-        import numpy as np  # type: ignore[import-untyped,unused-ignore]  # noqa: F401
-    except ImportError as e:
+    if importlib.util.find_spec("numpy") is None:
         raise ImportError(
             "Audio processing requires NumPy. Install with: pip install dreadnode[multimodal]"
-        ) from e
+        )
 
 
 AudioDataType: t.TypeAlias = "str | Path | np.ndarray[t.Any, t.Any] | bytes"
@@ -78,7 +74,6 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import numpy as np
 
         if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
@@ -94,7 +89,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore[import-not-found,unused-ignore]
+        import soundfile as sf  # type: ignore  # noqa: PGH003
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
@@ -113,8 +108,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import numpy as np  # type: ignore[import-not-found,unused-ignore]
-        import soundfile as sf  # type: ignore[import-not-found,unused-ignore]
+        import soundfile as sf
 
         if self._sample_rate is None:
             raise ValueError('Argument "sample_rate" is required when using numpy arrays.')
@@ -151,8 +145,6 @@ class Audio(DataType):
         Returns:
             A dictionary of metadata
         """
-        import numpy as np  # type: ignore[import-not-found,unused-ignore]
-
         metadata: dict[str, str | int | float | None] = {
             "extension": format_name.lower(),
             "x-python-datatype": "dreadnode.Audio.bytes",

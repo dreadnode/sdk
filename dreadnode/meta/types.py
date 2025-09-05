@@ -279,7 +279,7 @@ def Config(  # noqa: N802
 )
 class ConfigurableMeta(ModelMetaclass):
     def __new__(
-        mcs,
+        cls,
         name: str,
         bases: tuple[type[t.Any], ...],
         namespace: dict[str, t.Any],
@@ -297,11 +297,11 @@ class ConfigurableMeta(ModelMetaclass):
             }
             namespace[attr_name] = PydanticField(**field_kwargs)  # type: ignore[arg-type]
 
-        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+        new_cls = super().__new__(cls, name, bases, namespace, **kwargs)
 
         # Merge config from all base classes
         merged_configs = {}
-        for base in reversed(cls.__mro__):  # Go from most base to most derived
+        for base in reversed(new_cls.__mro__):  # Go from most base to most derived
             if hasattr(base, "__dn_config__"):
                 merged_configs.update(base.__dn_config__)
 
@@ -309,13 +309,13 @@ class ConfigurableMeta(ModelMetaclass):
 
         # If pydantic resolved any of our field descriptions, we need to
         # reflect those back into the ConfigInfo objects
-        for field_name, field_info in cls.model_fields.items():  # type: ignore[attr-defined]
+        for field_name, field_info in new_cls.model_fields.items():  # type: ignore[attr-defined]
             if field_name in configs:
                 configs[field_name].field_kwargs["description"] = field_info.description
 
-        cls.__dn_config__ = merged_configs  # type: ignore[attr-defined]
+        new_cls.__dn_config__ = merged_configs  # type: ignore[attr-defined]
 
-        return cls
+        return new_cls
 
 
 class Model(PydanticBaseModel, metaclass=ConfigurableMeta):

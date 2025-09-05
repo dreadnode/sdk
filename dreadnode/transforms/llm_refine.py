@@ -4,9 +4,11 @@ from textwrap import dedent
 import rigging as rg
 
 from dreadnode.meta import Config
-from dreadnode.optimization.trial import Trials
 from dreadnode.transforms.base import Transform
 from dreadnode.types import AnyDict
+
+if t.TYPE_CHECKING:
+    from dreadnode.optimization.trial import Trials
 
 T = t.TypeVar("T")
 

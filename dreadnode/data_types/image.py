@@ -3,27 +3,11 @@ import io
 import typing as t
 from pathlib import Path
 
+import numpy as np
+import PIL
+import PIL.Image
+
 from dreadnode.data_types.base import DataType
-
-if t.TYPE_CHECKING:
-    import numpy as np
-
-
-def check_imports() -> None:
-    try:
-        import PIL  # type: ignore[import,unused-ignore]  # noqa: F401
-    except ImportError as e:
-        raise ImportError(
-            "Image processing requires Pillow. Install with: pip install dreadnode[multimodal]"
-        ) from e
-
-    try:
-        import numpy as np  # type: ignore[import,unused-ignore]  # noqa: F401
-    except ImportError as e:
-        raise ImportError(
-            "Image processing requires NumPy. Install with: pip install dreadnode[multimodal]"
-        ) from e
-
 
 ImageDataType = t.Union[t.Any, "np.ndarray[t.Any, t.Any]"]
 ImageDataOrPathType = str | Path | bytes | ImageDataType
@@ -61,7 +45,6 @@ class Image(DataType):
             caption: Optional caption for the image
             format: Optional format to use when saving (png, jpg, etc.)
         """
-        check_imports()
         self._data = data
         self._mode = mode
         self._caption = caption
@@ -83,10 +66,8 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
         if isinstance(self._data, PIL.Image.Image):
             return self._process_pil_image()
@@ -104,7 +85,6 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
         path_str = str(self._data)
         image_bytes = Path(path_str).read_bytes()
@@ -122,7 +102,6 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
         if not isinstance(self._data, PIL.Image.Image):
             raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
@@ -160,8 +139,6 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
         buffer = io.BytesIO()
         image_format = self._format or "png"
@@ -191,7 +168,6 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
         if not isinstance(self._data, bytes):
             raise TypeError(f"Expected bytes, got {type(self._data)}")
@@ -216,7 +192,6 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
         if not isinstance(self._data, str):
             raise TypeError(f"Expected str, got {type(self._data)}")
@@ -253,15 +228,13 @@ class Image(DataType):
         self, image_format: str, mode: str | None, width: int | None, height: int | None
     ) -> dict[str, str | int | None]:
         """Generate metadata for the image."""
-        import numpy as np  # type: ignore[import,unused-ignore]
-        import PIL.Image  # type: ignore[import,unused-ignore]
 
         metadata: dict[str, str | int | None] = {
             "extension": image_format.lower(),
             "x-python-datatype": "dreadnode.Image.bytes",
         }
 
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             metadata["source-type"] = "file"
             metadata["source-path"] = str(self._data)
         elif isinstance(self._data, PIL.Image.Image):
@@ -313,7 +286,6 @@ class Image(DataType):
         self, array: "np.ndarray[t.Any, np.dtype[t.Any]]"
     ) -> "np.ndarray[t.Any, np.dtype[t.Any]]":
         """Convert numpy array to a format suitable for PIL."""
-        import numpy as np  # type: ignore[import,unused-ignore]
 
         grayscale_dim = 2
         rgb_dim = 3

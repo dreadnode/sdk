@@ -42,7 +42,7 @@ class OptunaSearch(Search[AnyDict]):
         self.optuna_search_space = _convert_search_space(search_space)
         self._trial_map: dict[UUID, optuna.trial.Trial] = {}
 
-    async def suggest(self) -> list[Trial[AnyDict]]:
+    async def suggest(self, step: int) -> list[Trial[AnyDict]]:  # type: ignore[override]  # noqa: ARG002
         optuna_trial = self.optuna_study.ask(self.optuna_search_space)
         candidate_params = optuna_trial.params
 
@@ -53,7 +53,7 @@ class OptunaSearch(Search[AnyDict]):
 
         return [trial]
 
-    def observe(self, trials: list[Trial[AnyDict]]) -> None:
+    async def observe(self, trials: list[Trial[AnyDict]]) -> None:
         for trial in trials:
             optuna_trial = self._trial_map[trial.id]
             if trial.status == "success":
