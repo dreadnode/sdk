@@ -419,32 +419,11 @@ def open_env_file(filename: Path) -> None:
         filename: The path to the environment file to open.
     """
     if sys.platform == "darwin":
-        cmd = ["open", "-t", filename]
+        cmd = ["open", "-t", filename.as_posix()]
     else:
-        cmd = ["xdg-open", filename]
+        cmd = ["xdg-open", filename.as_posix()]
     try:
         subprocess.run(cmd, check=False)  # noqa: S603
         print_info("Opened environment file.")
     except subprocess.CalledProcessError as e:
         print_error(f"Failed to open environment file: {e}")
-
-
-def read_env_file(filename: Path) -> dict[str, str]:
-    """Read the specified environment file and return its contents as a dictionary.
-
-    Args:
-        filename: The path to the environment file to read.
-
-    Returns:
-        A dictionary containing the environment variables defined in the file.
-    """
-    env_vars = {}
-    if filename.exists():
-        content = filename.read_text()
-
-    env_lines = _parse_env_lines(content)
-
-    # for all key-value pairs in env_lines, pretty print them
-    for key, value in env_lines.items():
-        print_info(f"Found environment variable: {key}={value}")
-    return env_vars
