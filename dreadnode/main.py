@@ -1,5 +1,5 @@
+import asyncio
 import contextlib
-import inspect
 import os
 import random
 import typing as t
@@ -21,7 +21,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
-from dreadnode.config import UserConfig
+from dreadnode.artifact.credential_manager import CredentialManager
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
     DEFAULT_SERVER_URL,
@@ -34,16 +34,17 @@ from dreadnode.constants import (
     ENV_SERVER,
     ENV_SERVER_URL,
 )
-from dreadnode.credential_manager import CredentialManager
+from dreadnode.error import AssertionFailedError
 from dreadnode.metric import (
     Metric,
     MetricAggMode,
     MetricDict,
-    Scorer,
-    ScorerCallable,
+    MetricsLike,
     T,
 )
-from dreadnode.task import P, R, Task
+from dreadnode.scorers import Scorer, ScorerCallable
+from dreadnode.scorers.base import ScorersLike
+from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
     FileExportConfig,
     FileMetricReader,
@@ -63,11 +64,10 @@ from dreadnode.types import (
     Inherited,
     JsonValue,
 )
+from dreadnode.user_config import UserConfig
 from dreadnode.util import (
     clean_str,
-    get_filepath_attribute,
     handle_internal_errors,
-    safe_repr,
     warn_at_user_stacklevel,
 )
 from dreadnode.version import VERSION
@@ -83,11 +83,11 @@ ToObject = t.Literal["task-or-run", "run"]
 
 
 class DreadnodeConfigWarning(UserWarning):
-    pass
+    """Warnings related to Dreadnode configuration."""
 
 
 class DreadnodeUsageWarning(UserWarning):
-    pass
+    """Warnings related to Dreadnode usage."""
 
 
 @dataclass
@@ -119,7 +119,7 @@ class Dreadnode:
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
-        console: logfire.ConsoleOptions | bool = True,
+        console: logfire.ConsoleOptions | bool = False,
         send_to_logfire: bool | t.Literal["if-token-present"] = False,
         otel_scope: str = "dreadnode",
     ) -> None:
@@ -201,8 +201,8 @@ class Dreadnode:
             project: The default project name to associate all runs with.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
-            console: Whether to log span information to the console (`DREADNODE_CONSOLE` or the default is True).
-            send_to_logfire: Whether to send data to Logfire.
+            console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
+            send_to_logfire: Send data to Logfire.
             otel_scope: The OpenTelemetry scope name.
         """
 
@@ -258,7 +258,7 @@ class Dreadnode:
         self.console = (
             console
             if console is not None
-            else os.environ.get(ENV_CONSOLE, "true").lower()
+            else os.environ.get(ENV_CONSOLE, "false").lower()
             in [
                 "true",
                 "1",
@@ -469,52 +469,14 @@ class Dreadnode:
             tags=tags,
         )
 
-    # Some excessive typing here to ensure we can properly
-    # overload our decorator for sync/async and cases
-    # where we need the return type of the task to align
-    # with the scorer inputs
-
-    class TaskDecorator(t.Protocol):
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
-
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
-    class ScoredTaskDecorator(t.Protocol, t.Generic[R]):
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]],
-        ) -> Task[P, R]: ...
-
-        @t.overload
-        def __call__(
-            self,
-            func: t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
-        def __call__(
-            self,
-            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]: ...
-
     @t.overload
     def task(
         self,
+        func: None = None,
+        /,
         *,
         scorers: None = None,
+        assert_scores: None = None,
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
@@ -527,8 +489,11 @@ class Dreadnode:
     @t.overload
     def task(
         self,
+        func: None = None,
+        /,
         *,
-        scorers: t.Sequence[Scorer[R] | ScorerCallable[R]],
+        scorers: ScorersLike[R],
+        assert_scores: list[str] | t.Literal[True] | None = None,
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
@@ -538,10 +503,20 @@ class Dreadnode:
         attributes: AnyDict | None = None,
     ) -> ScoredTaskDecorator[R]: ...
 
+    @t.overload
     def task(
         self,
+        func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
+        /,
+    ) -> Task[P, R]: ...
+
+    def task(
+        self,
+        func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R] | None = None,
+        /,
         *,
-        scorers: t.Sequence[Scorer[t.Any] | ScorerCallable[t.Any]] | None = None,
+        scorers: ScorersLike[t.Any] | None = None,
+        assert_scores: list[str] | t.Literal[True] | None = None,
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
@@ -549,13 +524,13 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
-    ) -> TaskDecorator:
+    ) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]:
         """
         Create a new task from a function.
 
         Example:
             ```
-            @dreadnode.task(name="my_task")
+            @dreadnode.task
             async def my_task(x: int) -> int:
                 return x * 2
 
@@ -565,6 +540,7 @@ class Dreadnode:
         Args:
             scorers: A list of scorers to attach to the task. These will be called after every execution
                 of the task and will be passed the task's output.
+            assert_scores: A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError.
             name: The name of the task.
             label: The label of the task - useful for filtering in the UI.
             log_inputs: Log all, or specific, incoming arguments to the function as inputs.
@@ -577,12 +553,17 @@ class Dreadnode:
             A new Task object.
         """
 
+        if isinstance(func, Task):
+            return func
+
         def make_task(
             func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
         ) -> Task[P, R]:
             if isinstance(func, Task):
                 return func.with_(
                     name=name,
+                    scorers=scorers,  # type: ignore[arg-type]
+                    assert_scores=assert_scores,
                     label=label,
                     log_inputs=log_inputs,
                     log_output=log_output,
@@ -592,53 +573,25 @@ class Dreadnode:
                     append=True,
                 )
 
-            unwrapped = inspect.unwrap(func)
-
-            if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
-                unwrapped,
-            ):
-                raise TypeError("@task cannot be applied to generators")
-
-            func_name = getattr(
-                unwrapped,
-                "__qualname__",
-                getattr(func, "__name__", safe_repr(func)),
-            )
-
-            _name = name or func_name
-            _label = label or _name
-
-            # conform our label for sanity
-            _label = clean_str(_label)
-
-            _attributes = attributes or {}
-            _attributes["code.function"] = func_name
-            with contextlib.suppress(Exception):
-                _attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
-            with contextlib.suppress(Exception):
-                _attributes.update(
-                    get_filepath_attribute(
-                        inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
-                    ),
-                )
-
             return Task(
-                tracer=self._get_tracer(),
-                name=_name,
-                attributes=_attributes,
                 func=t.cast("t.Callable[P, R]", func),
-                scorers=[
-                    scorer if isinstance(scorer, Scorer) else Scorer.from_callable(scorer)
-                    for scorer in scorers or []
-                ],
-                tags=list(tags or []),
+                tracer=self._get_tracer(),
+                name=name,
+                label=label,
+                scorers=scorers,
+                assert_scores=assert_scores,
                 log_inputs=log_inputs,
                 log_output=log_output,
                 log_execution_metrics=log_execution_metrics,
-                label=_label,
+                tags=tags,
+                attributes=attributes,
             )
 
-        return make_task
+        return (
+            t.cast("TaskDecorator | ScoredTaskDecorator[R]", make_task)
+            if func is None
+            else make_task(func)
+        )
 
     def task_span(
         self,
@@ -681,13 +634,30 @@ class Dreadnode:
             tracer=self._get_tracer(),
         )
 
+    @t.overload
     def scorer(
         self,
+        func: None = None,
+        /,
         *,
         name: str | None = None,
-        tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
-    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]:
+    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]: ...
+
+    @t.overload
+    def scorer(
+        self,
+        func: ScorerCallable[T],
+        /,
+    ) -> Scorer[T]: ...
+
+    def scorer(
+        self,
+        func: ScorerCallable[T] | None = None,
+        *,
+        name: str | None = None,
+        attributes: AnyDict | None = None,
+    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]:
         """
         Make a scorer from a callable function.
 
@@ -696,7 +666,7 @@ class Dreadnode:
 
         Example:
             ```
-            @dreadnode.scorer(name="my_scorer")
+            @dreadnode.scorer
             async def my_scorer(x: int) -> float:
                 return x * 2
 
@@ -709,22 +679,81 @@ class Dreadnode:
 
         Args:
             name: The name of the scorer.
-            tags: A list of tags to attach to the scorer.
             attributes: A dictionary of attributes to attach to the scorer.
 
         Returns:
             A new Scorer object.
         """
 
+        if isinstance(func, Scorer):
+            return func
+
         def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-            return Scorer.from_callable(
-                func,
-                name=name,
-                tags=tags,
-                attributes=attributes,
+            if isinstance(func, Scorer):
+                return func.with_(name=name, attributes=attributes)
+            return Scorer(func, name=name, attributes=attributes)
+
+        return make_scorer if func is None else make_scorer(func)
+
+    async def score(
+        self,
+        object: T,
+        scorers: ScorersLike[T],
+        step: int | None = None,
+        assert_scores: list[str] | t.Literal[True] | None = None,
+    ) -> dict[str, list[Metric]]:
+        """
+        Score an object using all the provided scorers.
+
+        Args:
+            object: The object to score.
+            scorers: A list of scorers to use for scoring the object.
+            step: An optional step value to attach to all generated metrics.
+            assert_scores: A list of score names to ensure have truthy values - otherwise raise an AssertionFailedError.
+
+        Returns:
+            A dictionary of metrics generated by the scorers.
+        """
+        if not self._initialized:
+            self.configure()
+
+        _scorers = Scorer.fit_like(scorers)
+        _assert_scores = (
+            [s.name for s in _scorers] if assert_scores is True else list(assert_scores or [])
+        )
+
+        metrics: dict[str, list[Metric]] = {}
+        nested_metrics = await asyncio.gather(
+            *[scorer.normalize_and_score(object) for scorer in _scorers]
+        )
+        for scorer, _metrics in zip(_scorers, nested_metrics, strict=True):
+            for metric in _metrics:
+                if step is not None:
+                    metric.step = step
+                metric_name = str(getattr(metric, "_scorer_name", scorer.name))
+                metric_name = clean_str(metric_name)
+                metrics.setdefault(metric_name, []).append(
+                    self.log_metric(metric_name, metric, origin=object)
+                )
+
+        failed_assertions: dict[str, list[Metric]] = {}
+        for name in _assert_scores:
+            if (metric_list := metrics.get(name, [])) is None:
+                for _metrics in metrics.values():
+                    if getattr(_metrics[0], "_scorer_name", None) == name:
+                        metric_list = _metrics
+                        break
+
+            if not any(m.value for m in metric_list):
+                failed_assertions[name] = metric_list
+
+        if failed_assertions:
+            raise AssertionFailedError(
+                f"{len(failed_assertions)} score assertion(s) failed: {list(failed_assertions.keys())}",
+                failures=failed_assertions,
             )
 
-        return make_scorer
+        return metrics
 
     def run(
         self,
@@ -734,6 +763,7 @@ class Dreadnode:
         params: AnyDict | None = None,
         project: str | None = None,
         autolog: bool = True,
+        name_prefix: str | None = None,
         attributes: AnyDict | None = None,
     ) -> RunSpan:
         """
@@ -759,7 +789,7 @@ class Dreadnode:
             project: The project name to associate the run with. If not provided,
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
-            autolog: Whether to automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
+            autolog: Automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
             attributes: Additional attributes to attach to the run span.
 
         Returns:
@@ -769,8 +799,8 @@ class Dreadnode:
         if not self._initialized:
             self.configure()
 
-        if name is None:
-            name = f"{coolname.generate_slug(2)}-{random.randint(100, 999)}"  # noqa: S311 # nosec
+        name_prefix = name_prefix or coolname.generate_slug(2)
+        name = name or f"{name_prefix}-{random.randint(100, 999)}"  # noqa: S311 # nosec
 
         return RunSpan(
             name=name,
@@ -943,7 +973,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool,  # noqa: FBT001
+        value: float | bool,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1034,7 +1064,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,  # noqa: FBT001
+        value: float | bool | Metric,
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1120,6 +1150,7 @@ class Dreadnode:
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
+        origin: t.Any | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1160,6 +1191,7 @@ class Dreadnode:
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
+        origin: t.Any | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1193,12 +1225,13 @@ class Dreadnode:
     @handle_internal_errors()
     def log_metrics(
         self,
-        metrics: dict[str, float | bool] | list[MetricDict],
+        metrics: MetricsLike,
         *,
         step: int = 0,
         timestamp: datetime | None = None,
         mode: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
+        origin: t.Any | None = None,
         to: ToObject = "task-or-run",
     ) -> list[Metric]:
         """
@@ -1234,6 +1267,7 @@ class Dreadnode:
             timestamp: Default timestamp for metrics if not supplied.
             mode: Default aggregation mode for metrics if not supplied.
             attributes: Default attributes for metrics if not supplied.
+            origin: The origin of the metrics - can be provided any object which was logged
             to: The target object to log metrics to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metrics will be logged
                 to the current task or run, whichever is the nearest ancestor.
@@ -1265,6 +1299,7 @@ class Dreadnode:
                     timestamp=timestamp,
                     mode=mode,
                     attributes=attributes,
+                    origin=origin,
                 )
                 for name, value in metrics.items()
             ]
@@ -1279,6 +1314,7 @@ class Dreadnode:
                     timestamp=metric.get("timestamp", timestamp),
                     mode=metric.get("mode", mode),
                     attributes=metric.get("attributes", attributes) or {},
+                    origin=origin,
                 )
                 for metric in metrics
             ]
@@ -1452,6 +1488,71 @@ class Dreadnode:
         """
         for name, value in outputs.items():
             self.log_output(name, value, to=to)
+
+    @handle_internal_errors()
+    def log_sample(
+        self,
+        label: str,
+        input: t.Any,
+        output: t.Any,
+        metrics: MetricsLike | None = None,
+        *,
+        step: int = 0,
+    ) -> None:
+        """
+        Convenience method to log an input/output pair with metrics as a ephemeral task.
+
+        This is useful for logging a single sample of input and output data
+        along with any metrics that were computed during the process.
+        """
+
+        with self.task_span(name=label, label=label):
+            self.log_input("input", input)
+            self.log_output("output", output)
+            self.link_objects(output, input)
+            if metrics is not None:
+                self.log_metrics(metrics, step=step, origin=output)
+
+    @handle_internal_errors()
+    def log_samples(
+        self,
+        name: str,
+        samples: list[tuple[t.Any, t.Any] | tuple[t.Any, t.Any, MetricsLike]],
+    ) -> None:
+        """
+        Log multiple input/output samples as ephemeral tasks.
+
+        This is useful for logging a batch of input/output pairs with metrics
+        in a single run.
+
+        Example:
+            ```
+            dreadnode.log_samples(
+                "my_samples",
+                [
+                    (input1, output1, {"accuracy": 0.95}),
+                    (input2, output2, {"accuracy": 0.90}),
+                ]
+            )
+            ```
+
+        Args:
+            name: The name of the task to create for each sample.
+            samples: A list of tuples containing (input, output, metrics [optional]).
+        """
+        for sample in samples:
+            metrics: MetricsLike | None = None
+            if len(sample) == 3:  # noqa: PLR2004
+                input_data, output_data, metrics = sample
+            elif len(sample) == 2:  # noqa: PLR2004
+                input_data, output_data = sample
+            else:
+                raise ValueError(
+                    "Each sample must be a tuple of (input, output) or (input, output, metrics)",
+                )
+
+            # Log each sample as an ephemeral task
+            self.log_sample(name, input_data, output_data, metrics=metrics)
 
     @handle_internal_errors()
     def link_objects(

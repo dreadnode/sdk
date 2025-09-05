@@ -1,6 +1,11 @@
 import typing as t
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.meta import Config
+from dreadnode.metric import Metric
+from dreadnode.scorers import Scorer
+
+if t.TYPE_CHECKING:
+    import openai
 
 if t.TYPE_CHECKING:
     import openai
@@ -9,7 +14,7 @@ if t.TYPE_CHECKING:
 def detect_harm_with_openai(
     *,
     api_key: str | None = None,
-    model: t.Literal["text-moderation-stable", "text-moderation-latest"] = "text-moderation-stable",
+    model: str = "text-moderation-stable",
     client: "openai.AsyncOpenAI | None" = None,
     name: str = "openai_harm",
 ) -> "Scorer[t.Any]":
@@ -23,7 +28,7 @@ def detect_harm_with_openai(
     The metric's attributes contain a detailed breakdown of all category scores
     and whether the content was flagged by OpenAI.
 
-    Requires the `openai` python package.
+    Requires `openai`, see https://github.com/openai/openai-python.
 
     Args:
         api_key: Your OpenAI API key. If not provided, it will be sourced from the
@@ -31,9 +36,11 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai  # noqa: PLC0415
+    import openai
 
-    async def evaluate(data: t.Any) -> Metric:
+    async def evaluate(
+        data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)
+    ) -> Metric:
         text = str(data)
         _client = client or openai.AsyncOpenAI(api_key=api_key)
 
@@ -54,4 +61,4 @@ def detect_harm_with_openai(
         }
         return Metric(value=max_score, attributes=attributes)
 
-    return Scorer.from_callable(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name, catch=True)

@@ -1,6 +1,7 @@
 import typing as t
 
-from dreadnode.metric import Metric, Scorer
+from dreadnode.metric import Metric
+from dreadnode.scorers.base import Scorer
 
 if t.TYPE_CHECKING:
     from rigging.chat import Chat
@@ -43,7 +44,7 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat  # noqa: PLC0415
+        from rigging.chat import Chat
 
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):
@@ -73,4 +74,4 @@ def wrap_chat(
     if name is None:
         name = f"chat_{inner_scorer.name}"
 
-    return Scorer.from_callable(evaluate, name=name)
+    return Scorer(evaluate, name=name)

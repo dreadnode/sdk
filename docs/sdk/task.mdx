@@ -10,46 +10,111 @@ Task
 ----
 
 ```python
-Task(
-    tracer: Tracer,
-    name: str,
-    label: str,
-    attributes: dict[str, Any],
-    func: Callable[P, R],
-    scorers: list[Scorer[R]],
-    tags: list[str],
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited = INHERITED,
-    log_output: bool | Inherited = INHERITED,
-    log_execution_metrics: bool = False,
-)
+Task(func: Callable[P, R], tracer: Tracer, *, name: str | None = None, label: str | None = None, scorers: ScorersLike[R] | None = None, assert_scores: list[str] | Literal[True] | None = None, log_inputs: Sequence[str] | bool | Inherited = INHERITED, log_output: bool | Inherited = INHERITED, log_execution_metrics: bool = False, tags: Sequence[str] | None = None, attributes: AnyDict | None = None, config: dict[str, ConfigInfo] | None = None, context: dict[str, Context] | None = None)
 ```
 
 Structured task wrapper for a function that can be executed within a run.
 
 Tasks allow you to associate metadata, inputs, outputs, and metrics for a unit of work.
 
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+def __init__(
+    self,
+    func: t.Callable[P, R],
+    tracer: Tracer,
+    *,
+    name: str | None = None,
+    label: str | None = None,
+    scorers: ScorersLike[R] | None = None,
+    assert_scores: list[str] | t.Literal[True] | None = None,
+    log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
+    log_output: bool | Inherited = INHERITED,
+    log_execution_metrics: bool = False,
+    tags: t.Sequence[str] | None = None,
+    attributes: AnyDict | None = None,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
+) -> None:
+    unwrapped = inspect.unwrap(func)
+    if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(
+        unwrapped,
+    ):
+        raise TypeError("@task cannot be applied to generators")
+
+    func_name = get_callable_name(unwrapped, short=True)
+    name = name or func_name
+    label = clean_str(label or name)
+
+    attributes = attributes or {}
+    attributes["code.function"] = func_name
+    with contextlib.suppress(Exception):
+        attributes["code.lineno"] = unwrapped.__code__.co_firstlineno
+    with contextlib.suppress(Exception):
+        attributes.update(
+            get_filepath_attribute(
+                inspect.getsourcefile(unwrapped),  # type: ignore [arg-type]
+            ),
+        )
+
+    super().__init__(func, config=config, context=context)
+
+    self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
+
+    self._tracer = tracer
+
+    self.name = name
+    "The name of the task. This is used for logging and tracing."
+    self.label = label
+    "The label of the task - used to group associated metrics and data together."
+    self.scorers = Scorer.fit_like(scorers)
+    "A list of scorers to evaluate the task's output."
+    scorer_names = [s.name for s in self.scorers]
+    self.assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
+    "A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError."
+    self.tags = list(tags or [])
+    "A list of tags to attach to the task span."
+    self.attributes = attributes
+    "A dictionary of attributes to attach to the task span."
+    self.log_inputs = (
+        log_inputs if isinstance(log_inputs, bool | Inherited) else list(log_inputs)
+    )
+    "Log all, or specific, incoming arguments to the function as inputs."
+    self.log_output = log_output
+    "Log the result of the function as an output."
+    self.log_execution_metrics = log_execution_metrics
+    "Track execution metrics such as success rate and run count."
+
+    for assertion in self.assert_scores or []:
+        if assertion not in scorer_names:
+            raise ValueError(
+                f"Unknown '{assertion}' in assert_scores, it must be one of {scorer_names}"
+            )
+```
+
+
+</Accordion>
+
+### assert\_scores
+
+```python
+assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
+```
+
+A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError.
+
 ### attributes
 
 ```python
-attributes: dict[str, Any]
+attributes = attributes
 ```
 
 A dictionary of attributes to attach to the task span.
 
-### func
-
-```python
-func: Callable[P, R]
-```
-
-The function to execute as the task.
-
 ### label
 
 ```python
-label: str
+label = label
 ```
 
 The label of the task - used to group associated metrics and data together.
@@ -57,7 +122,7 @@ The label of the task - used to group associated metrics and data together.
 ### log\_execution\_metrics
 
 ```python
-log_execution_metrics: bool = False
+log_execution_metrics = log_execution_metrics
 ```
 
 Track execution metrics such as success rate and run count.
@@ -65,7 +130,7 @@ Track execution metrics such as success rate and run count.
 ### log\_inputs
 
 ```python
-log_inputs: Sequence[str] | bool | Inherited = INHERITED
+log_inputs = log_inputs if isinstance(log_inputs, bool | Inherited) else list(log_inputs)
 ```
 
 Log all, or specific, incoming arguments to the function as inputs.
@@ -73,7 +138,7 @@ Log all, or specific, incoming arguments to the function as inputs.
 ### log\_output
 
 ```python
-log_output: bool | Inherited = INHERITED
+log_output = log_output
 ```
 
 Log the result of the function as an output.
@@ -81,7 +146,7 @@ Log the result of the function as an output.
 ### name
 
 ```python
-name: str
+name = name
 ```
 
 The name of the task. This is used for logging and tracing.
@@ -89,7 +154,7 @@ The name of the task. This is used for logging and tracing.
 ### scorers
 
 ```python
-scorers: list[Scorer[R]]
+scorers = fit_like(scorers)
 ```
 
 A list of scorers to evaluate the task's output.
@@ -97,7 +162,7 @@ A list of scorers to evaluate the task's output.
 ### tags
 
 ```python
-tags: list[str]
+tags = list(tags or [])
 ```
 
 A list of tags to attach to the task span.
@@ -124,26 +189,16 @@ def clone(self) -> "Task[P, R]":
     Returns:
         A new Task instance with the same attributes as this one.
     """
-    return Task(
-        tracer=self.tracer,
-        name=self.name,
-        label=self.label,
-        attributes=self.attributes.copy(),
-        func=self.func,
-        scorers=[scorer.clone() for scorer in self.scorers],
-        tags=self.tags.copy(),
-        log_inputs=self.log_inputs,
-        log_output=self.log_output,
-    )
+    return self.__deepcopy__({})
 ```
 
 
 </Accordion>
 
-### map
+### many
 
 ```python
-map(count: int, *args: args, **kwargs: kwargs) -> list[R]
+many(count: int, *args: args, **kwargs: kwargs) -> list[R]
 ```
 
 Run the task multiple times and return a list of outputs.
@@ -171,7 +226,7 @@ Run the task multiple times and return a list of outputs.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
+async def many(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
     """
     Run the task multiple times and return a list of outputs.
 
@@ -183,28 +238,121 @@ async def map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
     Returns:
         A list of outputs from each task execution.
     """
-    spans = await self.map_run(count, *args, **kwargs)
-    return [span.output for span in spans]
+    async with self.stream_many(count, *args, **kwargs) as stream:
+        return [span.output async for span in stream]
 ```
 
 
 </Accordion>
 
-### map\_run
+### map
 
 ```python
-map_run(
-    count: int, *args: args, **kwargs: kwargs
-) -> TaskSpanList[R]
+map(args: list[Any] | dict[str, Any | list[Any]], *, concurrency: int | None = None) -> list[R]
 ```
 
-Run the task multiple times and return a list of spans.
+Runs this task multiple times by mapping over iterable arguments.
+
+**Examples:**
+
+```python
+@dn.task
+async def my_task(input: str, *, suffix: str = "") -> str:
+    return f"Processed {input}{suffix}"
+
+# Map over a list of basic inputs
+await task.map_run(["1", "2", "3"])
+
+# Map over a dict of parameters
+await task.map_run({
+    "input": ["1", "2", "3"],
+    "suffix": ["_a", "_b", "_c"]
+})
+```
+
+**Parameters:**
+
+* **`args`**
+  (`list[Any] | dict[str, Any | list[Any]]`)
+  –Either a flat list of the first positional argument, or a dict
+  where each key is a parameter name and the value is either a single value
+  or a list of values to map over.
+* **`concurrency`**
+  (`int | None`, default:
+  `None`
+  )
+  –The maximum number of tasks to run in parallel.
+  If None, runs with unlimited concurrency.
+
+**Returns:**
+
+* `list[R]`
+  –A TaskSpanList containing the results of each execution.
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+async def map(
+    self,
+    args: list[t.Any] | dict[str, t.Any | list[t.Any]],
+    *,
+    concurrency: int | None = None,
+) -> list[R]:
+    """
+    Runs this task multiple times by mapping over iterable arguments.
+
+    Examples:
+        ~~~python
+
+        @dn.task
+        async def my_task(input: str, *, suffix: str = "") -> str:
+            return f"Processed {input}{suffix}"
+
+        # Map over a list of basic inputs
+        await task.map_run(["1", "2", "3"])
+
+        # Map over a dict of parameters
+        await task.map_run({
+            "input": ["1", "2", "3"],
+            "suffix": ["_a", "_b", "_c"]
+        })
+        ~~~
+
+    Args:
+        args: Either a flat list of the first positional argument, or a dict
+              where each key is a parameter name and the value is either a single value
+              or a list of values to map over.
+        concurrency: The maximum number of tasks to run in parallel.
+                     If None, runs with unlimited concurrency.
+
+    Returns:
+        A TaskSpanList containing the results of each execution.
+    """
+    async with self.stream_map(args, concurrency=concurrency) as stream:
+        return [span.output async for span in stream]
+```
+
+
+</Accordion>
+
+### retry
+
+```python
+retry(count: int, *args: args, **kwargs: kwargs) -> R
+```
+
+Run the task up to `count` times, returning the output of the first
+successful execution, otherwise raise the most recent exception.
+
+This is a powerful pattern for non-deterministic tasks where multiple
+attempts may be needed to generate a valid output according to the
+task's `assert_scores`. However, it can also be useful as a retry
+mechanism for transient errors.
 
 **Parameters:**
 
 * **`count`**
   (`int`)
-  –The number of times to run the task.
+  –The maximum number of times to run the task.
 * **`args`**
   (`args`, default:
   `()`
@@ -218,30 +366,47 @@ Run the task multiple times and return a list of spans.
 
 **Returns:**
 
-* `TaskSpanList[R]`
-  –A TaskSpanList associated with each task execution.
+* `R`
+  –The output of the first successful and valid task execution.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def map_run(
+async def retry(
     self,
     count: int,
     *args: P.args,
     **kwargs: P.kwargs,
-) -> TaskSpanList[R]:
+) -> R:
     """
-    Run the task multiple times and return a list of spans.
+    Run the task up to `count` times, returning the output of the first
+    successful execution, otherwise raise the most recent exception.
+
+    This is a powerful pattern for non-deterministic tasks where multiple
+    attempts may be needed to generate a valid output according to the
+    task's `assert_scores`. However, it can also be useful as a retry
+    mechanism for transient errors.
 
     Args:
-        count: The number of times to run the task.
+        count: The maximum number of times to run the task.
         args: The arguments to pass to the task.
         kwargs: The keyword arguments to pass to the task.
 
     Returns:
-        A TaskSpanList associated with each task execution.
+        The output of the first successful and valid task execution.
     """
-    spans = await asyncio.gather(*[self.run(*args, **kwargs) for _ in range(count)])
-    return TaskSpanList(spans)
+    last_span = None
+    for _ in range(count):
+        span = await self.run_always(*args, **kwargs)
+        last_span = span
+        if span.exception is None:
+            return span.output
+
+        # If the loop finishes, all attempts failed. Raise the exception
+        # from the final attempt for debugging.
+        last_span.raise_if_failed()
+
+    # Just for type checking - should never be called
+    raise RuntimeError("Generation failed to produce a valid result.")
 ```
 
 
@@ -254,6 +419,49 @@ run(*args: args, **kwargs: kwargs) -> TaskSpan[R]
 ```
 
 Execute the task and return the result as a TaskSpan.
+If the task fails, an exception is raised.
+
+**Parameters:**
+
+* **`args`**
+  (`args`, default:
+  `()`
+  )
+  –The arguments to pass to the task.
+* **`kwargs`**
+  (`kwargs`, default:
+  `{}`
+  )
+  –The keyword arguments to pass to the task
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
+    """
+    Execute the task and return the result as a TaskSpan.
+    If the task fails, an exception is raised.
+
+    Args:
+        args: The arguments to pass to the task.
+        kwargs: The keyword arguments to pass to the task
+    """
+    span = await self.run_always(*args, **kwargs)
+    span.raise_if_failed()
+    return span
+```
+
+
+</Accordion>
+
+### run\_always
+
+```python
+run_always(*args: args, **kwargs: kwargs) -> TaskSpan[R]
+```
+
+Execute the task and return the result as a TaskSpan.
+
+Note, if the task fails, the span will still be returned with the exception set.
 
 **Parameters:**
 
@@ -275,9 +483,11 @@ Execute the task and return the result as a TaskSpan.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
+async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
     """
     Execute the task and return the result as a TaskSpan.
+
+    Note, if the task fails, the span will still be returned with the exception set.
 
     Args:
         args: The arguments to pass to the task.
@@ -286,6 +496,7 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
     Returns:
         The span associated with task execution.
     """
+    from dreadnode import score
 
     run = current_run_span.get()
 
@@ -300,29 +511,37 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
         else self.log_output
     )
 
-    bound_args = self._bind_args(*args, **kwargs)
+    ctx_inputs_to_log = t.cast("AnyDict", kwargs.pop("__dn_ctx_inputs__", {}))
 
-    inputs_to_log = (
-        bound_args
-        if log_inputs is True
-        else {k: v for k, v in bound_args.items() if k in log_inputs}
-        if log_inputs is not False
-        else {}
-    )
-
-    # If log_inputs is inherited, filter out items that don't seem useful
-    # to serialize like `None` or repr fallbacks.
-    if isinstance(self.log_inputs, Inherited):
-        inputs_to_log = {k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)}
-
-    with TaskSpan[R](
+    task_span = TaskSpan[R](
         name=self.name,
         label=self.label,
         attributes=self.attributes,
         tags=self.tags,
         run_id=run.run_id if run else "",
-        tracer=self.tracer,
-    ) as span:
+        tracer=self._tracer,
+        arguments=Arguments(args, kwargs),
+    )
+
+    with contextlib.suppress(Exception), task_span as span:
+        bound_args = self._bind_args(*args, **kwargs)
+        bound_args_dict = dict(bound_args.arguments)
+
+        inputs_to_log = (
+            bound_args_dict
+            if log_inputs is True
+            else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
+            if log_inputs is not False
+            else {}
+        )
+
+        # If log_inputs is inherited, filter out items that don't seem useful
+        # to serialize like `None` or repr fallbacks.
+        if isinstance(self.log_inputs, Inherited):
+            inputs_to_log = {
+                k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)
+            }
+
         if run and self.log_execution_metrics:
             run.log_metric(
                 "count",
@@ -336,36 +555,25 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
             span.log_input(
                 name,
                 value,
-                label=f"{self.label}.input.{name}",
                 attributes={"auto": True},
             )
             for name, value in inputs_to_log.items()
         ]
 
-        try:
-            output = t.cast("R | t.Awaitable[R]", self.func(*args, **kwargs))
-            if inspect.isawaitable(output):
-                output = await output
-        except Exception:
-            if run and self.log_execution_metrics:
-                run.log_metric(
-                    "success_rate",
-                    0,
-                    prefix=f"{self.label}.exec",
-                    mode="avg",
-                    attributes={"auto": True},
-                )
-            raise
-
-        if run and self.log_execution_metrics:
-            run.log_metric(
-                "success_rate",
-                1,
-                prefix=f"{self.label}.exec",
-                mode="avg",
-                attributes={"auto": True},
+        for name, value in ctx_inputs_to_log.items():
+            span.log_input(
+                name,
+                value,
+                attributes={"auto": True, "ctx": True},
             )
+
+        output = t.cast("R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs))
+        if inspect.isawaitable(output):
+            output = await output
+
         span.output = output
+
+        # Log the output
 
         if (
             run
@@ -377,7 +585,6 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
             output_object_hash = span.log_output(
                 "output",
                 output,
-                label=f"{self.label}.output",
                 attributes={"auto": True},
             )
 
@@ -385,9 +592,18 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
             for input_object_hash in input_object_hashes:
                 run.link_objects(output_object_hash, input_object_hash)
 
-        for scorer in self.scorers:
-            metric = await scorer(output)
-            span.log_metric(scorer.name, metric, origin=output)
+        # Score and check assertions
+
+        await score(output, self.scorers, assert_scores=self.assert_scores)
+
+    if run and self.log_execution_metrics:
+        run.log_metric(
+            "success_rate",
+            0 if span.exception else 1,
+            prefix=f"{self.label}.exec",
+            mode="avg",
+            attributes={"auto": True},
+        )
 
     # Trigger a run update whenever a task completes
     if run is not None:
@@ -399,24 +615,19 @@ async def run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
 
 </Accordion>
 
-### top\_n
+### stream\_many
 
 ```python
-top_n(
-    count: int, n: int, *args: args, **kwargs: kwargs
-) -> list[R]
+stream_many(count: int, *args: args, **kwargs: kwargs) -> t.AsyncContextManager[t.AsyncGenerator[TaskSpan[R], None]]
 ```
 
-Run the task multiple times and return the top n outputs.
+Run the task multiple times concurrently and yield each TaskSpan as it completes.
 
 **Parameters:**
 
 * **`count`**
   (`int`)
   –The number of times to run the task.
-* **`n`**
-  (`int`)
-  –The number of top outputs to return.
 * **`args`**
   (`args`, default:
   `()`
@@ -426,36 +637,90 @@ Run the task multiple times and return the top n outputs.
   (`kwargs`, default:
   `{}`
   )
-  –The keyword arguments to pass to the task.
+  –The keyword arguments to pass to the task
 
-**Returns:**
+**Yields:**
 
-* `list[R]`
-  –A list of the top n outputs from the task executions.
+* `AsyncContextManager[AsyncGenerator[TaskSpan[R], None]]`
+  –TaskSpan for each task execution, or an Exception if the task fails.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def top_n(
+def stream_many(
     self,
     count: int,
-    n: int,
     *args: P.args,
     **kwargs: P.kwargs,
-) -> list[R]:
+) -> t.AsyncContextManager[t.AsyncGenerator[TaskSpan[R], None]]:
     """
-    Run the task multiple times and return the top n outputs.
+    Run the task multiple times concurrently and yield each TaskSpan as it completes.
 
     Args:
         count: The number of times to run the task.
-        n: The number of top outputs to return.
         args: The arguments to pass to the task.
-        kwargs: The keyword arguments to pass to the task.
+        kwargs: The keyword arguments to pass to the task
+
+    Yields:
+        TaskSpan for each task execution, or an Exception if the task fails.
+    """
+    tasks = [self.run_always(*args, **kwargs) for _ in range(count)]
+    return concurrent_gen(tasks)
+```
+
+
+</Accordion>
+
+### stream\_map
+
+```python
+stream_map(args: list[Any] | dict[str, Any | list[Any]], *, concurrency: int | None = None) -> t.AsyncContextManager[t.AsyncGenerator[TaskSpan[R], None]]
+```
+
+Runs this task multiple times by mapping over iterable arguments.
+
+**Parameters:**
+
+* **`args`**
+  (`list[Any] | dict[str, Any | list[Any]]`)
+  –Either a flat list of the first positional argument, or a dict
+  where each key is a parameter name and the value is either a single value
+  or a list of values to map over.
+* **`concurrency`**
+  (`int | None`, default:
+  `None`
+  )
+  –The maximum number of tasks to run in parallel.
+  If None, runs with unlimited concurrency.
+
+**Returns:**
+
+* `AsyncContextManager[AsyncGenerator[TaskSpan[R], None]]`
+  –A TaskSpanList containing the results of each execution.
+
+<Accordion title="Source code in dreadnode/task.py" icon="code">
+```python
+def stream_map(
+    self,
+    args: list[t.Any] | dict[str, t.Any | list[t.Any]],
+    *,
+    concurrency: int | None = None,
+) -> t.AsyncContextManager[t.AsyncGenerator[TaskSpan[R], None]]:
+    """
+    Runs this task multiple times by mapping over iterable arguments.
+
+    Args:
+        args: Either a flat list of the first positional argument, or a dict
+              where each key is a parameter name and the value is either a single value
+              or a list of values to map over.
+        concurrency: The maximum number of tasks to run in parallel.
+                     If None, runs with unlimited concurrency.
 
     Returns:
-        A list of the top n outputs from the task executions.
+        A TaskSpanList containing the results of each execution.
     """
-    spans = await self.map_run(count, *args, **kwargs)
-    return spans.top_n(n, as_outputs=True)
+    arguments = self._prepare_map_args(args)
+    tasks = [self.run_always(*args.args, **args.kwargs) for args in arguments]
+    return concurrent_gen(tasks, concurrency)
 ```
 
 
@@ -468,7 +733,7 @@ try_(*args: args, **kwargs: kwargs) -> R | None
 ```
 
 Attempt to run the task and return the result.
-If the task fails, a warning is logged and None is returned.
+If the task fails, None is returned.
 
 **Parameters:**
 
@@ -493,7 +758,7 @@ If the task fails, a warning is logged and None is returned.
 async def try_(self, *args: P.args, **kwargs: P.kwargs) -> R | None:
     """
     Attempt to run the task and return the result.
-    If the task fails, a warning is logged and None is returned.
+    If the task fails, None is returned.
 
     Args:
         args: The arguments to pass to the task.
@@ -502,23 +767,23 @@ async def try_(self, *args: P.args, **kwargs: P.kwargs) -> R | None:
     Returns:
         The output of the task, or None if the task failed.
     """
-    span = await self.try_run(*args, **kwargs)
-    return span.output if span else None
+    span = await self.run_always(*args, **kwargs)
+    with contextlib.suppress(Exception):
+        return span.output
+    return None
 ```
 
 
 </Accordion>
 
-### try\_map
+### try\_many
 
 ```python
-try_map(
-    count: int, *args: args, **kwargs: kwargs
-) -> list[R]
+try_many(count: int, *args: args, **kwargs: kwargs) -> list[R]
 ```
 
 Attempt to run the task multiple times and return a list of outputs.
-If any task fails, a warning is logged and None is returned for that task.
+If any task fails, its result is excluded from the output.
 
 **Parameters:**
 
@@ -543,10 +808,15 @@ If any task fails, a warning is logged and None is returned for that task.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def try_map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R]:
+async def try_many(
+    self,
+    count: int,
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> list[R]:
     """
     Attempt to run the task multiple times and return a list of outputs.
-    If any task fails, a warning is logged and None is returned for that task.
+    If any task fails, its result is excluded from the output.
 
     Args:
         count: The number of times to run the task.
@@ -556,189 +826,65 @@ async def try_map(self, count: int, *args: P.args, **kwargs: P.kwargs) -> list[R
     Returns:
         A list of outputs from each task execution.
     """
-    spans = await self.try_map_run(count, *args, **kwargs)
-    return [span.output for span in spans if span]
+    async with self.stream_many(count, *args, **kwargs) as stream:
+        return [span.output async for span in stream if span.exception is None]
 ```
 
 
 </Accordion>
 
-### try\_map\_run
+### try\_map
 
 ```python
-try_map_run(
-    count: int, *args: args, **kwargs: kwargs
-) -> TaskSpanList[R]
+try_map(args: list[Any] | dict[str, Any | list[Any]], *, concurrency: int | None = None) -> list[R]
 ```
 
-Attempt to run the task multiple times and return a list of spans.
-If any task fails, a warning is logged and None is returned for that task.
-
-**Parameters:**
-
-* **`count`**
-  (`int`)
-  –The number of times to run the task.
-* **`args`**
-  (`args`, default:
-  `()`
-  )
-  –The arguments to pass to the task.
-* **`kwargs`**
-  (`kwargs`, default:
-  `{}`
-  )
-  –The keyword arguments to pass to the task.
-
-**Returns:**
-
-* `TaskSpanList[R]`
-  –A TaskSpanList associated with each task execution.
-
-<Accordion title="Source code in dreadnode/task.py" icon="code">
-```python
-async def try_map_run(
-    self,
-    count: int,
-    *args: P.args,
-    **kwargs: P.kwargs,
-) -> TaskSpanList[R]:
-    """
-    Attempt to run the task multiple times and return a list of spans.
-    If any task fails, a warning is logged and None is returned for that task.
-
-    Args:
-        count: The number of times to run the task.
-        args: The arguments to pass to the task.
-        kwargs: The keyword arguments to pass to the task.
-
-    Returns:
-        A TaskSpanList associated with each task execution.
-    """
-    spans = await asyncio.gather(
-        *[self.try_run(*args, **kwargs) for _ in range(count)],
-    )
-    return TaskSpanList([span for span in spans if span])
-```
-
-
-</Accordion>
-
-### try\_run
-
-```python
-try_run(
-    *args: args, **kwargs: kwargs
-) -> TaskSpan[R] | None
-```
-
-Attempt to run the task and return the result as a TaskSpan.
-If the task fails, a warning is logged and None is returned.
+Attempt to run this task multiple times by mapping over iterable arguments.
+If any task fails, its result is excluded from the output.
 
 **Parameters:**
 
 * **`args`**
-  (`args`, default:
-  `()`
+  (`list[Any] | dict[str, Any | list[Any]]`)
+  –Either a flat list of the first positional argument, or a dict
+  where each key is a parameter name and the value is either a single value
+  or a list of values to map over.
+* **`concurrency`**
+  (`int | None`, default:
+  `None`
   )
-  –The arguments to pass to the task.
-* **`kwargs`**
-  (`kwargs`, default:
-  `{}`
-  )
-  –The keyword arguments to pass to the task.
-
-**Returns:**
-
-* `TaskSpan[R] | None`
-  –The span associated with task execution, or None if the task failed.
-
-<Accordion title="Source code in dreadnode/task.py" icon="code">
-```python
-async def try_run(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R] | None:
-    """
-    Attempt to run the task and return the result as a TaskSpan.
-    If the task fails, a warning is logged and None is returned.
-
-    Args:
-        args: The arguments to pass to the task.
-        kwargs: The keyword arguments to pass to the task.
-
-    Returns:
-        The span associated with task execution, or None if the task failed.
-    """
-    try:
-        return await self.run(*args, **kwargs)
-    except Exception:  # noqa: BLE001
-        warn_at_user_stacklevel(
-            f"Task '{self.name}' ({self.label}) failed:\n{traceback.format_exc()}",
-            TaskFailedWarning,
-        )
-        return None
-```
-
-
-</Accordion>
-
-### try\_top\_n
-
-```python
-try_top_n(
-    count: int, n: int, *args: args, **kwargs: kwargs
-) -> list[R]
-```
-
-Attempt to run the task multiple times and return the top n outputs.
-If any task fails, a warning is logged and None is returned for that task.
-
-**Parameters:**
-
-* **`count`**
-  (`int`)
-  –The number of times to run the task.
-* **`n`**
-  (`int`)
-  –The number of top outputs to return.
-* **`args`**
-  (`args`, default:
-  `()`
-  )
-  –The arguments to pass to the task.
-* **`kwargs`**
-  (`kwargs`, default:
-  `{}`
-  )
-  –The keyword arguments to pass to the task.
+  –The maximum number of tasks to run in parallel.
+  If None, runs with unlimited concurrency.
 
 **Returns:**
 
 * `list[R]`
-  –A list of the top n outputs from the task executions.
+  –A TaskSpanList containing the results of each execution.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def try_top_n(
+async def try_map(
     self,
-    count: int,
-    n: int,
-    *args: P.args,
-    **kwargs: P.kwargs,
+    args: list[t.Any] | dict[str, t.Any | list[t.Any]],
+    *,
+    concurrency: int | None = None,
 ) -> list[R]:
     """
-    Attempt to run the task multiple times and return the top n outputs.
-    If any task fails, a warning is logged and None is returned for that task.
+    Attempt to run this task multiple times by mapping over iterable arguments.
+    If any task fails, its result is excluded from the output.
 
     Args:
-        count: The number of times to run the task.
-        n: The number of top outputs to return.
-        args: The arguments to pass to the task.
-        kwargs: The keyword arguments to pass to the task.
+        args: Either a flat list of the first positional argument, or a dict
+              where each key is a parameter name and the value is either a single value
+              or a list of values to map over.
+        concurrency: The maximum number of tasks to run in parallel.
+                     If None, runs with unlimited concurrency.
 
     Returns:
-        A list of the top n outputs from the task executions.
+        A TaskSpanList containing the results of each execution.
     """
-    spans = await self.try_map_run(count, *args, **kwargs)
-    return spans.top_n(n, as_outputs=True)
+    async with self.stream_map(args, concurrency=concurrency) as stream:
+        return [span.output async for span in stream if span.exception is None]
 ```
 
 
@@ -747,22 +893,7 @@ async def try_top_n(
 ### with\_
 
 ```python
-with_(
-    *,
-    scorers: Sequence[Scorer[R] | ScorerCallable[R]]
-    | None = None,
-    name: str | None = None,
-    tags: Sequence[str] | None = None,
-    label: str | None = None,
-    log_inputs: Sequence[str]
-    | bool
-    | Inherited
-    | None = None,
-    log_output: bool | Inherited | None = None,
-    log_execution_metrics: bool | None = None,
-    append: bool = False,
-    attributes: AnyDict | None = None,
-) -> Task[P, R]
+with_(*, scorers: Sequence[Scorer[R] | ScorerCallable[R]] | None = None, assert_scores: Sequence[str] | Literal[True] | None = None, name: str | None = None, tags: Sequence[str] | None = None, label: str | None = None, log_inputs: Sequence[str] | bool | Inherited | None = None, log_output: bool | Inherited | None = None, log_execution_metrics: bool | None = None, append: bool = False, attributes: AnyDict | None = None) -> Task[P, R]
 ```
 
 Clone a task and modify its attributes.
@@ -774,6 +905,11 @@ Clone a task and modify its attributes.
   `None`
   )
   –A list of new scorers to set or append to the task.
+* **`assert_scores`**
+  (`Sequence[str] | Literal[True] | None`, default:
+  `None`
+  )
+  –A list of new assertion names to set or append to the task.
 * **`name`**
   (`str | None`, default:
   `None`
@@ -826,6 +962,7 @@ def with_(
     self,
     *,
     scorers: t.Sequence[Scorer[R] | ScorerCallable[R]] | None = None,
+    assert_scores: t.Sequence[str] | t.Literal[True] | None = None,
     name: str | None = None,
     tags: t.Sequence[str] | None = None,
     label: str | None = None,
@@ -840,6 +977,7 @@ def with_(
 
     Args:
         scorers: A list of new scorers to set or append to the task.
+        assert_scores: A list of new assertion names to set or append to the task.
         name: The new name for the task.
         tags: A list of new tags to set or append to the task.
         label: The new label for the task.
@@ -855,24 +993,35 @@ def with_(
     task = self.clone()
     task.name = name or task.name
     task.label = label or task.label
-    task.log_inputs = log_inputs if log_inputs is not None else task.log_inputs
-    task.log_output = log_output if log_output is not None else task.log_output
+    task.log_inputs = (
+        task.log_inputs
+        if log_inputs is None
+        else log_inputs
+        if isinstance(log_inputs, (bool | Inherited))
+        else list(log_inputs)
+    )
+    task.log_output = task.log_output if log_output is None else log_output
     task.log_execution_metrics = (
         log_execution_metrics
         if log_execution_metrics is not None
         else task.log_execution_metrics
     )
 
-    new_scorers = [Scorer.from_callable(scorer) for scorer in (scorers or [])]
+    new_scorers = Scorer.fit_like(scorers or [])
     new_tags = list(tags or [])
+    new_assert_scores = (
+        [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
+    )
 
     if append:
         task.scorers.extend(new_scorers)
         task.tags.extend(new_tags)
+        task.assert_scores.extend(new_assert_scores)
         task.attributes.update(attributes or {})
     else:
         task.scorers = new_scorers
         task.tags = new_tags
+        task.assert_scores = new_assert_scores
         task.attributes = attributes or {}
 
     return task
@@ -880,6 +1029,11 @@ def with_(
 
 
 </Accordion>
+
+TaskFailedWarning
+-----------------
+
+Warning related to task execution failures.
 
 TaskSpanList
 ------------
@@ -934,30 +1088,15 @@ def sorted(self, *, reverse: bool = True) -> "TaskSpanList[R]":
 ### top\_n
 
 ```python
-top_n(
-    n: int,
-    *,
-    as_outputs: Literal[False] = False,
-    reverse: bool = True,
-) -> TaskSpanList[R]
+top_n(n: int, *, as_outputs: Literal[False] = False, reverse: bool = True) -> TaskSpanList[R]
 ```
 
 ```python
-top_n(
-    n: int,
-    *,
-    as_outputs: Literal[True],
-    reverse: bool = True,
-) -> list[R]
+top_n(n: int, *, as_outputs: Literal[True], reverse: bool = True) -> list[R]
 ```
 
 ```python
-top_n(
-    n: int,
-    *,
-    as_outputs: bool = False,
-    reverse: bool = True,
-) -> TaskSpanList[R] | list[R]
+top_n(n: int, *, as_outputs: bool = False, reverse: bool = True) -> TaskSpanList[R] | list[R]
 ```
 
 Take the top n spans from this list, sorted by their average metric value.

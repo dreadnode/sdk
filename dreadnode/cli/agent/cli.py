@@ -1,15 +1,20 @@
 import contextlib
+import itertools
 import typing as t
+from inspect import isawaitable
 from pathlib import Path
 
 import cyclopts
 import rich
 
-from dreadnode.agent.configurable import generate_config_type_for_agent, hydrate_agent
-from dreadnode.cli.agent.discover import discover_agents
-from dreadnode.cli.agent.format import format_agent, format_agents_table
+from dreadnode import log_input
+from dreadnode.agent import Agent
+from dreadnode.agent.format import format_agent, format_agents_table
+from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
+from dreadnode.meta import get_config_model, hydrate
+from dreadnode.meta.introspect import flatten_model
 
-cli = cyclopts.App("agent", help="Run and manage agents.", help_flags=[])
+cli = cyclopts.App("agent", help="Run and manage agents.")
 
 
 @cli.command(name=["list", "ls", "show"])
@@ -28,23 +33,27 @@ def show(
 
     If no file is specified, searches for main.py, agent.py, or app.py.
     """
-    discovery = discover_agents(file)
-    if not discovery.agents:
-        rich.print(f"No agents found in '[bold]{discovery.filepath}[/bold]'.")
+    discovered = discover(Agent, file)
+    if not discovered:
+        path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
+        rich.print(f"No agents found in {path_hint}")
         return
 
-    rich.print(f"Agents in [bold]{discovery.filepath}[/bold]:\n")
-    if verbose:
-        for agent in discovery.agents.values():
-            rich.print(format_agent(agent))
-    else:
-        rich.print(format_agents_table(list(discovery.agents.values())))
+    grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
+
+    for path, discovered_agents in grouped_by_path:
+        agents = [agent.obj for agent in discovered_agents]
+        rich.print(f"Agents in [bold]{path}[/bold]:\n")
+        if verbose:
+            for agent in agents:
+                rich.print(format_agent(agent))
+        else:
+            rich.print(format_agents_table(agents))
 
 
-@cli.command(help_flags=[])
-async def run(
+@cli.command()
+async def run(  # noqa: PLR0912, PLR0915
     agent: str,
-    input: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
 ) -> None:
@@ -56,9 +65,10 @@ async def run(
     - If the agent is specified with a file, it will run that specific agent in the given file ('my_agents.py:web_enum').\n
     - If the file is not specified, it defaults to searching for main.py, agent.py, or app.py.
 
+    **To get detailed help for a specific agent, use `dreadnode agent run <agent> help`.**
+
     Args:
         agent: The agent to run, e.g., 'my_agents.py:basic' or 'basic'.
-        input: The input to provide to the agent.
         config: Optional path to a TOML/YAML/JSON configuration file for the agent.
     """
 
@@ -72,47 +82,67 @@ async def run(
             file_path = agent_as_path
             agent_name = agent.split(":", 1)[-1] if ":" in agent else None
 
-    discovered = discover_agents(file_path)
-    if not discovered.agents:
-        rich.print(f":exclamation: No agents found in '{file_path}'.")
+    path_hint = file_path or ", ".join(DEFAULT_SEARCH_PATHS)
+
+    discovered = discover(Agent, file_path)
+    if not discovered:
+        rich.print(f":exclamation: No agents found in '{path_hint}'.")
         return
+
+    agents_by_name = {d.name: d.obj for d in discovered}
 
     if agent_name is None:
-        if len(discovered.agents) > 1:
+        if len(discovered) > 1:
             rich.print(
-                f"[yellow]Warning:[/yellow] Multiple agents found. Defaulting to the first one: '{next(iter(discovered.agents.keys()))}'."
+                f"[yellow]Warning:[/yellow] Multiple agents found. Defaulting to the first one: '{next(iter(agents_by_name.keys()))}'."
             )
-        agent_name = next(iter(discovered.agents.keys()))
+        agent_name = next(iter(agents_by_name.keys()))
 
-    if agent_name not in discovered.agents:
-        rich.print(f":exclamation: Agent '{agent_name}' not found in '{file_path}'.")
-        rich.print(f"Available agents are: {', '.join(discovered.agents.keys())}")
+    if agent_name not in agents_by_name:
+        rich.print(f":exclamation: Agent '{agent_name}' not found in '{path_hint}'.")
+        rich.print(f"Available agents are: {', '.join(agents_by_name.keys())}")
         return
 
-    agent_blueprint = discovered.agents[agent_name]
+    agent_blueprint = agents_by_name[agent_name]
 
-    config_model = generate_config_type_for_agent(agent_blueprint)
-    config_parameter = cyclopts.Parameter(name="*", group=f"Agent '{agent_name}' Config")(
-        config_model
-    )
+    config_model = get_config_model(agent_blueprint)
+    config_parameter = cyclopts.Parameter(name="*", group="Agent Config")(config_model)
 
     config_default = None
     with contextlib.suppress(Exception):
         config_default = config_model()
         config_parameter = config_parameter | None  # type: ignore [assignment]
 
-    async def agent_cli(*, config: t.Any = config_default) -> None:
-        agent = hydrate_agent(agent_blueprint, config)
-        rich.print(f"Running agent: [bold]{agent.name}[/bold]")
-        rich.print(agent)
-        async with agent.stream(input) as stream:
-            async for event in stream:
-                rich.print(event)
-                rich.print("---")
+    async def agent_cli(
+        input: t.Annotated[str, cyclopts.Parameter(help="Input to the agent")],
+        *,
+        config: t.Any = config_default,
+    ) -> None:
+        from dreadnode import run as run_span
+
+        flat_config = {k: v for k, v in flatten_model(config).items() if v is not None}
+        agent = hydrate(agent_blueprint, config)
+
+        rich.print(f"Running agent: [bold]{agent.name}[/bold] with config:")
+        for key, value in flat_config.items():
+            rich.print(f" |- {key}: {value}")
+        rich.print()
+
+        with run_span(name_prefix=f"agent-{agent.name}", params=flat_config, tags=agent.tags):
+            log_input("user_input", input)
+            async with agent.stream(input) as stream:
+                async for event in stream:
+                    rich.print(event)
 
     agent_cli.__annotations__["config"] = config_parameter
 
-    agent_app = cyclopts.App(help=f"Run the '{agent}' agent.", help_on_error=True)
+    agent_app = cyclopts.App(
+        name=agent_name,
+        help=f"Run the '{agent_name}' agent.",
+        help_on_error=True,
+        help_flags=("help"),
+        version_flags=(),
+    )
     agent_app.default(agent_cli)
 
     if config:
@@ -121,16 +151,17 @@ async def run(
             return
 
         if config.suffix in {".toml"}:
-            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # noqa: SLF001
-        elif config.suffix in {".yaml", ".yml"}:
             agent_app._config = cyclopts.config.Toml(config, use_commands_as_keys=False)  # noqa: SLF001
+        elif config.suffix in {".yaml", ".yml"}:
+            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # noqa: SLF001
         elif config.suffix in {".json"}:
             agent_app._config = cyclopts.config.Json(config, use_commands_as_keys=False)  # noqa: SLF001
         else:
             rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
             return
 
-    # print(tokens)
-    command, bound, unbound = agent_app.parse_args(tokens)
-    # print(bound, unbound)
-    await command(*bound.args, **bound.kwargs)
+    command, bound, _ = agent_app.parse_args(tokens)
+
+    result = command(*bound.args, **bound.kwargs)
+    if isawaitable(result):
+        await result

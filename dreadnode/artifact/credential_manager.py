@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, TypeVar
 
-from botocore.exceptions import ClientError  # type: ignore  # noqa: PGH003
+from botocore.exceptions import ClientError
 from loguru import logger
 from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
@@ -83,7 +83,7 @@ class CredentialManager:
             self._filesystem = new_filesystem
             self._prefix = f"{new_credentials.bucket}/{new_credentials.prefix}/"
 
-            logger.info("Storage credentials refreshed, valid until %s", self._credentials_expiry)
+            logger.info(f"Storage credentials refreshed, valid until {self._credentials_expiry}")
 
         except Exception:
             logger.exception("Failed to refresh storage credentials")

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from dreadnode.credential_manager import CredentialManager
+from dreadnode.artifact.credential_manager import CredentialManager
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
 

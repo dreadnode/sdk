@@ -1,11 +1,11 @@
 import contextlib
 import typing as t
 
-from dreadnode.agent.configurable import configurable
-from dreadnode.agent.events import AgentError, Event, GenerationEnd, StepStart
+from dreadnode.agent.events import AgentError, AgentEvent, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
 from dreadnode.agent.types import Generator, Message
+from dreadnode.meta import Config, component
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.hooks.base import Hook
@@ -20,10 +20,10 @@ CONTEXT_LENGTH_ERROR_PATTERNS = [
 ]
 
 
-def _is_context_length_error(error: Exception) -> bool:
+def _is_context_length_error(error: BaseException) -> bool:
     """Checks if an exception is likely due to exceeding the context window."""
     with contextlib.suppress(ImportError):
-        from litellm.exceptions import ContextWindowExceededError  # noqa: PLC0415
+        from litellm.exceptions import ContextWindowExceededError
 
         if isinstance(error, ContextWindowExceededError):
             return True
@@ -32,7 +32,7 @@ def _is_context_length_error(error: Exception) -> bool:
     return any(pattern in error_str for pattern in CONTEXT_LENGTH_ERROR_PATTERNS)
 
 
-def _get_last_input_tokens(event: Event) -> int:
+def _get_last_input_tokens(event: AgentEvent) -> int:
     """
     Finds the input token count from the most recent GenerationEnd event in the thread.
     This represents the size of the context for the last successful model call.
@@ -43,11 +43,10 @@ def _get_last_input_tokens(event: Event) -> int:
     return last_generation_event.usage.input_tokens if last_generation_event.usage else 0
 
 
-@configurable(["max_tokens"])
+@component
 def summarize_when_long(
-    model: "str | Generator | None" = None,
-    *,
-    max_tokens: int | None = None,
+    model: str | Generator | None = None,
+    max_tokens: int = 100_000,
     min_messages_to_keep: int = 5,
 ) -> "Hook":
     """
@@ -69,7 +68,23 @@ def summarize_when_long(
     if min_messages_to_keep < 2:  # noqa: PLR2004
         raise ValueError("min_messages_to_keep must be at least 2.")
 
-    async def summarize_when_long(event: Event) -> Reaction | None:  # noqa: PLR0912
+    @component
+    async def summarize_when_long(  # noqa: PLR0912
+        event: AgentEvent,
+        *,
+        model: "str | Generator | None" = Config(  # noqa: B008
+            model,
+            help="Model to use for summarization - fallback to the agent model",
+            expose_as=str | None,
+        ),
+        max_tokens: int | None = Config(
+            max_tokens,
+            help="Maximum number of tokens observed before summarization is triggered",
+        ),
+        min_messages_to_keep: int = Config(
+            5, help="Minimum number of messages to retain after summarization"
+        ),
+    ) -> Reaction | None:
         should_summarize = False
 
         # Proactive check using the last known token count

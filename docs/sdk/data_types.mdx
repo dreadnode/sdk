@@ -10,12 +10,7 @@ Audio
 -----
 
 ```python
-Audio(
-    data: AudioDataType,
-    sample_rate: int | None = None,
-    caption: str | None = None,
-    format: str | None = None,
-)
+Audio(data: AudioDataType, sample_rate: int | None = None, caption: str | None = None, format: str | None = None)
 ```
 
 Audio media type for Dreadnode logging.
@@ -140,12 +135,7 @@ Image
 -----
 
 ```python
-Image(
-    data: ImageDataOrPathType,
-    mode: str | None = None,
-    caption: str | None = None,
-    format: str | None = None,
-)
+Image(data: ImageDataOrPathType, mode: str | None = None, caption: str | None = None, format: str | None = None)
 ```
 
 Image media type for Dreadnode logging.
@@ -274,11 +264,7 @@ Object3D
 --------
 
 ```python
-Object3D(
-    data: Object3DDataType,
-    caption: str | None = None,
-    format: str | None = None,
-)
+Object3D(data: Object3DDataType, caption: str | None = None, format: str | None = None)
 ```
 
 3D object media type for Dreadnode logging.
@@ -370,13 +356,7 @@ Table
 -----
 
 ```python
-Table(
-    data: TableDataType,
-    caption: str | None = None,
-    format: str | None = None,
-    *,
-    index: bool = False,
-)
+Table(data: TableDataType, caption: str | None = None, format: str | None = None, *, index: bool = False)
 ```
 
 Table data type for Dreadnode logging.
@@ -412,7 +392,7 @@ Initialize a Table object.
   (`bool`, default:
   `False`
   )
-  –Whether to include index in the output
+  –Include index in the output
 
 <Accordion title="Source code in dreadnode/data_types/table.py" icon="code">
 ```python
@@ -435,7 +415,7 @@ def __init__(
             - A NumPy array
         caption: Optional caption for the table
         format: Optional format to use when saving (csv, parquet, json)
-        index: Whether to include index in the output
+        index: Include index in the output
     """
     self._data = data
     self._caption = caption
@@ -525,14 +505,7 @@ Video
 -----
 
 ```python
-Video(
-    data: VideoDataType,
-    fps: float | None = None,
-    caption: str | None = None,
-    format: str | None = None,
-    width: int | None = None,
-    height: int | None = None,
-)
+Video(data: VideoDataType, fps: float | None = None, caption: str | None = None, format: str | None = None, width: int | None = None, height: int | None = None)
 ```
 
 Video media type for Dreadnode logging.
@@ -646,7 +619,9 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     import numpy as np  # type: ignore[import,unused-ignore]
 
     try:
-        from moviepy.video.VideoClip import VideoClip  # type: ignore[import,unused-ignore]
+        from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]
+            VideoClip,
+        )
     except ImportError:
         VideoClip = None  # noqa: N806
 
@@ -660,7 +635,7 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
         return self._process_moviepy_clip()
     if VideoClip is None and hasattr(self._data, "write_videofile"):
         raise ImportError(
-            "MoviePy VideoClip detected but moviepy not installed. "
+            "MoviePy VideoClip detected, but MoviePy is not installed. "
             "Install with: pip install dreadnode[multimodal]"
         )
     raise TypeError(f"Unsupported video data type: {type(self._data)}")

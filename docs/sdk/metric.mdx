@@ -6,44 +6,51 @@ title: dreadnode.metric
 ::: dreadnode.metric
 */}
 
+MetricAggMode
+-------------
+
+```python
+MetricAggMode = Literal['avg', 'sum', 'min', 'max', 'count']
+```
+
+Aggregation modes for metrics:"
+- "avg": Average of the values.
+- "sum": Sum of the values.
+- "min": Minimum value.
+- "max": Maximum value.
+- "count": Count of the values.
+
 MetricsDict
 -----------
 
 ```python
-MetricsDict = dict[str, list[Metric]]
+MetricsDict = dict[str, 'list[Metric]']
 ```
 
 A dictionary of metrics, where the key is the metric name and the value is a list of metrics with that name.
 
-ScorerResult
-------------
+MetricsLike
+-----------
 
 ```python
-ScorerResult = float | int | bool | Metric
+MetricsLike = dict[str, float | bool] | list['MetricDict']
 ```
 
-The result of a scorer function, which can be a numeric value or a Metric object.
+Either a dictionary of metric names to values (float or bool) or a list of metric dictionaries.
+
+Examples:
+- `{"accuracy": 0.95, "loss": 0.05}`
+- `[{"name": "accuracy", "value": 0.95}, {"name": "loss", "value": 0.05}]`
 
 Metric
 ------
-
-```python
-Metric(
-    value: float,
-    step: int = 0,
-    timestamp: datetime = lambda: datetime.now(
-        timezone.utc
-    )(),
-    attributes: JsonDict = dict(),
-)
-```
 
 Any reported value regarding the state of a run, task, and optionally object (input/output).
 
 ### attributes
 
 ```python
-attributes: JsonDict = field(default_factory=dict)
+attributes: JsonDict = Field(default_factory=dict)
 ```
 
 A dictionary of attributes to attach to the metric.
@@ -59,9 +66,7 @@ An step value to indicate when this metric was reported.
 ### timestamp
 
 ```python
-timestamp: datetime = field(
-    default_factory=lambda: now(utc)
-)
+timestamp: datetime = Field(default_factory=lambda: now(utc))
 ```
 
 The timestamp when the metric was reported.
@@ -77,9 +82,7 @@ The value of the metric, e.g. 0.5, 1.0, 2.0, etc.
 ### apply\_mode
 
 ```python
-apply_mode(
-    mode: MetricAggMode, others: list[Metric]
-) -> Metric
+apply_mode(mode: MetricAggMode, others: list[Metric]) -> Metric
 ```
 
 Apply an aggregation mode to the metric.
@@ -136,9 +139,7 @@ def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
         self.value = len(others) + 1
     elif mode == "avg" and prior_values:
         current_avg = prior_values[-1]
-        self.value = current_avg + (self.value - current_avg) / (
-            len(prior_values) + 1
-        )
+        self.value = current_avg + (self.value - current_avg) / (len(prior_values) + 1)
 
     return self
 ```
@@ -149,11 +150,7 @@ def apply_mode(self, mode: MetricAggMode, others: "list[Metric]") -> "Metric":
 ### from\_many
 
 ```python
-from_many(
-    values: Sequence[tuple[str, float, float]],
-    step: int = 0,
-    **attributes: JsonValue,
-) -> Metric
+from_many(values: Sequence[tuple[str, float, float]], step: int = 0, **attributes: JsonValue) -> Metric
 ```
 
 Create a composite metric from individual values and weights.
@@ -229,272 +226,7 @@ MetricDict
 
 Dictionary representation of a metric for easier APIs
 
-Scorer
-------
+MetricWarning
+-------------
 
-```python
-Scorer(
-    name: str,
-    tags: Sequence[str],
-    attributes: dict[str, Any],
-    func: ScorerCallable[T],
-    step: int = 0,
-    auto_increment_step: bool = False,
-    catch: bool = False,
-)
-```
-
-### attributes
-
-```python
-attributes: dict[str, Any]
-```
-
-A dictionary of attributes to attach to the metric.
-
-### auto\_increment\_step
-
-```python
-auto_increment_step: bool = False
-```
-
-Whether to automatically increment the step for each time this scorer is called.
-
-### catch
-
-```python
-catch: bool = False
-```
-
-Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-
-### func
-
-```python
-func: ScorerCallable[T]
-```
-
-The function to call to get the metric.
-
-### name
-
-```python
-name: str
-```
-
-The name of the scorer, used for reporting metrics.
-
-### step
-
-```python
-step: int = 0
-```
-
-The step value to attach to metrics produced by this Scorer.
-
-### tags
-
-```python
-tags: Sequence[str]
-```
-
-A list of tags to attach to the metric.
-
-### \_\_call\_\_
-
-```python
-__call__(object: T) -> Metric
-```
-
-Execute the scorer and return the metric.
-
-Any output value will be converted to a Metric object.
-
-**Parameters:**
-
-* **`object`**
-  (`T`)
-  –The object to score.
-
-**Returns:**
-
-* `Metric`
-  –A Metric object.
-
-<Accordion title="Source code in dreadnode/metric.py" icon="code">
-```python
-async def __call__(self, object: T) -> Metric:
-    """
-    Execute the scorer and return the metric.
-
-    Any output value will be converted to a Metric object.
-
-    Args:
-        object: The object to score.
-
-    Returns:
-        A Metric object.
-    """
-    try:
-        metric = self.func(object)
-        if inspect.isawaitable(metric):
-            metric = await metric
-    except Exception as exc:
-        if not self.catch:
-            raise
-
-        warn_at_user_stacklevel(
-            f"Error executing scorer {self.name!r} for object {object!r}: {exc}",
-            MetricWarning,
-        )
-        metric = Metric(value=0.0, step=self.step, attributes={"error": str(exc)})
-
-    if not isinstance(metric, Metric):
-        metric = Metric(
-            float(metric),
-            step=self.step,
-            timestamp=datetime.now(timezone.utc),
-            attributes=self.attributes,
-        )
-
-    if self.auto_increment_step:
-        self.step += 1
-
-    return metric
-```
-
-
-</Accordion>
-
-### clone
-
-```python
-clone() -> Scorer[T]
-```
-
-Clone the scorer.
-
-**Returns:**
-
-* `Scorer[T]`
-  –A new Scorer.
-
-<Accordion title="Source code in dreadnode/metric.py" icon="code">
-```python
-def clone(self) -> "Scorer[T]":
-    """
-    Clone the scorer.
-
-    Returns:
-        A new Scorer.
-    """
-    return Scorer(
-        name=self.name,
-        tags=self.tags,
-        attributes=self.attributes,
-        func=self.func,
-        step=self.step,
-        auto_increment_step=self.auto_increment_step,
-        catch=self.catch,
-    )
-```
-
-
-</Accordion>
-
-### from\_callable
-
-```python
-from_callable(
-    func: ScorerCallable[T] | Scorer[T],
-    *,
-    name: str | None = None,
-    tags: Sequence[str] | None = None,
-    catch: bool = False,
-    **attributes: Any,
-) -> Scorer[T]
-```
-
-Create a scorer from a callable function.
-
-**Parameters:**
-
-* **`func`**
-  (`ScorerCallable[T] | Scorer[T]`)
-  –The function to call to get the metric.
-* **`name`**
-  (`str | None`, default:
-  `None`
-  )
-  –The name of the scorer, used for reporting metrics.
-* **`tags`**
-  (`Sequence[str] | None`, default:
-  `None`
-  )
-  –A list of tags to attach to the metric.
-* **`catch`**
-  (`bool`, default:
-  `False`
-  )
-  –Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-* **`**attributes`**
-  (`Any`, default:
-  `{}`
-  )
-  –A dictionary of attributes to attach to the metric.
-
-**Returns:**
-
-* `Scorer[T]`
-  –A Scorer object.
-
-<Accordion title="Source code in dreadnode/metric.py" icon="code">
-```python
-@classmethod
-def from_callable(
-    cls,
-    func: "ScorerCallable[T] | Scorer[T]",
-    *,
-    name: str | None = None,
-    tags: t.Sequence[str] | None = None,
-    catch: bool = False,
-    **attributes: t.Any,
-) -> "Scorer[T]":
-    """
-    Create a scorer from a callable function.
-
-    Args:
-        func: The function to call to get the metric.
-        name: The name of the scorer, used for reporting metrics.
-        tags: A list of tags to attach to the metric.
-        catch: Whether to catch exceptions in the scorer function and return a 0 Metric with error information.
-        **attributes: A dictionary of attributes to attach to the metric.
-
-    Returns:
-        A Scorer object.
-    """
-    if isinstance(func, Scorer):
-        if name is not None or attributes is not None:
-            func = func.clone()
-            func.name = name or func.name
-            func.attributes.update(attributes or {})
-        return func
-
-    func = inspect.unwrap(func)
-    func_name = getattr(
-        func,
-        "__qualname__",
-        getattr(func, "__name__", safe_repr(func)),
-    )
-    name = name or func_name
-    return cls(
-        name=name,
-        tags=tags or [],
-        attributes=attributes or {},
-        func=func,
-        catch=catch,
-    )
-```
-
-
-</Accordion>
+Warning for metrics-related issues

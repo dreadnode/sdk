@@ -20,8 +20,8 @@ from dreadnode.cli.github import (
 )
 from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
-from dreadnode.config import ServerConfig, UserConfig
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
+from dreadnode.user_config import ServerConfig, UserConfig
 
 cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
 
@@ -204,9 +204,9 @@ def clone(
 
 @cli.command(help="Show versions and exit.", group="Meta")
 def version() -> None:
-    import importlib.metadata  # noqa: PLC0415
-    import platform  # noqa: PLC0415
-    import sys  # noqa: PLC0415
+    import importlib.metadata
+    import platform
+    import sys
 
     version = importlib.metadata.version("dreadnode")
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"

@@ -1,111 +1,145 @@
-from abc import ABC, abstractmethod
+import inspect
+import re
+import typing as t
 from collections.abc import Sequence
 
-from pydantic import BaseModel, Field
+from dreadnode.agent.events import AgentEvent, GenerationEnd, ToolEnd
+from dreadnode.meta import Config
+from dreadnode.util import get_callable_name
 
-from dreadnode.agent.events import Event, GenerationEnd, ToolEnd
 
-
-class StopCondition(ABC, BaseModel):
+class StopCondition:
     """
-    A Pydantic-serializable condition that determines when an agent's run should stop.
+    A condition that determines when an agent's run should stop, defined by a callable.
     Conditions can be combined using & (AND) and | (OR).
     """
 
-    @abstractmethod
-    def __call__(self, events: Sequence[Event]) -> bool:
+    def __init__(self, func: t.Callable[[Sequence[AgentEvent]], bool], name: str | None = None):
         """
-        Checks if the termination condition has been met against the history of a run.
+        Initializes the StopCondition.
 
         Args:
-            events: A sequence of all events that have occurred in the current run.
-
-        Returns:
-            True if the run should terminate, False otherwise.
+            func: A callable that takes a sequence of events and returns True if the run should stop.
+            name: An optional name for the condition for representation.
         """
 
-    def __and__(self, other: "StopCondition") -> "AndStopCondition":
+        if name is None:
+            unwrapped = inspect.unwrap(func)
+            name = get_callable_name(unwrapped, short=True)
+
+        self.func = func
+        """The function that defines the stop condition."""
+        self.name = name
+        """A human-readable name for the condition."""
+
+    def __repr__(self) -> str:
+        return f"StopCondition(name='{self.name}')"
+
+    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+        return self.func(events)
+
+    def __and__(self, other: "StopCondition") -> "StopCondition":
         """Combines this condition with another using AND logic."""
-        return AndStopCondition(conditions=[self, other])
+        return and_(self, other)
 
-    def __or__(self, other: "StopCondition") -> "OrStopCondition":
+    def __or__(self, other: "StopCondition") -> "StopCondition":
         """Combines this condition with another using OR logic."""
-        return OrStopCondition(conditions=[self, other])
+        return or_(self, other)
 
 
-class AndStopCondition(StopCondition):
-    """Represents a logical AND of multiple conditions. Created via the & operator."""
+def and_(
+    condition: StopCondition, other: StopCondition, *, name: str | None = None
+) -> StopCondition:
+    """Perform a logical AND with two conditions."""
 
-    conditions: list[StopCondition]
+    def stop(events: Sequence[AgentEvent]) -> bool:
+        return condition(events) and other(events)
 
-    def __call__(self, events: Sequence[Event]) -> bool:
-        return all(cond(events) for cond in self.conditions)
-
-    def __repr__(self) -> str:
-        return f"({' & '.join(repr(cond) for cond in self.conditions)})"
-
-
-class OrStopCondition(StopCondition):
-    """Represents a logical OR of multiple conditions. Created via the | operator."""
-
-    conditions: list[StopCondition]
-
-    def __call__(self, events: Sequence[Event]) -> bool:
-        return any(cond(events) for cond in self.conditions)
-
-    def __repr__(self) -> str:
-        return f"({' | '.join(repr(cond) for cond in self.conditions)})"
+    return StopCondition(stop, name=name or f"({condition.name}_and_{other.name})")
 
 
-# --- Built-in, Concrete Conditions ---
+def or_(
+    condition: StopCondition, other: StopCondition, *, name: str | None = None
+) -> StopCondition:
+    """Perform a logical OR with two conditions."""
+
+    def stop(events: Sequence[AgentEvent]) -> bool:
+        return condition(events) or other(events)
+
+    return StopCondition(stop, name=name or f"({condition.name}_or_{other.name})")
 
 
-class StopNever(StopCondition):
-    """A condition that never stops the agent. Useful for forcing stalling behavior or specific tools for exit conditions."""
+def stop_never() -> StopCondition:
+    """A condition that never stops the agent."""
 
-    def __call__(self, _: Sequence[Event]) -> bool:
+    def stop(_: Sequence[AgentEvent]) -> bool:
         return False
 
+    return StopCondition(stop, name="stop_never")
 
-class StopAfterSteps(StopCondition):
+
+def stop_after_steps(max_steps: int) -> StopCondition:
     """Terminates after a maximum number of LLM calls (steps)."""
 
-    max_steps: int = Field(description="The maximum number of LLM generation steps to allow.")
-
-    def __call__(self, events: Sequence[Event]) -> bool:
+    def stop(events: Sequence[AgentEvent], *, max_steps: int = Config(max_steps)) -> bool:
         step_count = sum(1 for event in events if isinstance(event, GenerationEnd))
-        return step_count >= self.max_steps
+        return step_count >= max_steps
+
+    return StopCondition(stop, name="stop_after_steps")
 
 
-class StopOnToolUse(StopCondition):
+def stop_on_tool_use(tool_name: str) -> StopCondition:
     """Terminates after a specific tool has been successfully used."""
 
-    tool_name: str = Field(description="The name of the tool that should trigger termination.")
+    def stop(events: Sequence[AgentEvent]) -> bool:
+        return any(isinstance(e, ToolEnd) and e.tool_call.name == tool_name for e in events)
 
-    def __call__(self, events: Sequence[Event]) -> bool:
-        tool_events = [
-            e for e in events if isinstance(e, ToolEnd) and e.tool_call.name == self.tool_name
-        ]
-        return any(event.tool_call.name == self.tool_name for event in tool_events)
+    return StopCondition(stop, name="stop_on_tool_use")
 
 
-class StopOnText(StopCondition):
-    """Terminates if a specific string is mentioned in the last generated message."""
+def stop_on_text(
+    pattern: str | re.Pattern[str],
+    *,
+    case_sensitive: bool = False,
+    exact: bool = False,
+    regex: bool = False,
+) -> StopCondition:
+    """
+    Terminates if a specific string or pattern is mentioned in the last generated message.
 
-    text: str = Field(description="The text string to look for in the agent's final response.")
-    case_sensitive: bool = Field(
-        default=False, description="Whether the text match should be case-sensitive."
-    )
+    Args:
+        pattern: The string or compiled regex pattern to search for.
+        case_sensitive: If True, the match is case-sensitive. Defaults to False.
+        exact: If True, performs an exact string match instead of containment. Defaults to False.
+        regex: If True, treats the `pattern` string as a regular expression. Defaults to False.
+    """
 
-    def __call__(self, events: Sequence[Event]) -> bool:
+    def stop(events: Sequence[AgentEvent]) -> bool:
         if not events:
             return False
 
-        if last_generation := next(
-            (e for e in reversed(events) if isinstance(e, GenerationEnd)), None
-        ):
-            if self.case_sensitive:
-                return self.text in last_generation.message.content
-            return self.text.lower() in last_generation.message.content.lower()
+        last_generation = next((e for e in reversed(events) if isinstance(e, GenerationEnd)), None)
+        if not last_generation:
+            return False
 
-        return False
+        text = last_generation.message.content
+        found = False
+
+        if isinstance(pattern, re.Pattern) or regex:
+            compiled = pattern
+            if isinstance(pattern, str):
+                flags = 0 if case_sensitive else re.IGNORECASE
+                compiled = re.compile(pattern, flags)
+
+            if isinstance(compiled, re.Pattern):  # Make type checker happy
+                found = bool(compiled.search(text))
+        elif exact:
+            found = text == pattern if case_sensitive else text.lower() == str(pattern).lower()
+        else:  # Default to substring containment
+            search_text = text if case_sensitive else text.lower()
+            search_pattern = str(pattern) if case_sensitive else str(pattern).lower()
+            found = search_pattern in search_text
+
+        return found
+
+    return StopCondition(stop, name="stop_on_text")

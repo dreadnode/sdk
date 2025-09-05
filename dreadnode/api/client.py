@@ -1,11 +1,14 @@
 import io
 import json
+import shutil
 import time
 import typing as t
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
+import pandas as pd
 from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
@@ -14,6 +17,7 @@ from dreadnode.api.models import (
     AccessRefreshTokenResponse,
     ContainerRegistryCredentials,
     DeviceCodeResponse,
+    ExportFormat,
     GithubTokenResponse,
     MetricAggregationType,
     Project,
@@ -45,9 +49,6 @@ from dreadnode.constants import (
 from dreadnode.version import VERSION
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
-
-if t.TYPE_CHECKING:
-    import pandas as pd
 
 
 class ApiClient:
@@ -373,42 +374,7 @@ class ApiClient:
         trace = sorted(trace, key=lambda x: x.timestamp)
         return trace if format == "flat" else convert_flat_trace_to_tree(trace)
 
-    # Data exports
-
-    def export_runs(
-        self,
-        project: str,
-        *,
-        filter: str | None = None,
-        # format: ExportFormat = "parquet",
-        status: StatusFilter = "completed",
-        aggregations: list[MetricAggregationType] | None = None,
-    ) -> "pd.DataFrame":
-        """
-        Exports run data for a specific project.
-
-        Args:
-            project: The project identifier.
-            filter: A filter to apply to the exported data. Defaults to None.
-            status: The status of runs to include. Defaults to "completed".
-            aggregations: A list of aggregation types to apply. Defaults to None.
-
-        Returns:
-            A DataFrame containing the exported run data.
-        """
-        import pandas as pd  # noqa: PLC0415
-
-        response = self.request(
-            "GET",
-            f"/strikes/projects/{project!s}/export",
-            params={
-                "format": "parquet",
-                "status": status,
-                **({"filter": filter} if filter else {}),
-                **({"aggregations": aggregations} if aggregations else {}),
-            },
-        )
-        return pd.read_parquet(io.BytesIO(response.content))
+    # Data Exports
 
     def export_metrics(
         self,
@@ -433,7 +399,6 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported metric data.
         """
-        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",
@@ -447,6 +412,214 @@ class ApiClient:
             },
         )
         return pd.read_parquet(io.BytesIO(response.content))
+
+    def export_runs(
+        self,
+        project: str,
+        *,
+        filter: str | None = None,
+        status: StatusFilter = "completed",
+        aggregations: list[MetricAggregationType] | None = None,
+        format: ExportFormat = "parquet",
+        base_dir: str | None = None,
+    ) -> str:
+        """
+        Export runs using pagination - always writes to disk.
+
+        Args:
+            project: The project identifier
+            filter: A filter to apply to the exported data
+            status: The status of runs to include
+            aggregations: A list of aggregation types to apply
+            format: Output format - "parquet", "csv", "json", "jsonl"
+            base_dir: Base directory for export (defaults to "./strikes-data")
+
+        Returns:
+            str: Path to the export directory
+        """
+
+        logger.info(f"Starting paginated export for project '{project}', format='{format}'")
+
+        page = 1
+        first_response = self.request(
+            "GET",
+            f"/strikes/projects/{project!s}/export/paginated",
+            params={
+                "page": page,
+                "status": status,
+                **({"filter": filter} if filter else {}),
+                **({"aggregations": aggregations} if aggregations else {}),
+            },
+        )
+
+        if not first_response.content:
+            logger.info("No data found")
+
+        first_chunk = pd.read_parquet(io.BytesIO(first_response.content))
+
+        total_runs = int(first_response.headers.get("x-total", "0"))
+        has_more = first_response.headers.get("x-has-more", "false") == "true"
+
+        logger.info(f"Total runs: {total_runs}, Has more: {has_more}")
+
+        logger.info(f"Writing {total_runs} runs to disk")
+        return self._export_to_disk(
+            project,
+            first_chunk,
+            dict(first_response.headers),
+            filter,
+            status,
+            aggregations,
+            format,
+            str(base_dir) if base_dir else None,
+        )
+
+    def _export_to_disk(
+        self,
+        project: str,
+        first_chunk: "pd.DataFrame",
+        first_headers: dict[str, str],
+        filter: str | None,
+        status: StatusFilter,
+        aggregations: list[MetricAggregationType] | None,
+        format: str,
+        base_dir: str | None,
+    ) -> str:
+        """Handle dataset export to disk - one file per chunk."""
+
+        if base_dir:
+            export_base = Path(base_dir) / "strikes-data" / "export-runs"
+        else:
+            export_base = Path("./strikes-data") / "export-runs"
+
+        project_dir = export_base / project
+
+        logger.info(f"Using project name: '{project}'")
+        logger.info(f"Project directory will be: {project_dir}")
+
+        # Clean up old project data
+        if project_dir.exists():
+            logger.info(f"Removing old export data: {project_dir}")
+            shutil.rmtree(project_dir)
+
+        project_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created directory: {project_dir}")
+
+        page = 1
+        total_exported_runs = 0
+
+        # Write first chunk
+        filename = self._write_chunk_file(first_chunk, project_dir, page, format)
+        chunk_run_count = len(first_chunk["run_id"].unique())
+        total_exported_runs += chunk_run_count
+        logger.info(f"Page {page}: Wrote {filename} ({chunk_run_count} runs)")
+
+        has_more = first_headers.get("x-has-more", "false") == "true"
+        total_runs = int(first_headers.get("x-total", "0"))
+
+        logger.info(f"Total runs to export: {total_runs}")
+
+        # Loop through remaining pages - SDK just increments page until has_more = false
+        while has_more:
+            page += 1
+            logger.info(f"Fetching page {page}")
+
+            try:
+                response = self.request(
+                    "GET",
+                    f"/strikes/projects/{project!s}/export/paginated",
+                    params={
+                        "page": page,
+                        "status": status,
+                        **({"filter": filter} if filter else {}),
+                        **({"aggregations": aggregations} if aggregations else {}),
+                    },
+                )
+
+                if not response.content:
+                    logger.info("No more data - empty response")
+                    break
+
+                # Parse response
+                chunk_df = pd.read_parquet(io.BytesIO(response.content))
+
+                if chunk_df.empty:
+                    logger.info("Empty chunk received - breaking")
+                    break
+
+                # Write chunk
+                filename = self._write_chunk_file(chunk_df, project_dir, page, format)
+                chunk_run_count = len(chunk_df["run_id"].unique())
+                total_exported_runs += chunk_run_count
+                logger.info(f"Page {page}: Wrote {filename} ({chunk_run_count} runs)")
+
+                # Check if API has more pages
+                has_more = response.headers.get("x-has-more", "false") == "true"
+
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Error fetching page {page}: {e}")
+                break
+
+        logger.info(f"Export complete to {project_dir}")
+        logger.info(f"Total pages: {page}, Total runs: {total_exported_runs}")
+
+        return str(project_dir)
+
+    def _write_chunk_file(
+        self, df: "pd.DataFrame", project_dir: Path, page: int, format: str
+    ) -> str:
+        """Write chunk to a single file with intelligent naming."""
+
+        if df.empty:
+            return ""
+
+        total_runs = len(df["run_id"].unique())
+        total_rows = len(df)
+
+        logger.info(f"Writing chunk: {total_rows} rows, {total_runs} unique runs, page {page}")
+
+        if total_runs == 1:
+            # Single run - use the run ID
+            run_id = df["run_id"].iloc[0]
+            base_name = f"run_{run_id}"
+        elif total_runs <= 10:  # noqa: PLR2004
+            # Few runs - include count
+            base_name = f"runs_{total_runs}_page_{page}"
+        elif total_runs <= 100:  # noqa: PLR2004
+            # Medium batch - include count
+            base_name = f"runs_{total_runs}_batch_{page}"
+        else:
+            base_name = f"runs_chunk_{page}_{total_runs}_runs"
+
+        # Write based on format
+        if format == "csv":
+            filename = f"{base_name}.csv"
+            filepath = project_dir / filename
+            df.to_csv(filepath, index=False)
+            logger.info(f"Wrote CSV: {filepath}")
+        elif format == "parquet":
+            filename = f"{base_name}.parquet"
+            filepath = project_dir / filename
+            df.to_parquet(filepath, index=False)
+            logger.info(f"Wrote Parquet: {filepath}")
+        elif format == "json":
+            filename = f"{base_name}.json"
+            filepath = project_dir / filename
+            df.to_json(filepath, orient="records", indent=2)
+            logger.info(f"Wrote JSON: {filepath}")
+        elif format == "jsonl":
+            filename = f"{base_name}.jsonl"
+            filepath = project_dir / filename
+            df.to_json(filepath, orient="records", lines=True)
+            logger.info(f"Wrote JSONL: {filepath}")
+        else:
+            # Default to parquet
+            filename = f"{base_name}.parquet"
+            filepath = project_dir / filename
+            df.to_parquet(filepath, index=False)
+            logger.info(f"Wrote default Parquet: {filepath}")
+
+        return filename
 
     def export_parameters(
         self,
@@ -473,7 +646,6 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported parameter data.
         """
-        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",
@@ -514,7 +686,6 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
-        import pandas as pd  # noqa: PLC0415
 
         response = self.request(
             "GET",

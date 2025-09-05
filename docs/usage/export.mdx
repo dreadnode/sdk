@@ -31,46 +31,99 @@ import dreadnode
 api = dreadnode.api()
 
 # List all runs in a project
-runs = api.strikes.list_runs('project-name')
+runs = api.list_runs('project-name')
 print(f"Found {len(runs)} runs")
 
 # Get the trace for a specific run
-trace = api.strikes.get_run_trace(runs[0].id)
+trace = api.get_run_trace(runs[0].id)
 
 # Export different types of data as pandas DataFrames
-df_metrics = api.strikes.export_metrics('project-name')
-df_params = api.strikes.export_parameters('project-name')
-df_runs = api.strikes.export_runs('project-name')
-df_timeseries = api.strikes.export_timeseries('project-name')
+df_metrics = api.export_metrics('project-name')
+df_params = api.export_parameters('project-name')
+export_runs_path = api.export_runs('project-name')
+df_timeseries = api.export_timeseries('project-name')
 ```
 
 ## Export Types
 
 ### Export Runs
 
-Export all run data including parameters, tags, and aggregated metrics.
+Export all run data including parameters, tags, and aggregated metrics. All runs are written to organized files on disk and returns the directory path.
 
 ```python
-df = api.strikes.export_runs(
+# Export runs - always writes to disk and returns directory path
+export_path = api.export_runs(
     'project-name',
     filter='tags.contains("production")',  # Optional filter expression
     status='completed',  # 'all', 'completed', or 'failed'
-    aggregations=['avg', 'min', 'max']  # Metrics aggregations to include
+    aggregations=['avg', 'min', 'max'],  # Metrics aggregations to include
+    format='parquet',  # Format: 'parquet', 'csv', 'json', 'jsonl'
+    base_dir='/my/data'  # Optional: custom base directory
 )
+
+print(f"Data exported to: {export_path}")
+# Returns: /my/data/strikes-data/export-runs/project-name/
 ```
 
-The resulting `DataFrame` contains:
+```python
+File Structure
+Files are organized with intelligent naming based on chunk size:
+./strikes-data/export-runs/project-name/
+├── runs_chunk_1_1000_runs.parquet    # Large chunks (100+ runs)
+├── runs_chunk_2_1000_runs.parquet
+├── runs_50_batch_3.parquet           # Medium chunks (11-100 runs)
+└── runs_5_page_4.parquet             # Small chunks (2-10 runs)
+```
+
+Loading Exported Data
+
+```python
+import pandas as pd
+from pathlib import Path
+
+def load_exported_runs(export_path: str) -> pd.DataFrame:
+    """Load all exported run files into a single DataFrame."""
+    export_dir = Path(export_path)
+    
+    # For parquet files
+    parquet_files = list(export_dir.glob("*.parquet"))
+    if parquet_files:
+        df = pd.read_parquet(export_path)
+        return df
+    
+    # For CSV files
+    csv_files = list(export_dir.glob("*.csv"))
+    if csv_files:
+        chunks = [pd.read_csv(file) for file in csv_files]
+        return pd.concat(chunks, ignore_index=True)
+    
+    # For JSON files
+    json_files = list(export_dir.glob("*.json"))
+    if json_files:
+        chunks = [pd.read_json(file) for file in json_files]
+        return pd.concat(chunks, ignore_index=True)
+    
+    return pd.DataFrame()
+
+# Usage
+export_path = api.export_runs('my-project')
+df = load_exported_runs(export_path)
+print(f"Loaded {len(df)} runs from exported files")
+```
+
+The resulting DataFrame contains:
+
 - Run metadata (ID, name, start time, duration, status)
-- Parameters (prefixed with `param_`)
-- Tags (prefixed with `tag_`)
-- Aggregated metrics (prefixed with `metric_`)
+- Parameters (prefixed with param_)
+- Tags (prefixed with tag_)
+- Aggregated metrics (prefixed with metric_)
 
 ### Export Metrics
 
 Focus on the metrics data with detailed information about each metric point.
 
 ```python
-df = api.strikes.export_metrics(
+df = api.export_metrics(
     'project-name',
     filter='name.contains("training")',  # Optional filter expression
     status='completed',  # 'all', 'completed', or 'failed'
@@ -90,7 +143,7 @@ The resulting `DataFrame` contains:
 Analyze how different parameter values affect your metrics.
 
 ```python
-df = api.strikes.export_parameters(
+df = api.export_parameters(
     'project-name',
     filter='metrics.accuracy.max > 0.9',  # Optional filter expression
     status='completed',  # 'all', 'completed', or 'failed'
@@ -110,7 +163,7 @@ The resulting `DataFrame` shows how different parameter values influence your me
 Get time-based data for your metrics, with options for time representation.
 
 ```python
-df = api.strikes.export_timeseries(
+df = api.export_timeseries(
     'project-name',
     filter='params.model == "resnet50"',  # Optional filter expression
     status='completed',  # 'all', 'completed', or 'failed'
@@ -133,16 +186,17 @@ All export functions support filtering to narrow down the results. The filter ex
 
 ```python
 # Filter by tags
-df = api.strikes.export_runs('project-name', filter='tags.contains("production")')
+export_path = api.export_runs('project-name', filter='tags.contains("production")')
+df = load_exported_runs(export_path)  
 
 # Filter by parameters
-df = api.strikes.export_metrics('project-name', filter='params.learning_rate < 0.01')
+df = api.export_metrics('project-name', filter='params.learning_rate < 0.01')
 
 # Filter by metrics
-df = api.strikes.export_parameters('project-name', filter='metrics.accuracy.max > 0.9')
+df = api.export_parameters('project-name', filter='metrics.accuracy.max > 0.9')
 
 # Combine filters
-df = api.strikes.export_timeseries(
+df = api.export_timeseries(
     'project-name',
     filter='params.model == "resnet50" and metrics.loss.min < 0.1'
 )
@@ -188,12 +242,12 @@ You can list all runs in a project and inspect their metadata:
 
 ```python
 # List all runs in a project
-runs = api.strikes.list_runs('project-name')
+runs = api.list_runs('project-name')
 for run in runs:
     print(run.id, run.name, run.status, run.start_time)
 
 # Get full details for a specific run
-run = api.strikes.get_run(runs[0].id)
+run = api.get_run(runs[0].id)
 print(run)
 ```
 
@@ -203,7 +257,7 @@ A trace provides a complete record of all tasks and spans executed during a run,
 
 ```python
 # Get the full trace for a run (as a flat list or tree)
-trace = api.strikes.get_run_trace(run_id, format="flat")  # or format="tree"
+trace = api.get_run_trace(run_id, format="flat")  # or format="tree"
 for span in trace:
     print(span.name, span.timestamp)
 ```
@@ -215,12 +269,12 @@ You can also pull just the tasks for a run, including their arguments (inputs), 
 
 ```python
 # Get all tasks for a run
-tasks = api.strikes.get_run_tasks(run_id, format="flat")
+tasks = api.get_run_tasks(run_id, format="flat")
 for task in tasks:
     print(task.name, task.timestamp, task.inputs, task.output)
 
 # Get tasks as a tree (shows parent/child relationships)
-task_tree = api.strikes.get_run_tasks(run_id, format="tree")
+task_tree = api.get_run_tasks(run_id, format="tree")
 ```
 
 - Each task object contains its input arguments, output, status, and timing.
@@ -231,7 +285,7 @@ task_tree = api.strikes.get_run_tasks(run_id, format="tree")
 You can use the above methods to build a complete picture of how your code executed, what data was processed, and what results were produced. For example, to view all inputs and outputs for every task in a run:
 
 ```python
-for task in api.strikes.get_run_tasks(run_id):
+for task in api.get_run_tasks(run_id):
     print(f"Task: {task.name}")
     print(f"  Inputs: {task.inputs}")
     print(f"  Output: {task.output}")
@@ -245,7 +299,7 @@ This is especially useful for debugging, auditing, or building custom visualizat
 
 ```python
 # Get parameters and their impact on metrics
-df = api.strikes.export_parameters(
+df = api.export_parameters(
     'my-experiment',
     parameters=['learning_rate', 'batch_size', 'model'],
     metrics=['accuracy', 'loss'],
@@ -267,7 +321,7 @@ plt.show()
 
 ```python
 # Get timeseries data for loss metrics
-df = api.strikes.export_timeseries(
+df = api.export_timeseries(
     'my-experiment',
     metrics=['train_loss', 'val_loss'],
     time_axis='step'
@@ -300,7 +354,7 @@ You can export trace information for debugging and performance analysis:
 
 ```python
 # Get the trace for a specific run
-trace = api.strikes.get_run_trace(run_id)
+trace = api.get_run_trace(run_id)
 
 # Extract spans and analyze them
 spans = [span for span in trace if hasattr(span, 'duration')]
@@ -322,8 +376,9 @@ For more complex analyses, you can combine different exports:
 
 ```python
 # Get runs and parameters
-runs_df = api.strikes.export_runs('project-name')
-params_df = api.strikes.export_parameters('project-name')
+runs_export_path = api.export_runs('project-name')
+runs_df = load_exported_runs(runs_export_path)
+params_df = api.export_parameters('project-name')
 
 # Join them for additional insights
 merged = runs_df.merge(params_df, left_on='run_id', right_on='run_id')
