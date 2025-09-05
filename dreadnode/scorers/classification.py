@@ -1,7 +1,5 @@
 import typing as t
 
-from transformers import pipeline
-
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
@@ -37,7 +35,7 @@ def zero_shot_classification(
     )
 
     try:
-        pipeline("zero-shot-classification", model=model_name)
+        from transformers import pipeline  # type: ignore[import-not-found]
     except ImportError:
         warn_at_user_stacklevel(transformers_error_msg, UserWarning)
 

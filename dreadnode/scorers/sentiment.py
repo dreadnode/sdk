@@ -2,7 +2,6 @@ import os
 import typing as t
 
 import httpx
-from textblob import TextBlob  # type: ignore[import-untyped]
 
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
@@ -33,8 +32,8 @@ def sentiment(
     textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
 
     try:
-        TextBlob("test").sentiment  # noqa: B018
-    except (ImportError, AttributeError):
+        from textblob import TextBlob  # type: ignore[import-not-found]
+    except ImportError:
         warn_at_user_stacklevel(textblob_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:

@@ -25,10 +25,14 @@ dependencies = [
     "mkdocstrings-python[dev] (>=1.18.2,<2.0.0)",
     "markdownify[dev] (>=1.2.0,<2.0.0)",
     "networkx>=3.3,<4.0.0",
+    "datasets (>=4.0.0,<5.0.0)",
 ]
 
 [project.optional-dependencies]
-training = ["transformers>=4.41.0,<5.0.0", "sentence-transformers>=5.1.0,<6.0.0",]
+training = [
+    "transformers>=4.41.0,<5.0.0",
+    "sentence-transformers>=5.1.0,<6.0.0",
+]
 
 multimodal = [
     "pillow>=11.2.1,<12.0.0",
@@ -59,7 +63,6 @@ dev = [
     "pandas-stubs>=2.2.3.250308",
     "types-requests>=2.32.0.20250306",
     "typer>=0.15.2,<1.0.0",
-    "datasets>=3.5.0,<4.0.0",
     "pyarrow>=19.0.1,<20.0.0",
     "markdown>=3.8.2,<4.0.0",
     "markdownify>=1.1.0,<2.0.0",
@@ -104,6 +107,10 @@ asyncio_default_fixture_loop_scope = "function"
 strict = true
 python_version = "3.10"
 exclude = "tests"
+
+[[tool.mypy.overrides]]
+module = ["dreadnode.scorers.*"]
+disable_error_code = ["unused-ignore", "import-untyped"]
 
 [tool.ty.environment]
 python-version = "3.10"
@@ -150,10 +157,10 @@ ignore = [
     "FIX002",  # contains todo, consider fixing
     "COM812",  # disabled for formatting
     "ISC001",  # disabled for formatting
-    "PLC0415",  # import should be at top-level (lazy imports)
-    "FBT001",   # boolean positional argument (legitimate cases)  
-    "FURB122",  # use f.writelines (minor optimization)
-    "F401", # ignore imported but unused
+    "PLC0415", # import should be at top-level (lazy imports)
+    "FBT001",  # boolean positional argument (legitimate cases)  
+    "FURB122", # use f.writelines (minor optimization)
+    "F401",    # ignore imported but unused
 ]
 
 [tool.ruff.format]

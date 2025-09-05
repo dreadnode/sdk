@@ -1,15 +1,14 @@
 import re
 import typing as t
 
-from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.nlp_engine import NlpEngineProvider
-
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 from dreadnode.scorers.contains import contains
 from dreadnode.util import warn_at_user_stacklevel
 
 if t.TYPE_CHECKING:
+    from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
+
     from dreadnode.types import JsonDict
 
 
@@ -66,6 +65,9 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
 
+    from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
+    from presidio_analyzer.nlp_engine import NlpEngineProvider  # type: ignore[import-not-found]
+
     if g_analyzer_engine is None:
         provider = NlpEngineProvider(
             nlp_configuration={
@@ -107,8 +109,8 @@ def detect_pii_with_presidio(
     )
 
     try:
-        _get_presidio_analyzer()
-    except (ImportError, OSError):
+        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]
+    except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
