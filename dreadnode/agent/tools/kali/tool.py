@@ -6,6 +6,7 @@ import time
 import requests
 from loguru import logger
 
+import dreadnode as dn
 from dreadnode.agent.tools import Toolset, tool_method
 
 
@@ -1215,6 +1216,63 @@ class KaliTool(Toolset):
         except Exception as e:
             sys.stdout = old_stdout
             return f"Error executing code: {e}"
+
+    @tool_method()
+    def canitakeover(self, cname_target: str) -> str:
+        """Check CNAME target for subdomain takeover vulnerability patterns. Use this tool whenever you find a CNAME record pointing to external services.
+        
+        Args:
+            cname_target: CNAME target to check (e.g., 'example.herokuapp.com')
+            
+        Returns:
+            Service and vulnerability status
+        """
+        patterns = {
+            'github.io': 'GitHub Pages - VULNERABLE',
+            'herokuapp.com': 'Heroku - VULNERABLE', 
+            'wordpress.com': 'WordPress.com - VULNERABLE',
+            'netlify.app': 'Netlify - VULNERABLE',
+            'vercel.app': 'Vercel - VULNERABLE',
+            's3.amazonaws.com': 'Amazon S3 - VULNERABLE',
+            'azurewebsites.net': 'Azure Web Apps - VULNERABLE',
+            'surge.sh': 'Surge.sh - VULNERABLE',
+            'bitbucket.io': 'Bitbucket Pages - VULNERABLE',
+            'webflow.io': 'Webflow - VULNERABLE',
+            'ghost.io': 'Ghost.io - VULNERABLE',
+            'helpjuice.com': 'Helpjuice - VULNERABLE',
+            'helpscout.net': 'Help Scout - VULNERABLE',
+            'cargo.site': 'Cargo Collective - VULNERABLE',
+            'feedpress.me': 'FeedPress - VULNERABLE',
+            'uptimerobot.com': 'UptimeRobot - VULNERABLE',
+            'pantheonsite.io': 'Pantheon - VULNERABLE',
+            'elasticbeanstalk.com': 'AWS Elastic Beanstalk - VULNERABLE',
+            'agilecrm.com': 'Agile CRM - VULNERABLE',
+            'airee.ru': 'Airee.ru - VULNERABLE',
+            'animaapp.io': 'Anima - VULNERABLE',
+            'trydiscourse.com': 'Discourse - VULNERABLE',
+            'furyns.com': 'Gemfury - VULNERABLE',
+            'hatenablog.com': 'HatenaBlog - VULNERABLE',
+            'helpscoutdocs.com': 'Help Scout Docs - VULNERABLE',
+            'helprace.com': 'Helprace - VULNERABLE',
+            'youtrack.cloud': 'JetBrains - VULNERABLE',
+            'launchrock.com': 'LaunchRock - VULNERABLE',
+            'ngrok.io': 'Ngrok - VULNERABLE',
+            'readme.io': 'Readme.io - VULNERABLE',
+            'strikinglydns.com': 'Strikingly - VULNERABLE',
+            'surveysparrow.com': 'SurveySparrow - VULNERABLE',
+            'read.uberflip.com': 'Uberflip - VULNERABLE',
+            'worksites.net': 'Worksites - VULNERABLE'
+        }
+        
+        for pattern, service in patterns.items():
+            if pattern in cname_target.lower():
+                logger.info(f"[+] Subdomain takeover potential found: {cname_target} -> {service}")
+                dn.log_metric("subdomain-takeover-vulnerable", 1)
+                return service
+        
+        logger.info(f"[-] No known vulnerable pattern found for: {cname_target}")
+        dn.log_metric("subdomain-takeover-not-vulnerable", 1)
+        return f"Unknown service - Check https://github.com/EdOverflow/can-i-take-over-xyz"
 
     @tool_method()
     def generate_golden_ticket(
