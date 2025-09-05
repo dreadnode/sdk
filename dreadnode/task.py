@@ -403,7 +403,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         self,
         input_param_name: str | None = None,
     ) -> "CustomTarget[R]":
-        from dreadnode.airt.target import CustomTarget
+        from dreadnode.airt.target.custom import CustomTarget
 
         return CustomTarget(task=self, input_param_name=input_param_name)
 

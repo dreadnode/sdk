@@ -8,7 +8,7 @@ from pathlib import Path
 import rigging as rg
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from pydantic import PrivateAttr
-from upath import UPath
+from upath import UPath  # type: ignore[import-not-found]
 
 from dreadnode.agent.tools import Toolset, tool_method
 from dreadnode.meta import Config
@@ -127,7 +127,7 @@ class Filesystem(Toolset):
         content = _path.read_bytes()
 
         try:
-            return content.decode("utf-8")
+            return content.decode("utf-8")  # type: ignore[no-any-return]
         except UnicodeDecodeError as e:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)

@@ -39,7 +39,6 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         return f"Trial(id={self.id}, status='{self.status}', score={self.score:.3f})"
 
     @computed_field
-    @property
     def output(self) -> t.Any | None:
         """Get the output of the trial."""
         if self.eval_result and self.eval_result.samples:

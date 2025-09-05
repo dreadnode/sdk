@@ -8,6 +8,7 @@ import cyclopts
 import rich
 
 from dreadnode import log_input
+from dreadnode import run as run_span
 from dreadnode.agent import Agent
 from dreadnode.agent.format import format_agent, format_agents_table
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
@@ -118,8 +119,6 @@ async def run(  # noqa: PLR0912, PLR0915
         *,
         config: t.Any = config_default,
     ) -> None:
-        from dreadnode import run as run_span
-
         flat_config = {k: v for k, v in flatten_model(config).items() if v is not None}
         agent = hydrate(agent_blueprint, config)
 

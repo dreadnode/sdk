@@ -1,5 +1,7 @@
 import typing as t
 
+from transformers import pipeline
+
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
@@ -35,14 +37,18 @@ def zero_shot_classification(
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
-            pipeline,
-        )
+        pipeline("zero-shot-classification", model=model_name)
     except ImportError:
         warn_at_user_stacklevel(transformers_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": transformers_error_msg})
+
+        return Scorer(disabled_evaluate, name=name)
+    except Exception:  # noqa: BLE001
+
+        def disabled_evaluate(_: t.Any) -> Metric:
+            return Metric(value=0.0, attributes={"error": "Failed to create pipeline"})
 
         return Scorer(disabled_evaluate, name=name)
 

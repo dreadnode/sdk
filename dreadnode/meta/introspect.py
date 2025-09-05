@@ -152,10 +152,12 @@ def flatten_model(model: PydanticBaseModel, prefix: str = "") -> dict[str, t.Any
 
 
 def _find_nested_configurable(obj: t.Any) -> t.Any | None:
-    if isinstance(obj, (Component, Model)):
+    if isinstance(obj, Component | Model):
         return obj
 
-    if isinstance(obj, (str, int, float, bool, type(None), type)) or not hasattr(obj, "__dict__"):
+    if isinstance(obj, str | int | float | bool | type(None) | type) or not hasattr(
+        obj, "__dict__"
+    ):
         return None
 
     with contextlib.suppress(Exception):
@@ -163,7 +165,7 @@ def _find_nested_configurable(obj: t.Any) -> t.Any | None:
             if attr_name.startswith("__"):
                 continue
 
-            if isinstance(attr_value, (Component, Model)):
+            if isinstance(attr_value, Component | Model):
                 return attr_value
 
     return None
@@ -187,11 +189,11 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
     nested_fields: AnyDict = {}
     nested_default: t.Any
 
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         used_names = set()
 
         for item in obj:
-            if not isinstance(item, (Model, Component)) and not (
+            if not isinstance(item, Model | Component) and not (
                 item := _find_nested_configurable(item)
             ):
                 continue
@@ -221,7 +223,7 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
 
     elif isinstance(obj, dict):
         for key, value in obj.items():
-            if not isinstance(value, (Model, Component)) and not (
+            if not isinstance(value, Model | Component) and not (
                 value := _find_nested_configurable(value)
             ):
                 continue
@@ -238,7 +240,7 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
         with contextlib.suppress(Exception):
             obj_default = obj_type()
 
-    elif isinstance(obj, (Model, Component)):
+    elif isinstance(obj, Model | Component):
         obj_type = get_config_model(obj, name)
         obj_default = Ellipsis
         with contextlib.suppress(Exception):

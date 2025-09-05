@@ -1,16 +1,22 @@
 import typing as t
 from difflib import SequenceMatcher
 
+import litellm
+import nltk  # type: ignore[import-untyped]
+from nltk.tokenize import word_tokenize  # type: ignore[import-untyped]
+from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-untyped]
+from rapidfuzz import distance, fuzz, utils
+from sentence_transformers import SentenceTransformer, util
+from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-untyped]
+from sklearn.metrics.pairwise import (  # type: ignore  # noqa: PGH003
+    cosine_similarity as sklearn_cosine_similarity,
+)
+
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
 from dreadnode.util import warn_at_user_stacklevel
-
-if t.TYPE_CHECKING:
-    from sentence_transformers import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-        SentenceTransformer,
-    )
 
 
 def similarity(
@@ -93,7 +99,7 @@ def similarity_with_rapidfuzz(
     )
 
     try:
-        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found,unused-ignore]
+        fuzz.ratio("test", "test")
     except ImportError:
         warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
 
@@ -162,7 +168,7 @@ def similarity_with_rapidfuzz(
     return Scorer(evaluate, name=name, catch=True)
 
 
-def distance(
+def string_distance(
     reference: str,
     *,
     method: t.Literal[
@@ -190,7 +196,7 @@ def distance(
     )
 
     try:
-        from rapidfuzz import distance  # type: ignore[import-not-found,unused-ignore]
+        distance.Levenshtein.distance("test", "test")
     except ImportError:
         warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
 
@@ -259,12 +265,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
     )
 
     try:
-        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found,unused-ignore]
-            TfidfVectorizer,
-        )
-        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,unused-ignore]
-            cosine_similarity as sklearn_cosine_similarity,
-        )
+        TfidfVectorizer()
     except ImportError:
         warn_at_user_stacklevel(sklearn_import_error_msg, UserWarning)
 
@@ -311,10 +312,7 @@ def similarity_with_sentence_transformers(
     sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers"
 
     try:
-        from sentence_transformers import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-            SentenceTransformer,
-            util,
-        )
+        SentenceTransformer(model_name)
     except ImportError:
         warn_at_user_stacklevel(sentence_transformers_error_msg, UserWarning)
 
@@ -372,7 +370,6 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    import litellm
 
     async def evaluate(
         data: t.Any,
@@ -429,21 +426,17 @@ def bleu(
     nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
 
     try:
-        import nltk  # type: ignore[import-not-found,unused-ignore]
-        from nltk.tokenize import word_tokenize  # type: ignore[import-not-found,unused-ignore]
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found,unused-ignore]
-            sentence_bleu,
-        )
-
         # Check for the 'punkt' tokenizer data
         try:
             nltk.data.find("tokenizers/punkt")
+            word_tokenize("test")
+            sentence_bleu([["test"]], ["test"])
         except LookupError as e:
             nltk_import_error_msg = (
                 "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
             )
             raise ImportError(nltk_import_error_msg) from e
-    except ImportError:
+    except (ImportError, AttributeError):
         warn_at_user_stacklevel(nltk_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:

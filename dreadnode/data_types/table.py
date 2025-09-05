@@ -3,11 +3,10 @@ import typing as t
 from pathlib import Path
 from typing import ClassVar
 
-from dreadnode.data_types.base import DataType
+import numpy as np
+import pandas as pd
 
-if t.TYPE_CHECKING:
-    import numpy as np
-    import pandas as pd
+from dreadnode.data_types.base import DataType
 
 TableDataType = t.Union[
     "pd.DataFrame", dict[t.Any, t.Any], list[t.Any], str, Path, "np.ndarray[t.Any, t.Any]"
@@ -78,12 +77,10 @@ class Table(DataType):
         Returns:
             A pandas DataFrame representation of the input data
         """
-        import numpy as np
-        import pandas as pd
 
         if isinstance(self._data, pd.DataFrame):
             return self._data
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             path = Path(self._data)
             suffix = path.suffix.lower()
 
@@ -98,7 +95,7 @@ class Table(DataType):
         if isinstance(self._data, dict):
             return pd.DataFrame.from_dict(self._data)
 
-        if isinstance(self._data, (list, np.ndarray)):
+        if isinstance(self._data, list | np.ndarray):
             return pd.DataFrame(self._data)
 
         raise ValueError(f"Unsupported table data type: {type(self._data)}")
@@ -134,8 +131,6 @@ class Table(DataType):
         Returns:
             A dictionary of metadata
         """
-        import numpy as np
-        import pandas as pd
 
         metadata = {
             "extension": self._format,
@@ -151,7 +146,7 @@ class Table(DataType):
 
         if isinstance(self._data, pd.DataFrame):
             metadata["source-type"] = "pandas.DataFrame"
-        elif isinstance(self._data, (str, Path)):
+        elif isinstance(self._data, str | Path):
             metadata["source-type"] = "file"
             metadata["source-path"] = str(self._data)
         elif isinstance(self._data, dict):

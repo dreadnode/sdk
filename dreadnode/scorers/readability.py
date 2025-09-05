@@ -1,5 +1,7 @@
 import typing as t
 
+import textstat  # type: ignore[import-untyped]
+
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.util import warn_at_user_stacklevel
@@ -27,8 +29,8 @@ def readability(
     )
 
     try:
-        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
-    except ImportError:
+        textstat.flesch_kincaid_grade("test")
+    except (ImportError, AttributeError):
         warn_at_user_stacklevel(textstat_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:

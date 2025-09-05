@@ -51,6 +51,8 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.stop import StopCondition, stop_never
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
+from dreadnode.agent.tools.planning import update_todo
+from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
 from dreadnode.agent.types import Message, ToolCall
 from dreadnode.meta import Component, Config, Model, component
 from dreadnode.scorers import ScorersLike
@@ -745,9 +747,6 @@ class TaskAgent(Agent):
     """
 
     def model_post_init(self, _: t.Any) -> None:
-        from dreadnode.agent.tools.planning import update_todo
-        from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
-
         if not any(tool for tool in self.tools if tool.name == "finish_task"):
             self.tools.append(finish_task)
 

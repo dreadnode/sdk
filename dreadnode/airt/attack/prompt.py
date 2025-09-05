@@ -28,7 +28,7 @@ def prompt_attack(
     beam_width: int = 3,
     branching_factor: int = 3,
     max_steps: int = 10,
-    additional_scorers: list[Scorer] | None = None,
+    additional_scorers: list[Scorer[t.Any]] | None = None,
     name: str | None = None,
 ) -> Attack[str, str]:
     """
@@ -88,7 +88,7 @@ def prompt_attack(
 
     objective = weighted_avg(
         (judge_scorer, 1),
-        *[(scorer, 1) for scorer in additional_scorers],
+        *[(scorer, 1) for scorer in (additional_scorers or [])],
         name="prompt_objective",
     )
 

@@ -35,6 +35,8 @@ class LLMTarget(Model, Target[t.Any, str]):
 
     @property
     def name(self) -> str:
+        if self._generator is None:
+            return "unknown"
         return self._generator.to_identifier(short=True)
 
     def as_task(self, input: t.Any) -> Task[[], str]:
@@ -51,9 +53,12 @@ class LLMTarget(Model, Target[t.Any, str]):
 
         @task(name=f"generate - {self.name}", label="llm_target_generate", tags=["target"])
         async def generate(
-            messages: list[rg.Message] = messages, params: rg.GenerateParams = params
+            messages: list[rg.Message] = messages, params: rg.GenerateParams | None = params
         ) -> str:
-            generated = (await self._generator.generate_messages([messages], [params]))[0]
+            if self._generator is None:
+                raise ValueError("Generator not initialized")
+            params_list = [params] if params is not None else [rg.GenerateParams()]
+            generated = (await self._generator.generate_messages([messages], params_list))[0]
             if isinstance(generated, BaseException):
                 raise generated
             return generated.message.content

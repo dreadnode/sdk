@@ -88,7 +88,8 @@ class Sample(BaseModel, t.Generic[In, Out]):
         context: dict[str, t.Any] | None = None,
     ) -> "Sample[In, Out]":
         # Assume false for all
-        assertions = dict.fromkeys(task.assert_scores, False)
+        assert_scores: t.Any = getattr(task, "assert_scores", [])
+        assertions = dict.fromkeys(assert_scores, False)
 
         # If a score was reported, assume true
         for name in set(span.metrics.keys()) & set(assertions.keys()):

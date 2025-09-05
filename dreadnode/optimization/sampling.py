@@ -17,7 +17,7 @@ def top_k(
     Selects the top k trials by score (highest first).
     """
     sorted_trials = sorted(trials, key=lambda t: t.score, reverse=True)
-    return sorted_trials[:k]
+    return sorted_trials[:k]  # type: ignore[return-value]
 
 
 @component
@@ -27,7 +27,7 @@ def random_(
     """
     Selects k random trials from the pool.
     """
-    return random.sample(trials, min(k, len(trials))) if trials else []  # nosec
+    return random.sample(trials, min(k, len(trials))) if trials else []  # type: ignore[return-value]
 
 
 @component
@@ -47,9 +47,9 @@ def epsilon_greedy(
     if random.random() < epsilon and len(sorted_trials) >= k:  # noqa: S311 # nosec
         k_minus_1 = sorted_trials[: k - 1]
         random_choice = random.choice(sorted_trials[k - 1 :])  # noqa: S311 # nosec
-        return [*k_minus_1, random_choice]
+        return [*k_minus_1, random_choice]  # type: ignore[return-value]
 
-    return sorted_trials[:k]
+    return sorted_trials[:k]  # type: ignore[return-value]
 
 
 @component
@@ -72,7 +72,7 @@ def competitive(trials: Trials[T], *, k: int = Config(5), pool_size: int = Confi
         winners.append(winner)
         pool.remove(winner)
 
-    return winners
+    return winners  # type: ignore[return-value]
 
 
 @component
@@ -93,7 +93,7 @@ def proportional(
         A list of selected trials.
     """
     if not trials:
-        return []
+        return []  # type: ignore[return-value]
 
     # 1 - Normalize scores for use as weights
 
@@ -104,7 +104,7 @@ def proportional(
 
     # If all trials have the same score - take the fast route
     if total_weight == 0:
-        return random.sample(trials, min(k, len(trials)))  # nosec
+        return random.sample(trials, min(k, len(trials)))  # type: ignore[return-value]
 
     # 2 - Select k winners one by one, without replacement
 
@@ -128,7 +128,7 @@ def proportional(
         if sum(current_weights) == 0:
             break
 
-    return winners
+    return winners  # type: ignore[return-value]
 
 
 # Utils
@@ -144,7 +144,7 @@ def interleave_by_parent(trials: Trials[T]) -> Trials[T]:
     Example: `[P1, P1, P2, P2, P3]` -> [P1, P2, P3, P1, P2]
     """
     if not trials:
-        return []
+        return []  # type: ignore[return-value]
 
     parent_to_children = defaultdict(list)
     for trial in trials:
@@ -156,4 +156,4 @@ def interleave_by_parent(trials: Trials[T]) -> Trials[T]:
             if trial is not None:
                 interleaved_list.append(trial)  # noqa: PERF401
 
-    return interleaved_list
+    return interleaved_list  # type: ignore[return-value]

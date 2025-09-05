@@ -9,6 +9,7 @@ from dreadnode.eval.result import EvalResult
 from dreadnode.eval.sample import InputDataset
 from dreadnode.meta import Model
 from dreadnode.meta.types import Config
+from dreadnode.optimization.console import StudyConsoleAdapter
 from dreadnode.optimization.events import (
     CandidatePruned,
     CandidatesSuggested,
@@ -26,11 +27,9 @@ from dreadnode.optimization.search import Search
 from dreadnode.optimization.trial import Trial, Trials
 from dreadnode.scorers import Scorer, ScorerLike
 from dreadnode.task import Task
+from dreadnode.tracing.span import current_run_span
 from dreadnode.types import AnyDict
 from dreadnode.util import concurrent_gen, get_callable_name
-
-if t.TYPE_CHECKING:
-    from dreadnode.eval.events import EvalStopReason
 
 Direction = t.Literal["maximize", "minimize"]
 """The direction of optimization for the objective score."""
@@ -52,7 +51,7 @@ class Study(Model, t.Generic[CandidateT]):
     """The search strategy to use for suggesting new trials."""
     task_factory: t.Callable[[CandidateT], Task[..., t.Any]]
     """A function that accepts a candidate and returns a configured Task ready for evaluation."""
-    objective: ScorerLike[t.Any] | str = Config(default_factory=list)
+    objective: ScorerLike[t.Any] | str = Config(default_factory=list)  # type: ignore[assignment]
     """The objective to optimize. Can be a scorer instance, a scorer-like callable, or a string name of scorer already on the task."""
     dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = Config(
         default=None, expose_as=FilePath | None
@@ -142,8 +141,8 @@ class Study(Model, t.Generic[CandidateT]):
         self._steps_since_best = 0
         self.strategy.reset()
 
-        stop_reason: EvalStopReason = "unknown"
-        all_trials: Trials[CandidateT] = []
+        stop_reason: t.Any = "unknown"
+        all_trials: Trials[CandidateT] = []  # type: ignore[assignment]
         best_trial: Trial[CandidateT] | None = None
 
         yield StudyStart(study=self, trials=all_trials, max_steps=self.max_steps)
@@ -232,7 +231,7 @@ class Study(Model, t.Generic[CandidateT]):
             result=StudyResult(trials=all_trials, stop_reason=stop_reason),
         )
 
-    def _log_event_metrics(self, event: StudyEvent) -> None:
+    def _log_event_metrics(self, event: StudyEvent[t.Any]) -> None:
         from dreadnode import log_metric
 
         if isinstance(event, TrialComplete):
@@ -249,7 +248,6 @@ class Study(Model, t.Generic[CandidateT]):
 
     async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
         from dreadnode import log_inputs, log_outputs, log_params, run, task_span
-        from dreadnode.tracing.span import current_run_span
 
         objective_name = (
             self.objective
@@ -267,7 +265,7 @@ class Study(Model, t.Generic[CandidateT]):
 
         # config_model = get_config_model(self)
         # flat_config = {k: v for k, v in flatten_model(config_model()).items() if v is not None}
-        flat_config = {}
+        flat_config: dict[str, t.Any] = {}
 
         with trace_context:
             if run_using_tasks:
@@ -275,7 +273,7 @@ class Study(Model, t.Generic[CandidateT]):
             else:
                 log_params(**flat_config)
 
-            last_event: StudyEvent | None = None
+            last_event: StudyEvent[t.Any] | None = None
             try:
                 async with contextlib.aclosing(self._stream()) as stream:
                     async for event in stream:
@@ -287,10 +285,10 @@ class Study(Model, t.Generic[CandidateT]):
                     result = last_event.result
                     outputs = {"stop_reason": result.stop_reason}
                     if result.best_trial:
-                        outputs["best_score"] = result.best_trial.score
+                        outputs["best_score"] = result.best_trial.score  # type: ignore[assignment]
                         outputs["best_candidate"] = result.best_trial.candidate
-                        outputs["best_output"] = result.best_trial.output
-                    log_outputs(**outputs)
+                        outputs["best_output"] = result.best_trial.output  # type: ignore[assignment]
+                    log_outputs(**outputs)  # type: ignore[arg-type]
 
     @contextlib.asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:
@@ -335,7 +333,6 @@ class Study(Model, t.Generic[CandidateT]):
 
     async def console(self) -> StudyResult[CandidateT]:
         """Runs the optimization study with a live progress dashboard in the console."""
-        from dreadnode.optimization.console import StudyConsoleAdapter
 
         adapter = StudyConsoleAdapter(self)
         return await adapter.run()

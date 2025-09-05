@@ -71,11 +71,11 @@ class Video(DataType):
         except ImportError:
             VideoClip = None  # noqa: N806
 
-        if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+        if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
         if isinstance(self._data, bytes):
             return self._process_bytes()
-        if isinstance(self._data, (np.ndarray, list)):
+        if isinstance(self._data, np.ndarray | list):
             return self._process_numpy_array()
         if VideoClip is not None and isinstance(self._data, VideoClip):
             return self._process_moviepy_clip()
@@ -92,7 +92,7 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        if not isinstance(self._data, (str, Path)):
+        if not isinstance(self._data, str | Path):
             raise TypeError("Expected file path as str or Path")
         video_bytes = Path(self._data).read_bytes()
         format_name = self._format
@@ -126,7 +126,7 @@ class Video(DataType):
 
         if not self._fps:
             raise ValueError("fps is required for numpy array video frames")
-        if not isinstance(self._data, (np.ndarray, list)):
+        if not isinstance(self._data, np.ndarray | list):
             raise TypeError("data must be a numpy array or list of numpy arrays")
 
         frames = self._extract_frames_from_data()

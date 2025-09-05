@@ -18,7 +18,7 @@ def tap_attack(
     beam_width: int = 10,
     branching_factor: int = 3,
     max_steps: int = 10,
-    additional_constraints: list[Scorer] | None = None,
+    additional_constraints: list[Scorer[t.Any]] | None = None,
 ) -> Attack[str, str]:
     """
     Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,

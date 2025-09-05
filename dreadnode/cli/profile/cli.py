@@ -3,6 +3,7 @@ import typing as t
 import cyclopts
 import rich
 from rich import box
+from rich.prompt import Prompt
 from rich.table import Table
 
 from dreadnode.cli.api import Token
@@ -59,8 +60,6 @@ def switch(
 
     # If no profile provided, prompt user to choose
     if profile is None:
-        from rich.prompt import Prompt
-
         profiles = list(config.servers.keys())
         rich.print("\nAvailable profiles:")
         for i, p in enumerate(profiles, 1):
