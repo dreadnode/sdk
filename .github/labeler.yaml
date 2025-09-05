@@ -67,7 +67,6 @@ type/docs:
   - changed-files:
       - any-glob-to-any-file: "docs/**/*"
       - any-glob-to-any-file: "*.md"
-      - any-glob-to-any-file: "*.mdx"
 
 # Core Files Labels
 type/core:
