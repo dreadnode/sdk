@@ -15,6 +15,7 @@ from ulid import ULID
 
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
+    ContainerRegistryCredentials,
     DeviceCodeResponse,
     ExportFormat,
     GithubTokenResponse,
@@ -22,6 +23,7 @@ from dreadnode.api.models import (
     Project,
     RawRun,
     RawTask,
+    RegistryImageDetails,
     Run,
     RunSummary,
     StatusFilter,
@@ -710,3 +712,55 @@ class ApiClient:
         """
         response = self._request("GET", "/user-data/credentials")
         return UserDataCredentials(**response.json())
+
+    # Container registry access
+
+    def get_container_registry_credentials(self) -> ContainerRegistryCredentials:
+        """
+        Retrieves container registry credentials for Docker image access.
+
+        Returns:
+            The container registry credentials object.
+        """
+        response = self.request("POST", "/platform/registry-token")
+        return ContainerRegistryCredentials(**response.json())
+
+    def get_platform_releases(
+        self, tag: str, services: list[str], cli_version: str | None
+    ) -> RegistryImageDetails:
+        """
+        Resolves the platform releases for the current project.
+
+        Returns:
+            The resolved platform releases as a ResolveReleasesResponse object.
+        """
+        payload = {
+            "tag": tag,
+            "services": services,
+            "cli_version": cli_version,
+        }
+        try:
+            response = self.request("POST", "/platform/get-releases", json_data=payload)
+
+        except RuntimeError as e:
+            if "403" in str(e):
+                raise RuntimeError("You do not have access to platform releases.") from e
+
+            if "404" in str(e):
+                if "Image not found" in str(e):
+                    raise RuntimeError("Image not found") from e
+
+                raise RuntimeError(
+                    f"Failed to get platform releases: {e}. The feature is likely disabled on this server"
+                ) from e
+            raise
+        return RegistryImageDetails(**response.json())
+
+    def get_platform_templates(self, tag: str) -> bytes:
+        """
+        Retrieves the available platform templates.
+        """
+        params = {"tag": tag}
+        response = self.request("GET", "/platform/templates/all", params=params)
+        zip_content: bytes = response.content
+        return zip_content

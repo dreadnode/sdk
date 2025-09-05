@@ -43,6 +43,33 @@ class UserDataCredentials(BaseModel):
     endpoint: str | None
 
 
+class ContainerRegistryCredentials(BaseModel):
+    registry: str
+    username: str
+    password: str
+    expires_at: datetime
+
+
+class PlatformImage(BaseModel):
+    service: str
+    uri: str
+    digest: str
+    tag: str
+
+    @property
+    def full_uri(self) -> str:
+        return f"{self.uri}@{self.digest}"
+
+    @property
+    def registry(self) -> str:
+        return self.uri.split("/")[0]
+
+
+class RegistryImageDetails(BaseModel):
+    tag: str
+    images: list[PlatformImage]
+
+
 # Auth
 
 

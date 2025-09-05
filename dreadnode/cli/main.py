@@ -20,6 +20,7 @@ from dreadnode.cli.github import (
     download_and_unzip_archive,
     validate_server_for_clone,
 )
+from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 from dreadnode.user_config import ServerConfig, UserConfig
@@ -28,8 +29,9 @@ cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], h
 
 cli["--help"].group = "Meta"
 
-cli.command(profile_cli)
 cli.command(agent_cli)
+cli.command(platform_cli)
+cli.command(profile_cli)
 
 
 @cli.meta.default

@@ -5,6 +5,8 @@ import pathlib
 # Defaults
 #
 
+# name of the default local storage path
+DEFAULT_LOCAL_STORAGE_DIR = pathlib.Path.home() / ".dreadnode"
 # name of the default server profile
 DEFAULT_PROFILE_NAME = "main"
 # default poll interval for the authentication flow
@@ -20,7 +22,7 @@ DEFAULT_PLATFORM_BASE_DOMAIN = "dreadnode.io"
 # default server URL
 DEFAULT_SERVER_URL = f"https://platform.{DEFAULT_PLATFORM_BASE_DOMAIN}"
 # default local directory for dreadnode objects
-DEFAULT_LOCAL_OBJECT_DIR = ".dreadnode/objects"
+DEFAULT_LOCAL_OBJECT_DIR = f"{DEFAULT_LOCAL_STORAGE_DIR}/objects"
 # default docker registry subdomain
 DEFAULT_DOCKER_REGISTRY_SUBDOMAIN = "registry"
 # default docker registry local port
@@ -54,7 +56,7 @@ PLATFORM_BASE_URL = os.getenv(ENV_SERVER, os.getenv(ENV_SERVER_URL, DEFAULT_SERV
 # path to the user configuration file
 USER_CONFIG_PATH = pathlib.Path(
     # allow overriding the user config file via env variable
-    os.getenv("DREADNODE_USER_CONFIG_FILE") or pathlib.Path.home() / ".dreadnode" / "config"
+    os.getenv("DREADNODE_USER_CONFIG_FILE") or DEFAULT_LOCAL_STORAGE_DIR / "config"
 )
 
 # Default values for the file system credential management
