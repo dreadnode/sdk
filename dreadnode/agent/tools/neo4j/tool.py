@@ -296,6 +296,240 @@ class Neo4jTool(Toolset):
             return f"Failed to store host header injection finding: {e}"
     
     @tool_method()
+    async def store_graphql_endpoint(
+        self,
+        url: str,
+        schema_info: str,
+        types_data: str = "",
+        queries_data: str = "",
+        mutations_data: str = "",
+        subscriptions_data: str = "",
+    ) -> str:
+        """Store GraphQL endpoint with schema information as nodes and relationships.
+        
+        Args:
+            url: GraphQL endpoint URL
+            schema_info: Raw schema introspection data
+            types_data: JSON string of GraphQL types
+            queries_data: JSON string of available queries
+            mutations_data: JSON string of available mutations
+            subscriptions_data: JSON string of available subscriptions
+            
+        Returns:
+            Confirmation message with endpoint ID
+        """
+        driver = await self._get_driver()
+        
+        try:
+            # Create GraphQL endpoint node
+            endpoint_query = """
+            MERGE (e:GraphQLEndpoint {url: $url})
+            SET e.timestamp = $timestamp,
+                e.schema_info = $schema_info,
+                e.endpoint_id = coalesce(e.endpoint_id, randomUUID())
+            RETURN e.endpoint_id as endpoint_id
+            """
+            
+            endpoint_params = {
+                "url": url,
+                "timestamp": datetime.now().isoformat(),
+                "schema_info": schema_info,
+            }
+            
+            async with driver.session() as session:
+                result = await session.run(endpoint_query, endpoint_params)
+                endpoint_record = await result.single()
+                endpoint_id = endpoint_record['endpoint_id'] if endpoint_record else None
+                
+                # Parse and store types if provided
+                if types_data:
+                    import json
+                    try:
+                        types = json.loads(types_data)
+                        for type_info in types:
+                            type_name = type_info.get('name', 'Unknown')
+                            type_query = """
+                            MATCH (e:GraphQLEndpoint {endpoint_id: $endpoint_id})
+                            MERGE (t:GraphQLType {name: $type_name, endpoint_url: $url})
+                            SET t.kind = $kind,
+                                t.description = $description,
+                                t.type_id = coalesce(t.type_id, randomUUID())
+                            MERGE (e)-[:HAS_TYPE]->(t)
+                            RETURN t.type_id as type_id
+                            """
+                            
+                            type_params = {
+                                "endpoint_id": endpoint_id,
+                                "url": url,
+                                "type_name": type_name,
+                                "kind": type_info.get('kind', ''),
+                                "description": type_info.get('description', ''),
+                            }
+                            
+                            await session.run(type_query, type_params)
+                            
+                            # Store fields for this type
+                            fields = type_info.get('fields', [])
+                            for field in fields:
+                                field_name = field.get('name', 'Unknown')
+                                field_query = """
+                                MATCH (t:GraphQLType {name: $type_name, endpoint_url: $url})
+                                MERGE (f:GraphQLField {name: $field_name, type_name: $type_name, endpoint_url: $url})
+                                SET f.field_type = $field_type,
+                                    f.description = $field_description,
+                                    f.is_deprecated = $is_deprecated,
+                                    f.field_id = coalesce(f.field_id, randomUUID())
+                                MERGE (t)-[:HAS_FIELD]->(f)
+                                """
+                                
+                                field_params = {
+                                    "url": url,
+                                    "type_name": type_name,
+                                    "field_name": field_name,
+                                    "field_type": str(field.get('type', {})),
+                                    "field_description": field.get('description', ''),
+                                    "is_deprecated": field.get('isDeprecated', False),
+                                }
+                                
+                                await session.run(field_query, field_params)
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Store queries if provided
+                if queries_data:
+                    try:
+                        queries = json.loads(queries_data)
+                        for query in queries:
+                            query_name = query.get('name', 'Unknown')
+                            query_query = """
+                            MATCH (e:GraphQLEndpoint {endpoint_id: $endpoint_id})
+                            MERGE (q:GraphQLQuery {name: $query_name, endpoint_url: $url})
+                            SET q.description = $description,
+                                q.return_type = $return_type,
+                                q.args = $args,
+                                q.query_id = coalesce(q.query_id, randomUUID())
+                            MERGE (e)-[:HAS_QUERY]->(q)
+                            """
+                            
+                            query_params = {
+                                "endpoint_id": endpoint_id,
+                                "url": url,
+                                "query_name": query_name,
+                                "description": query.get('description', ''),
+                                "return_type": str(query.get('type', {})),
+                                "args": str(query.get('args', [])),
+                            }
+                            
+                            await session.run(query_query, query_params)
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Store mutations if provided
+                if mutations_data:
+                    try:
+                        mutations = json.loads(mutations_data)
+                        for mutation in mutations:
+                            mutation_name = mutation.get('name', 'Unknown')
+                            mutation_query = """
+                            MATCH (e:GraphQLEndpoint {endpoint_id: $endpoint_id})
+                            MERGE (m:GraphQLMutation {name: $mutation_name, endpoint_url: $url})
+                            SET m.description = $description,
+                                m.return_type = $return_type,
+                                m.args = $args,
+                                m.mutation_id = coalesce(m.mutation_id, randomUUID())
+                            MERGE (e)-[:HAS_MUTATION]->(m)
+                            """
+                            
+                            mutation_params = {
+                                "endpoint_id": endpoint_id,
+                                "url": url,
+                                "mutation_name": mutation_name,
+                                "description": mutation.get('description', ''),
+                                "return_type": str(mutation.get('type', {})),
+                                "args": str(mutation.get('args', [])),
+                            }
+                            
+                            await session.run(mutation_query, mutation_params)
+                    except json.JSONDecodeError:
+                        pass
+                
+            logger.info(f"Stored GraphQL endpoint and schema for {url}")
+            return f"Successfully stored GraphQL endpoint: {endpoint_id}"
+            
+        except Exception as e:
+            logger.error(f"Failed to store GraphQL endpoint: {e}")
+            return f"Failed to store GraphQL endpoint: {e}"
+
+    @tool_method()
+    async def store_graphql_finding(
+        self,
+        url: str,
+        vulnerability_type: str,
+        risk_level: str,
+        schema_info: str,
+        response_evidence: str,
+        exposed_types: str = "",
+        sensitive_fields: str = "",
+        impact: str = "",
+    ) -> str:
+        """Store a GraphQL introspection vulnerability finding in Neo4j.
+        
+        Args:
+            url: Target GraphQL endpoint URL
+            vulnerability_type: Type of GraphQL vulnerability (e.g., "introspection_enabled", "schema_exposure")
+            risk_level: Risk level (low/medium/high/critical)
+            schema_info: Exposed schema information
+            response_evidence: Raw response showing introspection data
+            exposed_types: List of exposed GraphQL types
+            sensitive_fields: Potentially sensitive field names
+            impact: Potential impact description
+            
+        Returns:
+            Confirmation message with finding ID
+        """
+        driver = await self._get_driver()
+        
+        try:
+            query = """
+            CREATE (f:GraphQLVulnerability {
+                url: $url,
+                vulnerability_type: $vulnerability_type,
+                risk_level: $risk_level,
+                timestamp: $timestamp,
+                schema_info: $schema_info,
+                response_evidence: $response_evidence,
+                exposed_types: $exposed_types,
+                sensitive_fields: $sensitive_fields,
+                impact: $impact,
+                finding_id: randomUUID()
+            })
+            RETURN f.finding_id as finding_id
+            """
+            
+            params = {
+                "url": url,
+                "vulnerability_type": vulnerability_type,
+                "risk_level": risk_level.upper(),
+                "timestamp": datetime.now().isoformat(),
+                "schema_info": schema_info,
+                "response_evidence": response_evidence,
+                "exposed_types": exposed_types,
+                "sensitive_fields": sensitive_fields,
+                "impact": impact,
+            }
+            
+            async with driver.session() as session:
+                result = await session.run(query, params)
+                record = await result.single()
+                
+            logger.info(f"Stored GraphQL finding for {url}")
+            return f"Successfully stored GraphQL finding: {record['finding_id'] if record else 'unknown'}"
+            
+        except Exception as e:
+            logger.error(f"Failed to store GraphQL finding: {e}")
+            return f"Failed to store GraphQL finding: {e}"
+    
+    @tool_method()
     async def query_findings(
         self,
         subdomain: str | None = None,
