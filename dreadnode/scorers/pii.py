@@ -1,15 +1,14 @@
 import re
 import typing as t
 
-from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.nlp_engine import NlpEngineProvider
-
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 from dreadnode.scorers.contains import contains
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import generate_import_error_msg, warn_at_user_stacklevel
 
 if t.TYPE_CHECKING:
+    from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
+
     from dreadnode.types import JsonDict
 
 
@@ -66,6 +65,9 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
 
+    from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
+    from presidio_analyzer.nlp_engine import NlpEngineProvider  # type: ignore[import-not-found]
+
     if g_analyzer_engine is None:
         provider = NlpEngineProvider(
             nlp_configuration={
@@ -101,14 +103,11 @@ def detect_pii_with_presidio(
         invert: Invert the score (1.0 for no PII, 0.0 for PII detected).
         name: Name of the scorer.
     """
-    presidio_import_error_msg = (
-        "Presidio dependencies are not installed. "
-        "Install with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
-    )
+    presidio_import_error_msg = generate_import_error_msg("presidio-analyzer", "text")
 
     try:
-        _get_presidio_analyzer()
-    except (ImportError, OSError):
+        import presidio_analyzer  # type: ignore[import-not-found]
+    except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:

@@ -1,11 +1,9 @@
 import typing as t
 
-from transformers import pipeline
-
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
-from dreadnode.util import clean_str, warn_at_user_stacklevel
+from dreadnode.util import clean_str, generate_import_error_msg, warn_at_user_stacklevel
 
 # Global cache for pipelines
 g_transformer_pipeline_cache: dict[str, t.Any] = {}
@@ -32,12 +30,10 @@ def zero_shot_classification(
         model_name: The name of the zero-shot model from Hugging Face Hub.
         name: Name of the scorer.
     """
-    transformers_error_msg = (
-        "Transformers dependency is not installed. Install with: pip install transformers"
-    )
+    transformers_error_msg = generate_import_error_msg("transformers", "training")
 
     try:
-        pipeline("zero-shot-classification", model=model_name)
+        from transformers import pipeline  # type: ignore[import-not-found]
     except ImportError:
         warn_at_user_stacklevel(transformers_error_msg, UserWarning)
 
