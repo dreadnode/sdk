@@ -5,7 +5,7 @@ from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import generate_import_error_msg, warn_at_user_stacklevel
 
 if t.TYPE_CHECKING:
     from sentence_transformers import (  # type: ignore[import-not-found]
@@ -88,7 +88,7 @@ def similarity_with_rapidfuzz(
         score_cutoff: Optional score cutoff below which to return 0.0.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz or dreadnode[text]"
+    rapidfuzz_import_error_msg = generate_import_error_msg("rapidfuzz", "text")
     try:
         from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
     except ImportError:
@@ -182,7 +182,7 @@ def string_distance(
         normalize: Normalize distances and convert to similarity scores.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz or dreadnode[text]"
+    rapidfuzz_import_error_msg = generate_import_error_msg("rapidfuzz", "text")
 
     try:
         from rapidfuzz import distance  # type: ignore[import-not-found]
@@ -251,7 +251,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         reference: The reference text (e.g., expected output).
         name: Name of the scorer.
     """
-    sklearn_import_error_msg = "scikit-learn dependency is not installed. Please install it with: pip install scikit-learn or dreadnode[text]"
+    sklearn_import_error_msg = generate_import_error_msg("scikit-learn", "text")
 
     try:
         from sklearn.feature_extraction.text import (  # type: ignore[import-not-found]
@@ -303,7 +303,7 @@ def similarity_with_sentence_transformers(
         model_name: The name of the sentence-transformer model to use.
         name: Name of the scorer.
     """
-    sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers or dreadnode[training]"
+    sentence_transformers_error_msg = generate_import_error_msg("sentence-transformers", "training")
 
     try:
         from sentence_transformers import (  # type: ignore[import-not-found]
@@ -367,7 +367,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    litellm_import_error_msg = "litellm dependency is not installed. Please install it with: pip install litellm or dreadnode[text]"
+    litellm_import_error_msg = generate_import_error_msg("litellm", "text")
     try:
         import litellm
     except ImportError:
@@ -430,7 +430,7 @@ def bleu(
         weights: Weights for unigram, bigram, etc. Must sum to 1.
         name: Name of the scorer.
     """
-    nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
+    nltk_import_error_msg = generate_import_error_msg("nltk", "text")
 
     try:
         import nltk  # type: ignore[import-not-found]

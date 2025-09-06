@@ -4,7 +4,7 @@ import typing as t
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 from dreadnode.scorers.contains import contains
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import generate_import_error_msg, warn_at_user_stacklevel
 
 if t.TYPE_CHECKING:
     from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
@@ -103,13 +103,10 @@ def detect_pii_with_presidio(
         invert: Invert the score (1.0 for no PII, 0.0 for PII detected).
         name: Name of the scorer.
     """
-    presidio_import_error_msg = (
-        "Presidio dependencies are not installed. "
-        "Install with: pip install presidio-analyzer presidio-anonymizer 'spacy[en_core_web_lg]'"
-    )
+    presidio_import_error_msg = generate_import_error_msg("presidio-analyzer", "text")
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]
+        import presidio_analyzer  # type: ignore[import-not-found]
     except ImportError:
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 

@@ -6,7 +6,7 @@ import httpx
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import generate_import_error_msg, warn_at_user_stacklevel
 
 Sentiment = t.Literal["positive", "negative", "neutral"]
 
@@ -29,7 +29,7 @@ def sentiment(
         target: The desired sentiment to score against.
         name: Name of the scorer.
     """
-    textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
+    textblob_import_error_msg = generate_import_error_msg("textblob", "text")
 
     try:
         from textblob import TextBlob  # type: ignore[import-not-found]
