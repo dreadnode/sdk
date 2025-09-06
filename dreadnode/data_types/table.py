@@ -1,16 +1,35 @@
+# mypy: disable-error-code="unused-ignore"
+
 import io
 import typing as t
 from pathlib import Path
 from typing import ClassVar
 
-import numpy as np
-import pandas as pd
-
 from dreadnode.data_types.base import DataType
+
+if t.TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
 
 TableDataType = t.Union[
     "pd.DataFrame", dict[t.Any, t.Any], list[t.Any], str, Path, "np.ndarray[t.Any, t.Any]"
 ]
+
+
+def check_imports() -> None:
+    try:
+        import pandas as pd  # type: ignore[import-not-found]
+    except ImportError as e:
+        raise ImportError(
+            "Image processing requires Pandas. Install with: pip install dreadnode[multimodal]"
+        ) from e
+
+    try:
+        import numpy as np  # type: ignore[import-not-found]
+    except ImportError as e:
+        raise ImportError(
+            "Image processing requires NumPy. Install with: pip install dreadnode[multimodal]"
+        ) from e
 
 
 class Table(DataType):
@@ -47,6 +66,7 @@ class Table(DataType):
             format: Optional format to use when saving (csv, parquet, json)
             index: Include index in the output
         """
+        check_imports()
         self._data = data
         self._caption = caption
         self._format = format or "csv"  # Default to CSV
@@ -77,6 +97,8 @@ class Table(DataType):
         Returns:
             A pandas DataFrame representation of the input data
         """
+        import numpy as np  # type: ignore[import-not-found]
+        import pandas as pd  # type: ignore[import-not-found]
 
         if isinstance(self._data, pd.DataFrame):
             return self._data
@@ -131,6 +153,8 @@ class Table(DataType):
         Returns:
             A dictionary of metadata
         """
+        import numpy as np  # type: ignore[import-not-found]
+        import pandas as pd  # type: ignore[import-not-found]
 
         metadata = {
             "extension": self._format,
