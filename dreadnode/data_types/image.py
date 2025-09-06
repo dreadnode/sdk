@@ -1,5 +1,3 @@
-# mypy: disable-error-code="unused-ignore"
-
 import base64
 import io
 import typing as t
