@@ -1,22 +1,16 @@
 import typing as t
 from difflib import SequenceMatcher
 
-import litellm
-import nltk  # type: ignore[import-untyped]
-from nltk.tokenize import word_tokenize  # type: ignore[import-untyped]
-from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-untyped]
-from rapidfuzz import distance, fuzz, utils
-from sentence_transformers import SentenceTransformer, util
-from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-untyped]
-from sklearn.metrics.pairwise import (  # type: ignore  # noqa: PGH003
-    cosine_similarity as sklearn_cosine_similarity,
-)
-
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
 from dreadnode.util import warn_at_user_stacklevel
+
+if t.TYPE_CHECKING:
+    from sentence_transformers import (  # type: ignore[import-not-found]
+        SentenceTransformer,
+    )
 
 
 def similarity(
@@ -94,12 +88,9 @@ def similarity_with_rapidfuzz(
         score_cutoff: Optional score cutoff below which to return 0.0.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = (
-        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
-    )
-
+    rapidfuzz_import_error_msg = "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz or dreadnode[text]"
     try:
-        fuzz.ratio("test", "test")
+        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
     except ImportError:
         warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
 
@@ -191,11 +182,11 @@ def string_distance(
         normalize: Normalize distances and convert to similarity scores.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = (
-        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
-    )
+    rapidfuzz_import_error_msg = "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz or dreadnode[text]"
 
     try:
+        from rapidfuzz import distance  # type: ignore[import-not-found]
+
         distance.Levenshtein.distance("test", "test")
     except ImportError:
         warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
@@ -260,12 +251,15 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         reference: The reference text (e.g., expected output).
         name: Name of the scorer.
     """
-    sklearn_import_error_msg = (
-        "scikit-learn dependency is not installed. Please install it with: pip install scikit-learn"
-    )
+    sklearn_import_error_msg = "scikit-learn dependency is not installed. Please install it with: pip install scikit-learn or dreadnode[text]"
 
     try:
-        TfidfVectorizer()
+        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found]
+            TfidfVectorizer,
+        )
+        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
+            cosine_similarity as sklearn_cosine_similarity,
+        )
     except ImportError:
         warn_at_user_stacklevel(sklearn_import_error_msg, UserWarning)
 
@@ -309,10 +303,13 @@ def similarity_with_sentence_transformers(
         model_name: The name of the sentence-transformer model to use.
         name: Name of the scorer.
     """
-    sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers"
+    sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers or dreadnode[training]"
 
     try:
-        SentenceTransformer(model_name)
+        from sentence_transformers import (  # type: ignore[import-not-found]
+            SentenceTransformer,
+            util,
+        )
     except ImportError:
         warn_at_user_stacklevel(sentence_transformers_error_msg, UserWarning)
 
@@ -370,6 +367,16 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
+    litellm_import_error_msg = "litellm dependency is not installed. Please install it with: pip install litellm or dreadnode[text]"
+    try:
+        import litellm
+    except ImportError:
+        warn_at_user_stacklevel(litellm_import_error_msg, UserWarning)
+
+        def disabled_evaluate(_: t.Any) -> Metric:
+            return Metric(value=0.0, attributes={"error": litellm_import_error_msg})
+
+        return Scorer(disabled_evaluate, name=name)
 
     async def evaluate(
         data: t.Any,
@@ -426,11 +433,16 @@ def bleu(
     nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
 
     try:
-        # Check for the 'punkt' tokenizer data
+        import nltk  # type: ignore[import-not-found]
+        from nltk.tokenize import (  # type: ignore[import-not-found]
+            word_tokenize,
+        )
+        from nltk.translate.bleu_score import (  # type: ignore[import-not-found]
+            sentence_bleu,
+        )
+
         try:
             nltk.data.find("tokenizers/punkt")
-            word_tokenize("test")
-            sentence_bleu([["test"]], ["test"])
         except LookupError as e:
             nltk_import_error_msg = (
                 "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"

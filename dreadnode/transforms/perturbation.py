@@ -3,8 +3,6 @@ import string
 import typing as t
 import unicodedata
 
-from confusables import confusable_characters  # type: ignore[import-untyped]
-
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 
@@ -226,8 +224,10 @@ def unicode_confusable(
     """
 
     try:
-        confusable_characters("a")
-    except (ImportError, AttributeError):
+        from confusables import (  # type: ignore[import-not-found]
+            confusable_characters,
+        )
+    except ImportError:
         raise ImportError(
             "Confusables dependency is not installed. Install with: pip install confusables"
         ) from ImportError("confusables library not available")
