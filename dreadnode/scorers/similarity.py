@@ -269,7 +269,6 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         return Scorer(disabled_evaluate, name=name)
 
     vectorizer = TfidfVectorizer(stop_words="english")
-    a = 1
 
     def evaluate(data: t.Any, *, reference: str = reference) -> Metric:
         candidate_text = str(data)
