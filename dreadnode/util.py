@@ -154,6 +154,13 @@ def format_dict(data: dict[str, t.Any], max_length: int = 80) -> str:
     return f"{{{formatted}}}"
 
 
+def generate_import_error_msg(package_name: str, extras_name: str) -> str:
+    return (
+        f"Missing required package '{package_name}'. "
+        f"Please install it with: pip install {package_name} or dreadnode[{extras_name}]"
+    )
+
+
 # Types
 
 
