@@ -32,31 +32,31 @@ Below are brief descriptions of each agent with a link to their detailed README 
 
 This agent automatically builds and runs Capture The Flag (CTF) challenges. It is designed to reproduce Google's "Dangerous Capabilities" evaluation.
 
-&gt; **[More Details](/examples/dangerous-capabilities)**
+&gt; **[More Details](/strikes/examples/dangerous-capabilities)**
 
 ### 2. Dotnet Reversing Agent
 
 This agent is designed to perform reverse engineering of .NET binaries. It can decompile .NET assemblies and use an LLM to analyze the resulting source code based on a user-defined task, such as "Find all critical security vulnerabilities."
 
-&gt; **[More Details](/examples/dotnet-reversing)**
+&gt; **[More Details](/strikes/examples/dotnet-reversing)**
 
 ### 3. Python Agent
 
 A general-purpose agent that provides a sandboxed Jupyter environment inside a Docker container. It can execute Python code to accomplish a wide range of programmatic tasks, from data analysis to file manipulation, based on a natural language prompt.
 
-&gt; **[More Details](/examples/python-agent)**
+&gt; **[More Details](/strikes/examples/python-agent)**
 
 ### 4. Sast Scanning Agent
 
 This agent is a specialized framework for evaluating the security analysis capabilities of LLMs. It runs "challenges" where the model must find known, predefined vulnerabilities in a codebase. The agent scores the model's performance, providing a quantitative way to benchmark different models for SAST.
 
-&gt; **[More Details](/examples/sast-scanning)**
+&gt; **[More Details](/strikes/examples/sast-scanning)**
 
 ### 5. Sensitive Data Extraction Agent
 
 An autonomous agent that explores and analyzes file systems to find and report sensitive data like credentials, API keys, and personal information. Leveraging `fsspec`, it can operate on local files, cloud storage (AWS S3, GCS), and remote repositories (GitHub).
 
-&gt; **[More Details](/examples/sensitive-data)**
+&gt; **[More Details](/strikes/examples/sensitive-data)**
 
 ## General Usage
 
