@@ -26,6 +26,7 @@ dependencies = [
     "markdownify[dev] (>=1.2.0,<2.0.0)",
     "networkx>=3.3,<4.0.0",
     "datasets (>=4.0.0,<5.0.0)",
+    "ansible-runner>=2.4.1",
 ]
 
 [project.optional-dependencies]

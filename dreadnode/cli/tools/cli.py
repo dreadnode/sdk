@@ -9,13 +9,13 @@ import rich
 from rich.prompt import Prompt
 
 from dreadnode.agent.tools import Toolset
-from dreadnode.agent.tools.install.discover import discover_tools
 from dreadnode.cli.api import create_api_client
 from dreadnode.cli.github import (
     GithubRepo,
     download_and_unzip_archive,
     validate_server_for_clone,
 )
+from dreadnode.cli.tools.discover import discover_tools
 from dreadnode.constants import DEFAULT_TOOL_SEARCH_PATH
 from dreadnode.discovery import discover
 from dreadnode.meta import get_config_model, hydrate
@@ -133,7 +133,7 @@ async def install(tool: str) -> None:
 
 
 @cli.command()
-async def run(  # noqa: PLR0912, PLR0915
+async def run(
     tool: str,
     config: pathlib.Path | None = None,
 ) -> None:
@@ -240,8 +240,8 @@ async def run(  # noqa: PLR0912, PLR0915
             rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
             return
 
-    command, bound, _ = tool_app.parse_args(tokens)
+    # command, bound, _ = tool_app.parse_args(tokens)
 
-    result = command(*bound.args, **bound.kwargs)
-    if isawaitable(result):
-        await result
+    # result = command(*bound.args, **bound.kwargs)
+    # if isawaitable(result):
+    #     await result
