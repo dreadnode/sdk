@@ -22,6 +22,7 @@ from dreadnode.cli.github import (
 )
 from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
+from dreadnode.cli.tools import cli as tool_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 from dreadnode.user_config import ServerConfig, UserConfig
 
