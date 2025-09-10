@@ -111,7 +111,9 @@ class Audio(DataType):
         import soundfile as sf
 
         if self._sample_rate is None:
-            raise ValueError('Argument "sample_rate" is required when using numpy arrays.')
+            raise ValueError(
+                'Argument "sample_rate" is required when using numpy arrays.'
+            )
 
         buffer = io.BytesIO()
         format_name = self._format or "wav"

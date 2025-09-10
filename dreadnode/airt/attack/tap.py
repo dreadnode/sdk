@@ -2,7 +2,7 @@ import typing as t
 
 from dreadnode.airt.attack import Attack
 from dreadnode.optimization.search.graph import beam_search
-from dreadnode.scorers import Scorer, llm_judge
+from dreadnode.scorers import llm_judge
 from dreadnode.transforms.llm_refine import llm_refine, prompt_trials_adapter
 
 if t.TYPE_CHECKING:
@@ -17,8 +17,6 @@ def tap_attack(
     *,
     beam_width: int = 10,
     branching_factor: int = 3,
-    max_steps: int = 10,
-    additional_constraints: list[Scorer[t.Any]] | None = None,
 ) -> Attack[str, str]:
     """
     Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
@@ -34,34 +32,35 @@ def tap_attack(
 
     # Objective
 
-    objective = llm_judge(
-        evaluator_model,
-        EVALUATION_RUBRIC.format(goal=goal),
-        min_score=1,
-        max_score=10,
-        name="prompt_judge",
+    objective = (
+        llm_judge(
+            evaluator_model,
+            EVALUATION_RUBRIC.format(goal=goal),
+            min_score=1,
+            max_score=10,
+        )
+        / 10
+        >> "jailbreak_judge"
     )
 
     # Constraints
 
     topic_constraint = llm_judge(evaluator_model, ON_TOPIC_RUBRIC.format(goal=goal))
-    constraints = [topic_constraint]
-    if additional_constraints:
-        constraints.extend(additional_constraints)
 
     # Search strategy
 
-    search = beam_search(
-        refiner, initial_candidate=goal, beam_width=beam_width, branching_factor=branching_factor
+    search_strategy = beam_search(
+        refiner,
+        initial_candidate=goal,
+        beam_width=beam_width,
+        branching_factor=branching_factor,
     )
 
     return Attack[str, str](
         target=target,
-        search=search,
+        search_strategy=search_strategy,
         objective=objective,
-        max_steps=max_steps,
-        constraints=constraints,
-        target_score=10,
+        constraints=[topic_constraint],
     )
 
 

@@ -11,8 +11,8 @@ from pydantic import PrivateAttr
 from upath import UPath  # type: ignore[import-not-found]
 
 from dreadnode.agent.tools import Toolset, tool_method
+from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
-from dreadnode.types import AnyDict
 from dreadnode.util import shorten_string
 
 FilesystemMode = t.Literal["read-only", "write"]
@@ -71,7 +71,7 @@ class Filesystem(Toolset):
     multi_modal: bool = Config(default=False)
     """Enable returning non-text context like images."""
 
-    variant: t.Literal["read", "write"] = Config("read")
+    variant: t.Literal["read", "write"] = Config(default="read")
 
     _fs: AbstractFileSystem = PrivateAttr()
     _upath: UPath = PrivateAttr()

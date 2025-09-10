@@ -10,7 +10,11 @@ from dreadnode.scorers.contains import contains
 from dreadnode.util import warn_at_user_stacklevel
 
 if t.TYPE_CHECKING:
-    from dreadnode.types import JsonDict
+    from presidio_analyzer import (
+        AnalyzerEngine,  # type: ignore[import-not-found,unused-ignore]
+    )
+
+    from dreadnode.common_types import JsonDict
 
 
 def detect_pii(
@@ -65,6 +69,10 @@ g_analyzer_engine: t.Optional["AnalyzerEngine"] = None
 def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
+
+    from presidio_analyzer import (
+        AnalyzerEngine,  # type: ignore[import-not-found,unused-ignore]
+    )
 
     if g_analyzer_engine is None:
         provider = NlpEngineProvider(

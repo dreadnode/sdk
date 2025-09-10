@@ -31,8 +31,8 @@ import pydantic
 import pydantic.dataclasses
 from pydantic import TypeAdapter
 
+from dreadnode.common_types import JsonDict, JsonValue
 from dreadnode.data_types.base import DataType
-from dreadnode.types import JsonDict, JsonValue
 from dreadnode.util import safe_repr
 
 # Types

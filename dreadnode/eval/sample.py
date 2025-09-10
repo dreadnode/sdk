@@ -1,16 +1,18 @@
 import typing as t
+from datetime import datetime
 
 import typing_extensions as te
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+from ulid import ULID
 
+from dreadnode.common_types import ErrorField
 from dreadnode.error import AssertionFailedError
 from dreadnode.metric import Metric
 from dreadnode.tracing.span import TaskSpan
-from dreadnode.types import ErrorField
 
 if t.TYPE_CHECKING:
+    from dreadnode.common_types import AnyDict
     from dreadnode.task import Task
-    from dreadnode.types import AnyDict
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
@@ -23,6 +25,9 @@ InputDatasetProcessor = t.Callable[[InputDataset], InputDataset]
 
 class Sample(BaseModel, t.Generic[In, Out]):
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
+
+    id: ULID = Field(default_factory=ULID)
+    """Unique identifier for the sample."""
 
     input: In
     """The sample input value."""
@@ -46,6 +51,12 @@ class Sample(BaseModel, t.Generic[In, Out]):
     """Any error that occurred."""
     task: TaskSpan[Out] | None = Field(default=None, repr=False)
     """Associated task span."""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def created_at(self) -> datetime:
+        """The creation timestamp of the sample, extracted from its ULID."""
+        return self.id.datetime
 
     @property
     def passed(self) -> bool:

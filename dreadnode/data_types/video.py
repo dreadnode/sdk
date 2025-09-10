@@ -211,8 +211,8 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        from moviepy.video.VideoClip import (
-            VideoClip,  # type: ignore[import,unused-ignore]
+        from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore]
+            VideoClip,
         )
 
         if not isinstance(self._data, VideoClip):

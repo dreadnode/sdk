@@ -1,4 +1,4 @@
-from dreadnode.transforms import cipher, encoding, perturbation, string, substitution, swap
+from dreadnode.transforms import cipher, encoding, perturbation, substitution, swap, text
 from dreadnode.transforms.ascii_art import ascii_art
 from dreadnode.transforms.base import (
     Transform,
@@ -20,7 +20,7 @@ __all__ = [
     "encoding",
     "llm_refine",
     "perturbation",
-    "string",
     "substitution",
     "swap",
+    "text",
 ]

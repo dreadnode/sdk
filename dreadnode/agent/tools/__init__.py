@@ -12,14 +12,13 @@ from dreadnode.agent.tools.base import (
 )
 
 if t.TYPE_CHECKING:
-    from dreadnode.agent.tools import fs
+    from dreadnode.agent.tools import fs  # noqa: F401
 
 __all__ = [
     "AnyTool",
     "Tool",
     "Toolset",
     "discover_tools_on_obj",
-    "fs",
     "planning",
     "reporting",
     "tasking",

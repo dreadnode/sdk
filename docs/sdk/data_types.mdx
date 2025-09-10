@@ -10,7 +10,12 @@ Audio
 -----
 
 ```python
-Audio(data: AudioDataType, sample_rate: int | None = None, caption: str | None = None, format: str | None = None)
+Audio(
+    data: AudioDataType,
+    sample_rate: int | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+)
 ```
 
 Audio media type for Dreadnode logging.
@@ -135,7 +140,12 @@ Image
 -----
 
 ```python
-Image(data: ImageDataOrPathType, mode: str | None = None, caption: str | None = None, format: str | None = None)
+Image(
+    data: ImageDataOrPathType,
+    mode: str | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+)
 ```
 
 Image media type for Dreadnode logging.
@@ -197,7 +207,6 @@ def __init__(
         caption: Optional caption for the image
         format: Optional format to use when saving (png, jpg, etc.)
     """
-    check_imports()
     self._data = data
     self._mode = mode
     self._caption = caption
@@ -264,7 +273,11 @@ Object3D
 --------
 
 ```python
-Object3D(data: Object3DDataType, caption: str | None = None, format: str | None = None)
+Object3D(
+    data: Object3DDataType,
+    caption: str | None = None,
+    format: str | None = None,
+)
 ```
 
 3D object media type for Dreadnode logging.
@@ -341,7 +354,7 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     Returns:
         A tuple of (object_bytes, metadata_dict)
     """
-    if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+    if isinstance(self._data, str | Path) and Path(self._data).exists():
         return self._process_file_path()
     if isinstance(self._data, bytes):
         format_name = self._format or "glb"
@@ -356,7 +369,13 @@ Table
 -----
 
 ```python
-Table(data: TableDataType, caption: str | None = None, format: str | None = None, *, index: bool = False)
+Table(
+    data: TableDataType,
+    caption: str | None = None,
+    format: str | None = None,
+    *,
+    index: bool = False,
+)
 ```
 
 Table data type for Dreadnode logging.
@@ -505,7 +524,14 @@ Video
 -----
 
 ```python
-Video(data: VideoDataType, fps: float | None = None, caption: str | None = None, format: str | None = None, width: int | None = None, height: int | None = None)
+Video(
+    data: VideoDataType,
+    fps: float | None = None,
+    caption: str | None = None,
+    format: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+)
 ```
 
 Video media type for Dreadnode logging.
@@ -625,11 +651,11 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     except ImportError:
         VideoClip = None  # noqa: N806
 
-    if isinstance(self._data, (str, Path)) and Path(self._data).exists():
+    if isinstance(self._data, str | Path) and Path(self._data).exists():
         return self._process_file_path()
     if isinstance(self._data, bytes):
         return self._process_bytes()
-    if isinstance(self._data, (np.ndarray, list)):
+    if isinstance(self._data, np.ndarray | list):
         return self._process_numpy_array()
     if VideoClip is not None and isinstance(self._data, VideoClip):
         return self._process_moviepy_clip()

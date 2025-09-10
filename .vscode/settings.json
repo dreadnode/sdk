@@ -8,8 +8,6 @@
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "mypy-type-checker.importStrategy": "fromEnvironment",
-    "mypy-type-checker.reportingScope": "workspace",
-    "mypy-type-checker.preferDaemon": false,
     "python.testing.pytestArgs": [
         "tests"
     ],

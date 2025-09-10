@@ -15,36 +15,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      - name: Setup Python
-        uses: actions/setup-python@9322b3ca74000aeb2c01eb777b646334015ddd72
+      - name: Install uv
+        uses: astral-sh/setup-uv@557e51de59eb14aaaba2ed9621916900a91d50c6 # v6.6.1
         with:
-          python-version: "3.13"
-
-      - name: Install Poetry
-        uses: abatilo/actions-poetry@b8f6fe29ba2eb78e0d45ccbf41cd14154c4e25b2
-
-      - name: Configure Poetry
-        run: |
-          poetry config virtualenvs.create true --local
-          poetry config virtualenvs.in-project true --local
-
-      - name: Install package
-        run: poetry install
+          version: "latest"
+          python-version: 3.13
 
       - name: Validate version
         run: |
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          POETRY_VERSION=$(poetry version -s)
+          PROJECT_VERSION=$(uvx --from=toml-cli toml get --toml-path=pyproject.toml project.version)
 
-          if [ "$TAG_VERSION" != "$POETRY_VERSION" ]; then
-            echo "Tag ($TAG_VERSION) doesn't match pyproject.toml ($POETRY_VERSION)"
+          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+            echo "Tag ($TAG_VERSION) doesn't match pyproject.toml ($PROJECT_VERSION)"
             exit 1
           fi
 
       - name: Build package
-        run: poetry build
+        run: uv build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@d417ba7e7683fa9104c42abe611c1f2c93c0727d
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4

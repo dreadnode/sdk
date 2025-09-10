@@ -19,14 +19,14 @@ title: dreadnode.scorers
 ::: dreadnode.scorers.similarity
 */}
 
-ScorerCallable
---------------
+ScorerLike
+----------
 
 ```python
-ScorerCallable = Callable[[T], Awaitable[ScorerResult] | ScorerResult] | Callable[[T], Awaitable[Sequence[ScorerResult]] | Sequence[ScorerResult]] | Callable[Concatenate[T, ...], Awaitable[ScorerResult] | ScorerResult] | Callable[Concatenate[T, ...], Awaitable[Sequence[ScorerResult]] | Sequence[ScorerResult]]
+ScorerLike = Scorer[T] | ScorerCallable[T]
 ```
 
-A callable that takes an object and returns a compatible score result.
+A Scorer instance or compatible callable.
 
 ScorerResult
 ------------
@@ -37,11 +37,34 @@ ScorerResult = float | int | bool | Metric
 
 The result of a scorer function, which can be a numeric value or a Metric object.
 
+ScorersLike
+-----------
+
+```python
+ScorersLike = (
+    Sequence[ScorerLike[T]] | Mapping[str, ScorerLike[T]]
+)
+```
+
+A list of scorer-like objects or mapping or name/scorer pairs.
+
 Scorer
 ------
 
 ```python
-Scorer(func: ScorerCallable[T], *, name: str | None = None, attributes: JsonDict | None = None, catch: bool = False, step: int = 0, auto_increment_step: bool = False, log_all: bool = False, config: dict[str, ConfigInfo] | None = None, context: dict[str, Context] | None = None, wraps: Callable[..., Any] | None = None)
+Scorer(
+    func: ScorerCallable[T],
+    *,
+    name: str | None = None,
+    attributes: JsonDict | None = None,
+    catch: bool = False,
+    step: int = 0,
+    auto_increment_step: bool = False,
+    log_all: bool = True,
+    config: dict[str, ConfigInfo] | None = None,
+    context: dict[str, Context] | None = None,
+    wraps: Callable[..., Any] | None = None,
+)
 ```
 
 A stateful, configurable, and composable wrapper for a scoring function.
@@ -61,7 +84,7 @@ def __init__(
     catch: bool = False,
     step: int = 0,
     auto_increment_step: bool = False,
-    log_all: bool = False,
+    log_all: bool = True,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
     wraps: t.Callable[..., t.Any] | None = None,
@@ -145,7 +168,11 @@ The step value to attach to metrics produced by this Scorer.
 ### adapt
 
 ```python
-adapt(type: type[OuterT], adapt: Callable[[OuterT], T], name: str | None = None) -> Scorer[OuterT]
+adapt(
+    type: type[OuterT],
+    adapt: Callable[[OuterT], T],
+    name: str | None = None,
+) -> Scorer[OuterT]
 ```
 
 Adapts a scorer to operate with some other type
@@ -225,10 +252,48 @@ def clone(self) -> "Scorer[T]":
 
 </Accordion>
 
-### fit\_like
+### fit
 
 ```python
-fit_like(scorers: ScorersLike[T] | None, *, attributes: JsonDict | None = None) -> list[Scorer[T]]
+fit(scorer: ScorerLike[T]) -> Scorer[T]
+```
+
+Fit a scorer to the given attributes.
+
+**Parameters:**
+
+* **`scorer`**
+  (`ScorerLike[T]`)
+  –The scorer to fit.
+
+**Returns:**
+
+* `Scorer[T]`
+  –A Scorer instance.
+
+<Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
+```python
+@classmethod
+def fit(cls, scorer: "ScorerLike[T]") -> "Scorer[T]":
+    """
+    Fit a scorer to the given attributes.
+
+    Args:
+        scorer: The scorer to fit.
+
+    Returns:
+        A Scorer instance.
+    """
+    return scorer if isinstance(scorer, Scorer) else cls(scorer)
+```
+
+
+</Accordion>
+
+### fit\_many
+
+```python
+fit_many(scorers: ScorersLike[T] | None) -> list[Scorer[T]]
 ```
 
 Convert a collection of scorer-like objects into a list of Scorer instances.
@@ -245,11 +310,6 @@ and attributes across all scorers.
   - A dictionary mapping names to scorer objects or callables
   - A sequence of scorer objects or callables
   - None (returns empty list)
-* **`attributes`**
-  (`JsonDict | None`, default:
-  `None`
-  )
-  –Optional attributes to apply to all resulting scorers.
 
 **Returns:**
 
@@ -259,9 +319,7 @@ and attributes across all scorers.
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 @classmethod
-def fit_like(
-    cls, scorers: "ScorersLike[T] | None", *, attributes: JsonDict | None = None
-) -> list["Scorer[T]"]:
+def fit_many(cls, scorers: "ScorersLike[T] | None") -> list["Scorer[T]"]:
     """
     Convert a collection of scorer-like objects into a list of Scorer instances.
 
@@ -274,25 +332,17 @@ def fit_like(
             - A dictionary mapping names to scorer objects or callables
             - A sequence of scorer objects or callables
             - None (returns empty list)
-        attributes: Optional attributes to apply to all resulting scorers.
 
     Returns:
         A list of Scorer instances with consistent configuration.
     """
-    if isinstance(scorers, dict):
+    if isinstance(scorers, t.Mapping):
         return [
-            scorer.with_(name=name, attributes=attributes)
-            if isinstance(scorer, Scorer)
-            else cls(scorer, name=name, attributes=attributes)
+            scorer.with_(name=name) if isinstance(scorer, Scorer) else cls(scorer, name=name)
             for name, scorer in scorers.items()
         ]
 
-    return [
-        scorer.with_(attributes=attributes)
-        if isinstance(scorer, Scorer)
-        else cls(scorer, attributes=attributes)
-        for scorer in scorers or []
-    ]
+    return [scorer if isinstance(scorer, Scorer) else cls(scorer) for scorer in scorers or []]
 ```
 
 
@@ -301,7 +351,9 @@ def fit_like(
 ### normalize\_and\_score
 
 ```python
-normalize_and_score(obj: T, *args: Any, **kwargs: Any) -> list[Metric]
+normalize_and_score(
+    obj: T, *args: Any, **kwargs: Any
+) -> list[Metric]
 ```
 
 Executes the scorer and returns all generated metrics,
@@ -468,7 +520,9 @@ async def score(self, obj: T, *args: t.Any, **kwargs: t.Any) -> Metric:
 ### score\_composite
 
 ```python
-score_composite(obj: T, *args: Any, **kwargs: Any) -> tuple[Metric, list[Metric]]
+score_composite(
+    obj: T, *args: Any, **kwargs: Any
+) -> tuple[Metric, list[Metric]]
 ```
 
 Executes the scorer and returns both the primary Metric and a list of any
@@ -510,7 +564,15 @@ async def score_composite(
 ### with\_
 
 ```python
-with_(name: str | None = None, attributes: JsonDict | None = None, step: int | None = None, auto_increment_step: bool | None = None, catch: bool | None = None, log_all: bool | None = None) -> Scorer[T]
+with_(
+    *,
+    name: str | None = None,
+    attributes: JsonDict | None = None,
+    step: int | None = None,
+    auto_increment_step: bool | None = None,
+    catch: bool | None = None,
+    log_all: bool | None = None,
+) -> Scorer[T]
 ```
 
 Create a new Scorer with updated properties.
@@ -557,6 +619,7 @@ Create a new Scorer with updated properties.
 ```python
 def with_(
     self,
+    *,
     name: str | None = None,
     attributes: JsonDict | None = None,
     step: int | None = None,
@@ -594,6 +657,14 @@ def with_(
 
 </Accordion>
 
+ScorerCallable
+--------------
+
+A callable that takes an object and returns a compatible score result.
+- Can take just the object or additional args/kwargs
+- Can return single result or sequence
+- Can be sync or async
+
 ScorerWarning
 -------------
 
@@ -603,12 +674,17 @@ add
 ---
 
 ```python
-add(scorer: Scorer[T], other: Scorer[T], *, average: bool = False, name: str | None = None) -> Scorer[T]
+add(
+    scorer: Scorer[T],
+    *others: Scorer[T],
+    average: bool = False,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
-Create a scorer that adds the values of two scorers together.
+Create a scorer that adds the values multiple scorers together.
 
-This composition performs arithmetic addition of the two scorer values,
+This composition performs arithmetic addition of the scorer values,
 with an optional averaging mode.
 
 **Parameters:**
@@ -616,9 +692,11 @@ with an optional averaging mode.
 * **`scorer`**
   (`Scorer[T]`)
   –The first Scorer instance to combine.
-* **`other`**
-  (`Scorer[T]`)
-  –The second Scorer instance to combine.
+* **`others`**
+  (`Scorer[T]`, default:
+  `()`
+  )
+  –The additional Scorer instances to combine.
 * **`average`**
   (`bool`, default:
   `False`
@@ -640,17 +718,17 @@ with an optional averaging mode.
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
 def add(
-    scorer: Scorer[T], other: Scorer[T], *, average: bool = False, name: str | None = None
+    scorer: Scorer[T], *others: Scorer[T], average: bool = False, name: str | None = None
 ) -> Scorer[T]:
     """
-    Create a scorer that adds the values of two scorers together.
+    Create a scorer that adds the values multiple scorers together.
 
-    This composition performs arithmetic addition of the two scorer values,
+    This composition performs arithmetic addition of the scorer values,
     with an optional averaging mode.
 
     Args:
         scorer: The first Scorer instance to combine.
-        other: The second Scorer instance to combine.
+        others: The additional Scorer instances to combine.
         average: If True, divides the sum by 2 to compute the average instead
             of the raw sum. Defaults to False.
         name: Optional name for the composed scorer. If None, combines the names
@@ -662,16 +740,24 @@ def add(
 
     async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
+            *[
+                scorer.score_composite(data, *args, **kwargs),
+                *[other.score_composite(data) for other in others],
+            ]
         )
         value = original.value + original_other.value
         metric = Metric(
-            value / 2 if average else value,
+            value / (len(others) + 1) if average else value,
             step=original.step,
         )
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}", wraps=scorer)
+    generated_name = (
+        f"{scorer.name}_add_{len(others)}"
+        if len(others) > 1
+        else f"{scorer.name}_add_{others[0].name}"
+    )
+    return Scorer[T](evaluate, name=name or generated_name, wraps=scorer)
 ```
 
 
@@ -681,7 +767,12 @@ and\_
 -----
 
 ```python
-and_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
+and_(
+    scorer: Scorer[T],
+    other: Scorer[T],
+    *,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Create a scorer that performs logical AND between two scorers.
@@ -746,10 +837,14 @@ avg
 ---
 
 ```python
-avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
+avg(
+    scorer: Scorer[T],
+    *others: Scorer[T],
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
-Average two scorers together.
+Average multiple scorers together.
 
 This is a convenience function that uses the `add` function with `average=True`.
 
@@ -757,10 +852,12 @@ This is a convenience function that uses the `add` function with `average=True`.
 
 * **`scorer`**
   (`Scorer[T]`)
-  –The first Scorer instance.
-* **`other`**
-  (`Scorer[T]`)
-  –The second Scorer instance.
+  –The Scorer instance.
+* **`others`**
+  (`Scorer[T]`, default:
+  `()`
+  )
+  –Additional Scorer instances to include in the average.
 * **`name`**
   (`str | None`, default:
   `None`
@@ -769,18 +866,18 @@ This is a convenience function that uses the `add` function with `average=True`.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
-def avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
+def avg(scorer: Scorer[T], *others: Scorer[T], name: str | None = None) -> Scorer[T]:
     """
-    Average two scorers together.
+    Average multiple scorers together.
 
     This is a convenience function that uses the `add` function with `average=True`.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
+        scorer: The Scorer instance.
+        others: Additional Scorer instances to include in the average.
         name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
     """
-    return add(scorer, other, average=True, name=name or f"{scorer.name}_{other.name}_avg")
+    return add(scorer, *others, average=True, name=name or f"{scorer.name}_avg")
 ```
 
 
@@ -790,7 +887,13 @@ clip
 ----
 
 ```python
-clip(scorer: Scorer[T], min_val: float, max_val: float, *, name: str | None = None) -> Scorer[T]
+clip(
+    scorer: Scorer[T],
+    min_val: float,
+    max_val: float,
+    *,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Create a scorer that clips the output of another scorer to a specified range.
@@ -913,7 +1016,12 @@ invert
 ------
 
 ```python
-invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None) -> Scorer[T]
+invert(
+    scorer: Scorer[T],
+    *,
+    known_max: float = 1.0,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Invert the result of a scorer.
@@ -982,58 +1090,22 @@ def invert(scorer: Scorer[T], *, known_max: float = 1.0, name: str | None = None
 
 </Accordion>
 
-named
------
-
-```python
-named(name: str, scorer: Scorer[T]) -> Scorer[T]
-```
-
-Give a scorer a name.
-
-**Parameters:**
-
-* **`name`**
-  (`str`)
-  –The name to assign to the scorer.
-* **`scorer`**
-  (`Scorer[T]`)
-  –The Scorer instance to rename.
-
-**Returns:**
-
-* `Scorer[T]`
-  –A new Scorer with the updated name.
-
-<Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
-```python
-def named(name: str, scorer: Scorer[T]) -> Scorer[T]:
-    """
-    Give a scorer a name.
-
-    Args:
-        name: The name to assign to the scorer.
-        scorer: The Scorer instance to rename.
-
-    Returns:
-        A new Scorer with the updated name.
-    """
-    return scorer.rename(name)
-```
-
-
-</Accordion>
-
 normalize
 ---------
 
 ```python
-normalize(scorer: Scorer[T], known_max: float, known_min: float = 0.0, *, name: str | None = None) -> Scorer[T]
+normalize(
+    scorer: Scorer[T],
+    known_max: float,
+    known_min: float = 0.0,
+    *,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
-Normalize the output of a scorer to a range of [0.0, 1.0].
+Normalize the output of a scorer to a range of `[0.0, 1.0]`.
 
-Uses `remap_range` internally.
+Uses `remap_range` internally with `new_min = 0.0` and `new_max = 1.0`.
 
 **Examples:**
 
@@ -1071,9 +1143,9 @@ def normalize(
     scorer: Scorer[T], known_max: float, known_min: float = 0.0, *, name: str | None = None
 ) -> Scorer[T]:
     """
-    Normalize the output of a scorer to a range of [0.0, 1.0].
+    Normalize the output of a scorer to a range of `[0.0, 1.0]`.
 
-    Uses `remap_range` internally.
+    Uses `remap_range` internally with `new_min = 0.0` and `new_max = 1.0`.
 
     Examples:
         ~~~
@@ -1108,7 +1180,9 @@ not\_
 -----
 
 ```python
-not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]
+not_(
+    scorer: Scorer[T], *, name: str | None = None
+) -> Scorer[T]
 ```
 
 Apply a logical NOT operation to a scorer - inverting its truthiness (non-zero).
@@ -1151,7 +1225,12 @@ or\_
 ----
 
 ```python
-or_(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
+or_(
+    scorer: Scorer[T],
+    other: Scorer[T],
+    *,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Create a scorer that performs logical OR between two scorers.
@@ -1216,7 +1295,15 @@ remap\_range
 ------------
 
 ```python
-remap_range(scorer: Scorer[T], *, known_min: float, known_max: float, new_min: float, new_max: float, name: str | None = None) -> Scorer[T]
+remap_range(
+    scorer: Scorer[T],
+    *,
+    known_min: float,
+    known_max: float,
+    new_min: float,
+    new_max: float,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Remap the output of a scorer from one range to another.
@@ -1339,7 +1426,12 @@ scale
 -----
 
 ```python
-scale(scorer: Scorer[T], factor: float, *, name: str | None = None) -> Scorer[T]
+scale(
+    scorer: Scorer[T],
+    factor: float,
+    *,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Create a scorer that scales the output of another scorer by a constant factor.
@@ -1407,7 +1499,12 @@ subtract
 --------
 
 ```python
-subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]
+subtract(
+    scorer: Scorer[T],
+    other: Scorer[T],
+    *,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Create a scorer that subtracts one scorer's value from another's.
@@ -1472,7 +1569,19 @@ threshold
 ---------
 
 ```python
-threshold(scorer: Scorer[T], *, gt: float | None = None, gte: float | None = None, lt: float | None = None, lte: float | None = None, eq: float | None = None, ne: float | None = None, pass_value: float = 1.0, fail_value: float = 0.0, name: str | None = None) -> Scorer[T]
+threshold(
+    scorer: Scorer[T],
+    *,
+    gt: float | None = None,
+    gte: float | None = None,
+    lt: float | None = None,
+    lte: float | None = None,
+    eq: float | None = None,
+    ne: float | None = None,
+    pass_value: float = 1.0,
+    fail_value: float = 0.0,
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Perform a threshold check on the output of a scorer and treat the result as a binary pass/fail.
@@ -1622,7 +1731,10 @@ weighted\_avg
 -------------
 
 ```python
-weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> Scorer[T]
+weighted_avg(
+    *scorers: tuple[Scorer[T], float],
+    name: str | None = None,
+) -> Scorer[T]
 ```
 
 Create a scorer that computes a weighted average of multiple scorers.
@@ -1713,7 +1825,9 @@ detect\_refusal\_with\_zero\_shot
 ---------------------------------
 
 ```python
-detect_refusal_with_zero_shot(*, name: str = 'refusal_zero_shot') -> Scorer[t.Any]
+detect_refusal_with_zero_shot(
+    *, name: str = "refusal_zero_shot"
+) -> Scorer[t.Any]
 ```
 
 Detect refusal to answer questions using zero-shot classification.
@@ -1756,7 +1870,13 @@ zero\_shot\_classification
 --------------------------
 
 ```python
-zero_shot_classification(labels: list[str], score_label: str, *, model_name: str = 'facebook/bart-large-mnli', name: str | None = None) -> Scorer[t.Any]
+zero_shot_classification(
+    labels: list[str],
+    score_label: str,
+    *,
+    model_name: str = "facebook/bart-large-mnli",
+    name: str | None = None,
+) -> Scorer[t.Any]
 ```
 
 Scores data using a zero-shot text classification model.
@@ -1813,14 +1933,18 @@ def zero_shot_classification(
     )
 
     try:
-        from transformers import (  # type: ignore [attr-defined,import-not-found,unused-ignore]
-            pipeline,
-        )
+        pipeline("zero-shot-classification", model=model_name)
     except ImportError:
         warn_at_user_stacklevel(transformers_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
             return Metric(value=0.0, attributes={"error": transformers_error_msg})
+
+        return Scorer(disabled_evaluate, name=name)
+    except Exception:  # noqa: BLE001
+
+        def disabled_evaluate(_: t.Any) -> Metric:
+            return Metric(value=0.0, attributes={"error": "Failed to create pipeline"})
 
         return Scorer(disabled_evaluate, name=name)
 
@@ -1867,7 +1991,12 @@ character\_consistency
 ----------------------
 
 ```python
-character_consistency(reference: str, *, max_ratio_diff: float = 2.0, name: str = 'char_consistency') -> Scorer[t.Any]
+character_consistency(
+    reference: str,
+    *,
+    max_ratio_diff: float = 2.0,
+    name: str = "char_consistency",
+) -> Scorer[t.Any]
 ```
 
 Scores character type consistency between the data and a reference text.
@@ -1946,7 +2075,14 @@ contains
 --------
 
 ```python
-contains(pattern: str | Pattern[str], *, case_sensitive: bool = False, exact: bool = False, regex: bool = False, name: str = 'contains') -> Scorer[t.Any]
+contains(
+    pattern: str | Pattern[str],
+    *,
+    case_sensitive: bool = False,
+    exact: bool = False,
+    regex: bool = False,
+    name: str = "contains",
+) -> Scorer[t.Any]
 ```
 
 Score based on whether the data contains a specific string or regex pattern.
@@ -2038,7 +2174,11 @@ detect\_ansi\_escapes
 ---------------------
 
 ```python
-detect_ansi_escapes(*, extra_patterns: list[str] | None = None, name: str = 'ansi_escapes') -> Scorer[t.Any]
+detect_ansi_escapes(
+    *,
+    extra_patterns: list[str] | None = None,
+    name: str = "ansi_escapes",
+) -> Scorer[t.Any]
 ```
 
 Score the presence of ANSI escape codes in the data.
@@ -2081,7 +2221,11 @@ detect\_bias
 ------------
 
 ```python
-detect_bias(*, extra_patterns: list[str] | None = None, name: str = 'bias') -> Scorer[t.Any]
+detect_bias(
+    *,
+    extra_patterns: list[str] | None = None,
+    name: str = "bias",
+) -> Scorer[t.Any]
 ```
 
 Scores the presence of potentially biased language in the data.
@@ -2145,7 +2289,11 @@ detect\_refusal
 ---------------
 
 ```python
-detect_refusal(*, extra_patterns: list[str] | None = None, name: str = 'refusal') -> Scorer[t.Any]
+detect_refusal(
+    *,
+    extra_patterns: list[str] | None = None,
+    name: str = "refusal",
+) -> Scorer[t.Any]
 ```
 
 Score the presence of refusal patterns in the data.
@@ -2207,7 +2355,11 @@ detect\_sensitive\_keywords
 ---------------------------
 
 ```python
-detect_sensitive_keywords(*, extra_patterns: list[str] | None = None, name: str = 'sensitive_keywords') -> Scorer[t.Any]
+detect_sensitive_keywords(
+    *,
+    extra_patterns: list[str] | None = None,
+    name: str = "sensitive_keywords",
+) -> Scorer[t.Any]
 ```
 
 Score the presence of sensitive keywords in the data (e.g., passwords, API keys).
@@ -2275,7 +2427,11 @@ detect\_unsafe\_shell\_content
 ------------------------------
 
 ```python
-detect_unsafe_shell_content(*, extra_patterns: list[str] | None = None, name: str = 'unsafe_shell_content') -> Scorer[t.Any]
+detect_unsafe_shell_content(
+    *,
+    extra_patterns: list[str] | None = None,
+    name: str = "unsafe_shell_content",
+) -> Scorer[t.Any]
 ```
 
 Score the presence of unsafe shell commands/paths in the data.
@@ -2435,7 +2591,13 @@ detect\_harm\_with\_openai
 --------------------------
 
 ```python
-detect_harm_with_openai(*, api_key: str | None = None, model: str = 'text-moderation-stable', client: AsyncOpenAI | None = None, name: str = 'openai_harm') -> Scorer[t.Any]
+detect_harm_with_openai(
+    *,
+    api_key: str | None = None,
+    model: str = "text-moderation-stable",
+    client: AsyncOpenAI | None = None,
+    name: str = "openai_harm",
+) -> Scorer[t.Any]
 ```
 
 Scores content for harmfulness using the OpenAI Moderation API.
@@ -2495,7 +2657,6 @@ def detect_harm_with_openai(
         model: The moderation model to use.
         name: Name of the scorer.
     """
-    import openai
 
     async def evaluate(
         data: t.Any, *, api_key: str | None = Config(api_key), model: str = Config(model)
@@ -2556,7 +2717,18 @@ llm\_judge
 ----------
 
 ```python
-llm_judge(model: str | Generator, rubric: str, *, input: Any | None = None, expected_output: Any | None = None, model_params: GenerateParams | AnyDict | None = None, passing: Callable[[float], bool] | None = None, min_score: float | None = None, max_score: float | None = None, name: str = 'llm_judge') -> Scorer[t.Any]
+llm_judge(
+    model: str | Generator,
+    rubric: str,
+    *,
+    input: Any | None = None,
+    expected_output: Any | None = None,
+    model_params: GenerateParams | AnyDict | None = None,
+    passing: Callable[[float], bool] | None = None,
+    min_score: float | None = None,
+    max_score: float | None = None,
+    name: str = "llm_judge",
+) -> Scorer[t.Any]
 ```
 
 Score the output of a task using an LLM to judge it against a rubric.
@@ -2699,7 +2871,12 @@ length\_in\_range
 -----------------
 
 ```python
-length_in_range(min_length: int = 0, max_length: float = float('inf'), *, name: str = 'length_in_range') -> Scorer[t.Any]
+length_in_range(
+    min_length: int = 0,
+    max_length: float = float("inf"),
+    *,
+    name: str = "length_in_range",
+) -> Scorer[t.Any]
 ```
 
 Scores the length of the data against a specified range.
@@ -2783,7 +2960,13 @@ length\_ratio
 -------------
 
 ```python
-length_ratio(reference: str, *, min_ratio: float = 0.1, max_ratio: float = 5.0, name: str = 'length_ratio') -> Scorer[t.Any]
+length_ratio(
+    reference: str,
+    *,
+    min_ratio: float = 0.1,
+    max_ratio: float = 5.0,
+    name: str = "length_ratio",
+) -> Scorer[t.Any]
 ```
 
 Score the length of the data against a reference text.
@@ -2869,7 +3052,9 @@ length\_target
 --------------
 
 ```python
-length_target(target_length: int, *, name: str = 'length_target') -> Scorer[t.Any]
+length_target(
+    target_length: int, *, name: str = "length_target"
+) -> Scorer[t.Any]
 ```
 
 Scores the length of the data against a target length.
@@ -2937,7 +3122,11 @@ type\_token\_ratio
 ------------------
 
 ```python
-type_token_ratio(target_ratio: float | None = None, *, name: str = 'type_token_ratio') -> Scorer[t.Any]
+type_token_ratio(
+    target_ratio: float | None = None,
+    *,
+    name: str = "type_token_ratio",
+) -> Scorer[t.Any]
 ```
 
 Scores the lexical diversity of the text using Type-Token Ratio (TTR).
@@ -3030,7 +3219,14 @@ detect\_pii
 -----------
 
 ```python
-detect_pii(types: Sequence[Literal['email', 'phone', 'ip_address', 'ssn']] = ('email', 'phone', 'ip_address'), *, extra_patterns: list[str] | None = None, name: str = 'pii') -> Scorer[t.Any]
+detect_pii(
+    types: Sequence[
+        Literal["email", "phone", "ip_address", "ssn"]
+    ] = ("email", "phone", "ip_address"),
+    *,
+    extra_patterns: list[str] | None = None,
+    name: str = "pii",
+) -> Scorer[t.Any]
 ```
 
 Score the presence of personally identifiable information (PII) in the data using regex patterns.
@@ -3109,7 +3305,13 @@ detect\_pii\_with\_presidio
 ---------------------------
 
 ```python
-detect_pii_with_presidio(*, entities: list[str] | None = None, threshold: float = 0.5, invert: bool = False, name: str = 'pii_presidio') -> Scorer[t.Any]
+detect_pii_with_presidio(
+    *,
+    entities: list[str] | None = None,
+    threshold: float = 0.5,
+    invert: bool = False,
+    name: str = "pii_presidio",
+) -> Scorer[t.Any]
 ```
 
 Score the presence of PII (Personally Identifiable Information) in the data using Presidio.
@@ -3175,8 +3377,8 @@ def detect_pii_with_presidio(
     )
 
     try:
-        import presidio_analyzer  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
-    except ImportError:
+        _get_presidio_analyzer()
+    except (ImportError, OSError):
         warn_at_user_stacklevel(presidio_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
@@ -3230,7 +3432,9 @@ readability
 -----------
 
 ```python
-readability(target_grade: float = 8.0, *, name: str = 'readability') -> Scorer[t.Any]
+readability(
+    target_grade: float = 8.0, *, name: str = "readability"
+) -> Scorer[t.Any]
 ```
 
 Score the readability of the text against a target grade level.
@@ -3277,8 +3481,8 @@ def readability(
     )
 
     try:
-        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
-    except ImportError:
+        textstat.flesch_kincaid_grade("test")
+    except (ImportError, AttributeError):
         warn_at_user_stacklevel(textstat_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
@@ -3313,7 +3517,12 @@ wrap\_chat
 ----------
 
 ```python
-wrap_chat(inner_scorer: Scorer[Any], *, filter: ChatFilterMode | ChatFilterFunction = 'last', name: str | None = None) -> Scorer[Chat]
+wrap_chat(
+    inner_scorer: Scorer[Any],
+    *,
+    filter: ChatFilterMode | ChatFilterFunction = "last",
+    name: str | None = None,
+) -> Scorer[Chat]
 ```
 
 Wraps a text-based scorer to work on a `rigging.Chat` object.
@@ -3384,8 +3593,6 @@ def wrap_chat(
     """
 
     async def evaluate(chat: "Chat") -> Metric:
-        from rigging.chat import Chat
-
         # Fall through to the inner scorer if chat is not a Chat instance
         if not isinstance(chat, Chat):
             return await inner_scorer(chat)
@@ -3423,7 +3630,10 @@ sentiment
 ---------
 
 ```python
-sentiment(target: Sentiment = 'neutral', name: str = 'score_sentiment') -> Scorer[t.Any]
+sentiment(
+    target: Sentiment = "neutral",
+    name: str = "score_sentiment",
+) -> Scorer[t.Any]
 ```
 
 Score the sentiment of the text against a target sentiment.
@@ -3471,8 +3681,8 @@ def sentiment(
     textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
 
     try:
-        from textblob import TextBlob  # type: ignore[import-not-found,unused-ignore,import-untyped]
-    except ImportError:
+        TextBlob("test").sentiment  # noqa: B018
+    except (ImportError, AttributeError):
         warn_at_user_stacklevel(textblob_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
@@ -3518,7 +3728,12 @@ sentiment\_with\_perspective
 ----------------------------
 
 ```python
-sentiment_with_perspective(*, api_key: str | None = None, attribute: PerspectiveAttribute = 'TOXICITY', name: str | None = None) -> Scorer[t.Any]
+sentiment_with_perspective(
+    *,
+    api_key: str | None = None,
+    attribute: PerspectiveAttribute = "TOXICITY",
+    name: str | None = None,
+) -> Scorer[t.Any]
 ```
 
 Score the sentiment of the text using the Perspective API.
@@ -3602,7 +3817,12 @@ bleu
 ----
 
 ```python
-bleu(reference: str, *, weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25), name: str = 'bleu') -> Scorer[t.Any]
+bleu(
+    reference: str,
+    *,
+    weights: tuple[float, ...] = (0.25, 0.25, 0.25, 0.25),
+    name: str = "bleu",
+) -> Scorer[t.Any]
 ```
 
 Scores the data using the BLEU score against a reference text.
@@ -3650,21 +3870,17 @@ def bleu(
     nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
 
     try:
-        import nltk  # type: ignore[import-not-found,unused-ignore]
-        from nltk.tokenize import word_tokenize  # type: ignore[import-not-found,unused-ignore]
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found,unused-ignore]
-            sentence_bleu,
-        )
-
         # Check for the 'punkt' tokenizer data
         try:
             nltk.data.find("tokenizers/punkt")
+            word_tokenize("test")
+            sentence_bleu([["test"]], ["test"])
         except LookupError as e:
             nltk_import_error_msg = (
                 "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
             )
             raise ImportError(nltk_import_error_msg) from e
-    except ImportError:
+    except (ImportError, AttributeError):
         warn_at_user_stacklevel(nltk_import_error_msg, UserWarning)
 
         def disabled_evaluate(_: t.Any) -> Metric:
@@ -3692,133 +3908,19 @@ def bleu(
 
 </Accordion>
 
-distance
---------
-
-```python
-distance(reference: str, *, method: Literal['levenshtein', 'hamming', 'jaro', 'jaro_winkler', 'damerau_levenshtein'] = 'levenshtein', normalize: bool = True, name: str = 'distance') -> Scorer[t.Any]
-```
-
-Score the distance between data and reference text using RapidFuzz distance metrics.
-
-Lower distance values indicate higher similarity. When normalize=True, distances
-are converted to similarity scores (1 - normalized\_distance).
-
-Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
-
-**Parameters:**
-
-* **`reference`**
-  (`str`)
-  –The reference text (static string).
-* **`method`**
-  (`Literal['levenshtein', 'hamming', 'jaro', 'jaro_winkler', 'damerau_levenshtein']`, default:
-  `'levenshtein'`
-  )
-  –The distance metric to use.
-* **`normalize`**
-  (`bool`, default:
-  `True`
-  )
-  –Normalize distances and convert to similarity scores.
-* **`name`**
-  (`str`, default:
-  `'distance'`
-  )
-  –Name of the scorer.
-
-<Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
-```python
-def distance(
-    reference: str,
-    *,
-    method: t.Literal[
-        "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
-    ] = "levenshtein",
-    normalize: bool = True,
-    name: str = "distance",
-) -> "Scorer[t.Any]":
-    """
-    Score the distance between data and reference text using RapidFuzz distance metrics.
-
-    Lower distance values indicate higher similarity. When normalize=True, distances
-    are converted to similarity scores (1 - normalized_distance).
-
-    Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
-
-    Args:
-        reference: The reference text (static string).
-        method: The distance metric to use.
-        normalize: Normalize distances and convert to similarity scores.
-        name: Name of the scorer.
-    """
-    rapidfuzz_import_error_msg = (
-        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
-    )
-
-    try:
-        from rapidfuzz import distance  # type: ignore[import-not-found,unused-ignore]
-    except ImportError:
-        warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
-
-    def evaluate(  # noqa: PLR0912
-        data: t.Any,
-        *,
-        reference: str = reference,
-        method: t.Literal[
-            "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
-        ] = method,
-        normalize: bool = normalize,
-    ) -> Metric:
-        candidate_text = str(data)
-
-        # Select the appropriate distance method
-        if method == "levenshtein":
-            if normalize:
-                score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
-            else:
-                dist = distance.Levenshtein.distance(reference, candidate_text)
-                score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
-        elif method == "hamming":
-            if normalize:
-                score = distance.Hamming.normalized_similarity(reference, candidate_text)
-            else:
-                dist = distance.Hamming.distance(reference, candidate_text)
-                score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
-        elif method == "jaro":
-            score = distance.Jaro.similarity(reference, candidate_text)
-        elif method == "jaro_winkler":
-            score = distance.JaroWinkler.similarity(reference, candidate_text)
-        elif method == "damerau_levenshtein":
-            if normalize:
-                score = distance.DamerauLevenshtein.normalized_similarity(reference, candidate_text)
-            else:
-                dist = distance.DamerauLevenshtein.distance(reference, candidate_text)
-                score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
-        elif normalize:
-            score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
-        else:
-            dist = distance.Levenshtein.distance(reference, candidate_text)
-            score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
-
-        return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
-
-    return Scorer(evaluate, name=name, catch=True)
-```
-
-
-</Accordion>
-
 similarity
 ----------
 
 ```python
-similarity(reference: str, *, method: Literal['ratio', 'quick_ratio', 'real_quick_ratio'] = 'ratio', case_sensitive: bool = False, name: str = 'similarity') -> Scorer[t.Any]
+similarity(
+    reference: str,
+    *,
+    method: Literal[
+        "ratio", "quick_ratio", "real_quick_ratio"
+    ] = "ratio",
+    case_sensitive: bool = False,
+    name: str = "similarity",
+) -> Scorer[t.Any]
 ```
 
 Score the similarity of the data to a reference text using sequence matching.
@@ -3903,7 +4005,14 @@ similarity\_with\_litellm
 -------------------------
 
 ```python
-similarity_with_litellm(reference: str, model: str, *, api_key: str | None = None, api_base: str | None = None, name: str = 'similarity') -> Scorer[t.Any]
+similarity_with_litellm(
+    reference: str,
+    model: str,
+    *,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    name: str = "similarity",
+) -> Scorer[t.Any]
 ```
 
 Scores semantic similarity using any embedding model supported by `litellm`.
@@ -3970,7 +4079,6 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    import litellm
 
     async def evaluate(
         data: t.Any,
@@ -4013,7 +4121,22 @@ similarity\_with\_rapidfuzz
 ---------------------------
 
 ```python
-similarity_with_rapidfuzz(reference: str, *, method: Literal['ratio', 'partial_ratio', 'token_sort_ratio', 'token_set_ratio', 'WRatio', 'QRatio'] = 'ratio', normalize: bool = True, preprocessor: bool = True, score_cutoff: float | None = None, name: str = 'similarity') -> Scorer[t.Any]
+similarity_with_rapidfuzz(
+    reference: str,
+    *,
+    method: Literal[
+        "ratio",
+        "partial_ratio",
+        "token_sort_ratio",
+        "token_set_ratio",
+        "WRatio",
+        "QRatio",
+    ] = "ratio",
+    normalize: bool = True,
+    preprocessor: bool = True,
+    score_cutoff: float | None = None,
+    name: str = "similarity",
+) -> Scorer[t.Any]
 ```
 
 Score the similarity of the data to a reference text using RapidFuzz.
@@ -4090,7 +4213,7 @@ def similarity_with_rapidfuzz(
     )
 
     try:
-        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found,unused-ignore]
+        fuzz.ratio("test", "test")
     except ImportError:
         warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
 
@@ -4166,7 +4289,12 @@ similarity\_with\_sentence\_transformers
 ----------------------------------------
 
 ```python
-similarity_with_sentence_transformers(reference: str, *, model_name: str = 'all-MiniLM-L6-v2', name: str = 'similarity') -> Scorer[t.Any]
+similarity_with_sentence_transformers(
+    reference: str,
+    *,
+    model_name: str = "all-MiniLM-L6-v2",
+    name: str = "similarity",
+) -> Scorer[t.Any]
 ```
 
 Scores semantic similarity using a sentence-transformer embedding model.
@@ -4218,10 +4346,7 @@ def similarity_with_sentence_transformers(
     sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers"
 
     try:
-        from sentence_transformers import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-            SentenceTransformer,
-            util,
-        )
+        SentenceTransformer(model_name)
     except ImportError:
         warn_at_user_stacklevel(sentence_transformers_error_msg, UserWarning)
 
@@ -4259,7 +4384,9 @@ similarity\_with\_tf\_idf
 -------------------------
 
 ```python
-similarity_with_tf_idf(reference: str, *, name: str = 'similarity') -> Scorer[t.Any]
+similarity_with_tf_idf(
+    reference: str, *, name: str = "similarity"
+) -> Scorer[t.Any]
 ```
 
 Scores semantic similarity using TF-IDF and cosine similarity.
@@ -4294,12 +4421,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
     )
 
     try:
-        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found,unused-ignore]
-            TfidfVectorizer,
-        )
-        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,unused-ignore]
-            cosine_similarity as sklearn_cosine_similarity,
-        )
+        TfidfVectorizer()
     except ImportError:
         warn_at_user_stacklevel(sklearn_import_error_msg, UserWarning)
 
@@ -4315,6 +4437,140 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         tfidf_matrix = vectorizer.fit_transform([candidate_text, reference])
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
+
+    return Scorer(evaluate, name=name, catch=True)
+```
+
+
+</Accordion>
+
+string\_distance
+----------------
+
+```python
+string_distance(
+    reference: str,
+    *,
+    method: Literal[
+        "levenshtein",
+        "hamming",
+        "jaro",
+        "jaro_winkler",
+        "damerau_levenshtein",
+    ] = "levenshtein",
+    normalize: bool = True,
+    name: str = "distance",
+) -> Scorer[t.Any]
+```
+
+Score the distance between data and reference text using RapidFuzz distance metrics.
+
+Lower distance values indicate higher similarity. When normalize=True, distances
+are converted to similarity scores (1 - normalized\_distance).
+
+Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
+
+**Parameters:**
+
+* **`reference`**
+  (`str`)
+  –The reference text (static string).
+* **`method`**
+  (`Literal['levenshtein', 'hamming', 'jaro', 'jaro_winkler', 'damerau_levenshtein']`, default:
+  `'levenshtein'`
+  )
+  –The distance metric to use.
+* **`normalize`**
+  (`bool`, default:
+  `True`
+  )
+  –Normalize distances and convert to similarity scores.
+* **`name`**
+  (`str`, default:
+  `'distance'`
+  )
+  –Name of the scorer.
+
+<Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
+```python
+def string_distance(
+    reference: str,
+    *,
+    method: t.Literal[
+        "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
+    ] = "levenshtein",
+    normalize: bool = True,
+    name: str = "distance",
+) -> "Scorer[t.Any]":
+    """
+    Score the distance between data and reference text using RapidFuzz distance metrics.
+
+    Lower distance values indicate higher similarity. When normalize=True, distances
+    are converted to similarity scores (1 - normalized_distance).
+
+    Requires `rapidfuzz`, see See https://github.com/rapidfuzz/RapidFuzz
+
+    Args:
+        reference: The reference text (static string).
+        method: The distance metric to use.
+        normalize: Normalize distances and convert to similarity scores.
+        name: Name of the scorer.
+    """
+    rapidfuzz_import_error_msg = (
+        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
+    )
+
+    try:
+        distance.Levenshtein.distance("test", "test")
+    except ImportError:
+        warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
+
+        def disabled_evaluate(_: t.Any) -> Metric:
+            return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
+
+        return Scorer(disabled_evaluate, name=name)
+
+    def evaluate(  # noqa: PLR0912
+        data: t.Any,
+        *,
+        reference: str = reference,
+        method: t.Literal[
+            "levenshtein", "hamming", "jaro", "jaro_winkler", "damerau_levenshtein"
+        ] = method,
+        normalize: bool = normalize,
+    ) -> Metric:
+        candidate_text = str(data)
+
+        # Select the appropriate distance method
+        if method == "levenshtein":
+            if normalize:
+                score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
+            else:
+                dist = distance.Levenshtein.distance(reference, candidate_text)
+                score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
+        elif method == "hamming":
+            if normalize:
+                score = distance.Hamming.normalized_similarity(reference, candidate_text)
+            else:
+                dist = distance.Hamming.distance(reference, candidate_text)
+                score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
+        elif method == "jaro":
+            score = distance.Jaro.similarity(reference, candidate_text)
+        elif method == "jaro_winkler":
+            score = distance.JaroWinkler.similarity(reference, candidate_text)
+        elif method == "damerau_levenshtein":
+            if normalize:
+                score = distance.DamerauLevenshtein.normalized_similarity(reference, candidate_text)
+            else:
+                dist = distance.DamerauLevenshtein.distance(reference, candidate_text)
+                score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
+        elif normalize:
+            score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
+        else:
+            dist = distance.Levenshtein.distance(reference, candidate_text)
+            score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
+
+        return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
     return Scorer(evaluate, name=name, catch=True)
 ```

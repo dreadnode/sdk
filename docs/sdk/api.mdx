@@ -11,7 +11,13 @@ ApiClient
 ---------
 
 ```python
-ApiClient(base_url: str, *, api_key: str | None = None, cookies: dict[str, str] | None = None, debug: bool = False)
+ApiClient(
+    base_url: str,
+    *,
+    api_key: str | None = None,
+    cookies: dict[str, str] | None = None,
+    debug: bool = False,
+)
 ```
 
 Client for the Dreadnode API.
@@ -96,7 +102,14 @@ def __init__(
 ### export\_metrics
 
 ```python
-export_metrics(project: str, *, filter: str | None = None, status: StatusFilter = 'completed', metrics: list[str] | None = None, aggregations: list[MetricAggregationType] | None = None) -> pd.DataFrame
+export_metrics(
+    project: str,
+    *,
+    filter: str | None = None,
+    status: StatusFilter = "completed",
+    metrics: list[str] | None = None,
+    aggregations: list[MetricAggregationType] | None = None,
+) -> pd.DataFrame
 ```
 
 Exports metric data for a specific project.
@@ -178,7 +191,15 @@ def export_metrics(
 ### export\_parameters
 
 ```python
-export_parameters(project: str, *, filter: str | None = None, status: StatusFilter = 'completed', parameters: list[str] | None = None, metrics: list[str] | None = None, aggregations: list[MetricAggregationType] | None = None) -> pd.DataFrame
+export_parameters(
+    project: str,
+    *,
+    filter: str | None = None,
+    status: StatusFilter = "completed",
+    parameters: list[str] | None = None,
+    metrics: list[str] | None = None,
+    aggregations: list[MetricAggregationType] | None = None,
+) -> pd.DataFrame
 ```
 
 Exports parameter data for a specific project.
@@ -265,7 +286,15 @@ def export_parameters(
 ### export\_runs
 
 ```python
-export_runs(project: str, *, filter: str | None = None, status: StatusFilter = 'completed', aggregations: list[MetricAggregationType] | None = None, format: ExportFormat = 'parquet', base_dir: str | None = None) -> str
+export_runs(
+    project: str,
+    *,
+    filter: str | None = None,
+    status: StatusFilter = "completed",
+    aggregations: list[MetricAggregationType] | None = None,
+    format: ExportFormat = "parquet",
+    base_dir: str | None = None,
+) -> str
 ```
 
 Export runs using pagination - always writes to disk.
@@ -376,7 +405,15 @@ def export_runs(
 ### export\_timeseries
 
 ```python
-export_timeseries(project: str, *, filter: str | None = None, status: StatusFilter = 'completed', metrics: list[str] | None = None, time_axis: TimeAxisType = 'relative', aggregations: list[TimeAggregationType] | None = None) -> pd.DataFrame
+export_timeseries(
+    project: str,
+    *,
+    filter: str | None = None,
+    status: StatusFilter = "completed",
+    metrics: list[str] | None = None,
+    time_axis: TimeAxisType = "relative",
+    aggregations: list[TimeAggregationType] | None = None,
+) -> pd.DataFrame
 ```
 
 Exports timeseries data for a specific project.
@@ -463,6 +500,37 @@ def export_timeseries(
 
 </Accordion>
 
+### get\_container\_registry\_credentials
+
+```python
+get_container_registry_credentials() -> (
+    ContainerRegistryCredentials
+)
+```
+
+Retrieves container registry credentials for Docker image access.
+
+**Returns:**
+
+* `ContainerRegistryCredentials`
+  –The container registry credentials object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_container_registry_credentials(self) -> ContainerRegistryCredentials:
+    """
+    Retrieves container registry credentials for Docker image access.
+
+    Returns:
+        The container registry credentials object.
+    """
+    response = self.request("POST", "/platform/registry-token")
+    return ContainerRegistryCredentials(**response.json())
+```
+
+
+</Accordion>
+
 ### get\_device\_codes
 
 ```python
@@ -486,7 +554,9 @@ def get_device_codes(self) -> DeviceCodeResponse:
 ### get\_github\_access\_token
 
 ```python
-get_github_access_token(repos: list[str]) -> GithubTokenResponse
+get_github_access_token(
+    repos: list[str],
+) -> GithubTokenResponse
 ```
 
 Try to get a GitHub access token for the given repositories.
@@ -497,6 +567,81 @@ def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
     """Try to get a GitHub access token for the given repositories."""
     response = self.request("POST", "/github/token", json_data={"repos": repos})
     return GithubTokenResponse(**response.json())
+```
+
+
+</Accordion>
+
+### get\_platform\_releases
+
+```python
+get_platform_releases(
+    tag: str, services: list[str], cli_version: str | None
+) -> RegistryImageDetails
+```
+
+Resolves the platform releases for the current project.
+
+**Returns:**
+
+* `RegistryImageDetails`
+  –The resolved platform releases as a ResolveReleasesResponse object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_platform_releases(
+    self, tag: str, services: list[str], cli_version: str | None
+) -> RegistryImageDetails:
+    """
+    Resolves the platform releases for the current project.
+
+    Returns:
+        The resolved platform releases as a ResolveReleasesResponse object.
+    """
+    payload = {
+        "tag": tag,
+        "services": services,
+        "cli_version": cli_version,
+    }
+    try:
+        response = self.request("POST", "/platform/get-releases", json_data=payload)
+
+    except RuntimeError as e:
+        if "403" in str(e):
+            raise RuntimeError("You do not have access to platform releases.") from e
+
+        if "404" in str(e):
+            if "Image not found" in str(e):
+                raise RuntimeError("Image not found") from e
+
+            raise RuntimeError(
+                f"Failed to get platform releases: {e}. The feature is likely disabled on this server"
+            ) from e
+        raise
+    return RegistryImageDetails(**response.json())
+```
+
+
+</Accordion>
+
+### get\_platform\_templates
+
+```python
+get_platform_templates(tag: str) -> bytes
+```
+
+Retrieves the available platform templates.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_platform_templates(self, tag: str) -> bytes:
+    """
+    Retrieves the available platform templates.
+    """
+    params = {"tag": tag}
+    response = self.request("GET", "/platform/templates/all", params=params)
+    zip_content: bytes = response.content
+    return zip_content
 ```
 
 
@@ -579,15 +724,21 @@ def get_run(self, run: str | ULID) -> Run:
 ### get\_run\_tasks
 
 ```python
-get_run_tasks(run: str | ULID, *, format: Literal['tree']) -> list[TaskTree]
+get_run_tasks(
+    run: str | ULID, *, format: Literal["tree"]
+) -> list[TaskTree]
 ```
 
 ```python
-get_run_tasks(run: str | ULID, *, format: Literal['flat'] = 'flat') -> list[Task]
+get_run_tasks(
+    run: str | ULID, *, format: Literal["flat"] = "flat"
+) -> list[Task]
 ```
 
 ```python
-get_run_tasks(run: str | ULID, *, format: TraceFormat = 'flat') -> list[Task] | list[TaskTree]
+get_run_tasks(
+    run: str | ULID, *, format: TraceFormat = "flat"
+) -> list[Task] | list[TaskTree]
 ```
 
 Gets all tasks for a specific run.
@@ -637,15 +788,21 @@ def get_run_tasks(
 ### get\_run\_trace
 
 ```python
-get_run_trace(run: str | ULID, *, format: Literal['tree']) -> list[TraceTree]
+get_run_trace(
+    run: str | ULID, *, format: Literal["tree"]
+) -> list[TraceTree]
 ```
 
 ```python
-get_run_trace(run: str | ULID, *, format: Literal['flat'] = 'flat') -> list[Task | TraceSpan]
+get_run_trace(
+    run: str | ULID, *, format: Literal["flat"] = "flat"
+) -> list[Task | TraceSpan]
 ```
 
 ```python
-get_run_trace(run: str | ULID, *, format: TraceFormat = 'flat') -> list[Task | TraceSpan] | list[TraceTree]
+get_run_trace(
+    run: str | ULID, *, format: TraceFormat = "flat"
+) -> list[Task | TraceSpan] | list[TraceTree]
 ```
 
 Retrieves the run trace (spans+tasks) of a specific run.
@@ -815,7 +972,11 @@ def list_runs(self, project: str) -> list[RunSummary]:
 ### poll\_for\_token
 
 ```python
-poll_for_token(device_code: str, interval: int = DEFAULT_POLL_INTERVAL, max_poll_time: int = DEFAULT_MAX_POLL_TIME) -> AccessRefreshTokenResponse
+poll_for_token(
+    device_code: str,
+    interval: int = DEFAULT_POLL_INTERVAL,
+    max_poll_time: int = DEFAULT_MAX_POLL_TIME,
+) -> AccessRefreshTokenResponse
 ```
 
 Poll for the access token with the given device code.
@@ -852,7 +1013,12 @@ def poll_for_token(
 ### request
 
 ```python
-request(method: str, path: str, params: dict[str, Any] | None = None, json_data: dict[str, Any] | None = None) -> httpx.Response
+request(
+    method: str,
+    path: str,
+    params: dict[str, Any] | None = None,
+    json_data: dict[str, Any] | None = None,
+) -> httpx.Response
 ```
 
 Makes an HTTP request to the API and raises exceptions for errors.
@@ -955,7 +1121,18 @@ MetricAggregationType
 ---------------------
 
 ```python
-MetricAggregationType = Literal['avg', 'median', 'min', 'max', 'sum', 'first', 'last', 'count', 'std', 'var']
+MetricAggregationType = Literal[
+    "avg",
+    "median",
+    "min",
+    "max",
+    "sum",
+    "first",
+    "last",
+    "count",
+    "std",
+    "var",
+]
 ```
 
 How to aggregate metrics in traces and runs

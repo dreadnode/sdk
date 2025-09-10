@@ -3,9 +3,12 @@ from textwrap import dedent
 
 import rigging as rg
 
+from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
-from dreadnode.types import AnyDict
+
+if t.TYPE_CHECKING:
+    from dreadnode.optimization.trial import Trial
 
 if t.TYPE_CHECKING:
     from dreadnode.optimization.trial import Trials
@@ -72,7 +75,7 @@ def llm_refine(
     return Transform(transform, name=name)
 
 
-def prompt_trials_adapter(trials: "Trials[str]") -> str:
+def prompt_trials_adapter(trials: "list[Trial[str]]") -> str:
     """
     Adapter which can be used to create attempt context from a set of prompt/response trials.
 

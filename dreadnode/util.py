@@ -1,6 +1,3 @@
-# Lots of utilities shamelessly copied from the `logfire` package.
-# https://github.com/pydantic/logfire
-
 import asyncio
 import contextlib
 import functools
@@ -10,12 +7,13 @@ import re
 import socket
 import sys
 import typing as t
-from contextlib import aclosing, contextmanager
+from contextlib import aclosing, asynccontextmanager, contextmanager
 from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 from urllib.parse import ParseResult, urlparse
 
+import typing_extensions as te
 from logfire import suppress_instrumentation
 from logfire._internal.stack_info import (
     add_non_user_code_prefix,
@@ -54,6 +52,8 @@ The return type of sys.exc_info(): exc_type, exc_val, exc_tb.
 add_non_user_code_prefix(Path(dreadnode.__file__).parent)
 
 T = t.TypeVar("T")
+T_in = t.TypeVar("T_in")
+T_out = t.TypeVar("T_out")
 
 
 # Formatting
@@ -120,11 +120,12 @@ def truncate_string(text: str, max_length: int = 80, *, suf: str = "...") -> str
     return text[:remaining] + suf
 
 
-def clean_str(string: str, *, max_length: int | None = None) -> str:
+def clean_str(string: str, *, max_length: int | None = None, replace_with: str = "_") -> str:
     """
-    Clean a string by replacing all non-alphanumeric characters (except `/` and `@`) with underscores.
+    Clean a string by replacing all non-alphanumeric characters (except `/` and `@`)
+    with `replace_with` (`_` by default).
     """
-    result = re.sub(r"[^\w/@]+", "_", string.lower()).strip("_")
+    result = re.sub(r"[^\w/@]+", replace_with, string.lower()).strip(replace_with)
     if max_length is not None:
         result = result[:max_length]
     return result
@@ -437,6 +438,84 @@ async def join_generators(*generators: t.AsyncGenerator[T, None]) -> t.AsyncGene
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+@asynccontextmanager
+async def stream_map_and_merge(
+    source: t.AsyncIterable[T_in],
+    processor: t.Callable[[T_in], t.AsyncIterator[T_out]],
+) -> t.AsyncIterator[t.AsyncIterator[T_out]]:
+    """
+    The "one-to-many-to-one" abstraction helpful for concurrently processing
+    events from a stream using workers which themselves yield events.
+
+    It consumes items from a source stream and processes them concurrently
+    (constrained by `limit`), yielding results as a single, interleaved stream.
+
+    Args:
+        source: The source stream of items to process.
+        processor: A function that processes each item from the source and
+            returns an asynchronous generator of results.
+
+    Yields:
+        An asynchronous generator which yields the processed items from the processor streams.
+    """
+    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
+    queue = asyncio.Queue[T_out | object | Exception](maxsize=1)
+
+    # Define a producer to start worker tasks for every
+    # item yielded from source, and have those workers
+    # stream their results to a queue
+
+    async def producer() -> None:
+        pending_workers: set[asyncio.Task[None]] = set()
+        try:
+            async for item in source:
+
+                async def worker(inner_item: T_in) -> None:
+                    try:
+                        async for result in processor(inner_item):
+                            await queue.put(result)
+                    except Exception as e:  # noqa: BLE001
+                        await queue.put(e)
+
+                task = asyncio.create_task(worker(item))
+                pending_workers.add(task)
+                task.add_done_callback(pending_workers.discard)
+
+        finally:
+            if pending_workers:
+                await asyncio.gather(*pending_workers)
+            await queue.put(FINISHED)
+
+    async def generator() -> t.AsyncGenerator[T_out, None]:
+        # Run the producer asynchronously so we can
+        # begin yielding from the queue
+
+        producer_task = asyncio.create_task(producer())
+
+        # Consume the queue waiting for either the FINISHED
+        # sentinel to break, or an exception to shut down processing
+
+        try:
+            while True:
+                item = await queue.get()
+                if item is FINISHED:
+                    break
+                if isinstance(item, Exception):
+                    producer_task.cancel()
+                    await asyncio.gather(producer_task, return_exceptions=True)
+                    raise item
+                yield item  # type: ignore[misc] # confusion with sentinel
+        finally:
+            if not producer_task.done():
+                producer_task.cancel()
+                await asyncio.gather(producer_task, return_exceptions=True)
+
+        await producer_task
+
+    async with aclosing(generator()) as gen:
+        yield gen
+
+
 # List utilities
 
 
@@ -461,7 +540,15 @@ def flatten_list(nested_list: t.Sequence[t.Any]) -> list[t.Any]:
     return flattened
 
 
+def is_homogeneous_list(obj: t.Any, item_type: type[T]) -> te.TypeIs[list[T]]:
+    """Type guard to check if an object is a homogeneous list of the specified type."""
+    return isinstance(obj, list) and all(isinstance(item, item_type) for item in obj)
+
+
 # Logging
+#
+# Lots of utilities shamelessly copied from the `logfire` package.
+# https://github.com/pydantic/logfire
 
 
 def log_internal_error() -> None:

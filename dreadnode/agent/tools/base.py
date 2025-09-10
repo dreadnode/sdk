@@ -4,8 +4,7 @@ from pydantic import ConfigDict
 from rigging import tools
 from rigging.tools.base import ToolMethod as RiggingToolMethod
 
-from dreadnode.meta import Config, Model
-from dreadnode.meta.types import Component
+from dreadnode.meta import Component, Config, Model
 
 Tool = tools.Tool
 

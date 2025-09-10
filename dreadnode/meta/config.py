@@ -14,8 +14,8 @@ from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import PydanticUndefined
 from typing_extensions import ParamSpec
 
+from dreadnode.common_types import UNSET, AnyDict, Unset
 from dreadnode.meta.context import Context, ContextWarning
-from dreadnode.types import UNSET, AnyDict, Unset
 from dreadnode.util import warn_at_user_stacklevel
 
 P = ParamSpec("P")
@@ -410,9 +410,7 @@ class Component(t.Generic[P, R]):
         )
 
     def clone(self) -> te.Self:
-        """
-        Create a copy of the component with the same configuration and context.
-        """
+        """Clone the component."""
         return self.__deepcopy__({})
 
     @property

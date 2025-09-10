@@ -15,7 +15,9 @@ Prepared evaluation of a task with an associated dataset and configuration.
 ### assert\_scores
 
 ```python
-assert_scores: list[str] | Literal[True] = Config(default_factory=list)
+assert_scores: list[str] | Literal[True] = Config(
+    default_factory=list
+)
 ```
 
 Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions).
@@ -31,7 +33,10 @@ Maximum number of tasks to run in parallel.
 ### dataset
 
 ```python
-dataset: Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=FilePath)]
+dataset: Annotated[
+    InputDataset[In] | list[AnyDict] | FilePath,
+    Config(expose_as=FilePath),
+]
 ```
 
 The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
@@ -39,7 +44,9 @@ The dataset to use for the evaluation. Can be a list of inputs or a file path to
 ### dataset\_input\_mapping
 
 ```python
-dataset_input_mapping: list[str] | dict[str, str] | None = Config(default=None)
+dataset_input_mapping: list[str] | dict[str, str] | None = (
+    Config(default=None)
+)
 ```
 
 A list of dataset keys to pass as input parameters to the task, or an
@@ -62,19 +69,38 @@ iterations: int = Config(default=1, ge=1)
 
 Number of times to run each scenario.
 
-### max\_consecutive\_failures
+### label
 
 ```python
-max_consecutive_failures: int | None = Config(default=10)
+label: str | None = Config(default=None)
 ```
 
-The number of consecutive sample failures (not caused by assertions)
-before terminating the evaluation run. Set to None to disable.
+Specific label to use for tasks created by this eval.
 
-### name
+### max\_consecutive\_errors
 
 ```python
-name: str | None = Config(default=None)
+max_consecutive_errors: int | None = Config(default=10)
+```
+
+The number of consecutive sample errors (not caused by score assertions)
+before terminating the evaluation run. Set to None to disable.
+
+### max\_errors
+
+```python
+max_errors: int | None = Config(default=None)
+```
+
+Maximum number of errors (not caused by score assertions)
+to tolerate before stopping the evaluation.
+
+### name\_
+
+```python
+name_: str | None = Config(
+    default=None, alias="name", repr=False, exclude=True
+)
 ```
 
 The name of the evaluation.
@@ -82,7 +108,9 @@ The name of the evaluation.
 ### parameters
 
 ```python
-parameters: dict[str, list[Any]] | None = Config(default=None)
+parameters: dict[str, list[Any]] | None = Config(
+    default=None
+)
 ```
 
 A dictionary defining a parameter space to run experiments against.
@@ -117,10 +145,20 @@ A list of tags associated with the evaluation.
 ### task
 
 ```python
-task: Annotated[Task[[In], Out] | str, Config(expose_as=str)]
+task: Annotated[
+    Task[[In], Out] | str, Config(expose_as=str)
+]
 ```
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.
+
+### trace
+
+```python
+trace: bool = True
+```
+
+Whether to produce trace contexts like runs/tasks for this study.
 
 ### console
 
@@ -134,7 +172,6 @@ Run the evaluation with a live display in the console.
 ```python
 async def console(self) -> EvalResult:
     """Run the evaluation with a live display in the console."""
-    from dreadnode.eval.console import EvalConsoleAdapter
 
     adapter = EvalConsoleAdapter(self)
     return await adapter.run()
@@ -168,7 +205,9 @@ async def run(self) -> EvalResult[In, Out]:
 ### stream
 
 ```python
-stream() -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]
+stream() -> t.AsyncIterator[
+    t.AsyncGenerator[EvalEvent[In, Out], None]
+]
 ```
 
 Create an event stream to monitor the evaluation process.
@@ -193,7 +232,9 @@ load\_dataset
 -------------
 
 ```python
-load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]
+load_dataset(
+    path: Path, *, file_format: FileFormat | None = None
+) -> list[AnyDict]
 ```
 
 Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
@@ -257,13 +298,6 @@ def load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[A
             raise ValueError("JSON file must contain a list of objects.")
 
     elif file_format in {"yaml", "yml"}:
-        try:
-            import yaml  # type: ignore[import-untyped,unused-ignore]
-        except ImportError as e:
-            raise ImportError(
-                "Loading YAML datasets requires PyYAML. Install with: pip install pyyaml"
-            ) from e
-
         dataset = yaml.safe_load(content)
         if not isinstance(dataset, list):
             raise ValueError("YAML file must contain a list of objects.")

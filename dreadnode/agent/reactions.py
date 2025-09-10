@@ -1,9 +1,8 @@
 import typing as t
 
+import rigging as rg
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
-
-from dreadnode.agent.types import Message
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.events import AgentEvent
@@ -15,12 +14,12 @@ class Reaction(Exception): ...  # noqa: N818
 
 @dataclass
 class Continue(Reaction):
-    messages: list[Message] = Field(repr=False)
+    messages: list[rg.Message] = Field(repr=False)
 
 
 @dataclass
 class Retry(Reaction):
-    messages: list[Message] | None = Field(None, repr=False)
+    messages: list[rg.Message] | None = Field(None, repr=False)
 
 
 @dataclass

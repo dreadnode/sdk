@@ -31,6 +31,7 @@ from dreadnode.artifact.credential_manager import CredentialManager
 from dreadnode.artifact.merger import ArtifactMerger
 from dreadnode.artifact.storage import ArtifactStorage
 from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
+from dreadnode.common_types import UNSET, AnyDict, Arguments, JsonDict, Unset
 from dreadnode.constants import DEFAULT_MAX_INLINE_OBJECT_BYTES
 from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
@@ -65,7 +66,6 @@ from dreadnode.tracing.constants import (
     SPAN_ATTRIBUTE_VERSION,
     SpanType,
 )
-from dreadnode.types import UNSET, AnyDict, Arguments, JsonDict, Unset
 from dreadnode.util import clean_str
 from dreadnode.version import VERSION
 
@@ -754,7 +754,7 @@ class RunSpan(Span):
     def log_metric(
         self,
         name: str,
-        value: float | bool,
+        value: float | bool,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -778,7 +778,7 @@ class RunSpan(Span):
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,
+        value: float | bool | Metric,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1040,7 +1040,7 @@ class TaskSpan(Span, t.Generic[R]):
     def log_metric(
         self,
         name: str,
-        value: float | bool,
+        value: float | bool,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1062,7 +1062,7 @@ class TaskSpan(Span, t.Generic[R]):
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,
+        value: float | bool | Metric,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,

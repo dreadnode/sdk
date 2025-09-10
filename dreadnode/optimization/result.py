@@ -5,7 +5,12 @@ from pathlib import Path
 
 from dreadnode.optimization.trial import CandidateT, Trial
 
-StopReason = t.Literal["max_steps", "patience", "target_score", "no_more_candidates", "unknown"]
+StudyStopReason = t.Literal[
+    "max_steps_reached",
+    "stop_condition_met",
+    "search_exhausted",
+    "unknown",
+]
 
 
 @dataclass
@@ -16,19 +21,28 @@ class StudyResult(t.Generic[CandidateT]):
 
     trials: list[Trial[CandidateT]] = field(default_factory=list)
     """A complete list of all trials generated during the study."""
-    stop_reason: StopReason = "unknown"
+    stop_reason: StudyStopReason = "unknown"
     """The reason the study concluded."""
+    stop_explanation: str | None = None
+    """A human-readable explanation for why the study stopped (often from stop conditions)."""
 
     _best_trial: Trial[CandidateT] | None = field(init=False, repr=False, default=None)
 
     def __post_init__(self) -> None:
-        if successful_trials := [t for t in self.trials if t.status == "success"]:
-            self._best_trial = max(successful_trials, key=lambda t: (t.score, t.step))
+        if finished_trials := [t for t in self.trials if t.status == "finished"]:
+            self._best_trial = max(finished_trials, key=lambda t: (t.score, t.step))
 
     @property
     def best_trial(self) -> Trial[CandidateT] | None:
-        """The trial with the highest score among all successful trials. Returns None if no trials succeeded."""
+        """The trial with the highest score among all finished trials. Returns None if no trials succeeded."""
         return self._best_trial
+
+    @property
+    def steps_taken(self) -> int:
+        """The total number of optimization steps completed."""
+        if not self.trials:
+            return 0
+        return max(t.step for t in self.trials)
 
     def to_dicts(self) -> list[dict[str, t.Any]]:
         """Flattens the results into a list of dictionaries, one for each trial."""
@@ -62,8 +76,7 @@ class StudyResult(t.Generic[CandidateT]):
         """Saves the results to a JSON Lines (JSONL) file."""
         records = self.to_dicts()
         with Path(path).open("w", encoding="utf-8") as f:
-            for record in records:
-                f.write(json.dumps(record) + "\n")
+            f.writelines(json.dumps(record) + "\n" for record in records)
 
     def __repr__(self) -> str:
         best_score_str = f", best_score={self.best_trial.score:.3f}" if self.best_trial else ""

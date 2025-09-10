@@ -5,7 +5,7 @@ from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
 
 if t.TYPE_CHECKING:
-    from dreadnode.types import JsonDict
+    from dreadnode.common_types import JsonDict
 
 
 def _analyze_text(text: str) -> dict[str, int]:

@@ -6,12 +6,11 @@ from pathlib import Path
 import typing_extensions as te
 from opentelemetry.trace import Tracer
 
-from dreadnode.meta.context import Context
-from dreadnode.meta.types import Component, ConfigInfo
-from dreadnode.scorers.base import Scorer, ScorerCallable, ScorersLike
+from dreadnode.common_types import INHERITED, AnyDict, Arguments, Inherited
+from dreadnode.meta import Component, ConfigInfo, Context
+from dreadnode.scorers import Scorer, ScorerCallable, ScorersLike
 from dreadnode.serialization import seems_useful_to_serialize
 from dreadnode.tracing.span import TaskSpan, current_run_span
-from dreadnode.types import INHERITED, AnyDict, Arguments, Inherited
 from dreadnode.util import (
     clean_str,
     concurrent_gen,
@@ -200,7 +199,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         "The name of the task. This is used for logging and tracing."
         self.label = label
         "The label of the task - used to group associated metrics and data together."
-        self.scorers = Scorer.fit_like(scorers)
+        self.scorers = Scorer.fit_many(scorers)
         "A list of scorers to evaluate the task's output."
         scorer_names = [s.name for s in self.scorers]
         self.assert_scores = scorer_names if assert_scores is True else list(assert_scores or [])
@@ -343,7 +342,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             else task.log_execution_metrics
         )
 
-        new_scorers = Scorer.fit_like(scorers or [])
+        new_scorers = Scorer.fit_many(scorers or [])
         new_tags = list(tags or [])
         new_assert_scores = (
             [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
@@ -391,7 +390,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             tags=tags or ["eval"],
             concurrency=concurrency,
             iterations=iterations,
-            max_consecutive_failures=max_consecutive_failures,
+            max_consecutive_errors=max_consecutive_failures,
             dataset_input_mapping=dataset_input_mapping,
             parameters=parameters,
             preprocessor=preprocessor,

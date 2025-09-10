@@ -3,10 +3,20 @@ import typing as t
 
 from loguru import logger
 
-from dreadnode import agent, airt, convert, data_types, eval, meta, transforms  # noqa: A004
+from dreadnode import (
+    agent,
+    airt,
+    convert,
+    data_types,
+    eval,  # noqa: A004
+    meta,
+    optimization,
+    transforms,
+)
+from dreadnode import logging_ as logging
 from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
 from dreadnode.eval import Eval
-from dreadnode.logging import configure_logging
+from dreadnode.logging_ import configure_logging
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.meta import (
     Config,
@@ -120,7 +130,9 @@ __all__ = [
     "log_output",
     "log_param",
     "log_params",
+    "logging",
     "meta",
+    "optimization",
     "push_update",
     "run",
     "scorer",

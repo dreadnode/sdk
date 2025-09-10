@@ -2,10 +2,10 @@ import typing as t
 
 import rigging as rg
 
+from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
-from dreadnode.types import AnyDict
 
 
 class JudgeInput(rg.Model):
@@ -16,9 +16,13 @@ class JudgeInput(rg.Model):
 
 
 class Judgement(rg.Model):
-    reason: str = rg.element()
-    passing: bool = rg.element()
-    score: float = rg.element()
+    reason: str = rg.element(description="The reason for the judgement.")
+    passing: bool = rg.element(
+        description="Whether the output passed based on the rubric (true/false)."
+    )
+    score: float = rg.element(
+        description="The float score assigned to the output based on the rubric."
+    )
 
 
 @rg.prompt()

@@ -1,42 +1,41 @@
 import itertools
 import random
-import typing as t
 from collections import defaultdict
 
 from dreadnode.meta import Config, component
-from dreadnode.optimization.trial import Trials
-
-T = t.TypeVar("T")
+from dreadnode.optimization.trial import CandidateT, Trial
 
 
 @component
 def top_k(
-    trials: Trials[T], *, k: int = Config(5, help="Number of top trials to select.")
-) -> Trials[T]:
+    trials: list[Trial[CandidateT]], *, k: int = Config(5, help="Number of top trials to select.")
+) -> list[Trial[CandidateT]]:
     """
     Selects the top k trials by score (highest first).
     """
     sorted_trials = sorted(trials, key=lambda t: t.score, reverse=True)
-    return sorted_trials[:k]  # type: ignore[return-value]
+    return sorted_trials[:k]
 
 
 @component
-def random_(
-    trials: Trials[T], *, k: int = Config(5, help="Number of random trials to select.")
-) -> Trials[T]:
+def random_k(
+    trials: list[Trial[CandidateT]],
+    *,
+    k: int = Config(5, help="Number of random trials to select."),
+) -> list[Trial[CandidateT]]:
     """
     Selects k random trials from the pool.
     """
-    return random.sample(trials, min(k, len(trials))) if trials else []  # type: ignore[return-value]
+    return random.sample(trials, min(k, len(trials))) if trials else []  # nosec
 
 
 @component
 def epsilon_greedy(
-    trials: Trials[T],
+    trials: list[Trial[CandidateT]],
     *,
     k: int = Config(5, help="Number of top trials to select."),
     epsilon: float = Config(0.2, help="Probability of choosing a random trial."),
-) -> Trials[T]:
+) -> list[Trial[CandidateT]]:
     """
     Based on the probability `epsilon`, selects either:
     - top k trials by score (highest first),
@@ -47,13 +46,15 @@ def epsilon_greedy(
     if random.random() < epsilon and len(sorted_trials) >= k:  # noqa: S311 # nosec
         k_minus_1 = sorted_trials[: k - 1]
         random_choice = random.choice(sorted_trials[k - 1 :])  # noqa: S311 # nosec
-        return [*k_minus_1, random_choice]  # type: ignore[return-value]
+        return [*k_minus_1, random_choice]
 
-    return sorted_trials[:k]  # type: ignore[return-value]
+    return sorted_trials[:k]
 
 
 @component
-def competitive(trials: Trials[T], *, k: int = Config(5), pool_size: int = Config(3)) -> Trials[T]:
+def tournament(
+    trials: list[Trial[CandidateT]], *, k: int = Config(5), pool_size: int = Config(3)
+) -> list[Trial[CandidateT]]:
     """
     Selects at most k winners from the trials using a tournament selection process.
 
@@ -72,13 +73,13 @@ def competitive(trials: Trials[T], *, k: int = Config(5), pool_size: int = Confi
         winners.append(winner)
         pool.remove(winner)
 
-    return winners  # type: ignore[return-value]
+    return winners
 
 
 @component
 def proportional(
-    trials: Trials[T], *, k: int = Config(5, help="Number of trials to select.")
-) -> Trials[T]:
+    trials: list[Trial[CandidateT]], *, k: int = Config(5, help="Number of trials to select.")
+) -> list[Trial[CandidateT]]:
     """
     Selects k trials using fitness proportional selection.
 
@@ -93,7 +94,7 @@ def proportional(
         A list of selected trials.
     """
     if not trials:
-        return []  # type: ignore[return-value]
+        return []
 
     # 1 - Normalize scores for use as weights
 
@@ -104,7 +105,7 @@ def proportional(
 
     # If all trials have the same score - take the fast route
     if total_weight == 0:
-        return random.sample(trials, min(k, len(trials)))  # type: ignore[return-value]
+        return random.sample(trials, min(k, len(trials)))  # nosec
 
     # 2 - Select k winners one by one, without replacement
 
@@ -128,13 +129,13 @@ def proportional(
         if sum(current_weights) == 0:
             break
 
-    return winners  # type: ignore[return-value]
+    return winners
 
 
 # Utils
 
 
-def interleave_by_parent(trials: Trials[T]) -> Trials[T]:
+def interleave_by_parent(trials: list[Trial[CandidateT]]) -> list[Trial[CandidateT]]:
     """
     Reorders a list of trials to maximize parent diversity (if parent information exists).
 
@@ -144,7 +145,7 @@ def interleave_by_parent(trials: Trials[T]) -> Trials[T]:
     Example: `[P1, P1, P2, P2, P3]` -> [P1, P2, P3, P1, P2]
     """
     if not trials:
-        return []  # type: ignore[return-value]
+        return []
 
     parent_to_children = defaultdict(list)
     for trial in trials:
@@ -156,4 +157,4 @@ def interleave_by_parent(trials: Trials[T]) -> Trials[T]:
             if trial is not None:
                 interleaved_list.append(trial)  # noqa: PERF401
 
-    return interleaved_list  # type: ignore[return-value]
+    return interleaved_list

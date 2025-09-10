@@ -2,6 +2,7 @@ import json
 import typing as t
 from dataclasses import dataclass, field
 
+import rigging as rg
 from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
 from rich.panel import Panel
 from rich.rule import Rule
@@ -16,7 +17,6 @@ from dreadnode.agent.reactions import (
     Reaction,
     RetryWithFeedback,
 )
-from dreadnode.agent.types import Message, ToolCall, Usage
 from dreadnode.util import format_dict, shorten_string
 
 if t.TYPE_CHECKING:
@@ -24,7 +24,7 @@ if t.TYPE_CHECKING:
     from dreadnode.agent.reactions import Reaction
     from dreadnode.agent.result import AgentResult
     from dreadnode.agent.thread import Thread
-    from dreadnode.types import AnyDict
+    from dreadnode.common_types import AnyDict
 
 
 AgentEventT = t.TypeVar("AgentEventT", bound="AgentEvent")
@@ -37,18 +37,18 @@ class AgentEvent:
     """The agent associated with this event."""
     thread: "Thread" = field(repr=False)
     """The thread associated with this event."""
-    messages: "list[Message]" = field(repr=False)
+    messages: "list[rg.Message]" = field(repr=False)
     """Current messages for this run session."""
     events: "list[AgentEvent]" = field(repr=False)
     """Current events for this run session."""
 
     @property
-    def total_usage(self) -> Usage:
+    def total_usage(self) -> rg.generator.Usage:
         """Aggregates the usage from all events in the run session."""
         return _total_usage_from_events(self.events)
 
     @property
-    def last_usage(self) -> Usage | None:
+    def last_usage(self) -> rg.generator.Usage | None:
         """Returns the usage from the last generation event, if available."""
         if not self.events:
             return None
@@ -120,8 +120,8 @@ class StepStart(AgentEvent):
 
 @dataclass
 class GenerationEnd(AgentEventInStep):
-    message: Message
-    usage: "Usage | None"
+    message: rg.Message
+    usage: "rg.generator.Usage | None"
 
     def __repr__(self) -> str:
         message_content = shorten_string(str(self.message.content), 50)
@@ -169,7 +169,7 @@ class AgentError(AgentEventInStep):
 
 @dataclass
 class ToolStart(AgentEventInStep):
-    tool_call: ToolCall
+    tool_call: rg.tools.ToolCall
 
     def __repr__(self) -> str:
         return f"ToolStart(tool_call={self.tool_call})"
@@ -205,8 +205,8 @@ class ToolStart(AgentEventInStep):
 
 @dataclass
 class ToolEnd(AgentEventInStep):
-    tool_call: ToolCall
-    message: Message
+    tool_call: rg.tools.ToolCall
+    message: rg.Message
     stop: bool
 
     def __repr__(self) -> str:
@@ -287,9 +287,9 @@ class AgentEnd(AgentEvent):
         )
 
 
-def _total_usage_from_events(events: list[AgentEvent]) -> Usage:
+def _total_usage_from_events(events: list[AgentEvent]) -> rg.generator.Usage:
     """Calculates the total usage from a list of events."""
-    total = Usage(input_tokens=0, output_tokens=0, total_tokens=0)
+    total = rg.generator.Usage(input_tokens=0, output_tokens=0, total_tokens=0)
     for event in events:
         if isinstance(event, GenerationEnd) and event.usage:
             total += event.usage

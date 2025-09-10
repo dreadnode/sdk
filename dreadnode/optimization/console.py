@@ -1,9 +1,12 @@
 import typing as t
 from collections import deque
+from dataclasses import dataclass
 
-from rich.console import Console
+from rich import box
+from rich.console import Console, RenderableType
 from rich.layout import Layout
 from rich.live import Live
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -12,249 +15,249 @@ from rich.progress import (
     TaskID,
     TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
 from dreadnode.optimization.events import (
-    CandidatePruned,
-    CandidatesSuggested,
     NewBestTrialFound,
     StepEnd,
+    StepStart,
     StudyEnd,
     StudyEvent,
     StudyStart,
+    TrialAdded,
     TrialComplete,
+    TrialPruned,
+    TrialStart,
 )
 from dreadnode.optimization.result import StudyResult
-from dreadnode.util import get_callable_name
 
 if t.TYPE_CHECKING:
     from dreadnode.optimization.study import Study
     from dreadnode.optimization.trial import Trial
 
-StudyT = t.TypeVar("StudyT", bound="Study[t.Any]")
+
+@dataclass
+class DashboardState:
+    max_steps: int = 0
+    steps_completed: int = 0
+    steps_since_best: int = 0
+    best_trial: "Trial | None" = None
+    current_step_trials: int = 0
+    is_step_running: bool = False
 
 
-class StudyConsoleAdapter(t.Generic[StudyT]):
+class StudyConsoleAdapter:
     """Consumes a Study's event stream and renders a live progress dashboard."""
 
     def __init__(
-        self,
-        study: StudyT,
-        *,
-        console: Console | None = None,
-        max_log_entries: int = 10,
+        self, study: "Study[t.Any]", *, console: Console | None = None, max_log_entries: int = 15
     ):
         self.study = study
         self.console = console or Console()
-        self.max_log_entries = max_log_entries
         self.final_result: StudyResult | None = None
 
+        # The single source of truth for dynamic data
+        self.state = DashboardState(max_steps=self.study.max_steps)
+        self._trials: deque[Trial] = deque(maxlen=max_log_entries)
+
+        # A single, unified progress bar object
         self._progress = Progress(
-            SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("{task.completed}/{task.total}"),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            SpinnerColumn("dots"),
             TimeElapsedColumn(),
+            TimeRemainingColumn(),
             expand=True,
         )
-        self._trial_log: deque[Trial] = deque(maxlen=max_log_entries)
-        self._best_trial_summary: Text | Table = Text("No successful trials yet.", style="dim")
-        self._summary_stats = {
-            "Successful": 0,
-            "Failed": 0,
-            "Pruned": 0,
-            "Pending": 0,
-        }
-        self._steps_task_id: TaskID | None = None
-        self._patience_task_id: TaskID | None = None
-        self._trials_task_id: TaskID | None = None
+        self._steps_task_id: TaskID = self._progress.add_task(
+            "[bold]Overall Steps", total=self.study.max_steps
+        )
 
-    def _build_summary_table(self) -> Table:
-        table = Table.grid(expand=True)
-        table.add_column("Statistic", style="dim")
-        table.add_column("Value")
-        for stat, value in self._summary_stats.items():
-            color = {
-                "Successful": "green",
-                "Failed": "red",
-                "Pruned": "yellow",
-                "Pending": "dim",
-            }.get(stat)
-            table.add_row(f"{stat}:", f"[{color}]{value}[/{color}]" if color else str(value))
-        return table
+    def _build_header(self) -> RenderableType:
+        grid = Table.grid(expand=True)
+        grid.add_column("Best Score", justify="left", ratio=1)
+        grid.add_column("Patience", justify="center", ratio=1)
+        grid.add_column("Status", justify="right", ratio=1)
 
-    def _build_trial_log_table(self) -> Table:
-        table = Table(title="Trial Log", expand=True)
-        table.add_column("Step", justify="right", style="dim")
-        table.add_column("Status")
-        table.add_column("Score", justify="right")
-        table.add_column("Candidate")
+        # Best Score
+        best_score_text = Text("---", style="dim")
+        if self.state.best_trial:
+            best_score_text = Text(f"{self.state.best_trial.score:.4f}", style="bold magenta")
 
-        # Iterating over reversed() to show oldest first, newest last
-        for trial in reversed(self._trial_log):
-            color = {
-                "success": "green",
-                "failed": "red",
-                "pruned": "yellow",
-                "pending": "dim",
-            }.get(trial.status)
-            score_str = f"{trial.score:.3f}" if trial.score is not None else "N/A"
-            table.add_row(
-                str(trial.step),
-                f"[{color}]{trial.status.capitalize()}[/{color}]",
-                score_str,
-                str(trial.candidate),
+        # Patience
+        patience_text = Text(
+            f"Waiting for improvement... ({self.state.steps_since_best} steps)", style="dim"
+        )
+        if self.state.steps_since_best == 0 and self.state.best_trial:
+            patience_text = Text("New best found", style="magenta")
+
+        # Status
+        status_text = Text("Initializing ...", style="dim")
+        if self.state.is_step_running:
+            status_text = Text.from_markup(
+                f"Running step [bold]{self.state.steps_completed + 1}[/bold] ([bold]{self.state.current_step_trials}[/bold] trials)",
+                style="cyan",
             )
-        return table
+        elif self.state.steps_completed > 0:
+            status_text = Text(
+                f"Step {self.state.steps_completed} complete. Waiting ...", style="dim"
+            )
 
-    def _build_dashboard(self) -> Panel:
-        summary_panel = Panel(
-            self._build_summary_table(),
-            title="[bold]Summary[/bold]",
-            border_style="dim",
-            padding=(1, 2),
+        grid.add_row(
+            Text.from_markup(f"[b]Best Score:[/b] {best_score_text}"),
+            patience_text,
+            status_text,
         )
-        trials_panel = Panel(
-            self._build_trial_log_table(),
-            title="[bold]Live Trials[/bold]",
-            border_style="dim",
-            padding=(1, 2),
-        )
-        best_trial_panel = Panel(
-            self._best_trial_summary,
-            title="[bold green]Current Best[/bold green]",
-            border_style="green",
-            padding=(1, 2),
-        )
+        return grid
 
-        middle_row = Layout(name="middle_row", size=8)
-        middle_row.split_row(
-            Layout(best_trial_panel, name="best_trial", ratio=2),
-            Layout(summary_panel, name="summary", ratio=1),
-        )
+    def _build_best_trial_panel(self) -> RenderableType:
+        if not self.state.best_trial:
+            return Panel(
+                Text("No successful trials yet.", style="dim", justify="center"),
+                title="[bold magenta]Current Best[/bold magenta]",
+                border_style="dim",
+            )
 
-        layout = Layout()
-        layout.split_column(
-            Layout(self._progress, name="progress", size=5),
-            middle_row,
-            Layout(trials_panel, name="trials_log", ratio=1, minimum_size=5),
-        )
+        trial = self.state.best_trial
 
-        objective_func = t.cast("t.Callable[..., t.Any]", self.study.objective)
-        name = self.study.name or get_callable_name(objective_func, short=True)
+        scores_table = Table.grid(padding=(0, 2))
+        scores_table.add_column("Name")
+        scores_table.add_column("Score", justify="right", min_width=8)
+        for name in self.study.objective_names:
+            scores_table.add_row(
+                name, f"[bold magenta]{trial.scores.get(name, -float('inf')):.3f}[/bold magenta]"
+            )
+
+        for name, value in trial.all_scores.items():
+            if name not in self.study.objective_names:
+                scores_table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.3f}[/dim]")
+
+        # Main content grid
+        grid = Table.grid(expand=True)
+        grid.add_column()
+        grid.add_row(Panel(scores_table, title="Scores", title_align="left"))
+        grid.add_row(
+            Panel(
+                Text(str(trial.candidate), style="dim"),
+                title="Candidate",
+                title_align="left",
+            )
+        )
+        if trial.output:
+            grid.add_row(
+                Panel(Text(str(trial.output), style="dim"), title="Output", title_align="left")
+            )
 
         return Panel(
-            layout,
-            title=Text(f"Optimizing '{name}'", justify="center", style="bold cyan"),
-            border_style="cyan",
+            grid, title="[bold magenta]Current Best[/bold magenta]", border_style="magenta"
         )
 
-    def _handle_event(self, event: StudyEvent[t.Any]) -> None:  # noqa: PLR0912
-        if isinstance(event, StudyStart):
-            self._steps_task_id = self._progress.add_task(
-                "[bold]Overall Steps", total=self.study.max_steps
+    def _build_trials_panel(self) -> RenderableType:
+        table = Table(expand=True, box=box.ROUNDED)
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Step", justify="right", style="dim", width=4)
+        table.add_column("Status")
+        table.add_column("Score", justify="right")
+
+        for trial in self._trials:
+            color = {
+                "finished": "default",
+                "failed": "red",
+                "pruned": "yellow",
+                "running": "cyan",
+            }.get(trial.status, "dim")
+            status_text = f"[{color}]{trial.status}[/{color}]"
+            score_str = f"{trial.score:.3f}" if trial.status == "finished" else "..."
+            table.add_row(str(trial.id)[16:], str(trial.step), status_text, score_str)
+
+        return Panel(
+            table if self._trials else Text("No trials yet.", style="dim", justify="center"),
+            title="[bold]Trials[/bold]",
+            border_style="dim",
+        )
+
+    def _build_dashboard(self) -> RenderableType:
+        layout = Layout()
+
+        layout.split_column(
+            Layout(Padding(self._build_header(), 1), size=3),
+            Layout(Rule(style="cyan"), size=1),
+            Layout(name="body"),
+            Layout(Padding(self._progress, 1), size=3),
+        )
+
+        layout["body"].split_row(
+            Layout(self._build_best_trial_panel(), ratio=2),
+            Layout(self._build_trials_panel(), ratio=1),
+        )
+
+        return Layout(
+            Panel(
+                layout,
+                title=Text(self.study.name, justify="center", style="bold cyan"),
+                border_style="cyan",
             )
-            if self.study.patience:
-                self._patience_task_id = self._progress.add_task(
-                    "[dim]Steps Since Best", total=self.study.patience
-                )
-            self._trials_task_id = self._progress.add_task("Step Trials", total=0, visible=False)
+        )
 
-        elif isinstance(event, CandidatesSuggested):
-            self._summary_stats["Pending"] += len(event.candidates)
-            if self._trials_task_id is not None:
-                self._progress.update(
-                    self._trials_task_id,
-                    total=len(event.candidates),
-                    completed=0,
-                    visible=True,
-                )
-            for trial in event.trials[-len(event.candidates) :]:
-                self._trial_log.appendleft(trial)
-
-        elif isinstance(event, TrialComplete):
-            self._summary_stats["Pending"] -= 1
-            if event.trial.status == "success":
-                self._summary_stats["Successful"] += 1
-            elif event.trial.status == "failed":
-                self._summary_stats["Failed"] += 1
-            if self._trials_task_id is not None:
-                self._progress.update(self._trials_task_id, advance=1)
-
-        elif isinstance(event, CandidatePruned):
-            self._summary_stats["Pending"] -= 1
-            self._summary_stats["Pruned"] += 1
-            if self._trials_task_id is not None:
-                self._progress.update(self._trials_task_id, advance=1)
-
+    def _handle_event(self, event: StudyEvent[t.Any]) -> None:
+        if isinstance(event, StudyStart):
+            self.state = DashboardState(max_steps=self.study.max_steps)
+        elif isinstance(event, StepStart):
+            self.state.is_step_running = True
+            self.state.current_step_trials = 0
+        elif isinstance(event, TrialAdded):
+            self._trials.appendleft(event.trial)
+            self.state.current_step_trials += 1
+        elif isinstance(event, TrialStart | TrialComplete | TrialPruned):
+            for i, t in enumerate(self._trials):
+                if t.id == event.trial.id:
+                    self._trials[i] = event.trial
+                    break
+            else:
+                self._trials.appendleft(event.trial)
         elif isinstance(event, NewBestTrialFound):
-            table = Table.grid(expand=True)
-            table.add_column("Label", style="dim")
-            table.add_column("Value")
-
-            table.add_row("Score:", f"[bold green]{event.trial.score:.4f}[/bold green]")
-            table.add_row("Candidate:", str(event.trial.candidate))
-            table.add_row("Output:", str(event.trial.output))
-
-            self._best_trial_summary = table
-            if self._patience_task_id is not None:
-                self._progress.reset(self._patience_task_id)
-
+            self.state.best_trial = event.trial
+            self.state.steps_since_best = 0
         elif isinstance(event, StepEnd):
-            if self._steps_task_id is not None:
-                self._progress.update(self._steps_task_id, advance=1)
-            if self._patience_task_id is not None:
-                if self.study._steps_since_best > 0:  # noqa: SLF001
-                    self._progress.update(self._patience_task_id, advance=1)
-                else:
-                    self._progress.reset(self._patience_task_id)
-            if self._trials_task_id is not None:
-                self._progress.update(self._trials_task_id, visible=False)
-
+            self.state.is_step_running = False
+            self.state.steps_completed += 1
+            if self.state.best_trial:
+                self.state.steps_since_best += 1
+            self._progress.update(self._steps_task_id, completed=self.state.steps_completed)
         elif isinstance(event, StudyEnd):
-            self._progress.stop()
             self.final_result = event.result
 
     def _render_final_summary(self, result: StudyResult) -> None:
         """Renders a final, static summary of the study results."""
-        summary_table = Table.grid(expand=True)
+        self.console.print(
+            Rule(f"[bold] {self.study.name}: Optimization Complete [/bold]", style="cyan")
+        )
+        summary_table = Table.grid(padding=(0, 2))
         summary_table.add_column("Metric", style="dim")
         summary_table.add_column("Value")
+        summary_table.add_row("Stop Reason:", f"[bold]{result.stop_reason}[/bold]")
+        summary_table.add_row("Explanation:", result.stop_explanation or "-")
+        summary_table.add_row("Steps Taken:", str(result.steps_taken))
+        summary_table.add_row("Total Trials:", str(len(result.trials)))
 
-        summary_table.add_row("Stop Reason:", f"[yellow]{result.stop_reason}[/yellow]")
-
-        if result.best_trial:
-            summary_table.add_row("-" * 20, "-" * 50)  # Separator
-            summary_table.add_row(
-                "Best Score:", f"[bold green]{result.best_trial.score:.4f}[/bold green]"
-            )
-            summary_table.add_row("Best Candidate:", str(result.best_trial.candidate))
-            summary_table.add_row("Best Output:", str(result.best_trial.output))
-        else:
-            summary_table.add_row("Best Trial:", "No successful trials were completed.")
-
-        panel = Panel(
-            summary_table,
-            title="[bold cyan]Optimization Complete[/bold cyan]",
-            border_style="cyan",
-            padding=(1, 2),
-        )
+        panel = Panel(summary_table, border_style="dim", title="Study Summary")
         self.console.print(panel)
 
+        if result.best_trial:
+            self.console.print(self._build_best_trial_panel())
+        else:
+            self.console.print(Panel("[yellow]No successful trials were completed.[/yellow]"))
+
     async def run(self) -> StudyResult:
-        with Live(
-            self._build_dashboard(),
-            console=self.console,
-            screen=True,
-            transient=True,
-        ) as live:
+        with Live(console=self.console, get_renderable=self._build_dashboard, screen=True):
             async with self.study.stream() as stream:
                 async for event in stream:
                     self._handle_event(event)
-                    live.update(self._build_dashboard())
 
         if self.final_result:
             self._render_final_summary(self.final_result)
