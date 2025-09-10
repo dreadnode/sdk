@@ -25,7 +25,7 @@ from dreadnode.user_config import UserConfig
 cli = cyclopts.App("tools", help="Run and manage tools.")
 
 
-@cli.command(name=["list", "ls", "show"])
+@cli.command(name=["list"])
 def show(
     file: pathlib.Path | None = DEFAULT_TOOL_SEARCH_PATH,
     *,

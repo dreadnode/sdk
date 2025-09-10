@@ -31,6 +31,7 @@ cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], h
 cli["--help"].group = "Meta"
 
 cli.command(agent_cli)
+cli.command(tool_cli)
 cli.command(platform_cli)
 cli.command(profile_cli)
 

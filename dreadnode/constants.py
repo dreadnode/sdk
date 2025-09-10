@@ -61,3 +61,6 @@ USER_CONFIG_PATH = pathlib.Path(
 
 # Default values for the file system credential management
 FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes in seconds
+
+# Default values for the tool management
+DEFAULT_TOOL_SEARCH_PATH = pathlib.Path.home() / ".dreadnode" / "tools"
