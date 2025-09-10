@@ -112,9 +112,10 @@ exclude = "tests"
 module = [
     "dreadnode.data_types.*",
     "dreadnode.scorers.*",
+    "dreadnode.lazy.*",
     "dreadnode.transforms.*",
 ]
-disable_error_code = ["unused-ignore", "import-untyped"]
+disable_error_code = ["unused-ignore", "import-untyped", "import-not-found"]
 
 [tool.ty.environment]
 python-version = "3.10"
@@ -179,4 +180,7 @@ skip-magic-trailing-comma = false
     "INP001", # namespace not required for pytest
     "S101",   # asserts allowed in tests...
     "SLF001", # allow access to private members
+]
+"dreadnode/lazy/*.py" = [
+    "PLC0414", # keep naming the same as the real package
 ]
