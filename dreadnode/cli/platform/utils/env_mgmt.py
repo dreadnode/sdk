@@ -368,3 +368,20 @@ def create_default_env_files(current_version: LocalVersionSchema) -> None:
                         raise RuntimeError(
                             f"Sample environment file for {service} not found. Cannot configure {service}."
                         )
+
+
+def open_env_file(filename: Path) -> None:
+    """Open the specified environment file in the default editor.
+
+    Args:
+        filename: The path to the environment file to open.
+    """
+    if sys.platform == "darwin":
+        cmd = ["open", "-t", filename.as_posix()]
+    else:
+        cmd = ["xdg-open", filename.as_posix()]
+    try:
+        subprocess.run(cmd, check=False)  # noqa: S603
+        print_info("Opened environment file.")
+    except subprocess.CalledProcessError as e:
+        print_error(f"Failed to open environment file: {e}")
