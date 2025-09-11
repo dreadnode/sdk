@@ -22,7 +22,15 @@ class Attack(Study[In, Out]):
     target: t.Annotated[Target[In, Out], Config()]
     """The target to attack."""
 
-    task_factory: t.Callable[[In], Task[..., Out]] = Field(default_factory=lambda: None)
+    tags: list[str] = Config(default_factory=lambda: ["attack"])
+    """A list of tags associated with the attack for logging."""
+
+    # Override the task factory as the target will replace it.
+    task_factory: t.Callable[[In], Task[..., Out]] = Field(  # type: ignore[assignment]
+        default_factory=lambda: None,
+        repr=False,
+        init=False,
+    )
 
     def model_post_init(self, context: t.Any) -> None:
         self.task_factory = self.target.task_factory

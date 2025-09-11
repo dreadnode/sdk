@@ -11,6 +11,14 @@ Attack
 
 A declarative configuration for executing an AIRT attack.
 
+### tags
+
+```python
+tags: list[str] = Config(default_factory=lambda: ["attack"])
+```
+
+A list of tags associated with the attack for logging.
+
 ### target
 
 ```python
