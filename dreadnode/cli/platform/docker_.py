@@ -227,6 +227,7 @@ def docker_login(registry: str) -> None:
 
 def docker_run(
     compose_file: Path,
+    env_files: list[Path] | None = None,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     """Run docker containers for the platform.
@@ -242,12 +243,17 @@ def docker_run(
         subprocess.CalledProcessError: If command fails.
         subprocess.TimeoutExpired: If command times out.
     """
-
-    return _run_docker_compose_command(["up", "-d"], compose_file, timeout, "Docker compose up")
+    cmds = []
+    if env_files:
+        for env_file in env_files:
+            cmds.extend(["--env-file", env_file.as_posix()])
+    cmds += ["up", "-d"]
+    return _run_docker_compose_command(cmds, compose_file, timeout, "Docker compose up")
 
 
 def docker_stop(
     compose_file: Path,
+    env_files: list[Path] | None = None,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     """Stop docker containers for the platform.
@@ -263,4 +269,9 @@ def docker_stop(
         subprocess.CalledProcessError: If command fails.
         subprocess.TimeoutExpired: If command times out.
     """
-    return _run_docker_compose_command(["down"], compose_file, timeout, "Docker compose down")
+    cmds = []
+    if env_files:
+        for env_file in env_files:
+            cmds.extend(["--env-file", env_file.as_posix()])
+    cmds.append("down")
+    return _run_docker_compose_command(cmds, compose_file, timeout, "Docker compose down")
