@@ -8,7 +8,7 @@ from dreadnode.meta.config import Component, Config, ConfigInfo, Model, componen
 from dreadnode.meta.hydrate import hydrate
 from dreadnode.meta.introspect import get_config_model, get_config_schema
 
-# ruff: noqa: PLR2004, N806
+# ruff: noqa: N806
 
 #
 # Primitives
@@ -450,7 +450,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                         "properties": {
                             "model": {
                                 "default": "gpt-4",
-                                "description": " ",
+                                "description": "-",
                                 "title": "Model",
                                 "type": "string",
                             }
@@ -474,7 +474,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                 "properties": {
                     "component": {
                         "properties": {
-                            "name": {"description": " ", "title": "Name", "type": "string"}
+                            "name": {"description": "-", "title": "Name", "type": "string"}
                         },
                         "required": ["name"],
                         "title": "mapping_component",
@@ -490,7 +490,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                 "properties": {
                     "model": {
                         "default": "gpt-4o-mini",
-                        "description": " ",
+                        "description": "-",
                         "title": "Model",
                         "type": "string",
                     }

@@ -47,6 +47,10 @@ from dreadnode.constants import (
 )
 from dreadnode.version import VERSION
 
+# NOTE(nick): Don't love the repeated `pandas` imports here,
+# but this class is pretty central and I'd like to avoid
+# pandas imports early as it's generally not needed
+
 if t.TYPE_CHECKING:
     import pandas as pd
 
