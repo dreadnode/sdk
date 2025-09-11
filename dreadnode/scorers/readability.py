@@ -1,10 +1,8 @@
 import typing as t
 
-import textstat  # type: ignore[import-untyped]
-
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import catch_import_error
 
 
 def readability(
@@ -24,19 +22,8 @@ def readability(
         target_grade: The ideal reading grade level (e.g., 8.0 for 8th grade).
         name: Name of the scorer.
     """
-    textstat_import_error_msg = (
-        "Textstat dependency is not installed. Install with: pip install textstat"
-    )
-
-    try:
-        textstat.flesch_kincaid_grade("test")
-    except (ImportError, AttributeError):
-        warn_at_user_stacklevel(textstat_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": textstat_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        import textstat  # type: ignore[import-not-found]
 
     def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)
@@ -53,7 +40,8 @@ def readability(
         score = max(0.0, 1.0 - (diff / 10.0))
 
         return Metric(
-            value=score, attributes={"calculated_grade": grade_level, "target_grade": target_grade}
+            value=score,
+            attributes={"calculated_grade": grade_level, "target_grade": target_grade},
         )
 
     return Scorer(evaluate, name=name)

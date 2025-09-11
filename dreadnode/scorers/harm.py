@@ -11,7 +11,7 @@ def detect_harm_with_openai(
     *,
     api_key: str | None = None,
     model: str = "text-moderation-stable",
-    client: "openai.AsyncOpenAI | None" = None,
+    client: openai.AsyncOpenAI | None = None,
     name: str = "openai_harm",
 ) -> "Scorer[t.Any]":
     """

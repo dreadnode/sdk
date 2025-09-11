@@ -5,6 +5,9 @@ from pathlib import Path
 
 from dreadnode.optimization.trial import CandidateT, Trial
 
+if t.TYPE_CHECKING:
+    import pandas as pd
+
 StudyStopReason = t.Literal[
     "max_steps_reached",
     "stop_condition_met",
@@ -61,14 +64,9 @@ class StudyResult(t.Generic[CandidateT]):
             records.append(base_record)
         return records
 
-    def to_dataframe(self) -> "t.Any":
+    def to_dataframe(self) -> "pd.DataFrame":
         """Converts the results into a pandas DataFrame for analysis."""
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_dataframe(). Please install with: pip install pandas"
-            ) from e
+        import pandas as pd
 
         return pd.DataFrame(self.to_dicts())
 
@@ -79,5 +77,7 @@ class StudyResult(t.Generic[CandidateT]):
             f.writelines(json.dumps(record) + "\n" for record in records)
 
     def __repr__(self) -> str:
-        best_score_str = f", best_score={self.best_trial.score:.3f}" if self.best_trial else ""
+        best_score_str = (
+            f", best_score={self.best_trial.score:.3f}" if self.best_trial else ""
+        )
         return f"StudyResult(trials={len(self.trials)}, stop_reason='{self.stop_reason}'{best_score_str})"

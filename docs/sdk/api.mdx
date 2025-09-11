@@ -170,6 +170,7 @@ def export_metrics(
     Returns:
         A DataFrame containing the exported metric data.
     """
+    import pandas as pd
 
     response = self.request(
         "GET",
@@ -215,6 +216,9 @@ Exports parameter data for a specific project.
   )
   –A filter to apply to the exported data. Defaults to None.
 * **`status`**
+  (`StatusFilter`, default:
+  `'completed'`
+  )
   –The status of parameters to include. Defaults to "completed".
 * **`parameters`**
   (`list[str] | None`, default:
@@ -256,7 +260,7 @@ def export_parameters(
     Args:
         project: The project identifier.
         filter: A filter to apply to the exported data. Defaults to None.
-        status : The status of parameters to include. Defaults to "completed".
+        status: The status of parameters to include. Defaults to "completed".
         parameters: A list of parameter names to include. Defaults to None.
         metrics: A list of metric names to include. Defaults to None.
         aggregations: A list of aggregation types to apply. Defaults to None.
@@ -264,6 +268,7 @@ def export_parameters(
     Returns:
         A DataFrame containing the exported parameter data.
     """
+    import pandas as pd
 
     response = self.request(
         "GET",
@@ -361,6 +366,7 @@ def export_runs(
     Returns:
         str: Path to the export directory
     """
+    import pandas as pd
 
     logger.info(f"Starting paginated export for project '{project}', format='{format}'")
 
@@ -481,6 +487,7 @@ def export_timeseries(
     Returns:
         A DataFrame containing the exported timeseries data.
     """
+    import pandas as pd
 
     response = self.request(
         "GET",

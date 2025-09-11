@@ -3,12 +3,15 @@ import tempfile
 import typing as t
 from pathlib import Path
 
+import numpy as np
+from numpy.typing import NDArray
+
 from dreadnode.data_types.base import DataType
+from dreadnode.util import catch_import_error
 
-if t.TYPE_CHECKING:
-    from numpy.typing import NDArray
-
-VideoDataType: t.TypeAlias = "str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any"
+VideoDataType: t.TypeAlias = (
+    str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any
+)
 
 
 class Video(DataType):
@@ -62,7 +65,6 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]
 
         try:
             from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]
@@ -122,8 +124,6 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        import numpy as np  # type: ignore[import,unused-ignore]
-
         if not self._fps:
             raise ValueError("fps is required for numpy array video frames")
         if not isinstance(self._data, np.ndarray | list):
@@ -137,8 +137,6 @@ class Video(DataType):
 
     def _extract_frames_from_data(self) -> "list[NDArray[t.Any]]":
         """Extract frames from numpy array or list data."""
-        import numpy as np  # type: ignore[import,unused-ignore]
-
         frames = []
         rgb_dim = 3
         rgba_dim = 4
@@ -159,17 +157,10 @@ class Video(DataType):
         self, frames: "list[NDArray[t.Any]]"
     ) -> tuple[bytes, dict[str, t.Any]]:
         """Create video file from frames."""
-        import numpy as np  # type: ignore[import,unused-ignore]
-
-        try:
+        with catch_import_error("dreadnode[multimodal]"):
             from moviepy.video.io import (  # type: ignore[import,unused-ignore,import-untyped]
                 ImageSequenceClip,
             )
-        except ImportError as e:
-            raise ImportError(
-                "Video processing from numpy arrays requires MoviePy. "
-                "Install with: pip install dreadnode[multimodal]"
-            ) from e
 
         frame_height, frame_width = frames[0].shape[:2]
         temp_fd, temp_path = tempfile.mkstemp(suffix=f".{self._format}")
@@ -211,7 +202,7 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore]
+        from moviepy.video.VideoClip import (  # type: ignore[import-not-found]
             VideoClip,
         )
 
@@ -238,7 +229,15 @@ class Video(DataType):
             metadata["source-type"] = "moviepy.VideoClip"
 
             # Add clip metadata if available
-            for attr in ["duration", "fps", "size", "rotation", "w", "h", "aspect_ratio"]:
+            for attr in [
+                "duration",
+                "fps",
+                "size",
+                "rotation",
+                "w",
+                "h",
+                "aspect_ratio",
+            ]:
                 if hasattr(self._data, attr):
                     value = getattr(self._data, attr)
                     if value is not None:

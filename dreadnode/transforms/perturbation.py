@@ -3,10 +3,9 @@ import string
 import typing as t
 import unicodedata
 
-from confusables import confusable_characters  # type: ignore[import-untyped]
-
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
+from dreadnode.util import catch_import_error
 
 
 def random_capitalization(
@@ -225,12 +224,8 @@ def unicode_confusable(
         name: Name of the transform.
     """
 
-    try:
-        confusable_characters("a")
-    except (ImportError, AttributeError):
-        raise ImportError(
-            "Confusables dependency is not installed. Install with: pip install confusables"
-        ) from ImportError("confusables library not available")
+    with catch_import_error("dreadnode[scoring]"):
+        from confusables import confusable_characters  # type: ignore[import-untyped]
 
     if not 0.0 <= ratio <= 1.0:
         raise ValueError("Application ratio must be between 0.0 and 1.0.")

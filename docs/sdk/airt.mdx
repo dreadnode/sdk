@@ -120,7 +120,7 @@ def prompt_attack(
 
     guidance = refine_guidance or f"Refine the prompt to achieve the following goal: {goal}"
     refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
-        prompt_trials_adapter, lambda x: x
+        adapt_prompt_trials, lambda x: x
     )
 
     # Search strategy
@@ -200,7 +200,7 @@ def tap_attack(
 
     guidance = REFINE_GUIDANCE.format(goal=goal)
     refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
-        prompt_trials_adapter, lambda x: x
+        adapt_prompt_trials, lambda x: x
     )
 
     # Objective

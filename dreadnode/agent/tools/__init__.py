@@ -1,7 +1,6 @@
 import importlib
 import typing as t
 
-from dreadnode.agent.tools import planning, reporting, tasking
 from dreadnode.agent.tools.base import (
     AnyTool,
     Tool,
@@ -12,13 +11,14 @@ from dreadnode.agent.tools.base import (
 )
 
 if t.TYPE_CHECKING:
-    from dreadnode.agent.tools import fs  # noqa: F401
+    from dreadnode.agent.tools import fs, planning, reporting, tasking
 
 __all__ = [
     "AnyTool",
     "Tool",
     "Toolset",
     "discover_tools_on_obj",
+    "fs",
     "planning",
     "reporting",
     "tasking",
@@ -26,7 +26,8 @@ __all__ = [
     "tool_method",
 ]
 
-__lazy_submodules__ = ["highlight", "task", "todo", "fs"]
+__lazy_submodules__: list[str] = ["fs", "planning", "reporting", "tasking"]
+__lazy_components__: dict[str, str] = {}
 
 
 def __getattr__(name: str) -> t.Any:
@@ -34,8 +35,12 @@ def __getattr__(name: str) -> t.Any:
         module = importlib.import_module(f".{name}", __name__)
         globals()[name] = module
         return module
+
+    if name in __lazy_components__:
+        module_name = __lazy_components__[name]
+        module = importlib.import_module(module_name)
+        component = getattr(module, name)
+        globals()[name] = component
+        return component
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
-def __dir__() -> list[str]:
-    return sorted(list(globals().keys()) + __lazy_submodules__)

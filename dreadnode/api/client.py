@@ -8,7 +8,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-import pandas as pd
 from loguru import logger
 from pydantic import BaseModel
 from ulid import ULID
@@ -47,6 +46,9 @@ from dreadnode.constants import (
     DEFAULT_POLL_INTERVAL,
 )
 from dreadnode.version import VERSION
+
+if t.TYPE_CHECKING:
+    import pandas as pd
 
 ModelT = t.TypeVar("ModelT", bound=BaseModel)
 
@@ -399,6 +401,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported metric data.
         """
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -437,6 +440,7 @@ class ApiClient:
         Returns:
             str: Path to the export directory
         """
+        import pandas as pd
 
         logger.info(f"Starting paginated export for project '{project}', format='{format}'")
 
@@ -486,6 +490,7 @@ class ApiClient:
         base_dir: str | None,
     ) -> str:
         """Handle dataset export to disk - one file per chunk."""
+        import pandas as pd
 
         if base_dir:
             export_base = Path(base_dir) / "strikes-data" / "export-runs"
@@ -638,7 +643,7 @@ class ApiClient:
         Args:
             project: The project identifier.
             filter: A filter to apply to the exported data. Defaults to None.
-            status : The status of parameters to include. Defaults to "completed".
+            status: The status of parameters to include. Defaults to "completed".
             parameters: A list of parameter names to include. Defaults to None.
             metrics: A list of metric names to include. Defaults to None.
             aggregations: A list of aggregation types to apply. Defaults to None.
@@ -646,6 +651,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported parameter data.
         """
+        import pandas as pd
 
         response = self.request(
             "GET",
@@ -686,6 +692,7 @@ class ApiClient:
         Returns:
             A DataFrame containing the exported timeseries data.
         """
+        import pandas as pd
 
         response = self.request(
             "GET",

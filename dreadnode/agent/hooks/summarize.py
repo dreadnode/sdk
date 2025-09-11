@@ -2,7 +2,6 @@ import contextlib
 import typing as t
 
 import rigging as rg
-from litellm.exceptions import ContextWindowExceededError
 
 from dreadnode.agent.events import AgentError, AgentEvent, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
@@ -25,6 +24,8 @@ CONTEXT_LENGTH_ERROR_PATTERNS = [
 def _is_context_length_error(error: BaseException) -> bool:
     """Checks if an exception is likely due to exceeding the context window."""
     with contextlib.suppress(ImportError):
+        from litellm.exceptions import ContextWindowExceededError
+
         if isinstance(error, ContextWindowExceededError):
             return True
 

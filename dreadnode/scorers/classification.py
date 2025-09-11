@@ -1,11 +1,9 @@
 import typing as t
 
-from transformers import pipeline
-
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
-from dreadnode.util import clean_str, warn_at_user_stacklevel
+from dreadnode.util import catch_import_error, clean_str
 
 # Global cache for pipelines
 g_transformer_pipeline_cache: dict[str, t.Any] = {}
@@ -32,25 +30,8 @@ def zero_shot_classification(
         model_name: The name of the zero-shot model from Hugging Face Hub.
         name: Name of the scorer.
     """
-    transformers_error_msg = (
-        "Transformers dependency is not installed. Install with: pip install transformers"
-    )
-
-    try:
-        pipeline("zero-shot-classification", model=model_name)
-    except ImportError:
-        warn_at_user_stacklevel(transformers_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": transformers_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
-    except Exception:  # noqa: BLE001
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": "Failed to create pipeline"})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[training]"):
+        from transformers import pipeline  # type: ignore[import-not-found]
 
     def evaluate(
         data: t.Any,
@@ -60,7 +41,9 @@ def zero_shot_classification(
         model_name: str = Config(model_name),
     ) -> Metric:
         if score_label not in labels:
-            raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
+            raise ValueError(
+                f"score_label '{score_label}' must be one of the provided labels."
+            )
 
         pipeline_key = f"zero-shot-classification_{model_name}"
         if pipeline_key not in g_transformer_pipeline_cache:

@@ -23,10 +23,6 @@ from pathlib import PosixPath
 from re import Pattern
 from uuid import UUID
 
-import attrs
-import datasets  # type: ignore[import-untyped]
-import numpy as np
-import pandas as pd
 import pydantic
 import pydantic.dataclasses
 from pydantic import TypeAdapter
@@ -363,6 +359,8 @@ def _handle_numpy_array(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
+    import numpy as np
+
     if not isinstance(obj, np.ndarray):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
@@ -379,6 +377,8 @@ def _handle_pandas_dataframe(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
+    import pandas as pd
+
     if not isinstance(obj, pd.DataFrame):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
@@ -392,6 +392,8 @@ def _handle_pandas_series(
     obj: t.Any,
     seen: set[int],
 ) -> tuple[JsonValue, JsonDict]:
+    import pandas as pd
+
     if not isinstance(obj, pd.Series):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
@@ -402,6 +404,8 @@ def _handle_pandas_series(
 
 
 def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
+    import datasets  # type: ignore[import-not-found,unused-ignore]
+
     if not isinstance(obj, datasets.Dataset):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
@@ -486,6 +490,8 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[pydantic.BaseModel] = _handle_pydantic_model
 
     with contextlib.suppress(Exception):
+        import numpy as np  # type: ignore[import-not-found,unused-ignore]
+
         handlers[np.ndarray] = _handle_numpy_array
         handlers[np.floating] = lambda o, s: _serialize(float(o), s)
         handlers[np.integer] = lambda o, s: _serialize(int(o), s)
@@ -502,10 +508,14 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         )
 
     with contextlib.suppress(Exception):
+        import pandas as pd
+
         handlers[pd.DataFrame] = _handle_pandas_dataframe
         handlers[pd.Series] = _handle_pandas_series
 
     with contextlib.suppress(Exception):
+        import datasets  # type: ignore[import-not-found,unused-ignore]
+
         handlers[datasets.Dataset] = _handle_dataset
 
     with contextlib.suppress(Exception):

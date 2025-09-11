@@ -1,4 +1,3 @@
-import importlib.util
 import io
 import typing as t
 from pathlib import Path
@@ -6,21 +5,9 @@ from pathlib import Path
 import numpy as np
 
 from dreadnode.data_types.base import DataType
+from dreadnode.util import catch_import_error
 
-
-def check_imports() -> None:
-    if importlib.util.find_spec("soundfile") is None:
-        raise ImportError(
-            "Audio processing requires SoundFile. Install with: pip install dreadnode[multimodal]"
-        )
-
-    if importlib.util.find_spec("numpy") is None:
-        raise ImportError(
-            "Audio processing requires NumPy. Install with: pip install dreadnode[multimodal]"
-        )
-
-
-AudioDataType: t.TypeAlias = "str | Path | np.ndarray[t.Any, t.Any] | bytes"
+AudioDataType = str | Path | np.ndarray[t.Any, t.Any] | bytes
 
 
 class Audio(DataType):
@@ -52,7 +39,9 @@ class Audio(DataType):
             caption: Optional caption for the audio
             format: Optional format to use (default is wav for numpy arrays)
         """
-        check_imports()
+        with catch_import_error("dreadnode[multimodal]"):
+            import soundfile  # type: ignore[import-not-found]
+
         self._data = data
         self._sample_rate = sample_rate
         self._caption = caption
@@ -74,7 +63,6 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-
         if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
         if isinstance(self._data, np.ndarray):
@@ -89,7 +77,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore  # noqa: PGH003
+        import soundfile as sf  # type: ignore[import-not-found]
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
@@ -108,7 +96,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf
+        import soundfile as sf  # type: ignore[import-not-found]
 
         if self._sample_rate is None:
             raise ValueError(

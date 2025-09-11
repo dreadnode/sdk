@@ -7,7 +7,7 @@ from dreadnode.agent.tools import tool
 
 
 @tool(truncate=1000, catch=True)
-async def read_file(path: str, *, max_length: int = dn.Config(1000)) -> str:  # noqa: ARG001
+async def read_file(path: str, *, max_length: int = dn.Config(123)) -> str:
     "Read the contents of a file."
     return (Path("../") / path).read_text()
 

@@ -2,21 +2,17 @@ import typing as t
 from difflib import SequenceMatcher
 
 import litellm
-import nltk  # type: ignore[import-untyped]
-from nltk.tokenize import word_tokenize  # type: ignore[import-untyped]
-from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-untyped]
-from rapidfuzz import distance, fuzz, utils
-from sentence_transformers import SentenceTransformer, util
-from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-untyped]
-from sklearn.metrics.pairwise import (  # type: ignore  # noqa: PGH003
-    cosine_similarity as sklearn_cosine_similarity,
-)
 
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import catch_import_error
+
+if t.TYPE_CHECKING:
+    from sentence_transformers import (  # type: ignore[import-not-found]
+        SentenceTransformer,
+    )
 
 
 def similarity(
@@ -70,7 +66,12 @@ def similarity_with_rapidfuzz(
     reference: str,
     *,
     method: t.Literal[
-        "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
+        "ratio",
+        "partial_ratio",
+        "token_sort_ratio",
+        "token_set_ratio",
+        "WRatio",
+        "QRatio",
     ] = "ratio",
     normalize: bool = True,
     preprocessor: bool = True,
@@ -94,26 +95,20 @@ def similarity_with_rapidfuzz(
         score_cutoff: Optional score cutoff below which to return 0.0.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = (
-        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
-    )
-
-    try:
-        fuzz.ratio("test", "test")
-    except ImportError:
-        warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
 
     def evaluate(
         data: t.Any,
         *,
         reference: str = reference,
         method: t.Literal[
-            "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
+            "ratio",
+            "partial_ratio",
+            "token_sort_ratio",
+            "token_set_ratio",
+            "WRatio",
+            "QRatio",
         ] = method,
         normalize: bool = normalize,
         preprocessor: bool = preprocessor,
@@ -125,31 +120,52 @@ def similarity_with_rapidfuzz(
         # Select the appropriate RapidFuzz method
         if method == "ratio":
             score = fuzz.ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "partial_ratio":
             score = fuzz.partial_ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "token_sort_ratio":
             score = fuzz.token_sort_ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "token_set_ratio":
             score = fuzz.token_set_ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "WRatio":
             score = fuzz.WRatio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "QRatio":
             score = fuzz.QRatio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         else:
             score = fuzz.ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
 
         if normalize:
@@ -191,19 +207,8 @@ def string_distance(
         normalize: Normalize distances and convert to similarity scores.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = (
-        "RapidFuzz dependency is not installed. Please install it with: pip install rapidfuzz"
-    )
-
-    try:
-        distance.Levenshtein.distance("test", "test")
-    except ImportError:
-        warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        from rapidfuzz import distance  # type: ignore[import-not-found]
 
     def evaluate(  # noqa: PLR0912
         data: t.Any,
@@ -219,13 +224,17 @@ def string_distance(
         # Select the appropriate distance method
         if method == "levenshtein":
             if normalize:
-                score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
+                score = distance.Levenshtein.normalized_similarity(
+                    reference, candidate_text
+                )
             else:
                 dist = distance.Levenshtein.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
         elif method == "hamming":
             if normalize:
-                score = distance.Hamming.normalized_similarity(reference, candidate_text)
+                score = distance.Hamming.normalized_similarity(
+                    reference, candidate_text
+                )
             else:
                 dist = distance.Hamming.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
@@ -235,22 +244,30 @@ def string_distance(
             score = distance.JaroWinkler.similarity(reference, candidate_text)
         elif method == "damerau_levenshtein":
             if normalize:
-                score = distance.DamerauLevenshtein.normalized_similarity(reference, candidate_text)
+                score = distance.DamerauLevenshtein.normalized_similarity(
+                    reference, candidate_text
+                )
             else:
                 dist = distance.DamerauLevenshtein.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
         elif normalize:
-            score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
+            score = distance.Levenshtein.normalized_similarity(
+                reference, candidate_text
+            )
         else:
             dist = distance.Levenshtein.distance(reference, candidate_text)
             score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
 
-        return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
+        return Metric(
+            value=float(score), attributes={"method": method, "normalize": normalize}
+        )
 
     return Scorer(evaluate, name=name, catch=True)
 
 
-def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scorer[t.Any]":
+def similarity_with_tf_idf(
+    reference: str, *, name: str = "similarity"
+) -> "Scorer[t.Any]":
     """
     Scores semantic similarity using TF-IDF and cosine similarity.
 
@@ -260,19 +277,13 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         reference: The reference text (e.g., expected output).
         name: Name of the scorer.
     """
-    sklearn_import_error_msg = (
-        "scikit-learn dependency is not installed. Please install it with: pip install scikit-learn"
-    )
-
-    try:
-        TfidfVectorizer()
-    except ImportError:
-        warn_at_user_stacklevel(sklearn_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": sklearn_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found]
+            TfidfVectorizer,
+        )
+        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
+            cosine_similarity as sklearn_cosine_similarity,
+        )
 
     vectorizer = TfidfVectorizer(stop_words="english")
 
@@ -309,17 +320,11 @@ def similarity_with_sentence_transformers(
         model_name: The name of the sentence-transformer model to use.
         name: Name of the scorer.
     """
-    sentence_transformers_error_msg = "Sentence transformers dependency is not installed. Please install it with: pip install sentence-transformers"
-
-    try:
-        SentenceTransformer(model_name)
-    except ImportError:
-        warn_at_user_stacklevel(sentence_transformers_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": sentence_transformers_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        from sentence_transformers import (  # type: ignore[import-not-found]
+            SentenceTransformer,
+            util,
+        )
 
     def evaluate(
         data: t.Any, *, reference: str = reference, model_name: str = Config(model_name)
@@ -381,7 +386,9 @@ def similarity_with_litellm(
     ) -> Metric:
         candidate_text = str(data)
         if not candidate_text.strip() or not reference.strip():
-            return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
+            return Metric(
+                value=0.0, attributes={"error": "Candidate or reference text is empty."}
+            )
 
         response = await litellm.aembedding(
             model=model,
@@ -423,26 +430,20 @@ def bleu(
         weights: Weights for unigram, bigram, etc. Must sum to 1.
         name: Name of the scorer.
     """
-    nltk_import_error_msg = "NLTK dependency is not installed. Install with: pip install nltk && python -m nltk.downloader punkt"
+    with catch_import_error("dreadnode[scoring]"):
+        import nltk  # type: ignore[import-not-found]
+        from nltk.tokenize import (  # type: ignore[import-not-found]
+            word_tokenize,
+        )
+        from nltk.translate.bleu_score import (  # type: ignore[import-not-found]
+            sentence_bleu,
+        )
 
     try:
-        # Check for the 'punkt' tokenizer data
-        try:
-            nltk.data.find("tokenizers/punkt")
-            word_tokenize("test")
-            sentence_bleu([["test"]], ["test"])
-        except LookupError as e:
-            nltk_import_error_msg = (
-                "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
-            )
-            raise ImportError(nltk_import_error_msg) from e
-    except (ImportError, AttributeError):
-        warn_at_user_stacklevel(nltk_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": nltk_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+        nltk.data.find("tokenizers/punkt")
+    except LookupError as e:
+        nltk_import_error_msg = "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
+        raise LookupError(nltk_import_error_msg) from e
 
     def evaluate(
         data: t.Any, *, reference: str = reference, weights: tuple[float, ...] = weights
@@ -450,7 +451,9 @@ def bleu(
         candidate_text = str(data)
 
         if not reference or not candidate_text:
-            return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})
+            return Metric(
+                value=0.0, attributes={"error": "Reference or candidate text is empty."}
+            )
 
         ref_tokens = word_tokenize(reference)
         cand_tokens = word_tokenize(candidate_text)

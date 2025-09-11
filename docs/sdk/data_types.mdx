@@ -72,7 +72,9 @@ def __init__(
         caption: Optional caption for the audio
         format: Optional format to use (default is wav for numpy arrays)
     """
-    check_imports()
+    with catch_import_error("dreadnode[multimodal]"):
+        import soundfile  # type: ignore[import-not-found]
+
     self._data = data
     self._sample_rate = sample_rate
     self._caption = caption
@@ -207,6 +209,9 @@ def __init__(
         caption: Optional caption for the image
         format: Optional format to use when saving (png, jpg, etc.)
     """
+    with catch_import_error("dreadnode[multimodal]"):
+        import PIL.Image  # type: ignore[import-not-found]  # noqa: F401
+
     self._data = data
     self._mode = mode
     self._caption = caption
@@ -642,7 +647,6 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     Returns:
         A tuple of (video_bytes, metadata_dict)
     """
-    import numpy as np  # type: ignore[import,unused-ignore]
 
     try:
         from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]

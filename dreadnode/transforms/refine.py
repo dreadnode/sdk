@@ -10,9 +10,6 @@ from dreadnode.transforms.base import Transform
 if t.TYPE_CHECKING:
     from dreadnode.optimization.trial import Trial
 
-if t.TYPE_CHECKING:
-    from dreadnode.optimization.trial import Trials
-
 T = t.TypeVar("T")
 
 
@@ -75,7 +72,7 @@ def llm_refine(
     return Transform(transform, name=name)
 
 
-def prompt_trials_adapter(trials: "list[Trial[str]]") -> str:
+def adapt_prompt_trials(trials: "list[Trial[str]]") -> str:
     """
     Adapter which can be used to create attempt context from a set of prompt/response trials.
 

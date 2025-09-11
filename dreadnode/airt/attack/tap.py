@@ -3,7 +3,7 @@ import typing as t
 from dreadnode.airt.attack import Attack
 from dreadnode.optimization.search.graph import beam_search
 from dreadnode.scorers import llm_judge
-from dreadnode.transforms.llm_refine import llm_refine, prompt_trials_adapter
+from dreadnode.transforms.refine import adapt_prompt_trials, llm_refine
 
 if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
@@ -27,7 +27,7 @@ def tap_attack(
 
     guidance = REFINE_GUIDANCE.format(goal=goal)
     refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
-        prompt_trials_adapter, lambda x: x
+        adapt_prompt_trials, lambda x: x
     )
 
     # Objective

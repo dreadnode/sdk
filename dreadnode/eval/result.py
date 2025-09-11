@@ -116,11 +116,10 @@ class EvalResultMixin:
         """
         return [sample.to_dict() for sample in self.samples]
 
-    def to_dataframe(self) -> "t.Any":
+    def to_dataframe(self) -> "pd.DataFrame":
         """
         Converts the results into a pandas DataFrame for analysis.
         """
-
         return pd.DataFrame(self.to_dicts())  # type: ignore[misc]
 
     def to_jsonl(self, path: str | Path) -> None:

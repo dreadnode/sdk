@@ -43,7 +43,8 @@ import dreadnode  # noqa: E402
 warn_at_user_stacklevel = _warn_at_user_stacklevel
 
 SysExcInfo = (
-    tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None]
+    tuple[type[BaseException], BaseException, TracebackType | None]
+    | tuple[None, None, None]
 )
 """
 The return type of sys.exc_info(): exc_type, exc_val, exc_tb.
@@ -120,7 +121,9 @@ def truncate_string(text: str, max_length: int = 80, *, suf: str = "...") -> str
     return text[:remaining] + suf
 
 
-def clean_str(string: str, *, max_length: int | None = None, replace_with: str = "_") -> str:
+def clean_str(
+    string: str, *, max_length: int | None = None, replace_with: str = "_"
+) -> str:
     """
     Clean a string by replacing all non-alphanumeric characters (except `/` and `@`)
     with `replace_with` (`_` by default).
@@ -153,6 +156,26 @@ def format_dict(data: dict[str, t.Any], max_length: int = 80) -> str:
 
     formatted = ", ".join(parts)
     return f"{{{formatted}}}"
+
+
+# Imports
+
+
+@contextmanager
+def catch_import_error(install_suggestion: str | None = None) -> t.Iterator[None]:
+    """
+    Context manager to catch ImportError and raise a new ImportError with a custom message.
+
+    Args:
+        install_suggestion: The package suggestion to include in the error message.
+    """
+    try:
+        yield
+    except ImportError as e:
+        message = f"Missing required package `{e.name}`."
+        if install_suggestion:
+            message += f" Install with: pip install {install_suggestion}"
+        raise ImportError(message) from e
 
 
 # Types
@@ -289,7 +312,9 @@ def time_to(future_datetime: datetime) -> str:
 # Async
 
 
-async def concurrent(coros: t.Iterable[t.Awaitable[T]], limit: int | None = None) -> list[T]:
+async def concurrent(
+    coros: t.Iterable[t.Awaitable[T]], limit: int | None = None
+) -> list[T]:
     """
     Run multiple coroutines concurrently with a limit on the number of concurrent tasks.
 
@@ -364,7 +389,9 @@ async def concurrent_gen(
             return await coro
 
     async def generator() -> t.AsyncGenerator[T | asyncio.Task[T], None]:
-        pending_tasks = {asyncio.create_task(run_coroutine_with_semaphore(coro)) for coro in coros}
+        pending_tasks = {
+            asyncio.create_task(run_coroutine_with_semaphore(coro)) for coro in coros
+        }
 
         try:
             while pending_tasks:
@@ -382,7 +409,9 @@ async def concurrent_gen(
         yield gen
 
 
-async def join_generators(*generators: t.AsyncGenerator[T, None]) -> t.AsyncGenerator[T, None]:
+async def join_generators(
+    *generators: t.AsyncGenerator[T, None],
+) -> t.AsyncGenerator[T, None]:
     """
     Join multiple asynchronous generators into a single asynchronous generator.
 
@@ -398,7 +427,9 @@ async def join_generators(*generators: t.AsyncGenerator[T, None]) -> t.AsyncGene
     Raises:
         Exception: If any of the generators raises an exception.
     """
-    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
+    FINISHED = (
+        object()
+    )  # sentinel object to indicate a generator has finished  # noqa: N806
     queue = asyncio.Queue[T | object | Exception](maxsize=1)
 
     async def _queue_generator(
@@ -458,7 +489,9 @@ async def stream_map_and_merge(
     Yields:
         An asynchronous generator which yields the processed items from the processor streams.
     """
-    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
+    FINISHED = (
+        object()
+    )  # sentinel object to indicate a generator has finished  # noqa: N806
     queue = asyncio.Queue[T_out | object | Exception](maxsize=1)
 
     # Define a producer to start worker tasks for every
@@ -564,7 +597,9 @@ def log_internal_error() -> None:
     if reraise:
         raise  # noqa: PLE0704
 
-    with suppress_instrumentation():  # prevent infinite recursion from the logging integration
+    with (
+        suppress_instrumentation()
+    ):  # prevent infinite recursion from the logging integration
         logger.exception(
             "Caught an error in Dreadnode. This will not prevent code from running, but you may lose data.",
             exc_info=_internal_error_exc_info(),
@@ -749,8 +784,12 @@ def resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
 
     for endpoint in strategies:
         if test_connection(endpoint):
-            logger.warning(f"Resolved Docker service endpoint '{parsed.hostname}' to '{endpoint}'.")
+            logger.warning(
+                f"Resolved Docker service endpoint '{parsed.hostname}' to '{endpoint}'."
+            )
             return str(endpoint)
 
     # If nothing works, return original and let it fail with a helpful error
-    raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")
+    raise RuntimeError(
+        f"Failed to connect to the Dreadnode Artifact storage at {endpoint}."
+    )

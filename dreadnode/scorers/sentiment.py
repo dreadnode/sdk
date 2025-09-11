@@ -2,12 +2,11 @@ import os
 import typing as t
 
 import httpx
-from textblob import TextBlob  # type: ignore[import-untyped]
 
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import catch_import_error, warn_at_user_stacklevel
 
 Sentiment = t.Literal["positive", "negative", "neutral"]
 
@@ -30,23 +29,15 @@ def sentiment(
         target: The desired sentiment to score against.
         name: Name of the scorer.
     """
-    textblob_import_error_msg = "TextBlob dependency is not installed. Install with: pip install textblob && python -m textblob.download_corpora"
-
-    try:
-        TextBlob("test").sentiment  # noqa: B018
-    except (ImportError, AttributeError):
-        warn_at_user_stacklevel(textblob_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": textblob_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        from textblob import TextBlob  # type: ignore[import-not-found]
 
     def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:
             target = "neutral"  # Default to neutral if invalid
             warn_at_user_stacklevel(
-                f"Invalid target sentiment '{target}', defaulting to 'neutral'.", UserWarning
+                f"Invalid target sentiment '{target}', defaulting to 'neutral'.",
+                UserWarning,
             )
 
         text = str(data)

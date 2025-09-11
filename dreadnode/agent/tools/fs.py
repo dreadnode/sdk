@@ -8,14 +8,12 @@ from pathlib import Path
 import rigging as rg
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from pydantic import PrivateAttr
-from upath import UPath  # type: ignore[import-not-found]
+from upath import UPath
 
 from dreadnode.agent.tools import Toolset, tool_method
 from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.util import shorten_string
-
-FilesystemMode = t.Literal["read-only", "write"]
 
 MAX_GREP_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
@@ -127,7 +125,7 @@ class Filesystem(Toolset):
         content = _path.read_bytes()
 
         try:
-            return content.decode("utf-8")  # type: ignore[no-any-return]
+            return content.decode("utf-8")
         except UnicodeDecodeError as e:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)
