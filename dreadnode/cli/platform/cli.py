@@ -1,3 +1,5 @@
+import typing as t
+
 import cyclopts
 
 from dreadnode.cli.platform.configure import configure_platform
@@ -11,13 +13,24 @@ cli = cyclopts.App("platform", help="Run and manage the platform.", help_flags=[
 
 
 @cli.command()
-def start(tag: str | None = None) -> None:
+def start(
+    tag: str | None = None,
+    **env_overrides: t.Annotated[
+        str,
+        cyclopts.Parameter(
+            help="Environment variable overrides. Use --key value format. "
+            "Examples: --proxy-host myproxy.local --debug-mode true"
+        ),
+    ],
+) -> None:
     """Start the platform. Optionally, provide a tagged version to start.
 
     Args:
         tag: Optional image tag to use when starting the platform.
+        **env_overrides: Key-value pairs to override environment variables in the
+            platform's .env file. e.g `--proxy-host myproxy.local`
     """
-    start_platform(tag=tag)
+    start_platform(tag=tag, **env_overrides)
 
 
 @cli.command(name=["stop", "down"])

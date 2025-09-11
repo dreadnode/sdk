@@ -1,5 +1,4 @@
 from dreadnode.cli.platform.docker_ import docker_stop
-from dreadnode.cli.platform.utils.env_mgmt import remove_generated_env_file
 from dreadnode.cli.platform.utils.printing import print_error, print_success
 from dreadnode.cli.platform.utils.versions import (
     get_current_version,

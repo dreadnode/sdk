@@ -42,6 +42,10 @@ class LocalVersionSchema(RegistryImageDetails):
     def ui_example_env_file(self) -> Path:
         return self.local_path / f".{UI_SERVICE}.example.env"
 
+    @property
+    def overrides_env_file(self) -> Path:
+        return self.local_path / ".overrides.env"
+
     def get_env_path_by_service(self, service: str) -> Path:
         """Get environment file path for a specific service.
 

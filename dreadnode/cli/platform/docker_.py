@@ -228,6 +228,7 @@ def docker_login(registry: str) -> None:
 def docker_run(
     compose_file: Path,
     env_files: list[Path] | None = None,
+    overrides_env_file: Path | None = None,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     """Run docker containers for the platform.
@@ -247,6 +248,11 @@ def docker_run(
     if env_files:
         for env_file in env_files:
             cmds.extend(["--env-file", env_file.as_posix()])
+
+    # place the overrides env file last so it takes precedence
+    if overrides_env_file:
+        cmds.extend(["--env-file", overrides_env_file.as_posix()])
+
     cmds += ["up", "-d"]
     return _run_docker_compose_command(cmds, compose_file, timeout, "Docker compose up")
 

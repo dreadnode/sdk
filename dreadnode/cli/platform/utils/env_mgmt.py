@@ -385,3 +385,58 @@ def open_env_file(filename: Path) -> None:
         print_info("Opened environment file.")
     except subprocess.CalledProcessError as e:
         print_error(f"Failed to open environment file: {e}")
+
+
+def write_overrides_env(path: Path, **kwargs: str) -> None:
+    """
+    Write a .env file at `path` using provided kwargs.
+
+    Rules:
+      - ENV var names are UPPER_SNAKE_CASE (key uppercased).
+      - str values -> UPPERCASED and quoted, with basic escaping.
+      - int/float -> unquoted.
+      - bool -> true/false (unquoted).
+      - None -> empty value.
+      - other types -> stringified, quoted.
+
+    Example:
+      write_env(bar="baz", replace_this=1)
+      # -> .env containing:
+      # BAR="BAZ"
+      # REPLACE_THIS=1
+    """
+
+    def encode_value(val: t.Any) -> str:
+        if isinstance(val, bool):
+            return "true" if val else "false"
+        if val is None:
+            return ""
+        if isinstance(val, (int, float)):
+            return str(val)
+        # default: treat as string, uppercase and quote
+        s = str(val)
+        s = s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace('"', '\\"')
+        return f'"{s}"'
+
+    def encode_key(key: t.Any) -> str:
+        s = str(key).upper()
+        return s.replace("-", "_")
+
+    lines = []
+    for key, val in kwargs.items():
+        name = encode_key(key)
+        lines.append(f"{name}={encode_value(val)}")
+
+    with path.open("w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def remove_overrides_env(path: Path) -> None:
+    """Remove the overrides .env file if it exists.
+
+    Args:
+        path: The path to the overrides .env file.
+    """
+    if path.exists():
+        path.unlink()
+        print_info(f"Removed overrides environment file: {path}")
