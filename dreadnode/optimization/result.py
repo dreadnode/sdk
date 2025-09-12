@@ -77,7 +77,5 @@ class StudyResult(t.Generic[CandidateT]):
             f.writelines(json.dumps(record) + "\n" for record in records)
 
     def __repr__(self) -> str:
-        best_score_str = (
-            f", best_score={self.best_trial.score:.3f}" if self.best_trial else ""
-        )
+        best_score_str = f", best_score={self.best_trial.score:.3f}" if self.best_trial else ""
         return f"StudyResult(trials={len(self.trials)}, stop_reason='{self.stop_reason}'{best_score_str})"

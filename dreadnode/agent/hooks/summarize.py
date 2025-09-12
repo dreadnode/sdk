@@ -41,9 +41,7 @@ def _get_last_input_tokens(event: AgentEvent) -> int:
     last_generation_event = event.get_latest_event_by_type(GenerationEnd)
     if not last_generation_event:
         return 0
-    return (
-        last_generation_event.usage.input_tokens if last_generation_event.usage else 0
-    )
+    return last_generation_event.usage.input_tokens if last_generation_event.usage else 0
 
 
 @component
@@ -162,9 +160,7 @@ def summarize_when_long(
         new_messages: list[rg.Message] = []
         if system_message:
             new_messages.append(system_message)
-        new_messages.append(
-            rg.Message("user", summary_content, metadata={"summary": True})
-        )
+        new_messages.append(rg.Message("user", summary_content, metadata={"summary": True}))
         new_messages.extend(messages_to_keep)
 
         return (
