@@ -5,7 +5,7 @@ from dreadnode.cli.platform.docker_ import (
     get_origin,
 )
 from dreadnode.cli.platform.download import download_platform
-from dreadnode.cli.platform.utils.env_mgmt import generate_env_file
+from dreadnode.cli.platform.utils.env_mgmt import remove_overrides_env, write_overrides_env
 from dreadnode.cli.platform.utils.printing import print_error, print_info, print_success
 from dreadnode.cli.platform.utils.versions import (
     create_local_latest_tag,
@@ -14,7 +14,7 @@ from dreadnode.cli.platform.utils.versions import (
 )
 
 
-def start_platform(tag: str | None = None) -> None:
+def start_platform(tag: str | None = None, **env_overrides: str) -> None:
     """Start the platform with the specified or current version.
 
     Args:
@@ -41,9 +41,15 @@ def start_platform(tag: str | None = None) -> None:
         if image.registry not in registries_attempted:
             docker_login(image.registry)
             registries_attempted.add(image.registry)
-    generate_env_file(selected_version)
+
+    if env_overrides:
+        print_info("Applying environment overrides...")
+        write_overrides_env(selected_version.arg_overrides_env_file, **env_overrides)
+    else:
+        remove_overrides_env(selected_version.arg_overrides_env_file)
+
     print_info(f"Starting platform: {selected_version.tag}")
-    docker_run(selected_version.compose_file)
+    docker_run(selected_version)
     print_success(f"Platform {selected_version.tag} started successfully.")
     origin = get_origin("dreadnode-ui")
     if origin:
