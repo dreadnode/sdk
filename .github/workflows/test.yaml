@@ -8,6 +8,7 @@ on:
       - "**/*.py"
       - "pyproject.toml"
       - "poetry.lock"
+      - "uv.lock"
   pull_request:
     branches: [main]
 
@@ -23,36 +24,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+    - name: Checkout code
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@3d1e2d2ca0a067f27da6fec484fce7f5256def85
-        with:
-          python-version: ${{ matrix.python-version }}
+    - name: Install uv
+      uses: astral-sh/setup-uv@557e51de59eb14aaaba2ed9621916900a91d50c6 # v6.6.1
+      with:
+        version: "latest"
+        python-version: ${{ matrix.python-version }}
 
-      - name: Install Poetry
-        uses: abatilo/actions-poetry@b8f6fe29ba2eb78e0d45ccbf41cd14154c4e25b2
+    - name: Sync packages
+      run: uv sync --all-extras
 
-      - name: Configure Poetry
-        run: |
-          poetry config virtualenvs.create true --local
-          poetry config virtualenvs.in-project true --local
+    - name: Format
+      run: uv run ruff format --check .
 
-      - name: Install package
-        run: poetry install --all-extras
+    - name: Lint
+      if: always()
+      run: uv run ruff check --output-format=github .
 
-      - name: Format
-        run: poetry run ruff format --check .
+    - name: Typecheck
+      if: always()
+      run: uv run mypy .
 
-      - name: Lint
-        if: always()
-        run: poetry run ruff check --output-format=github .
-
-      - name: Typecheck
-        if: always()
-        run: poetry run mypy .
-
-      - name: Test
-        if: always()
-        run: poetry run pytest
+    - name: Test
+      if: always()
+      run: uv run pytest

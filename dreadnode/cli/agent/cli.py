@@ -9,8 +9,6 @@ import rich
 
 from dreadnode import log_input
 from dreadnode import run as run_span
-from dreadnode.agent import Agent
-from dreadnode.agent.format import format_agent, format_agents_table
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
 from dreadnode.meta import get_config_model, hydrate
 from dreadnode.meta.introspect import flatten_model
@@ -34,6 +32,9 @@ def show(
 
     If no file is specified, searches for main.py, agent.py, or app.py.
     """
+    from dreadnode.agent import Agent
+    from dreadnode.agent.format import format_agent, format_agents_table
+
     discovered = discover(Agent, file)
     if not discovered:
         path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
@@ -72,6 +73,7 @@ async def run(  # noqa: PLR0912, PLR0915
         agent: The agent to run, e.g., 'my_agents.py:basic' or 'basic'.
         config: Optional path to a TOML/YAML/JSON configuration file for the agent.
     """
+    from dreadnode.agent import Agent
 
     file_path: Path | None = None
     agent_name: str | None = None

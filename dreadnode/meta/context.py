@@ -1,8 +1,8 @@
 import typing as t
 from abc import ABC, abstractmethod
 
+from dreadnode.common_types import UNSET, Unset
 from dreadnode.tracing.span import RunSpan, current_run_span, current_task_span
-from dreadnode.types import UNSET, Unset
 from dreadnode.util import warn_at_user_stacklevel
 
 

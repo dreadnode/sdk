@@ -18,6 +18,25 @@ Direction = Literal['maximize', 'minimize']
 
 The direction of optimization for the objective score.
 
+ObjectiveLike
+-------------
+
+```python
+ObjectiveLike = (
+    ScorerLike[OutputT]
+    | ScorersLike[OutputT]
+    | str
+    | list[str]
+)
+```
+
+A single or multiple optimization objective(s). Can be any of:
+
+* Single scorer instance or a scorer-like callable
+* String name of any scorer already configured on the task.
+* List/dict of multiple scorer instances or scorer-like callables (multi-objective).
+* List of string names of scorers already on the task (multi-objective).
+
 Study
 -----
 
@@ -32,7 +51,9 @@ The maximum number of trials to evaluate in parallel.
 ### constraints
 
 ```python
-constraints: list[Scorer[CandidateT]] | None = Config(default=None)
+constraints: ScorersLike[CandidateT] | None = Config(
+    default=None
+)
 ```
 
 A list of Scorer-like constraints to apply to candidates. If any constraint scores to a falsy value, the candidate is pruned.
@@ -40,11 +61,17 @@ A list of Scorer-like constraints to apply to candidates. If any constraint scor
 ### dataset
 
 ```python
-dataset: InputDataset[Any] | list[AnyDict] | FilePath | None = Config(default=None, expose_as=FilePath | None)
+dataset: (
+    InputDataset[Any] | list[AnyDict] | FilePath | None
+) = Config(default=None, expose_as=FilePath | None)
 ```
 
 The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
-If `None`, an empty dataset with a single empty input will be used.
+If `None`, an empty dataset with a single empty input will be used - in other words the task will
+simply be evaluated once per trial.
+
+This dataset will be used to evaluate each trial's task during scoring - the mean average score
+for all metrics will be used as the trial's singular objective scores.
 
 ### description
 
@@ -57,10 +84,15 @@ A brief description of the study's purpose.
 ### direction
 
 ```python
-direction: Direction = Config(default='maximize')
+direction: Direction | list[Direction] = Config(
+    default="maximize"
+)
 ```
 
-The direction of optimization for the objective score.
+The direction(s) of optimization for the objective score.
+
+If multiple directions are specified, the length must match
+the number of objectives.
 
 ### max\_steps
 
@@ -70,45 +102,50 @@ max_steps: int = Config(default=100, ge=1)
 
 The maximum number of optimization steps to run.
 
-### name
+### name\_
 
 ```python
-name: str | None = Config(default=None)
+name_: str | None = Config(
+    default=None, repr=False, exclude=False, alias="name"
+)
 ```
 
-The name of the study - otherwise derived from the task.
+The name of the study - otherwise derived from the objective.
 
 ### objective
 
 ```python
-objective: ScorerLike[Any] | str = Config(default_factory=list)
+objective: Annotated[
+    ObjectiveLike[OutputT], Config(expose_as=None)
+]
 ```
 
-The objective to optimize. Can be a scorer instance, a scorer-like callable, or a string name of scorer already on the task.
+The objective(s) to optimize for. Can be any of:
 
-### objective\_fn
+* Single scorer instance or a scorer-like callable
+* String name of any scorer already configured on the task.
+* List/dict of multiple scorer instances or scorer-like callables (multi-objective).
+* List of string names of scorers already on the task (multi-objective).
 
-```python
-objective_fn: Callable[[EvalResult], float] | None = Config(default=None)
-```
-
-An optional function to compute a score from a full EvalResult, overriding the default averaging behavior.
-
-### patience
+### search\_strategy
 
 ```python
-patience: int | None = Config(default=None, ge=1)
-```
-
-The number of steps to wait for an improvement before stopping. If None, this is disabled.
-
-### strategy
-
-```python
-strategy: Annotated[Search[CandidateT], Config()]
+search_strategy: Annotated[
+    Search[CandidateT], Config(expose_as=None)
+]
 ```
 
 The search strategy to use for suggesting new trials.
+
+### stop\_conditions
+
+```python
+stop_conditions: list[StudyStopCondition[CandidateT]] = (
+    Config(default_factory=list)
+)
+```
+
+A list of conditions that, if any are met, will stop the study.
 
 ### tags
 
@@ -116,23 +153,43 @@ The search strategy to use for suggesting new trials.
 tags: list[str] = Config(default_factory=lambda: ['study'])
 ```
 
-A list of tags associated with the study.
-
-### target\_score
-
-```python
-target_score: float | None = Config(default=None)
-```
-
-A target score to achieve. The study will stop if a trial meets or exceeds this score.
+A list of tags associated with the study for logging.
 
 ### task\_factory
 
 ```python
-task_factory: Callable[[CandidateT], Task[..., Any]]
+task_factory: Callable[[CandidateT], Task[..., OutputT]]
 ```
 
 A function that accepts a candidate and returns a configured Task ready for evaluation.
+
+### clone
+
+```python
+clone() -> te.Self
+```
+
+Clone a task.
+
+**Returns:**
+
+* `Self`
+  –A new Task instance with the same attributes as this one.
+
+<Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
+```python
+def clone(self) -> te.Self:
+    """
+    Clone a task.
+
+    Returns:
+        A new Task instance with the same attributes as this one.
+    """
+    return self.model_copy()
+```
+
+
+</Accordion>
 
 ### console
 
@@ -146,7 +203,6 @@ Runs the optimization study with a live progress dashboard in the console.
 ```python
 async def console(self) -> StudyResult[CandidateT]:
     """Runs the optimization study with a live progress dashboard in the console."""
-    from dreadnode.optimization.console import StudyConsoleAdapter
 
     adapter = StudyConsoleAdapter(self)
     return await adapter.run()
@@ -203,7 +259,9 @@ async def run(self) -> StudyResult[CandidateT]:
 ### stream
 
 ```python
-stream() -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]
+stream() -> t.AsyncIterator[
+    t.AsyncGenerator[StudyEvent[CandidateT], None]
+]
 ```
 
 Create an async context manager for the optimization event stream.
@@ -227,7 +285,9 @@ pass
 <Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
 ```python
 @contextlib.asynccontextmanager
-async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:
+async def stream(
+    self,
+) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT], None]]:
     """
     Create an async context manager for the optimization event stream.
 
@@ -250,10 +310,97 @@ async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[StudyEvent[CandidateT
 
 
 </Accordion>
+
+### with\_
+
+```python
+with_(
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    search_strategy: Search[CandidateT] | None = None,
+    task_factory: Callable[[CandidateT], Task[..., OutputT]]
+    | None = None,
+    objective: ObjectiveLike[OutputT] | None = None,
+    direction: Direction | list[Direction] | None = None,
+    dataset: InputDataset[Any]
+    | list[AnyDict]
+    | FilePath
+    | None = None,
+    concurrency: int | None = None,
+    constraints: ScorersLike[CandidateT] | None = None,
+    max_steps: int | None = None,
+    stop_conditions: list[StudyStopCondition[CandidateT]]
+    | None = None,
+) -> te.Self
+```
+
+Clone the study and modify its attributes.
+
+**Returns:**
+
+* `Self`
+  –A new Study instance with the modified attributes.
+
+<Accordion title="Source code in dreadnode/optimization/study.py" icon="code">
+```python
+def with_(
+    self,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    search_strategy: Search[CandidateT] | None = None,
+    task_factory: t.Callable[[CandidateT], Task[..., OutputT]] | None = None,
+    objective: ObjectiveLike[OutputT] | None = None,
+    direction: Direction | list[Direction] | None = None,
+    dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = None,
+    concurrency: int | None = None,
+    constraints: ScorersLike[CandidateT] | None = None,
+    max_steps: int | None = None,
+    stop_conditions: list[StudyStopCondition[CandidateT]] | None = None,
+) -> te.Self:
+    """
+    Clone the study and modify its attributes.
+
+    Returns:
+        A new Study instance with the modified attributes.
+    """
+    return self.model_copy(
+        update={
+            "name_": name or self.name_,
+            "description": description or self.description,
+            "tags": tags or self.tags,
+            "search_strategy": search_strategy or self.search_strategy,
+            "task_factory": task_factory or self.task_factory,
+            "objective": objective or self.objective,
+            "direction": direction or self.direction,
+            "dataset": dataset if dataset is not None else self.dataset,
+            "concurrency": concurrency or self.concurrency,
+            "constraints": constraints if constraints is not None else self.constraints,
+            "max_steps": max_steps or self.max_steps,
+            "stop_conditions": stop_conditions or self.stop_conditions,
+        }
+    )
+```
+
+
+</Accordion>
 Trial
 -----
 
 Represents a single, evaluated point in the search space.
+
+### all\_scores
+
+```python
+all_scores: dict[str, float]
+```
+
+A dictionary of all named metric mean values from the evaluation result.
+
+This includes scores not directly related to the objective.
 
 ### candidate
 
@@ -262,6 +409,14 @@ candidate: CandidateT
 ```
 
 The candidate configuration being assessed.
+
+### created\_at
+
+```python
+created_at: datetime
+```
+
+The creation timestamp of the trial, extracted from its ULID.
 
 ### error
 
@@ -282,7 +437,7 @@ Complete evaluation result if the candidate was assessable by the evaluation eng
 ### id
 
 ```python
-id: UUID = Field(default_factory=uuid4)
+id: ULID = Field(default_factory=ULID)
 ```
 
 Unique identifier for the trial.
@@ -298,7 +453,7 @@ Get the output of the trial.
 ### parent\_id
 
 ```python
-parent_id: UUID | None = None
+parent_id: ULID | None = None
 ```
 
 The id of the parent trial, used to reconstruct the search graph.
@@ -317,7 +472,17 @@ Reason for pruning this trial, if applicable.
 score: float = -float('inf')
 ```
 
-Fitness score of this candidate. Higher is better.
+The primary, single-value fitness score for this trial.
+This is an average of all objective scores for this trial (higher is better).
+
+### scores
+
+```python
+scores: dict[str, float] = {}
+```
+
+A dictionary of all named objective scores for this trial, adjusted
+for the optimization direction (higher is better).
 
 ### status
 
@@ -354,6 +519,224 @@ Distribution()
 
 Base class for all search space distributions.
 
+GraphSearch
+-----------
+
+A generalized, stateful strategy for generative graph-based search.
+
+Formally, the structure is a connected directed acyclic graph (DAG) where nodes represent
+trials and edges are parent-child relationships.
+
+For each step, it:
+1 - Gathers related trials using `context_collector` for every leaf node
+2 - Applies the `transform` to [leaf, \*context] `branching_factor` times for each leaf
+3 - Suggests all new children for evaluation
+
+When trials are observed, it:
+1 - Filters out non-completed trials
+2 - Adds new children to the graph
+3 - Prunes with `pruning_sampler` to establish leaves for the next step
+
+### branching\_factor
+
+```python
+branching_factor: int = Config(default=3)
+```
+
+The number of new candidates to generate from each leaf node.
+
+### context\_collector
+
+```python
+context_collector: TrialCollector[CandidateT] = Config(
+    lineage
+)
+```
+
+A trial collector to gather relevant trials before branching.
+
+### initial\_candidate
+
+```python
+initial_candidate: CandidateT
+```
+
+The initial candidate for the search.
+
+### max\_leaves
+
+```python
+max_leaves: int = Config(default=10)
+```
+
+The maximum number of leaf nodes to maintain in the search.
+
+### pruning\_sampler
+
+```python
+pruning_sampler: TrialSampler[CandidateT] = Config(top_k)
+```
+
+A trial sampler to prune new children after each branching.
+
+### transform
+
+```python
+transform: Transform[list[Trial[CandidateT]], CandidateT]
+```
+
+The transform for generating new nodes from the current trial and related context.
+
+OptunaSearch
+------------
+
+```python
+OptunaSearch(
+    search_space: SearchSpace,
+    *,
+    sampler: BaseSampler | None = None,
+    trials_per_step: int = 1,
+)
+```
+
+An adapter that uses an Optuna study as a search strategy.
+
+Initializes the OptunaSearch with the given search space and study.
+
+**Parameters:**
+
+* **`search_space`**
+  (`SearchSpace`)
+  –The search space to explore.
+* **`sampler`**
+  (`BaseSampler | None`, default:
+  `None`
+  )
+  –An optional Optuna sampler (e.g., NSGAIISampler for MOO).
+* **`trials_per_step`**
+  (`int`, default:
+  `1`
+  )
+  –The number of trials to suggest at each step.
+
+<Accordion title="Source code in dreadnode/optimization/search/optuna_.py" icon="code">
+```python
+def __init__(
+    self,
+    search_space: SearchSpace,
+    *,
+    sampler: optuna.samplers.BaseSampler | None = None,
+    trials_per_step: int = 1,
+) -> None:
+    """
+    Initializes the OptunaSearch with the given search space and study.
+
+    Args:
+        search_space: The search space to explore.
+        sampler: An optional Optuna sampler (e.g., NSGAIISampler for MOO).
+        trials_per_step: The number of trials to suggest at each step.
+    """
+    self.trials_per_step = trials_per_step
+    self._optuna_sampler = sampler
+    self._optuna_study = optuna.create_study()
+    self._optuna_search_space = _convert_search_space(search_space)
+    self._trial_map: dict[ULID, optuna.trial.Trial] = {}
+    self._objective_names: list[str] = []
+```
+
+
+</Accordion>
+
+RandomSearch
+------------
+
+```python
+RandomSearch(
+    search_space: SearchSpace,
+    *,
+    trials_per_step: int = 1,
+    seed: float | None = None,
+)
+```
+
+A search strategy that suggests candidates by sampling uniformly and
+independently from the search space at each step.
+
+This strategy is "memoryless" and does not learn from the results of
+past trials. It is primarily useful as a simple baseline for comparing
+the performance of more sophisticated optimization algorithms.
+
+Initializes the RandomSearch strategy.
+
+**Parameters:**
+
+* **`search_space`**
+  (`SearchSpace`)
+  –The search space to explore.
+* **`trials_per_step`**
+  (`int`, default:
+  `1`
+  )
+  –The number of trials to suggest at each step.
+
+<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
+```python
+def __init__(
+    self, search_space: SearchSpace, *, trials_per_step: int = 1, seed: float | None = None
+):
+    """
+    Initializes the RandomSearch strategy.
+
+    Args:
+        search_space: The search space to explore.
+        trials_per_step: The number of trials to suggest at each step.
+    """
+    self.search_space = search_space
+    self.trials_per_step = trials_per_step
+    self.seed = seed
+    self.random = random.Random(seed)  # noqa: S311 # nosec
+```
+
+
+</Accordion>
+
+### observe
+
+```python
+observe(trials: list[Trial[AnyDict]]) -> None
+```
+
+Informs the strategy of recent trial results. This is a no-op for RandomSearch.
+
+<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
+```python
+async def observe(self, trials: list[Trial[AnyDict]]) -> None:
+    """Informs the strategy of recent trial results. This is a no-op for RandomSearch."""
+```
+
+
+</Accordion>
+
+### suggest
+
+```python
+suggest(step: int) -> t.AsyncIterator[Trial[AnyDict]]
+```
+
+Suggests the next batch of random candidates.
+
+<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
+```python
+async def suggest(self, step: int) -> t.AsyncIterator[Trial[AnyDict]]:
+    """Suggests the next batch of random candidates."""
+    for _ in range(self.trials_per_step):
+        candidate = _sample_from_space(self.search_space, self.random)
+        yield Trial(candidate=candidate, step=step)
+```
+
+
+</Accordion>
+
 Search
 ------
 
@@ -362,7 +745,7 @@ Abstract base class for all optimization search strategies.
 ### observe
 
 ```python
-observe(trials: Trials[CandidateT]) -> None
+observe(trials: list[Trial[CandidateT]]) -> None
 ```
 
 Informs the strategy of the results of recent trials.
@@ -370,7 +753,7 @@ Informs the strategy of the results of recent trials.
 <Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
 @abstractmethod
-async def observe(self, trials: Trials[CandidateT]) -> None:
+async def observe(self, trials: list[Trial[CandidateT]]) -> None:
     """Informs the strategy of the results of recent trials."""
 ```
 
@@ -380,16 +763,15 @@ async def observe(self, trials: Trials[CandidateT]) -> None:
 ### reset
 
 ```python
-reset() -> None
+reset(context: OptimizationContext) -> None
 ```
 
-Resets the search strategy to its initial state.
+Resets the search strategy to a clean state.
 
 <Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
-@abstractmethod
-def reset(self) -> None:
-    """Resets the search strategy to its initial state."""
+def reset(self, context: "OptimizationContext") -> None:
+    """Resets the search strategy to a clean state."""
 ```
 
 
@@ -398,7 +780,7 @@ def reset(self) -> None:
 ### suggest
 
 ```python
-suggest(step: int) -> Trials[CandidateT]
+suggest(step: int) -> t.AsyncIterator[Trial[CandidateT]]
 ```
 
 Suggests the next batch of candidates.
@@ -406,8 +788,268 @@ Suggests the next batch of candidates.
 <Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
 ```python
 @abstractmethod
-async def suggest(self, step: int) -> Trials[CandidateT]:
+def suggest(self, step: int) -> t.AsyncIterator[Trial[CandidateT]]:
     """Suggests the next batch of candidates."""
+```
+
+
+</Accordion>
+
+beam\_search
+------------
+
+```python
+beam_search(
+    transform: TransformLike[
+        list[Trial[CandidateT]], CandidateT
+    ],
+    initial_candidate: CandidateT,
+    *,
+    beam_width: int = 3,
+    branching_factor: int = 3,
+) -> GraphSearch[CandidateT]
+```
+
+Creates a GraphSearch configured for classic beam search.
+
+This strategy maintains parallel reasoning paths by keeping a "beam" of the top `k`
+best trials from the previous step. Each trial in the beam is expanded independently,
+using its own lineage for context.
+
+**Parameters:**
+
+* **`transform`**
+  (`TransformLike[list[Trial[CandidateT]], CandidateT]`)
+  –The function that takes the history and generates new candidates.
+* **`initial_candidate`**
+  (`CandidateT`)
+  –The starting point for the refinement chain.
+* **`beam_width`**
+  (`int`, default:
+  `3`
+  )
+  –The number of top candidates to keep at each step (the 'k').
+* **`branching_factor`**
+  (`int`, default:
+  `3`
+  )
+  –How many new candidates to generate from each trial in the beam.
+
+**Returns:**
+
+* `GraphSearch[CandidateT]`
+  –A pre-configured GraphSearch instance.
+
+<Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
+```python
+def beam_search(
+    transform: TransformLike[list[Trial[CandidateT]], CandidateT],
+    initial_candidate: CandidateT,
+    *,
+    beam_width: int = 3,
+    branching_factor: int = 3,
+) -> GraphSearch[CandidateT]:
+    """
+    Creates a GraphSearch configured for classic beam search.
+
+    This strategy maintains parallel reasoning paths by keeping a "beam" of the top `k`
+    best trials from the previous step. Each trial in the beam is expanded independently,
+    using its own lineage for context.
+
+    Args:
+        transform: The function that takes the history and generates new candidates.
+        initial_candidate: The starting point for the refinement chain.
+        beam_width: The number of top candidates to keep at each step (the 'k').
+        branching_factor: How many new candidates to generate from each trial in the beam.
+
+    Returns:
+        A pre-configured GraphSearch instance.
+    """
+    return GraphSearch[CandidateT](
+        transform=Transform.fit(transform),
+        initial_candidate=initial_candidate,
+        branching_factor=branching_factor,
+        context_collector=lineage,
+        pruning_sampler=top_k.configure(k=beam_width),
+    )
+```
+
+
+</Accordion>
+
+graph\_neighborhood\_search
+---------------------------
+
+```python
+graph_neighborhood_search(
+    transform: TransformLike[
+        list[Trial[CandidateT]], CandidateT
+    ],
+    initial_candidate: CandidateT,
+    *,
+    neighborhood_depth: int = 2,
+    frontier_size: int = 5,
+    branching_factor: int = 3,
+) -> GraphSearch[CandidateT]
+```
+
+Creates a GraphSearch configured with a local neighborhood context, where the trial context
+passed to the transform includes the trials in the local neighborhood up to `2h-1` distance
+away where `h` is the neighborhood depth. This means the trials which are "parents",
+"grandparents", "uncles", or "cousins" can be considered during the creation of new nodes.
+
+Once the pool of candidate trials is established, `frontier_size` determines how many of
+the best candidates are kept for the iteration.
+
+See: "Graph of Attacks" - https://arxiv.org/pdf/2504.19019v1
+
+**Parameters:**
+
+* **`transform`**
+  (`TransformLike[list[Trial[CandidateT]], CandidateT]`)
+  –The function that takes the neighborhood context and generates new candidates.
+* **`initial_candidate`**
+  (`CandidateT`)
+  –The starting point for the search.
+* **`neighborhood_depth`**
+  (`int`, default:
+  `2`
+  )
+  –The depth 'h' used to calculate the size of the local neighborhood context.
+* **`frontier_size`**
+  (`int`, default:
+  `5`
+  )
+  –The number of top candidates to form the next generation's frontier ('d').
+* **`branching_factor`**
+  (`int`, default:
+  `3`
+  )
+  –How many new candidates to generate from each current leaf node.
+
+**Returns:**
+
+* `GraphSearch[CandidateT]`
+  –A pre-configured GraphSearch instance.
+
+<Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
+```python
+def graph_neighborhood_search(
+    transform: TransformLike[list[Trial[CandidateT]], CandidateT],
+    initial_candidate: CandidateT,
+    *,
+    neighborhood_depth: int = 2,
+    frontier_size: int = 5,
+    branching_factor: int = 3,
+) -> GraphSearch[CandidateT]:
+    """
+    Creates a GraphSearch configured with a local neighborhood context, where the trial context
+    passed to the transform includes the trials in the local neighborhood up to `2h-1` distance
+    away where `h` is the neighborhood depth. This means the trials which are "parents",
+    "grandparents", "uncles", or "cousins" can be considered during the creation of new nodes.
+
+    Once the pool of candidate trials is established, `frontier_size` determines how many of
+    the best candidates are kept for the iteration.
+
+    See: "Graph of Attacks" - https://arxiv.org/pdf/2504.19019v1
+
+    Args:
+        transform: The function that takes the neighborhood context and generates new candidates.
+        initial_candidate: The starting point for the search.
+        neighborhood_depth: The depth 'h' used to calculate the size of the local neighborhood context.
+        frontier_size: The number of top candidates to form the next generation's frontier ('d').
+        branching_factor: How many new candidates to generate from each current leaf node.
+
+    Returns:
+        A pre-configured GraphSearch instance.
+    """
+    return GraphSearch[CandidateT](
+        transform=Transform.fit(transform),
+        initial_candidate=initial_candidate,
+        branching_factor=branching_factor,
+        context_collector=local_neighborhood.configure(depth=neighborhood_depth),
+        pruning_sampler=top_k.configure(k=frontier_size),
+    )
+```
+
+
+</Accordion>
+
+iterative\_search
+-----------------
+
+```python
+iterative_search(
+    transform: TransformLike[
+        list[Trial[CandidateT]], CandidateT
+    ],
+    initial_candidate: CandidateT,
+    *,
+    branching_factor: int = 1,
+) -> GraphSearch[CandidateT]
+```
+
+Creates a GraphSearch configured for single-path iterative refinement.
+
+This strategy maintains a single path of reasoning by always expanding from the
+single best trial of the previous step. The context for refinement is the
+direct lineage of that best trial.
+
+Set `branching_factor` > 1 to explore multiple candidates at each step.
+
+**Parameters:**
+
+* **`transform`**
+  (`TransformLike[list[Trial[CandidateT]], CandidateT]`)
+  –The function that takes the history and generates new candidates.
+* **`initial_candidate`**
+  (`CandidateT`)
+  –The starting point for the refinement chain.
+* **`branching_factor`**
+  (`int`, default:
+  `1`
+  )
+  –How many new candidates to generate from the best trial at each step.
+  The best of these will be chosen for the next step.
+
+**Returns:**
+
+* `GraphSearch[CandidateT]`
+  –A pre-configured GraphSearch instance.
+
+<Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
+```python
+def iterative_search(
+    transform: TransformLike[list[Trial[CandidateT]], CandidateT],
+    initial_candidate: CandidateT,
+    *,
+    branching_factor: int = 1,
+) -> GraphSearch[CandidateT]:
+    """
+    Creates a GraphSearch configured for single-path iterative refinement.
+
+    This strategy maintains a single path of reasoning by always expanding from the
+    single best trial of the previous step. The context for refinement is the
+    direct lineage of that best trial.
+
+    Set `branching_factor` > 1 to explore multiple candidates at each step.
+
+    Args:
+        transform: The function that takes the history and generates new candidates.
+        initial_candidate: The starting point for the refinement chain.
+        branching_factor: How many new candidates to generate from the best trial at each step.
+                          The best of these will be chosen for the next step.
+
+    Returns:
+        A pre-configured GraphSearch instance.
+    """
+    return GraphSearch[CandidateT](
+        transform=Transform.fit(transform),
+        initial_candidate=initial_candidate,
+        branching_factor=branching_factor,
+        context_collector=lineage,
+        pruning_sampler=top_k.configure(k=1),
+    )
 ```
 
 

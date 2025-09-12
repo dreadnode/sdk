@@ -6,14 +6,14 @@ from datetime import datetime, timezone
 
 import typing_extensions as te
 
-from dreadnode.meta import Component
-from dreadnode.meta.context import Context
-from dreadnode.meta.types import ConfigInfo
+from dreadnode.common_types import JsonDict
+from dreadnode.meta import Component, ConfigInfo, Context
 from dreadnode.metric import Metric
-from dreadnode.types import JsonDict
 from dreadnode.util import clean_str, get_callable_name, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
+T_contra = t.TypeVar("T_contra", contravariant=True)
+
 OuterT = t.TypeVar("OuterT")
 UnusedP = te.ParamSpec("UnusedP", default=...)
 
@@ -25,20 +25,24 @@ class ScorerWarning(UserWarning):
 ScorerResult = float | int | bool | Metric
 """The result of a scorer function, which can be a numeric value or a Metric object."""
 
-# It's an absolute monster to get all the type hints to work here properly
-# - Need to use Sequence for the return type for proper variance
-# - Need both versions of [T] and Concatenate[T, ...] to support scorers with more complex signatures
-# - Functions can be async, or not
 
-ScorerCallable = (
-    t.Callable[[T], t.Awaitable[ScorerResult] | ScorerResult]
-    | t.Callable[[T], t.Awaitable[t.Sequence[ScorerResult]] | t.Sequence[ScorerResult]]
-    | t.Callable[te.Concatenate[T, ...], t.Awaitable[ScorerResult] | ScorerResult]
-    | t.Callable[
-        te.Concatenate[T, ...], t.Awaitable[t.Sequence[ScorerResult]] | t.Sequence[ScorerResult]
-    ]
-)
-"""A callable that takes an object and returns a compatible score result."""
+@t.runtime_checkable
+class ScorerCallable(t.Protocol, t.Generic[T_contra]):
+    """
+    A callable that takes an object and returns a compatible score result.
+    - Can take just the object or additional args/kwargs
+    - Can return single result or sequence
+    - Can be sync or async
+    """
+
+    def __call__(
+        self, obj: T_contra, /, *args: t.Any, **kwargs: t.Any
+    ) -> (
+        t.Awaitable[ScorerResult]
+        | ScorerResult
+        | t.Awaitable[t.Sequence[ScorerResult]]
+        | t.Sequence[ScorerResult]
+    ): ...
 
 
 class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
@@ -59,7 +63,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         catch: bool = False,
         step: int = 0,
         auto_increment_step: bool = False,
-        log_all: bool = False,
+        log_all: bool = True,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
         wraps: t.Callable[..., t.Any] | None = None,
@@ -95,21 +99,28 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             f"name='{self.name}'",
             f"func={func_name}",
             f"catch={self.catch}",
+            f"log_all={self.log_all}",
+            f"auto_increment_step={self.auto_increment_step}",
+            f"step={self.step}",
         ]
-
-        if self.auto_increment_step:
-            parts.append("auto_increment_step=True")
-        if self.log_all:
-            parts.append("log_all=True")
-        if self.step != 0:
-            parts.append(f"step={self.step}")
 
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
     @classmethod
-    def fit_like(
-        cls, scorers: "ScorersLike[T] | None", *, attributes: JsonDict | None = None
-    ) -> list["Scorer[T]"]:
+    def fit(cls, scorer: "ScorerLike[T]") -> "Scorer[T]":
+        """
+        Fit a scorer to the given attributes.
+
+        Args:
+            scorer: The scorer to fit.
+
+        Returns:
+            A Scorer instance.
+        """
+        return scorer if isinstance(scorer, Scorer) else cls(scorer)
+
+    @classmethod
+    def fit_many(cls, scorers: "ScorersLike[T] | None") -> list["Scorer[T]"]:
         """
         Convert a collection of scorer-like objects into a list of Scorer instances.
 
@@ -122,25 +133,17 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
                 - A dictionary mapping names to scorer objects or callables
                 - A sequence of scorer objects or callables
                 - None (returns empty list)
-            attributes: Optional attributes to apply to all resulting scorers.
 
         Returns:
             A list of Scorer instances with consistent configuration.
         """
-        if isinstance(scorers, dict):
+        if isinstance(scorers, t.Mapping):
             return [
-                scorer.with_(name=name, attributes=attributes)
-                if isinstance(scorer, Scorer)
-                else cls(scorer, name=name, attributes=attributes)
+                scorer.with_(name=name) if isinstance(scorer, Scorer) else cls(scorer, name=name)
                 for name, scorer in scorers.items()
             ]
 
-        return [
-            scorer.with_(attributes=attributes)
-            if isinstance(scorer, Scorer)
-            else cls(scorer, attributes=attributes)
-            for scorer in scorers or []
-        ]
+        return [scorer if isinstance(scorer, Scorer) else cls(scorer) for scorer in scorers or []]
 
     def __deepcopy__(self, memo: dict[int, t.Any]) -> "Scorer[T]":
         return Scorer(
@@ -161,6 +164,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
 
     def with_(
         self,
+        *,
         name: str | None = None,
         attributes: JsonDict | None = None,
         step: int | None = None,
@@ -367,29 +371,16 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         return scale(self, 1.0 / weight)
 
     def __rshift__(self, name: str) -> "Scorer[T]":
-        return self.with_(name=name, log_all=False)
+        return self.with_(name=name, log_all=True)
 
     def __floordiv__(self, name: str) -> "Scorer[T]":
-        return self.with_(name=name, log_all=True)
+        return self.with_(name=name, log_all=False)
 
 
 ScorerLike = Scorer[T] | ScorerCallable[T]
-ScorersLike = t.Sequence[ScorerLike[T]] | dict[str, ScorerLike[T]]
-
-
-def named(name: str, scorer: Scorer[T]) -> Scorer[T]:
-    """
-    Give a scorer a name.
-
-    Args:
-        name: The name to assign to the scorer.
-        scorer: The Scorer instance to rename.
-
-    Returns:
-        A new Scorer with the updated name.
-    """
-    return scorer.rename(name)
-
+"""A Scorer instance or compatible callable."""
+ScorersLike = t.Sequence[ScorerLike[T]] | t.Mapping[str, ScorerLike[T]]
+"""A list of scorer-like objects or mapping or name/scorer pairs."""
 
 # Inversion
 
@@ -502,9 +493,9 @@ def normalize(
     scorer: Scorer[T], known_max: float, known_min: float = 0.0, *, name: str | None = None
 ) -> Scorer[T]:
     """
-    Normalize the output of a scorer to a range of [0.0, 1.0].
+    Normalize the output of a scorer to a range of `[0.0, 1.0]`.
 
-    Uses `remap_range` internally.
+    Uses `remap_range` internally with `new_min = 0.0` and `new_max = 1.0`.
 
     Examples:
         ```
@@ -690,17 +681,17 @@ def not_(scorer: Scorer[T], *, name: str | None = None) -> Scorer[T]:
 
 
 def add(
-    scorer: Scorer[T], other: Scorer[T], *, average: bool = False, name: str | None = None
+    scorer: Scorer[T], *others: Scorer[T], average: bool = False, name: str | None = None
 ) -> Scorer[T]:
     """
-    Create a scorer that adds the values of two scorers together.
+    Create a scorer that adds the values multiple scorers together.
 
-    This composition performs arithmetic addition of the two scorer values,
+    This composition performs arithmetic addition of the scorer values,
     with an optional averaging mode.
 
     Args:
         scorer: The first Scorer instance to combine.
-        other: The second Scorer instance to combine.
+        others: The additional Scorer instances to combine.
         average: If True, divides the sum by 2 to compute the average instead
             of the raw sum. Defaults to False.
         name: Optional name for the composed scorer. If None, combines the names
@@ -712,16 +703,24 @@ def add(
 
     async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
-            *[scorer.score_composite(data, *args, **kwargs), other.score_composite(data)]
+            *[
+                scorer.score_composite(data, *args, **kwargs),
+                *[other.score_composite(data) for other in others],
+            ]
         )
         value = original.value + original_other.value
         metric = Metric(
-            value / 2 if average else value,
+            value / (len(others) + 1) if average else value,
             step=original.step,
         )
         return [metric, original, original_other, *previous, *previous_other]
 
-    return Scorer[T](evaluate, name=name or f"{scorer.name}_add_{other.name}", wraps=scorer)
+    generated_name = (
+        f"{scorer.name}_add_{len(others)}"
+        if len(others) > 1
+        else f"{scorer.name}_add_{others[0].name}"
+    )
+    return Scorer[T](evaluate, name=name or generated_name, wraps=scorer)
 
 
 def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
@@ -752,18 +751,18 @@ def subtract(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) ->
     return Scorer[T](evaluate, name=name or f"{scorer.name}_sub_{other.name}", wraps=scorer)
 
 
-def avg(scorer: Scorer[T], other: Scorer[T], *, name: str | None = None) -> Scorer[T]:
+def avg(scorer: Scorer[T], *others: Scorer[T], name: str | None = None) -> Scorer[T]:
     """
-    Average two scorers together.
+    Average multiple scorers together.
 
     This is a convenience function that uses the `add` function with `average=True`.
 
     Args:
-        scorer: The first Scorer instance.
-        other: The second Scorer instance.
+        scorer: The Scorer instance.
+        others: Additional Scorer instances to include in the average.
         name: Optional name for the new scorer. If None, it will be derived from the original scorers' names.
     """
-    return add(scorer, other, average=True, name=name or f"{scorer.name}_{other.name}_avg")
+    return add(scorer, *others, average=True, name=name or f"{scorer.name}_avg")
 
 
 def weighted_avg(*scorers: tuple[Scorer[T], float], name: str | None = None) -> Scorer[T]:

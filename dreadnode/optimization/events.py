@@ -1,13 +1,15 @@
 import typing as t
 from dataclasses import dataclass, field
 
+import typing_extensions as te
+
 if t.TYPE_CHECKING:
     from dreadnode.optimization.result import StudyResult
     from dreadnode.optimization.study import Study
     from dreadnode.optimization.trial import Trial
 
-CandidateT = t.TypeVar("CandidateT")
-StopReason = t.Literal["max_steps", "patience", "target_score", "no_more_candidates", "unknown"]
+# Define over import to avoid cyclic issues
+CandidateT = te.TypeVar("CandidateT", default=t.Any)
 
 
 @dataclass
@@ -27,12 +29,17 @@ class StepStart(StudyEvent[CandidateT]):
 
 
 @dataclass
-class CandidatesSuggested(StudyEvent[CandidateT]):
-    candidates: list[t.Any]  # Can be dicts or CandidateT
+class TrialAdded(StudyEvent[CandidateT]):
+    trial: "Trial[CandidateT]"
 
 
 @dataclass
-class CandidatePruned(StudyEvent[CandidateT]):
+class TrialStart(StudyEvent[CandidateT]):
+    trial: "Trial[CandidateT]"
+
+
+@dataclass
+class TrialPruned(StudyEvent[CandidateT]):
     trial: "Trial[CandidateT]"
 
 

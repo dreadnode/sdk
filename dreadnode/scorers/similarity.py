@@ -1,3 +1,4 @@
+import functools
 import typing as t
 from difflib import SequenceMatcher
 
@@ -5,12 +6,11 @@ from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 from dreadnode.scorers.util import cosine_similarity
-from dreadnode.util import generate_import_error_msg, warn_at_user_stacklevel
+from dreadnode.util import catch_import_error
 
 if t.TYPE_CHECKING:
-    from sentence_transformers import (  # type: ignore[import-not-found]
-        SentenceTransformer,
-    )
+    from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+    from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-not-found]
 
 
 def similarity(
@@ -64,7 +64,12 @@ def similarity_with_rapidfuzz(
     reference: str,
     *,
     method: t.Literal[
-        "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
+        "ratio",
+        "partial_ratio",
+        "token_sort_ratio",
+        "token_set_ratio",
+        "WRatio",
+        "QRatio",
     ] = "ratio",
     normalize: bool = True,
     preprocessor: bool = True,
@@ -88,23 +93,20 @@ def similarity_with_rapidfuzz(
         score_cutoff: Optional score cutoff below which to return 0.0.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = generate_import_error_msg("rapidfuzz", "text")
-    try:
+    with catch_import_error("dreadnode[scoring]"):
         from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
-    except ImportError:
-        warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(
         data: t.Any,
         *,
         reference: str = reference,
         method: t.Literal[
-            "ratio", "partial_ratio", "token_sort_ratio", "token_set_ratio", "WRatio", "QRatio"
+            "ratio",
+            "partial_ratio",
+            "token_sort_ratio",
+            "token_set_ratio",
+            "WRatio",
+            "QRatio",
         ] = method,
         normalize: bool = normalize,
         preprocessor: bool = preprocessor,
@@ -116,31 +118,52 @@ def similarity_with_rapidfuzz(
         # Select the appropriate RapidFuzz method
         if method == "ratio":
             score = fuzz.ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "partial_ratio":
             score = fuzz.partial_ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "token_sort_ratio":
             score = fuzz.token_sort_ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "token_set_ratio":
             score = fuzz.token_set_ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "WRatio":
             score = fuzz.WRatio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         elif method == "QRatio":
             score = fuzz.QRatio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
         else:
             score = fuzz.ratio(
-                reference, candidate_text, processor=processor, score_cutoff=score_cutoff
+                reference,
+                candidate_text,
+                processor=processor,
+                score_cutoff=score_cutoff,
             )
 
         if normalize:
@@ -182,19 +205,8 @@ def string_distance(
         normalize: Normalize distances and convert to similarity scores.
         name: Name of the scorer.
     """
-    rapidfuzz_import_error_msg = generate_import_error_msg("rapidfuzz", "text")
-
-    try:
-        from rapidfuzz import distance  # type: ignore[import-not-found]
-
-        distance.Levenshtein.distance("test", "test")
-    except ImportError:
-        warn_at_user_stacklevel(rapidfuzz_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": rapidfuzz_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    with catch_import_error("dreadnode[scoring]"):
+        from rapidfuzz import distance
 
     def evaluate(  # noqa: PLR0912
         data: t.Any,
@@ -241,6 +253,13 @@ def string_distance(
     return Scorer(evaluate, name=name, catch=True)
 
 
+@functools.lru_cache(maxsize=1)
+def tf_idf_vectorizer() -> "TfidfVectorizer":
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    return TfidfVectorizer(stop_words="english")
+
+
 def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scorer[t.Any]":
     """
     Scores semantic similarity using TF-IDF and cosine similarity.
@@ -251,24 +270,12 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         reference: The reference text (e.g., expected output).
         name: Name of the scorer.
     """
-    sklearn_import_error_msg = generate_import_error_msg("scikit-learn", "text")
-
-    try:
-        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found]
-            TfidfVectorizer,
-        )
+    with catch_import_error("dreadnode[scoring]"):
         from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
             cosine_similarity as sklearn_cosine_similarity,
         )
-    except ImportError:
-        warn_at_user_stacklevel(sklearn_import_error_msg, UserWarning)
 
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": sklearn_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
-
-    vectorizer = TfidfVectorizer(stop_words="english")
+    vectorizer = tf_idf_vectorizer()
 
     def evaluate(data: t.Any, *, reference: str = reference) -> Metric:
         candidate_text = str(data)
@@ -303,20 +310,11 @@ def similarity_with_sentence_transformers(
         model_name: The name of the sentence-transformer model to use.
         name: Name of the scorer.
     """
-    sentence_transformers_error_msg = generate_import_error_msg("sentence-transformers", "training")
-
-    try:
-        from sentence_transformers import (  # type: ignore[import-not-found]
+    with catch_import_error("dreadnode[scoring]"):
+        from sentence_transformers import (
             SentenceTransformer,
             util,
         )
-    except ImportError:
-        warn_at_user_stacklevel(sentence_transformers_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": sentence_transformers_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
 
     def evaluate(
         data: t.Any, *, reference: str = reference, model_name: str = Config(model_name)
@@ -367,16 +365,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
-    litellm_import_error_msg = generate_import_error_msg("litellm", "text")
-    try:
-        import litellm
-    except ImportError:
-        warn_at_user_stacklevel(litellm_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": litellm_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+    import litellm
 
     async def evaluate(
         data: t.Any,
@@ -430,31 +419,17 @@ def bleu(
         weights: Weights for unigram, bigram, etc. Must sum to 1.
         name: Name of the scorer.
     """
-    nltk_import_error_msg = generate_import_error_msg("nltk", "text")
-
-    try:
+    with catch_import_error("dreadnode[scoring]"):
         import nltk  # type: ignore[import-not-found]
-        from nltk.tokenize import (  # type: ignore[import-not-found]
-            word_tokenize,
+        from nltk.tokenize import word_tokenize  # type: ignore[import-not-found]
+        from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-not-found]
+    try:
+        nltk.data.find("tokenizers/punkt")
+    except LookupError as e:
+        nltk_import_error_msg = (
+            "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
         )
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found]
-            sentence_bleu,
-        )
-
-        try:
-            nltk.data.find("tokenizers/punkt")
-        except LookupError as e:
-            nltk_import_error_msg = (
-                "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
-            )
-            raise ImportError(nltk_import_error_msg) from e
-    except (ImportError, AttributeError):
-        warn_at_user_stacklevel(nltk_import_error_msg, UserWarning)
-
-        def disabled_evaluate(_: t.Any) -> Metric:
-            return Metric(value=0.0, attributes={"error": nltk_import_error_msg})
-
-        return Scorer(disabled_evaluate, name=name)
+        raise LookupError(nltk_import_error_msg) from e
 
     def evaluate(
         data: t.Any, *, reference: str = reference, weights: tuple[float, ...] = weights

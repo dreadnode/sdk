@@ -5,7 +5,7 @@ import typing_extensions as te
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
-from dreadnode.types import JsonDict, JsonValue
+from dreadnode.common_types import JsonDict, JsonValue
 from dreadnode.util import warn_at_user_stacklevel
 
 T = t.TypeVar("T")

@@ -3,11 +3,13 @@ import contextvars
 import itertools
 import typing as t
 from contextlib import asynccontextmanager
+from functools import cached_property
 from pathlib import Path
 
 import typing_extensions as te
-from pydantic import ConfigDict, FilePath, TypeAdapter
+from pydantic import ConfigDict, FilePath, TypeAdapter, computed_field
 
+from dreadnode.common_types import AnyDict, Unset
 from dreadnode.discovery import find
 from dreadnode.eval.console import EvalConsoleAdapter
 from dreadnode.eval.dataset import load_dataset
@@ -23,18 +25,14 @@ from dreadnode.eval.events import (
 )
 from dreadnode.eval.result import EvalResult, IterationResult, ScenarioResult
 from dreadnode.eval.sample import Sample
-from dreadnode.meta import Model
-from dreadnode.meta.context import DatasetField
-from dreadnode.meta.types import Config
+from dreadnode.meta import Config, DatasetField, Model
 from dreadnode.scorers.base import Scorer, ScorersLike
 from dreadnode.task import Task
 from dreadnode.tracing.span import current_run_span
-from dreadnode.types import AnyDict, Unset
 from dreadnode.util import (
     concurrent_gen,
     get_callable_name,
     shorten_string,
-    warn_at_user_stacklevel,
 )
 
 In = te.TypeVar("In", default=t.Any)
@@ -64,19 +62,26 @@ class Eval(Model, t.Generic[In, Out]):
     dataset: t.Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=FilePath)]
     """The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from."""
 
-    name: str | None = Config(default=None)
+    name_: str | None = Config(default=None, alias="name", repr=False, exclude=True)
     """The name of the evaluation."""
     description: str = Config(default="")
     """A brief description of the eval's purpose."""
+    label: str | None = Config(default=None)
+    """Specific label to use for tasks created by this eval."""
     tags: list[str] = Config(default_factory=lambda: ["eval"])
     """A list of tags associated with the evaluation."""
     concurrency: int = Config(default=1)
     """Maximum number of tasks to run in parallel."""
     iterations: int = Config(default=1, ge=1)
     """Number of times to run each scenario."""
-    max_consecutive_failures: int | None = Config(default=10)
+    max_errors: int | None = Config(default=None)
     """
-    The number of consecutive sample failures (not caused by assertions)
+    Maximum number of errors (not caused by score assertions)
+    to tolerate before stopping the evaluation.
+    """
+    max_consecutive_errors: int | None = Config(default=10)
+    """
+    The number of consecutive sample errors (not caused by score assertions)
     before terminating the evaluation run. Set to None to disable.
     """
 
@@ -101,6 +106,19 @@ class Eval(Model, t.Generic[In, Out]):
     assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
     """Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions)."""
 
+    trace: bool = True
+    """Whether to produce trace contexts like runs/tasks for this study."""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def name(self) -> str:
+        return self.name_ or f"Eval {self.task_name}"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def task_name(self) -> str:
+        return self.task.name if isinstance(self.task, Task) else self.task.split(".")[-1]
+
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)
 
@@ -117,7 +135,7 @@ class Eval(Model, t.Generic[In, Out]):
             parts.append(f"iterations={self.iterations}")
         if self.scorers:
             scorers = ", ".join(
-                get_callable_name(scorer, short=True) for scorer in Scorer.fit_like(self.scorers)
+                get_callable_name(scorer, short=True) for scorer in Scorer.fit_many(self.scorers)
             )
             parts.append(f"scorers=[{scorers}]")
         if self.assert_scores:
@@ -171,7 +189,8 @@ class Eval(Model, t.Generic[In, Out]):
                 raise ValueError(
                     f"Scorer '{scorer.name}' has more than one required parameter ({', '.join(required_params)}). "
                     "Configure default arguments directly, or use `.configure()` to pre-fill them. "
-                    "Consider using a `DatasetField` to take values from your dataset (e.g. `.configure(required=DatasetField('field_name'))`)."
+                    "Consider using a `DatasetField` to take values from your dataset "
+                    "(e.g. `.configure(required=DatasetField('field_name'))`)."
                 )
 
             dataset_params = {
@@ -235,11 +254,12 @@ class Eval(Model, t.Generic[In, Out]):
     async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
         from dreadnode import log_inputs, log_params, run, task_span
 
+        current_run = current_run_span.get()
+        inside_active_run = current_run is not None
+
         base_task, dataset = await self._prepare_task_and_dataset()
         param_combinations = self._get_param_combinations()
-        eval_name = self.name or base_task.name
-        scorers = Scorer.fit_like(self.scorers or [])
-        run_using_tasks = current_run_span.get() is not None
+        scorers = Scorer.fit_many(self.scorers or [])
 
         dataset_keys = list(dataset[0].keys()) if dataset else []  # We assume a homogeneous dataset
         self._validate_scorers(scorers, dataset_keys=dataset_keys)
@@ -258,19 +278,23 @@ class Eval(Model, t.Generic[In, Out]):
         eval_result = EvalResult[In, Out](scenarios=[])
 
         for scenario_params in param_combinations:
-            scenario_context = (
-                task_span(eval_name, tags=self.tags)
-                if run_using_tasks
-                else run(name_prefix=eval_name, tags=self.tags)
+            trace_context = (
+                contextlib.nullcontext()
+                if not self.trace
+                else task_span(self.name, tags=self.tags, label=self.label)
+                if inside_active_run
+                else run(name_prefix=self.name, tags=self.tags)
             )
 
-            with scenario_context as scenario_span:
-                if run_using_tasks:
-                    log_inputs(**scenario_params)
-                else:
-                    log_params(**scenario_params)
-
-                run_id = scenario_span.run_id
+            with trace_context as scenario_span:
+                run_id = ""
+                if scenario_span is not None:
+                    log_inputs(**scenario_params) if inside_active_run else log_params(
+                        **scenario_params
+                    )
+                    run_id = scenario_span.run_id
+                elif current_run:
+                    run_id = current_run.run_id
 
                 yield ScenarioStart(
                     eval=self,
@@ -286,7 +310,8 @@ class Eval(Model, t.Generic[In, Out]):
                 ).configure(**scenario_params)
 
                 scenario_result = ScenarioResult[In, Out](params=scenario_params)
-                consecutive_failures = 0
+                consecutive_errors = 0
+                total_errors = 0
 
                 for i in range(self.iterations):
                     iteration = i + 1
@@ -304,25 +329,32 @@ class Eval(Model, t.Generic[In, Out]):
                     ) as sample_stream:
                         async for sample in sample_stream:
                             if sample.failed:
-                                consecutive_failures += 1
-                                if (
-                                    self.max_consecutive_failures is not None
-                                    and consecutive_failures >= self.max_consecutive_failures
-                                ):
-                                    warn_at_user_stacklevel(
-                                        f"Ending '{self.name}' evaluation early after {consecutive_failures} consecutive failures.",
-                                        EvalWarning,
-                                    )
-                                    scenario_result.iterations.append(iteration_result)
-                                    eval_result.scenarios.append(scenario_result)
-                                    yield EvalEnd(
-                                        eval=self,
-                                        result=eval_result,
-                                        stop_reason="max_consecutive_failures_reached",
-                                    )
-                                    return
+                                total_errors += 1
+                                consecutive_errors += 1
+                                max_errors_reached = (
+                                    self.max_errors and total_errors >= self.max_errors
+                                )
+                                max_consecutive_reached = (
+                                    self.max_consecutive_errors
+                                    and consecutive_errors >= self.max_consecutive_errors
+                                )
+
+                                if not max_errors_reached and not max_consecutive_reached:
+                                    continue
+
+                                scenario_result.iterations.append(iteration_result)
+                                eval_result.scenarios.append(scenario_result)
+
+                                yield EvalEnd(
+                                    eval=self,
+                                    result=eval_result,
+                                    stop_reason="max_errors_reached"
+                                    if max_errors_reached
+                                    else "max_consecutive_errors_reached",
+                                )
+                                return
                             else:
-                                consecutive_failures = 0
+                                consecutive_errors = 0
 
                             yield SampleComplete(eval=self, run_id=run_id, sample=sample)
                             iteration_result.samples.append(sample)
@@ -333,7 +365,7 @@ class Eval(Model, t.Generic[In, Out]):
                 yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
 
-        yield EvalEnd(eval=self, result=eval_result)
+        yield EvalEnd(eval=self, result=eval_result, stop_reason="finished")
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:

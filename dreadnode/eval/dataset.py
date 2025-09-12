@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from dreadnode.types import AnyDict
+from dreadnode.common_types import AnyDict
 
 FileFormat = t.Literal["jsonl", "csv", "json", "yaml", "yml"]
 

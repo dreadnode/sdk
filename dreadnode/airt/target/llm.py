@@ -1,12 +1,12 @@
 import typing as t
+from functools import cached_property
 
 import rigging as rg
-from pydantic import PrivateAttr
 
 from dreadnode.airt.target.base import Target
+from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config, Model
 from dreadnode.task import Task
-from dreadnode.types import AnyDict
 
 
 class LLMTarget(Model, Target[t.Any, str]):
@@ -31,15 +31,15 @@ class LLMTarget(Model, Target[t.Any, str]):
     See: https://docs.dreadnode.io/open-source/rigging/api/generator#generateparams
     """
 
-    _generator: rg.Generator | None = PrivateAttr(None, init=False)
+    @cached_property
+    def generator(self) -> rg.Generator:
+        return rg.get_generator(self.model)
 
     @property
     def name(self) -> str:
-        if self._generator is None:
-            return "unknown"
-        return self._generator.to_identifier(short=True)
+        return self.generator.to_identifier(short=True)
 
-    def as_task(self, input: t.Any) -> Task[[], str]:
+    def task_factory(self, input: t.Any) -> Task[[], str]:
         from dreadnode import task
 
         messages = rg.Message.fit_as_list(input) if input else []
@@ -48,17 +48,15 @@ class LLMTarget(Model, Target[t.Any, str]):
             if isinstance(self.params, rg.GenerateParams)
             else rg.GenerateParams.model_validate(self.params)
             if self.params
-            else None
+            else rg.GenerateParams()
         )
 
         @task(name=f"generate - {self.name}", label="llm_target_generate", tags=["target"])
         async def generate(
-            messages: list[rg.Message] = messages, params: rg.GenerateParams | None = params
+            messages: list[rg.Message] = messages,
+            params: rg.GenerateParams = params,
         ) -> str:
-            if self._generator is None:
-                raise ValueError("Generator not initialized")
-            params_list = [params] if params is not None else [rg.GenerateParams()]
-            generated = (await self._generator.generate_messages([messages], params_list))[0]
+            generated = (await self.generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
                 raise generated
             return generated.message.content

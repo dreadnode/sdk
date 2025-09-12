@@ -3,10 +3,13 @@ import typing as t
 
 from loguru import logger
 
-from dreadnode import agent, airt, convert, data_types, eval, meta, transforms  # noqa: A004
-from dreadnode.data_types import Audio, Code, Image, Markdown, Object3D, Table, Text, Video
-from dreadnode.eval import Eval
-from dreadnode.logging import configure_logging
+from dreadnode import (
+    convert,
+    meta,
+)
+from dreadnode import logging_ as logging
+from dreadnode.data_types import Code, Markdown, Object3D, Text
+from dreadnode.logging_ import configure_logging
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.meta import (
     Config,
@@ -32,7 +35,8 @@ from dreadnode.tracing.span import RunSpan, Span, TaskSpan
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
-    from dreadnode import scorers
+    from dreadnode import agent, airt, eval, optimization, scorers, transforms  # noqa: A004
+    from dreadnode.data_types import Audio, Image, Table, Video
 
 logger.disable("dreadnode")
 
@@ -75,7 +79,6 @@ __all__ = [
     "CurrentTrial",
     "DatasetField",
     "Dreadnode",
-    "Eval",
     "Image",
     "Markdown",
     "Metric",
@@ -120,20 +123,28 @@ __all__ = [
     "log_output",
     "log_param",
     "log_params",
+    "logging",
     "meta",
+    "optimization",
     "push_update",
     "run",
     "scorer",
+    "scorers",
     "shutdown",
     "span",
     "tag",
     "task",
     "task_span",
-    "task_span",
     "transforms",
 ]
 
-__lazy_submodules__ = ["scorers"]
+__lazy_submodules__: list[str] = ["scorers", "agent", "airt", "eval", "transforms", "optimization"]
+__lazy_components__: dict[str, str] = {
+    "Audio": "dreadnode.data_types",
+    "Image": "dreadnode.data_types",
+    "Table": "dreadnode.data_types",
+    "Video": "dreadnode.data_types",
+}
 
 
 def __getattr__(name: str) -> t.Any:
@@ -141,8 +152,12 @@ def __getattr__(name: str) -> t.Any:
         module = importlib.import_module(f".{name}", __name__)
         globals()[name] = module
         return module
+
+    if name in __lazy_components__:
+        module_name = __lazy_components__[name]
+        module = importlib.import_module(module_name)
+        component = getattr(module, name)
+        globals()[name] = component
+        return component
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
-def __dir__() -> list[str]:
-    return sorted(list(globals().keys()) + __lazy_submodules__)

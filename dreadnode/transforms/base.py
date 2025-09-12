@@ -9,6 +9,8 @@ from dreadnode.util import get_callable_name, warn_at_user_stacklevel
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
+In_contra = te.TypeVar("In_contra", contravariant=True, default=t.Any)
+Out_co = te.TypeVar("Out_co", covariant=True, default=t.Any)
 OuterIn = te.TypeVar("OuterIn", default=t.Any)
 OuterOut = te.TypeVar("OuterOut", default=t.Any)
 
@@ -17,11 +19,15 @@ class TransformWarning(UserWarning):
     """Warning issued for non-critical issues during transformations."""
 
 
-TransformCallable = (
-    t.Callable[[In], t.Awaitable[Out] | Out]
-    | t.Callable[te.Concatenate[In, ...], t.Awaitable[Out] | Out]
-)
-"""A callable that takes an object and returns a compatible transform result."""
+@t.runtime_checkable
+class TransformCallable(t.Protocol, t.Generic[In_contra, Out_co]):
+    """
+    A callable that takes in one object, and returns another.
+    """
+
+    def __call__(
+        self, obj: In_contra, /, *args: t.Any, **kwargs: t.Any
+    ) -> t.Awaitable[Out_co] | Out_co: ...
 
 
 class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
@@ -52,6 +58,46 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         unmodified object from the input. If False, exceptions are raised.
         """
 
+    @classmethod
+    def fit(cls, transform: "TransformLike[In, Out]") -> "Transform[In, Out]":
+        """Ensures that the provided transform is a Transform instance."""
+        if isinstance(transform, Transform):
+            return transform
+        if callable(transform):
+            return Transform(transform)
+        raise TypeError("Transform must be a Transform instance or a callable.")
+
+    @classmethod
+    def fit_many(cls, transforms: "TransformsLike[In, Out] | None") -> list["Transform[In, Out]"]:
+        """
+        Convert a collection of transform-like objects into a list of Transform instances.
+
+        This method provides a flexible way to handle different input formats for transforms,
+        automatically converting callables to Transform objects and applying consistent naming
+        and attributes across all transforms.
+
+        Args:
+            transforms: A collection of transform-like objects. Can be:
+                - A dictionary mapping names to transform objects or callables
+                - A sequence of scorer objects or callables
+                - None (returns empty list)
+
+        Returns:
+            A list of Scorer instances with consistent configuration.
+        """
+        if isinstance(transforms, t.Mapping):
+            return [
+                transform.with_(name=name)
+                if isinstance(transform, Transform)
+                else cls(transform, name=name)
+                for name, transform in transforms.items()
+            ]
+
+        return [
+            transform if isinstance(transform, Transform) else cls(transform)
+            for transform in transforms or []
+        ]
+
     def __repr__(self) -> str:
         return f"Transform(name='{self.name}')"
 
@@ -63,15 +109,6 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
             config=deepcopy(self.__dn_param_config__, memo),
             context=deepcopy(self.__dn_context__, memo),
         )
-
-    @classmethod
-    def fit(cls, transform: "TransformLike[In, Out]") -> "Transform[In, Out]":
-        """Ensures that the provided transform is a Transform instance."""
-        if isinstance(transform, Transform):
-            return transform
-        if callable(transform):
-            return Transform(transform)
-        raise TypeError("Transform must be a Transform instance or a callable.")
 
     def clone(self) -> "Transform[In, Out]":
         """Clone the transform."""
@@ -150,6 +187,9 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         Returns:
             The transformed output object.
         """
+        # TODO(nick): Should consider creating a task or span here to
+        # track this operation
+
         try:
             bound_args = self._bind_args(object, *args, **kwargs)
             result = t.cast(
@@ -163,6 +203,11 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
                 raise
 
             # As a fallback, attempt to return the original object
+            #
+            # TODO(nick): Is this behavior ideal? We could do some generic
+            # inspection to see if this is reasonable, but it might make
+            # more sense to just error here
+
             warn_at_user_stacklevel(
                 f"Error executing transformation {self.name!r} for object {object!r}: {e}",
                 TransformWarning,
@@ -175,6 +220,10 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
     async def __call__(self, object: In, *args: t.Any, **kwargs: t.Any) -> Out:  # type: ignore[override]
         return await self.transform(object, *args, **kwargs)
 
+    # TODO(nick): Implement composition mechanics here like chaining or random selection
+
 
 TransformLike = Transform[In, Out] | TransformCallable[In, Out]
-TransformsLike = t.Sequence[TransformLike[In, Out]] | dict[str, TransformLike[In, Out]]
+"""A transform or compatible callable."""
+TransformsLike = t.Sequence[TransformLike[In, Out]] | t.Mapping[str, TransformLike[In, Out]]
+"""A sequence of transform-like objects or mapping of name/transform pairs."""

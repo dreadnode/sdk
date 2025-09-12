@@ -15,7 +15,11 @@ DreadnodeCallback
 -----------------
 
 ```python
-DreadnodeCallback(project: str | None = None, run_name: str | None = None, tags: list[str] | None = None)
+DreadnodeCallback(
+    project: str | None = None,
+    run_name: str | None = None,
+    tags: list[str] | None = None,
+)
 ```
 
 An implementation of the `TrainerCallback` interface for Dreadnode.
@@ -87,7 +91,12 @@ def __init__(
 ### on\_epoch\_end
 
 ```python
-on_epoch_end(args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any) -> None
+on_epoch_end(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
 ```
 
 Called at the end of an epoch.
@@ -138,7 +147,13 @@ def on_epoch_end(
 ### on\_log
 
 ```python
-on_log(args: TrainingArguments, state: TrainerState, control: TrainerControl, logs: dict[str, Any] | None = None, **kwargs: Any) -> None
+on_log(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    logs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> None
 ```
 
 Called when logs are reported.
@@ -201,7 +216,12 @@ def on_log(
 ### on\_step\_begin
 
 ```python
-on_step_begin(args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any) -> None
+on_step_begin(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
 ```
 
 Called at the beginning of a training step.
@@ -256,7 +276,12 @@ def on_step_begin(
 ### on\_step\_end
 
 ```python
-on_step_end(args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any) -> None
+on_step_end(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
 ```
 
 Called at the end of a training step.
@@ -307,7 +332,13 @@ def on_step_end(
 ### on\_train\_begin
 
 ```python
-on_train_begin(args: TrainingArguments, state: TrainerState, control: TrainerControl, model: Any | None = None, **kwargs: Any) -> None
+on_train_begin(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    model: Any | None = None,
+    **kwargs: Any,
+) -> None
 ```
 
 Called at the beginning of training.
@@ -364,7 +395,12 @@ def on_train_begin(
 ### on\_train\_end
 
 ```python
-on_train_end(args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any) -> None
+on_train_end(
+    args: TrainingArguments,
+    state: TrainerState,
+    control: TrainerControl,
+    **kwargs: Any,
+) -> None
 ```
 
 Called at the end of training.
