@@ -300,7 +300,6 @@ def write_overrides_env(path: Path, **kwargs: str) -> None:
 
     Rules:
       - ENV var names are UPPER_SNAKE_CASE (key uppercased).
-      - str values -> UPPERCASED and quoted, with basic escaping.
       - int/float -> unquoted.
       - bool -> true/false (unquoted).
       - None -> empty value.
