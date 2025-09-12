@@ -1,3 +1,6 @@
+# Poetry deprecated
+poetry.lock
+
 # Testing code
 notebooks/
 examples/.logfire
