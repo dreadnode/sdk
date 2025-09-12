@@ -15,8 +15,5 @@ def stop_platform() -> None:
     if not current_version:
         print_error("No current version found. Nothing to stop.")
         return
-    docker_stop(
-        current_version.compose_file,
-        env_files=[current_version.api_env_file, current_version.ui_env_file],
-    )
+    docker_stop(current_version)
     print_success("Platform stopped successfully.")

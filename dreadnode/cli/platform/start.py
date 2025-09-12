@@ -44,16 +44,12 @@ def start_platform(tag: str | None = None, **env_overrides: str) -> None:
 
     if env_overrides:
         print_info("Applying environment overrides...")
-        write_overrides_env(selected_version.overrides_env_file, **env_overrides)
+        write_overrides_env(selected_version.arg_overrides_env_file, **env_overrides)
     else:
-        remove_overrides_env(selected_version.overrides_env_file)
+        remove_overrides_env(selected_version.arg_overrides_env_file)
 
     print_info(f"Starting platform: {selected_version.tag}")
-    docker_run(
-        selected_version.compose_file,
-        env_files=[selected_version.api_env_file, selected_version.ui_env_file],
-        overrides_env_file=selected_version.overrides_env_file if env_overrides else None,
-    )
+    docker_run(selected_version)
     print_success(f"Platform {selected_version.tag} started successfully.")
     origin = get_origin("dreadnode-ui")
     if origin:

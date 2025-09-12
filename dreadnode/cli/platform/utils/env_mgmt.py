@@ -69,73 +69,6 @@ def _extract_variables(lines: list[_EnvLine]) -> dict[str, str]:
     }
 
 
-def _merge_env_files(
-    original_remote_content: str,
-    current_local_content: str,
-    updated_remote_content: str,
-) -> dict[str, str]:
-    """
-    Merge .env files with the following logic:
-    1. Local changes (updates/additions) take precedence over remote defaults
-    2. Remote removals remove the key from local (unless locally modified)
-    3. Remote additions are added to local
-    4. Local additions are preserved
-
-    Args:
-        original_remote_content (str): Original remote .env content (baseline)
-        current_local_content (str): Current local .env content (with local changes)
-        updated_remote_content (str): Updated remote .env content (new remote state)
-
-    Returns:
-        Dict[str, str]: Merged variables dictionary
-    """
-    # Extract variables from each file
-    original_remote = _extract_variables(_parse_env_lines(original_remote_content))
-    current_local = _extract_variables(_parse_env_lines(current_local_content))
-    updated_remote = _extract_variables(_parse_env_lines(updated_remote_content))
-
-    # Result dictionary to build the merged content
-    merged = {}
-
-    # Step 1: Start with current local content (preserves local changes and additions)
-    merged.update(current_local)
-
-    # Step 2: Add new keys from updated remote (remote additions)
-    merged.update(
-        {
-            key: value
-            for key, value in updated_remote.items()
-            if key not in original_remote
-            and key not in current_local  # New remote addition not already locally added
-        }
-    )
-
-    # Step 3: Handle remote removals
-    for key in original_remote:
-        # Only remove if the key was removed in remote and the local value matches the original remote value
-        if (
-            key not in updated_remote
-            and key in current_local
-            and current_local[key] == original_remote[key]
-        ):
-            merged.pop(key, None)
-
-    # Step 4: Update values for keys that exist in both updated remote and weren't locally modified
-    merged.update(
-        {
-            key: remote_value
-            for key, remote_value in updated_remote.items()
-            if (
-                key in original_remote
-                and key in current_local
-                and current_local[key] == original_remote[key]
-            )
-        }
-    )
-
-    return merged
-
-
 def _find_insertion_points(
     base_lines: list[_EnvLine], remote_lines: list[_EnvLine], new_vars: dict[str, str]
 ) -> dict[str, int]:
@@ -299,8 +232,8 @@ def _reconstruct_env_content(  # noqa: PLR0912
     # Handle any remaining new variables (those that should go at the very end)
     end_insertion_idx = len(base_lines)
     if end_insertion_idx in vars_by_insertion:
-        if result_lines and result_lines[-1].strip():  # Add separator if needed
-            result_lines.append("")
+        # if result_lines and result_lines[-1].strip():  # Add separator if needed
+        #     result_lines.append("")
         result_lines.extend(
             [
                 f"{var}={new_vars[var]}"
@@ -311,32 +244,6 @@ def _reconstruct_env_content(  # noqa: PLR0912
 
     # Join lines
     return "\n".join(result_lines)
-
-
-def merge_env_files_content(
-    original_remote_content: str, current_local_content: str, updated_remote_content: str
-) -> str:
-    """Main function to merge .env file contents preserving formatting and structure.
-
-    Args:
-        original_remote_content: Original remote .env content.
-        current_local_content: Current local .env content.
-        updated_remote_content: Updated remote .env content.
-
-    Returns:
-        str: Merged .env file content with preserved formatting.
-    """
-    # Get the merged variables using the original logic
-    merged_vars = _merge_env_files(
-        original_remote_content, current_local_content, updated_remote_content
-    )
-
-    # Parse the local file structure to preserve its formatting
-    local_lines = _parse_env_lines(current_local_content)
-    updated_remote_lines = _parse_env_lines(updated_remote_content)
-
-    # Reconstruct content preserving local structure but with merged variables
-    return _reconstruct_env_content(local_lines, merged_vars, updated_remote_lines)
 
 
 def create_default_env_files(current_version: LocalVersionSchema) -> None:
@@ -440,3 +347,66 @@ def remove_overrides_env(path: Path) -> None:
     if path.exists():
         path.unlink()
         print_info(f"Removed overrides environment file: {path}")
+
+
+def build_env_file(path: Path, **kwargs: str | None) -> None:
+    """Build a .env file at the specified path with given key-value pairs.
+
+    Reads an existing .env file if present, merges with provided key-value pairs,
+    and writes back the updated content preserving formatting.
+
+    Does not delete any existing keys unless explicitly set to None.
+
+    Args:
+        path: The path to the .env file to create/update.
+        **kwargs: Key-value pairs to include in the .env file. Use None to remove a key.
+    """
+    # Read current existing env file content if it exists
+    current_local_content = path.read_text(encoding="utf-8") if path.exists() else ""
+
+    # Parse and extract current variables
+    local_lines = _parse_env_lines(current_local_content)
+    # remove line types that are empty
+    local_lines = [line for line in local_lines if line.line_type != "empty"]
+    merged_vars = _extract_variables(local_lines)
+
+    # Apply requested changes:
+    # - value is None -> remove key if it exists
+    # - otherwise set/overwrite to the provided value (as-is; caller controls quoting)
+    for k, v in kwargs.items():
+        key = k.upper().replace("-", "_")
+        if v is None:
+            merged_vars.pop(key, None)
+        else:
+            merged_vars[key] = v
+
+    # remove any empty keys
+    merged_vars = {k: v for k, v in merged_vars.items() if k}
+
+    # Reconstruct file content:
+    # We don't have a "remote" layout here; use the existing local layout as the guide
+    # so comments/spacing/order are preserved, and new keys are appended sensibly.
+    updated_content = _reconstruct_env_content(local_lines, merged_vars, local_lines)
+
+    # Ensure trailing newline for POSIX-friendly files
+    if updated_content and not updated_content.endswith("\n"):
+        updated_content += "\n"
+
+    # Write back to disk
+    path.write_text(updated_content, encoding="utf-8")
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """Read a .env file and return its contents as a dictionary.
+
+    Args:
+        path: The path to the .env file to read.
+
+    Returns:
+        A dictionary containing the environment variables defined in the .env file.
+    """
+    if not path.exists():
+        return {}
+
+    content = path.read_text(encoding="utf-8")
+    return _extract_variables(_parse_env_lines(content))

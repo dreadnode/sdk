@@ -10,6 +10,9 @@ class LocalVersionSchema(RegistryImageDetails):
     local_path: Path
     current: bool
 
+    def __str__(self) -> str:
+        return self.tag
+
     @field_serializer("local_path")
     def serialize_path(self, path: Path) -> str:
         """Serialize Path object to absolute path string.
@@ -21,6 +24,25 @@ class LocalVersionSchema(RegistryImageDetails):
             str: Absolute path as string.
         """
         return str(path.resolve())  # Convert to absolute path string
+
+    @property
+    def details(self) -> str:
+        configured_overrides = (
+            "\n".join(
+                f"  - {line}" for line in self.configure_overrides_env_file.read_text().splitlines()
+            )
+            if self.configure_overrides_env_file.exists()
+            else "  (none)"
+        )
+
+        return (
+            f"Tag: {self.tag}\n"
+            f"Local Path: {self.local_path}\n"
+            f"Compose File: {self.compose_file}\n"
+            f"API Env File: {self.api_env_file}\n"
+            f"UI Env File: {self.ui_env_file}\n"
+            f"Configured: \n{configured_overrides}\n"
+        )
 
     @property
     def compose_file(self) -> Path:
@@ -43,8 +65,16 @@ class LocalVersionSchema(RegistryImageDetails):
         return self.local_path / f".{UI_SERVICE}.example.env"
 
     @property
-    def overrides_env_file(self) -> Path:
-        return self.local_path / ".overrides.env"
+    def configure_overrides_env_file(self) -> Path:
+        return self.local_path / ".configure.overrides.env"
+
+    @property
+    def configure_overrides_compose_file(self) -> Path:
+        return self.local_path / "docker-compose.configure.overrides.yaml"
+
+    @property
+    def arg_overrides_env_file(self) -> Path:
+        return self.local_path / ".arg.overrides.env"
 
     def get_env_path_by_service(self, service: str) -> Path:
         """Get environment file path for a specific service.

@@ -1,10 +1,6 @@
-from dreadnode.cli.platform.constants import SERVICES
 from dreadnode.cli.platform.docker_ import docker_stop
 from dreadnode.cli.platform.download import download_platform
 from dreadnode.cli.platform.start import start_platform
-from dreadnode.cli.platform.utils.env_mgmt import (
-    merge_env_files_content,
-)
 from dreadnode.cli.platform.utils.printing import print_error, print_info
 from dreadnode.cli.platform.utils.versions import (
     confirm_with_context,
@@ -48,33 +44,20 @@ def upgrade_platform() -> None:
         print_error("Aborting upgrade.")
         return
 
-    if confirm_with_context(
-        f"Would you like to attempt to merge configuration files from {current_local_version.tag} to {latest_version.tag}?"
+    # copy the configuration overrides from the current version to the new version
+    if (
+        current_local_version.configure_overrides_compose_file.exists()
+        and current_local_version.configure_overrides_env_file.exists()
     ):
-        for service in SERVICES:
-            original_env_file = current_local_version.get_example_env_path_by_service(service)
-            with original_env_file.open() as f:
-                original_env_content = f.read()
-            current_env_file = current_local_version.get_env_path_by_service(service)
-            with current_env_file.open() as f:
-                current_env_content = f.read()
-            new_env_file = latest_version.get_env_path_by_service(service)
-            with new_env_file.open() as f:
-                new_env_content = f.read()
-            merged_env_content = merge_env_files_content(
-                original_env_content, current_env_content, new_env_content
-            )
-            with new_env_file.open("w") as f:
-                f.write(merged_env_content)
-            print_info(f" - Merged .env file for {service}: {merged_env_content}")
-
-        print_info(".env files merged.")
-
-    else:
-        print_info("Skipping .env file merge.")
+        latest_version.configure_overrides_compose_file.write_text(
+            current_local_version.configure_overrides_compose_file.read_text()
+        )
+        latest_version.configure_overrides_env_file.write_text(
+            current_local_version.configure_overrides_env_file.read_text()
+        )
 
     print_info(f"Stopping current platform version {current_local_version.tag}...")
-    docker_stop(current_local_version.compose_file)
+    docker_stop(current_local_version)
     print_info(f"Current platform version {current_local_version.tag} stopped.")
 
     mark_current_version(latest_version)

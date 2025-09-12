@@ -35,7 +35,7 @@ def _resolve_latest(tag: str) -> str:
     """
     api_client = create_api_client()
     release_info = api_client.get_platform_releases(
-        tag, services=SERVICES, cli_version=get_cli_version()
+        tag, services=[str(service) for service in SERVICES], cli_version=get_cli_version()
     )
     return release_info.tag
 
@@ -98,7 +98,7 @@ def _download_version_files(tag: str) -> LocalVersionSchema:
     """
     api_client = create_api_client()
     release_info = api_client.get_platform_releases(
-        tag, services=SERVICES, cli_version=get_cli_version()
+        tag, services=[str(service) for service in SERVICES], cli_version=get_cli_version()
     )
     zip_content = api_client.get_platform_templates(tag)
 

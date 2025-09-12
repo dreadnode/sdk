@@ -3,13 +3,17 @@ import subprocess
 import time
 from pathlib import Path
 
+from yaml import safe_dump
+
 from dreadnode.cli.api import create_api_client
+from dreadnode.cli.platform.constants import SERVICES, PlatformService
+from dreadnode.cli.platform.schemas import LocalVersionSchema
 from dreadnode.cli.platform.utils.printing import print_error, print_info, print_success
 
 
 def _run_docker_compose_command(
     args: list[str],
-    compose_file: Path,
+    # compose_file: Path,
     timeout: int = 300,
     stdin_input: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -33,7 +37,7 @@ def _run_docker_compose_command(
     cmd = ["docker", "compose"]
 
     # Add compose file
-    cmd.extend(["-f", compose_file.as_posix()])
+    # cmd.extend(["-f", compose_file.as_posix()])
 
     # Add the specific command arguments
     cmd.extend(args)
@@ -184,6 +188,52 @@ def _check_docker_compose_installed() -> bool:
     return True
 
 
+def _build_docker_compose_base_command(
+    selected_version: LocalVersionSchema,
+) -> list[str]:
+    cmds = []
+    compose_files = [selected_version.compose_file]
+    env_files = [selected_version.api_env_file, selected_version.ui_env_file]
+
+    if (
+        selected_version.configure_overrides_compose_file.exists()
+        and selected_version.configure_overrides_env_file.exists()
+    ):
+        compose_files.append(selected_version.configure_overrides_compose_file)
+        env_files.append(selected_version.configure_overrides_env_file)
+
+    for compose_file in compose_files:
+        cmds.extend(["-f", compose_file.as_posix()])
+
+    if selected_version.arg_overrides_env_file.exists():
+        env_files.append(selected_version.arg_overrides_env_file)
+
+    for env_file in env_files:
+        cmds.extend(["--env-file", env_file.as_posix()])
+    return cmds
+
+
+def build_docker_compose_override_file(
+    services: list[PlatformService],
+    selected_version: LocalVersionSchema,
+) -> None:
+    # build a yaml docker compose override file
+    # that only includes the service being configured
+    # and has an `env_file` attribute for the service
+    override = {
+        "version": "3.8",
+        "services": {
+            f"platform-{service}": {
+                "env_file": [selected_version.configure_overrides_env_file.as_posix()]
+            }
+            for service in services
+        },
+    }
+
+    with selected_version.configure_overrides_compose_file.open("w") as f:
+        safe_dump(override, f, sort_keys=False)
+
+
 def docker_requirements_met() -> bool:
     """Check if Docker and Docker Compose are installed."""
     return _check_docker_installed() and _check_docker_compose_installed()
@@ -226,9 +276,7 @@ def docker_login(registry: str) -> None:
 
 
 def docker_run(
-    compose_file: Path,
-    env_files: list[Path] | None = None,
-    overrides_env_file: Path | None = None,
+    selected_version: LocalVersionSchema,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     """Run docker containers for the platform.
@@ -244,28 +292,25 @@ def docker_run(
         subprocess.CalledProcessError: If command fails.
         subprocess.TimeoutExpired: If command times out.
     """
-    cmds = []
-    if env_files:
-        for env_file in env_files:
-            cmds.extend(["--env-file", env_file.as_posix()])
+    cmds = _build_docker_compose_base_command(selected_version)
 
-    # place the overrides env file last so it takes precedence
-    if overrides_env_file:
-        cmds.extend(["--env-file", overrides_env_file.as_posix()])
+    # Apply the compose and env override files in priority order
+    # 1. base compose file and env files
+    # 2. configure overrides compose and env files (if any)
+    # 3. arg overrides env file (if any)
 
     cmds += ["up", "-d"]
-    return _run_docker_compose_command(cmds, compose_file, timeout, "Docker compose up")
+    return _run_docker_compose_command(cmds, timeout, "Docker compose up")
 
 
 def docker_stop(
-    compose_file: Path,
-    env_files: list[Path] | None = None,
+    selected_version: LocalVersionSchema,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     """Stop docker containers for the platform.
 
     Args:
-        compose_file: Path to docker-compose file.
+        selected_version: The selected version of the platform.
         timeout: Command timeout in seconds.
 
     Returns:
@@ -275,9 +320,6 @@ def docker_stop(
         subprocess.CalledProcessError: If command fails.
         subprocess.TimeoutExpired: If command times out.
     """
-    cmds = []
-    if env_files:
-        for env_file in env_files:
-            cmds.extend(["--env-file", env_file.as_posix()])
+    cmds = _build_docker_compose_base_command(selected_version)
     cmds.append("down")
-    return _run_docker_compose_command(cmds, compose_file, timeout, "Docker compose down")
+    return _run_docker_compose_command(cmds, timeout, "Docker compose down")
