@@ -7,7 +7,7 @@ def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, 
     """Converts text into ASCII art using the 'art' library."""
 
     with catch_import_error("dreadnode[scoring]"):
-        from art import text2art  # type: ignore[import-not-found]
+        from art import text2art  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     def transform(text: str, *, font: str = Config(font, help="The font to use")) -> str:
         return str(text2art(text, font=font))

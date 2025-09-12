@@ -24,9 +24,7 @@ class LLMTarget(Model, Target[t.Any, str]):
     See: https://docs.dreadnode.io/open-source/rigging/topics/generators
     """
 
-    params: AnyDict | rg.GenerateParams | None = Config(
-        default=None, expose_as=AnyDict | None
-    )
+    params: AnyDict | rg.GenerateParams | None = Config(default=None, expose_as=AnyDict | None)
     """
     Optional generation parameters.
 
@@ -53,16 +51,12 @@ class LLMTarget(Model, Target[t.Any, str]):
             else rg.GenerateParams()
         )
 
-        @task(
-            name=f"generate - {self.name}", label="llm_target_generate", tags=["target"]
-        )
+        @task(name=f"generate - {self.name}", label="llm_target_generate", tags=["target"])
         async def generate(
             messages: list[rg.Message] = messages,
-            params: rg.GenerateParams | None = params,
+            params: rg.GenerateParams = params,
         ) -> str:
-            generated = (await self.generator.generate_messages([messages], [params]))[
-                0
-            ]
+            generated = (await self.generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
                 raise generated
             return generated.message.content

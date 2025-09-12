@@ -2,8 +2,8 @@ import importlib
 import typing as t
 
 from dreadnode.data_types.base import WithMeta
-from dreadnode.data_types.text import Code, Markdown, Text
 from dreadnode.data_types.object_3d import Object3D
+from dreadnode.data_types.text import Code, Markdown, Text
 
 if t.TYPE_CHECKING:
     from dreadnode.data_types.audio import Audio

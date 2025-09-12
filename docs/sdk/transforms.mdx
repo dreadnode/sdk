@@ -32,7 +32,7 @@ TransformsLike
 ```python
 TransformsLike = (
     Sequence[TransformLike[In, Out]]
-    | dict[str, TransformLike[In, Out]]
+    | Mapping[str, TransformLike[In, Out]]
 )
 ```
 
@@ -218,7 +218,7 @@ def fit(cls, transform: "TransformLike[In, Out]") -> "Transform[In, Out]":
 
 ```python
 fit_many(
-    transforms: TransformLike[In, Out] | None,
+    transforms: TransformsLike[In, Out] | None,
 ) -> list[Transform[In, Out]]
 ```
 
@@ -231,7 +231,7 @@ and attributes across all transforms.
 **Parameters:**
 
 * **`transforms`**
-  (`TransformLike[In, Out] | None`)
+  (`TransformsLike[In, Out] | None`)
   –A collection of transform-like objects. Can be:
   - A dictionary mapping names to transform objects or callables
   - A sequence of scorer objects or callables
@@ -245,7 +245,7 @@ and attributes across all transforms.
 <Accordion title="Source code in dreadnode/transforms/base.py" icon="code">
 ```python
 @classmethod
-def fit_many(cls, transforms: "TransformLike[In, Out] | None") -> list["Transform[In, Out]"]:
+def fit_many(cls, transforms: "TransformsLike[In, Out] | None") -> list["Transform[In, Out]"]:
     """
     Convert a collection of transform-like objects into a list of Transform instances.
 
@@ -1095,7 +1095,9 @@ def unicode_confusable(
     """
 
     with catch_import_error("dreadnode[scoring]"):
-        from confusables import confusable_characters  # type: ignore[import-untyped]
+        from confusables import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            confusable_characters,
+        )
 
     if not 0.0 <= ratio <= 1.0:
         raise ValueError("Application ratio must be between 0.0 and 1.0.")
@@ -1892,7 +1894,7 @@ def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, 
     """Converts text into ASCII art using the 'art' library."""
 
     with catch_import_error("dreadnode[scoring]"):
-        from art import text2art  # type: ignore[import-not-found]
+        from art import text2art  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     def transform(text: str, *, font: str = Config(font, help="The font to use")) -> str:
         return str(text2art(text, font=font))

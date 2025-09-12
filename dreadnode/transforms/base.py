@@ -9,6 +9,8 @@ from dreadnode.util import get_callable_name, warn_at_user_stacklevel
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
+In_contra = te.TypeVar("In_contra", contravariant=True, default=t.Any)
+Out_co = te.TypeVar("Out_co", covariant=True, default=t.Any)
 OuterIn = te.TypeVar("OuterIn", default=t.Any)
 OuterOut = te.TypeVar("OuterOut", default=t.Any)
 
@@ -18,12 +20,14 @@ class TransformWarning(UserWarning):
 
 
 @t.runtime_checkable
-class TransformCallable(t.Protocol, t.Generic[In, Out]):
+class TransformCallable(t.Protocol, t.Generic[In_contra, Out_co]):
     """
     A callable that takes in one object, and returns another.
     """
 
-    def __call__(self, obj: In, /, *args: t.Any, **kwargs: t.Any) -> t.Awaitable[Out] | Out: ...
+    def __call__(
+        self, obj: In_contra, /, *args: t.Any, **kwargs: t.Any
+    ) -> t.Awaitable[Out_co] | Out_co: ...
 
 
 class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
@@ -64,7 +68,7 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         raise TypeError("Transform must be a Transform instance or a callable.")
 
     @classmethod
-    def fit_many(cls, transforms: "TransformLike[In, Out] | None") -> list["Transform[In, Out]"]:
+    def fit_many(cls, transforms: "TransformsLike[In, Out] | None") -> list["Transform[In, Out]"]:
         """
         Convert a collection of transform-like objects into a list of Transform instances.
 
@@ -221,5 +225,5 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
 
 TransformLike = Transform[In, Out] | TransformCallable[In, Out]
 """A transform or compatible callable."""
-TransformsLike = t.Sequence[TransformLike[In, Out]] | dict[str, TransformLike[In, Out]]
+TransformsLike = t.Sequence[TransformLike[In, Out]] | t.Mapping[str, TransformLike[In, Out]]
 """A sequence of transform-like objects or mapping of name/transform pairs."""

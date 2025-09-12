@@ -1930,7 +1930,7 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[training]"):
-        from transformers import pipeline  # type: ignore[import-not-found]
+        from transformers import pipeline  # type: ignore[import-not-found,unused-ignore]
 
     def evaluate(
         data: t.Any,
@@ -1940,9 +1940,7 @@ def zero_shot_classification(
         model_name: str = Config(model_name),
     ) -> Metric:
         if score_label not in labels:
-            raise ValueError(
-                f"score_label '{score_label}' must be one of the provided labels."
-            )
+            raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
         pipeline_key = f"zero-shot-classification_{model_name}"
         if pipeline_key not in g_transformer_pipeline_cache:
@@ -3359,7 +3357,7 @@ def detect_pii_with_presidio(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        pass  # type: ignore[import-not-found]
+        import presidio_analyzer  # noqa: F401
 
     def evaluate(
         data: t.Any,
@@ -3452,7 +3450,7 @@ def readability(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import textstat  # type: ignore[import-not-found]
+        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)
@@ -3460,7 +3458,7 @@ def readability(
             return Metric(value=0.0, attributes={"error": "Input text is empty."})
 
         # The Flesch-Kincaid grade level calculation
-        grade_level = textstat.flesch_kincaid_grade(text)
+        grade_level = textstat.textstat.flesch_kincaid_grade(text)
 
         # Score is inversely related to the absolute difference from the target.
         # We normalize by a factor (e.g., 10) to control how quickly the score drops off.
@@ -3733,7 +3731,7 @@ def sentiment(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from textblob import TextBlob  # type: ignore[import-not-found]
+        from textblob import TextBlob  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:
@@ -3914,18 +3912,20 @@ def bleu(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import nltk  # type: ignore[import-not-found]
-        from nltk.tokenize import (  # type: ignore[import-not-found]
+        import nltk  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        from nltk.tokenize import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             word_tokenize,
         )
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found]
+        from nltk.translate.bleu_score import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             sentence_bleu,
         )
 
     try:
         nltk.data.find("tokenizers/punkt")
     except LookupError as e:
-        nltk_import_error_msg = "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
+        nltk_import_error_msg = (
+            "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
+        )
         raise LookupError(nltk_import_error_msg) from e
 
     def evaluate(
@@ -3934,9 +3934,7 @@ def bleu(
         candidate_text = str(data)
 
         if not reference or not candidate_text:
-            return Metric(
-                value=0.0, attributes={"error": "Reference or candidate text is empty."}
-            )
+            return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})
 
         ref_tokens = word_tokenize(reference)
         cand_tokens = word_tokenize(candidate_text)
@@ -4132,9 +4130,7 @@ def similarity_with_litellm(
     ) -> Metric:
         candidate_text = str(data)
         if not candidate_text.strip() or not reference.strip():
-            return Metric(
-                value=0.0, attributes={"error": "Candidate or reference text is empty."}
-            )
+            return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
 
         response = await litellm.aembedding(
             model=model,
@@ -4258,7 +4254,7 @@ def similarity_with_rapidfuzz(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
+        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found,unused-ignore]
 
     def evaluate(
         data: t.Any,
@@ -4408,7 +4404,7 @@ def similarity_with_sentence_transformers(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from sentence_transformers import (  # type: ignore[import-not-found]
+        from sentence_transformers import (
             SentenceTransformer,
             util,
         )
@@ -4464,9 +4460,7 @@ Requires `scikit-learn`, see https://scikit-learn.org
 
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
-def similarity_with_tf_idf(
-    reference: str, *, name: str = "similarity"
-) -> "Scorer[t.Any]":
+def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scorer[t.Any]":
     """
     Scores semantic similarity using TF-IDF and cosine similarity.
 
@@ -4477,14 +4471,11 @@ def similarity_with_tf_idf(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found]
-            TfidfVectorizer,
-        )
-        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
+        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             cosine_similarity as sklearn_cosine_similarity,
         )
 
-    vectorizer = TfidfVectorizer(stop_words="english")
+    vectorizer = tf_idf_vectorizer()
 
     def evaluate(data: t.Any, *, reference: str = reference) -> Metric:
         candidate_text = str(data)
@@ -4571,7 +4562,7 @@ def string_distance(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from rapidfuzz import distance  # type: ignore[import-not-found]
+        from rapidfuzz import distance
 
     def evaluate(  # noqa: PLR0912
         data: t.Any,
@@ -4587,17 +4578,13 @@ def string_distance(
         # Select the appropriate distance method
         if method == "levenshtein":
             if normalize:
-                score = distance.Levenshtein.normalized_similarity(
-                    reference, candidate_text
-                )
+                score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
             else:
                 dist = distance.Levenshtein.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
         elif method == "hamming":
             if normalize:
-                score = distance.Hamming.normalized_similarity(
-                    reference, candidate_text
-                )
+                score = distance.Hamming.normalized_similarity(reference, candidate_text)
             else:
                 dist = distance.Hamming.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
@@ -4607,23 +4594,17 @@ def string_distance(
             score = distance.JaroWinkler.similarity(reference, candidate_text)
         elif method == "damerau_levenshtein":
             if normalize:
-                score = distance.DamerauLevenshtein.normalized_similarity(
-                    reference, candidate_text
-                )
+                score = distance.DamerauLevenshtein.normalized_similarity(reference, candidate_text)
             else:
                 dist = distance.DamerauLevenshtein.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
         elif normalize:
-            score = distance.Levenshtein.normalized_similarity(
-                reference, candidate_text
-            )
+            score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
         else:
             dist = distance.Levenshtein.distance(reference, candidate_text)
             score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
 
-        return Metric(
-            value=float(score), attributes={"method": method, "normalize": normalize}
-        )
+        return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
     return Scorer(evaluate, name=name, catch=True)
 ```

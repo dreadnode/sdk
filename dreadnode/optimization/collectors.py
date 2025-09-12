@@ -29,7 +29,7 @@ def lineage(
         trials.insert(0, parent)
         parent = get_parent(parent)
 
-    return trials[:depth]  # type: ignore[return-value]
+    return trials[:depth]
 
 
 @component
@@ -53,7 +53,7 @@ def local_neighborhood(
     The maximum distance for any discovered node is `2h-1`.
     """
     if not all_trials:
-        return []  # type: ignore[return-value]
+        return []
 
     # 1 - Build a bi-directional graph for efficient traversal
 
@@ -93,4 +93,4 @@ def local_neighborhood(
                 visited.add(child_id)
                 queue.append((child_id, distance + 1))
 
-    return [all_trials_map[tid] for tid in neighborhood_ids]  # type: ignore[return-value]
+    return [all_trials_map[tid] for tid in neighborhood_ids]

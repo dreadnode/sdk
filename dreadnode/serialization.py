@@ -321,6 +321,8 @@ def _handle_dataclass(obj: t.Any, seen: set[int]) -> tuple[JsonValue, JsonDict]:
 
 
 def _handle_attrs(obj: t.Any, seen: set[int]) -> tuple[JsonValue, JsonDict]:
+    import attrs
+
     keys = [f.name for f in attrs.fields(obj.__class__)]
     return _handle_custom_object(obj, keys, seen, "attrs")
 
@@ -404,7 +406,7 @@ def _handle_pandas_series(
 
 
 def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
-    import datasets  # type: ignore[import-not-found,unused-ignore]
+    import datasets  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     if not isinstance(obj, datasets.Dataset):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
@@ -490,7 +492,7 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[pydantic.BaseModel] = _handle_pydantic_model
 
     with contextlib.suppress(Exception):
-        import numpy as np  # type: ignore[import-not-found,unused-ignore]
+        import numpy as np
 
         handlers[np.ndarray] = _handle_numpy_array
         handlers[np.floating] = lambda o, s: _serialize(float(o), s)
@@ -514,7 +516,7 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[pd.Series] = _handle_pandas_series
 
     with contextlib.suppress(Exception):
-        import datasets  # type: ignore[import-not-found,unused-ignore]
+        import datasets
 
         handlers[datasets.Dataset] = _handle_dataset
 
@@ -583,10 +585,10 @@ def _serialize(obj: t.Any, seen: set[int] | None = None) -> tuple[JsonValue, Jso
         # Common fallbacks
 
         if hasattr(obj, "to_dict"):
-            return _serialize(obj.to_dict(), seen)
+            return _serialize(obj.to_dict(), seen)  # pyright: ignore[reportAttributeAccessIssue]
 
         if hasattr(obj, "asdict"):  # e.g., namedtuple
-            return _serialize(obj.asdict(), seen)
+            return _serialize(obj.asdict(), seen)  # pyright: ignore[reportAttributeAccessIssue]
 
     # Fallback to repr
 

@@ -23,7 +23,7 @@ def readability(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import textstat  # type: ignore[import-not-found]
+        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)
@@ -31,7 +31,7 @@ def readability(
             return Metric(value=0.0, attributes={"error": "Input text is empty."})
 
         # The Flesch-Kincaid grade level calculation
-        grade_level = textstat.flesch_kincaid_grade(text)
+        grade_level = textstat.textstat.flesch_kincaid_grade(text)
 
         # Score is inversely related to the absolute difference from the target.
         # We normalize by a factor (e.g., 10) to control how quickly the score drops off.

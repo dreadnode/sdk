@@ -73,7 +73,7 @@ def __init__(
         format: Optional format to use (default is wav for numpy arrays)
     """
     with catch_import_error("dreadnode[multimodal]"):
-        import soundfile  # type: ignore[import-not-found]
+        import soundfile  # type: ignore[import-not-found,import-untyped,unused-ignore] # noqa: F401
 
     self._data = data
     self._sample_rate = sample_rate
@@ -210,7 +210,7 @@ def __init__(
         format: Optional format to use when saving (png, jpg, etc.)
     """
     with catch_import_error("dreadnode[multimodal]"):
-        import PIL.Image  # type: ignore[import-not-found]  # noqa: F401
+        import PIL.Image  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
 
     self._data = data
     self._mode = mode
@@ -649,7 +649,7 @@ def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
     """
 
     try:
-        from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]
+        from moviepy.video.VideoClip import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             VideoClip,
         )
     except ImportError:

@@ -35,9 +35,10 @@ from dreadnode.agent.reactions import (
     RetryWithFeedback,
 )
 from dreadnode.agent.result import AgentResult
-from dreadnode.agent.stop import StopCondition, stop_never
+from dreadnode.agent.stop import StopCondition, never
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
+from dreadnode.agent.tools.base import ToolMode
 from dreadnode.agent.tools.planning import update_todo
 from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
 from dreadnode.meta import Component, Config, Model, component
@@ -64,9 +65,7 @@ class Agent(Model):
     Agent abstraction for applying tools, event logic, and message state to LLM generation.
     """
 
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True, use_attribute_docstrings=True
-    )
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
     name: str
     """The name of the agent."""
@@ -79,8 +78,6 @@ class Agent(Model):
     """Inference model (rigging generator identifier)."""
     instructions: str | None = Config(default=None)
     """The agent's core instructions."""
-    tool_mode: rg.tools.ToolMode = Config(default="auto", repr=False)
-    """The tool calling mode to use."""
     max_steps: int = Config(default=10)
     """The maximum number of steps (generation + tool calls)."""
     caching: rg.caching.CacheMode | None = Config(default=None, repr=False)
@@ -88,9 +85,12 @@ class Agent(Model):
 
     tools: list[AnyTool | Toolset] = Config(default_factory=list)
     """Tools the agent can use."""
+    tool_mode: ToolMode = Config(default="auto", repr=False)
+    """The tool calling mode to use."""
+
     hooks: list[Hook] = Config(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the agent's lifecycle."""
-    stop_conditions: list[StopCondition] = Field(default_factory=list)
+    stop_conditions: list[StopCondition] = Config(default_factory=list)
     """The logical condition for successfully stopping a run."""
     thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
     """Stateful thread for this agent, for when otherwise not specified during execution."""
@@ -112,9 +112,7 @@ class Agent(Model):
                 tools.extend(interior_tools)
             else:
                 tools.append(
-                    Tool.from_callable(
-                        tool if isinstance(tool, Component) else component(tool)
-                    )
+                    Tool.from_callable(tool if isinstance(tool, Component) else component(tool))
                 )
 
         return tools
@@ -139,9 +137,7 @@ class Agent(Model):
             stop_conditions = ", ".join(repr(cond) for cond in self.stop_conditions)
             parts.append(f"stop_conditions=[{stop_conditions}]")
         if self.hooks:
-            hooks = ", ".join(
-                get_callable_name(hook, short=True) for hook in self.hooks
-            )
+            hooks = ", ".join(get_callable_name(hook, short=True) for hook in self.hooks)
             parts.append(f"hooks=[{hooks}]")
 
         return f"{self.__class__.__name__}({', '.join(parts)})"
@@ -229,22 +225,16 @@ class Agent(Model):
         messages = inject_system_content(messages, self.get_prompt())
 
         if self.tool_mode == "auto" and self.tools:
-            self.tool_mode = (
-                "api" if await generator.supports_function_calling() else "json-in-xml"
-            )
+            self.tool_mode = "api" if await generator.supports_function_calling() else "json-in-xml"
 
         transforms = self._get_transforms()
         post_transforms: list[rg.PostTransform | None] = []
         for transform_callback in transforms:
-            messages, params, post_transform = await transform_callback(
-                messages, params
-            )
+            messages, params, post_transform = await transform_callback(messages, params)
             post_transforms.append(post_transform)
 
         try:
-            messages = rg.caching.apply_cache_mode_to_messages(
-                self.caching, [messages]
-            )[0]
+            messages = rg.caching.apply_cache_mode_to_messages(self.caching, [messages])[0]
 
             generated = (await generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
@@ -296,9 +286,7 @@ class Agent(Model):
             events.append(event)
 
             # If we have no hooks, just return the event
-            applicable_hooks = list(
-                set(hooks.get(type(event), []) + hooks.get(AgentEvent, []))
-            )
+            applicable_hooks = list(set(hooks.get(type(event), []) + hooks.get(AgentEvent, [])))
             if not applicable_hooks:
                 return
 
@@ -334,11 +322,7 @@ class Agent(Model):
 
             # P1 - Termination
             winning_reaction: Reaction | None = next(
-                (
-                    reaction
-                    for reaction in hook_reactions.values()
-                    if isinstance(reaction, Finish)
-                ),
+                (reaction for reaction in hook_reactions.values() if isinstance(reaction, Finish)),
                 None,
             )
 
@@ -364,9 +348,7 @@ class Agent(Model):
 
             # Take the first reaction otherwise
             winning_reaction = winning_reaction or next(
-                reaction
-                for reaction in iter(hook_reactions.values())
-                if reaction is not None
+                reaction for reaction in iter(hook_reactions.values()) if reaction is not None
             )
 
             # If we still don't have a winning reaction, return
@@ -382,11 +364,7 @@ class Agent(Model):
                     )
 
             winning_hook_name = next(
-                (
-                    name
-                    for name, reaction in hook_reactions.items()
-                    if reaction is winning_reaction
-                ),
+                (name for name, reaction in hook_reactions.items() if reaction is winning_reaction),
                 "unknown",
             )
             reacted_event = Reacted(
@@ -449,9 +427,7 @@ class Agent(Model):
                     raise
             else:
                 message = rg.Message.from_model(
-                    rg.model.SystemErrorModel(
-                        content=f"Tool '{tool_call.name}' not found."
-                    )
+                    rg.model.SystemErrorModel(content=f"Tool '{tool_call.name}' not found.")
                 )
 
             async for event in _dispatch(
@@ -555,10 +531,7 @@ class Agent(Model):
                 stopped_by_tool_call: rg.tools.ToolCall | None = None
 
                 async for event in join_generators(
-                    *[
-                        _process_tool_call(tool_call)
-                        for tool_call in messages[-1].tool_calls
-                    ]
+                    *[_process_tool_call(tool_call) for tool_call in messages[-1].tool_calls]
                 ):
                     if isinstance(event, ToolEnd):
                         messages.append(event.message)
@@ -648,9 +621,7 @@ class Agent(Model):
             if isinstance(event.reaction, Retry):
                 log_metric("retries", 1, step=event.step, mode="count")
                 if event.reaction.messages:
-                    log_metric(
-                        "messages", len(event.reaction.messages), step=event.step
-                    )
+                    log_metric("messages", len(event.reaction.messages), step=event.step)
             if isinstance(event.reaction, Continue):
                 log_metric("continues", 1, step=event.step, mode="count")
                 log_metric("messages", len(event.messages), step=event.step)
@@ -685,18 +656,14 @@ class Agent(Model):
             )
 
             try:
-                async with aclosing(
-                    self._stream(thread, messages, hooks, commit=commit)
-                ) as stream:
+                async with aclosing(self._stream(thread, messages, hooks, commit=commit)) as stream:
                     async for event in stream:
                         last_event = event
                         self._log_event_metrics(event)
                         yield event
             finally:
                 if last_event is not None:
-                    log_outputs(
-                        messages=last_event.messages, token_usage=last_event.total_usage
-                    )
+                    log_outputs(messages=last_event.messages, token_usage=last_event.total_usage)
 
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
@@ -738,9 +705,7 @@ class Agent(Model):
         commit: CommitBehavior = "always",
     ) -> t.AsyncIterator[t.AsyncGenerator[AgentEvent, None]]:
         thread = thread or self.thread
-        async with aclosing(
-            self._stream_traced(thread, user_input, commit=commit)
-        ) as stream:
+        async with aclosing(self._stream_traced(thread, user_input, commit=commit)) as stream:
             yield stream
 
     async def run(
@@ -782,11 +747,11 @@ class TaskAgent(Agent):
             self.tools.append(update_todo)
 
         # Force the agent to use finish_task
-        self.stop_conditions.append(stop_never())
+        self.stop_conditions.append(never())
         self.hooks.insert(
             0,
             retry_with_feedback(
                 event_type=AgentStalled,
-                feedback="Continue the task if possible or use the 'finish_task' tool to complete it.",
+                feedback="Continue the task if possible, use the 'finish_task' tool to complete it, or 'give_up_on_task' if it cannot be completed.",
             ),
         )

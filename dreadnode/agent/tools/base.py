@@ -7,6 +7,7 @@ from rigging.tools.base import ToolMethod as RiggingToolMethod
 from dreadnode.meta import Component, Config, Model
 
 Tool = tools.Tool
+ToolMode = tools.ToolMode
 
 AnyTool = Tool[t.Any, t.Any]
 

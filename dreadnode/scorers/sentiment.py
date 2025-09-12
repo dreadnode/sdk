@@ -30,7 +30,7 @@ def sentiment(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from textblob import TextBlob  # type: ignore[import-not-found]
+        from textblob import TextBlob  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
     def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:

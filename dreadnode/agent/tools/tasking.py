@@ -5,7 +5,7 @@ from dreadnode.agent.tools.base import tool
 
 
 @tool
-async def finish_task(success: bool, summary: str) -> None:  # noqa: ARG001
+async def finish_task(success: bool, summary: str) -> None:  # noqa: ARG001, FBT001
     """
     Mark your task as complete with a success/failure status and markdown summary of actions taken.
 

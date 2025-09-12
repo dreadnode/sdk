@@ -225,7 +225,9 @@ def unicode_confusable(
     """
 
     with catch_import_error("dreadnode[scoring]"):
-        from confusables import confusable_characters  # type: ignore[import-untyped]
+        from confusables import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            confusable_characters,
+        )
 
     if not 0.0 <= ratio <= 1.0:
         raise ValueError("Application ratio must be between 0.0 and 1.0.")

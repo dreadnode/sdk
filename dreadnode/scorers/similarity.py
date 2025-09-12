@@ -1,3 +1,4 @@
+import functools
 import typing as t
 from difflib import SequenceMatcher
 
@@ -10,8 +11,11 @@ from dreadnode.scorers.util import cosine_similarity
 from dreadnode.util import catch_import_error
 
 if t.TYPE_CHECKING:
-    from sentence_transformers import (  # type: ignore[import-not-found]
+    from sentence_transformers import (  # type: ignore[import-not-found,unused-ignore]
         SentenceTransformer,
+    )
+    from sklearn.feature_extraction.text import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        TfidfVectorizer,
     )
 
 
@@ -96,7 +100,7 @@ def similarity_with_rapidfuzz(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
+        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found,unused-ignore]
 
     def evaluate(
         data: t.Any,
@@ -208,7 +212,7 @@ def string_distance(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from rapidfuzz import distance  # type: ignore[import-not-found]
+        from rapidfuzz import distance
 
     def evaluate(  # noqa: PLR0912
         data: t.Any,
@@ -224,17 +228,13 @@ def string_distance(
         # Select the appropriate distance method
         if method == "levenshtein":
             if normalize:
-                score = distance.Levenshtein.normalized_similarity(
-                    reference, candidate_text
-                )
+                score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
             else:
                 dist = distance.Levenshtein.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
         elif method == "hamming":
             if normalize:
-                score = distance.Hamming.normalized_similarity(
-                    reference, candidate_text
-                )
+                score = distance.Hamming.normalized_similarity(reference, candidate_text)
             else:
                 dist = distance.Hamming.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
@@ -244,30 +244,29 @@ def string_distance(
             score = distance.JaroWinkler.similarity(reference, candidate_text)
         elif method == "damerau_levenshtein":
             if normalize:
-                score = distance.DamerauLevenshtein.normalized_similarity(
-                    reference, candidate_text
-                )
+                score = distance.DamerauLevenshtein.normalized_similarity(reference, candidate_text)
             else:
                 dist = distance.DamerauLevenshtein.distance(reference, candidate_text)
                 score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
         elif normalize:
-            score = distance.Levenshtein.normalized_similarity(
-                reference, candidate_text
-            )
+            score = distance.Levenshtein.normalized_similarity(reference, candidate_text)
         else:
             dist = distance.Levenshtein.distance(reference, candidate_text)
             score = 1.0 / (1.0 + dist) if dist >= 0 else 0.0
 
-        return Metric(
-            value=float(score), attributes={"method": method, "normalize": normalize}
-        )
+        return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
     return Scorer(evaluate, name=name, catch=True)
 
 
-def similarity_with_tf_idf(
-    reference: str, *, name: str = "similarity"
-) -> "Scorer[t.Any]":
+@functools.lru_cache(maxsize=1)
+def tf_idf_vectorizer() -> "TfidfVectorizer":
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    return TfidfVectorizer(stop_words="english")
+
+
+def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scorer[t.Any]":
     """
     Scores semantic similarity using TF-IDF and cosine similarity.
 
@@ -278,14 +277,11 @@ def similarity_with_tf_idf(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from sklearn.feature_extraction.text import (  # type: ignore[import-not-found]
-            TfidfVectorizer,
-        )
-        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
+        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             cosine_similarity as sklearn_cosine_similarity,
         )
 
-    vectorizer = TfidfVectorizer(stop_words="english")
+    vectorizer = tf_idf_vectorizer()
 
     def evaluate(data: t.Any, *, reference: str = reference) -> Metric:
         candidate_text = str(data)
@@ -321,7 +317,7 @@ def similarity_with_sentence_transformers(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from sentence_transformers import (  # type: ignore[import-not-found]
+        from sentence_transformers import (
             SentenceTransformer,
             util,
         )
@@ -386,9 +382,7 @@ def similarity_with_litellm(
     ) -> Metric:
         candidate_text = str(data)
         if not candidate_text.strip() or not reference.strip():
-            return Metric(
-                value=0.0, attributes={"error": "Candidate or reference text is empty."}
-            )
+            return Metric(value=0.0, attributes={"error": "Candidate or reference text is empty."})
 
         response = await litellm.aembedding(
             model=model,
@@ -431,18 +425,20 @@ def bleu(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import nltk  # type: ignore[import-not-found]
-        from nltk.tokenize import (  # type: ignore[import-not-found]
+        import nltk  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        from nltk.tokenize import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             word_tokenize,
         )
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found]
+        from nltk.translate.bleu_score import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
             sentence_bleu,
         )
 
     try:
         nltk.data.find("tokenizers/punkt")
     except LookupError as e:
-        nltk_import_error_msg = "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
+        nltk_import_error_msg = (
+            "NLTK 'punkt' tokenizer not found. Please run: python -m nltk.downloader punkt"
+        )
         raise LookupError(nltk_import_error_msg) from e
 
     def evaluate(
@@ -451,9 +447,7 @@ def bleu(
         candidate_text = str(data)
 
         if not reference or not candidate_text:
-            return Metric(
-                value=0.0, attributes={"error": "Reference or candidate text is empty."}
-            )
+            return Metric(value=0.0, attributes={"error": "Reference or candidate text is empty."})
 
         ref_tokens = word_tokenize(reference)
         cand_tokens = word_tokenize(candidate_text)

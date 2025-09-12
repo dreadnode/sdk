@@ -40,7 +40,7 @@ class Audio(DataType):
             format: Optional format to use (default is wav for numpy arrays)
         """
         with catch_import_error("dreadnode[multimodal]"):
-            import soundfile  # type: ignore[import-not-found]
+            import soundfile  # type: ignore[import-not-found,import-untyped,unused-ignore] # noqa: F401
 
         self._data = data
         self._sample_rate = sample_rate
@@ -77,7 +77,7 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore[import-not-found]
+        import soundfile as sf
 
         path_str = str(self._data)
         audio_bytes = Path(path_str).read_bytes()
@@ -96,12 +96,10 @@ class Audio(DataType):
         Returns:
             A tuple of (audio_bytes, format_name, sample_rate, duration)
         """
-        import soundfile as sf  # type: ignore[import-not-found]
+        import soundfile as sf
 
         if self._sample_rate is None:
-            raise ValueError(
-                'Argument "sample_rate" is required when using numpy arrays.'
-            )
+            raise ValueError('Argument "sample_rate" is required when using numpy arrays.')
 
         buffer = io.BytesIO()
         format_name = self._format or "wav"

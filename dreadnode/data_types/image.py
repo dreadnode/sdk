@@ -45,7 +45,7 @@ class Image(DataType):
             format: Optional format to use when saving (png, jpg, etc.)
         """
         with catch_import_error("dreadnode[multimodal]"):
-            import PIL.Image  # type: ignore[import-not-found]  # noqa: F401
+            import PIL.Image  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
 
         self._data = data
         self._mode = mode
@@ -70,7 +70,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
@@ -92,7 +92,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         path_str = str(self._data)
         image_bytes = Path(path_str).read_bytes()
@@ -112,16 +112,14 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if not isinstance(self._data, PIL.Image.Image):
             raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
 
         pil_image = self._data
         mode = self._mode or pil_image.mode
-        image_format = self._format or (
-            pil_image.format.lower() if pil_image.format else "png"
-        )
+        image_format = self._format or (pil_image.format.lower() if pil_image.format else "png")
 
         buffer = io.BytesIO()
         img_to_save = pil_image
@@ -154,7 +152,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         buffer = io.BytesIO()
         image_format = self._format or "png"
@@ -186,7 +184,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if not isinstance(self._data, bytes):
             raise TypeError(f"Expected bytes, got {type(self._data)}")
@@ -213,7 +211,7 @@ class Image(DataType):
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if not isinstance(self._data, str):
             raise TypeError(f"Expected str, got {type(self._data)}")
@@ -229,7 +227,7 @@ class Image(DataType):
         image_format = self._format or format_part
 
         # Decode the base64 string
-        # TODO(@raja): See if we could optimize this  # noqa: TD003
+        # TODO(@raja): See if we could optimize this
         image_bytes = base64.b64decode(encoded)
 
         # Open with PIL to get properties
@@ -250,7 +248,7 @@ class Image(DataType):
         self, image_format: str, mode: str | None, width: int | None, height: int | None
     ) -> dict[str, str | int | None]:
         """Generate metadata for the image."""
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         metadata: dict[str, str | int | None] = {
             "extension": image_format.lower(),

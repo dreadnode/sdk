@@ -4,6 +4,9 @@ title: dreadnode.eval
 
 {/*
 ::: dreadnode.eval.eval
+::: dreadnode.eval.events
+::: dreadnode.eval.result
+::: dreadnode.eval.sample
 ::: dreadnode.eval.dataset
 */}
 
@@ -228,6 +231,550 @@ EvalWarning
 -----------
 
 Warning raised during evaluation.
+EvalEnd
+-------
+
+```python
+EvalEnd(
+    eval: Eval[In, Out],
+    result: EvalResult[In, Out],
+    stop_reason: EvalStopReason,
+)
+```
+
+Signals the end of the entire evaluation, containing the final result.
+
+EvalEvent
+---------
+
+```python
+EvalEvent(eval: Eval[In, Out])
+```
+
+Base class for all evaluation events.
+
+EvalEventInRun
+--------------
+
+```python
+EvalEventInRun(eval: Eval[In, Out], run_id: str)
+```
+
+Base class for all evaluation events that occur within a specific run.
+
+EvalStart
+---------
+
+```python
+EvalStart(
+    eval: Eval[In, Out],
+    dataset_size: int,
+    scenario_count: int,
+    total_iterations: int,
+    total_samples: int,
+)
+```
+
+Signals the beginning of an evaluation.
+
+IterationEnd
+------------
+
+```python
+IterationEnd(
+    eval: Eval[In, Out],
+    run_id: str,
+    result: IterationResult[In, Out],
+)
+```
+
+Signals the end of an iteration, containing its aggregated result.
+
+IterationStart
+--------------
+
+```python
+IterationStart(
+    eval: Eval[In, Out],
+    run_id: str,
+    scenario_params: dict[str, Any],
+    iteration: int,
+)
+```
+
+Signals the start of a new iteration within a scenario.
+
+SampleComplete
+--------------
+
+```python
+SampleComplete(
+    eval: Eval[In, Out],
+    run_id: str,
+    sample: Sample[In, Out],
+)
+```
+
+Signals that a single sample has completed processing.
+
+ScenarioEnd
+-----------
+
+```python
+ScenarioEnd(
+    eval: Eval[In, Out],
+    run_id: str,
+    result: ScenarioResult[In, Out],
+)
+```
+
+Signals the end of a scenario, containing its aggregated result.
+
+ScenarioStart
+-------------
+
+```python
+ScenarioStart(
+    eval: Eval[In, Out],
+    run_id: str,
+    scenario_params: dict[str, Any],
+    iteration_count: int,
+)
+```
+
+Signals the start of a new scenario.
+EvalResult
+----------
+
+```python
+EvalResult(
+    scenarios: list[ScenarioResult[In, Out]] = list(),
+)
+```
+
+Collection of samples resulting from an evaluation, grouped by scenario.
+
+### samples
+
+```python
+samples: list[Sample[In, Out]]
+```
+
+Returns a single, flat list of all samples from all scenarios and iterations.
+
+### scenarios
+
+```python
+scenarios: list[ScenarioResult[In, Out]] = field(
+    default_factory=list
+)
+```
+
+A list of results, one for each scenario in the evaluation.
+
+EvalResultMixin
+---------------
+
+A mixin providing a common statistical interface for evaluation results.
+
+### assertions\_summary
+
+```python
+assertions_summary: dict[str, dict[str, float | int]]
+```
+
+Calculates and returns a summary for each assertion across all samples.
+
+**Returns:**
+
+* `dict[str, dict[str, float | int]]`
+  –A dictionary where each key is an assertion name and the value is
+* `dict[str, dict[str, float | int]]`
+  –another dictionary containing 'passed\_count', 'failed\_count', and 'pass\_rate'.
+
+### failed\_count
+
+```python
+failed_count: int
+```
+
+The number of samples that failed any assertions.
+
+### failed\_samples
+
+```python
+failed_samples: list[Sample[In, Out]]
+```
+
+A list of all samples that failed at least one assertion.
+
+### metrics\_summary
+
+```python
+metrics_summary: dict[str, dict[str, float]]
+```
+
+Calculates and returns a summary of statistics for each metric across all samples.
+
+### pass\_rate
+
+```python
+pass_rate: float
+```
+
+The overall pass rate of the evaluation, from 0.0 to 1.0.
+
+### passed\_count
+
+```python
+passed_count: int
+```
+
+The number of samples that passed all assertions.
+
+### passed\_samples
+
+```python
+passed_samples: list[Sample[In, Out]]
+```
+
+A list of all samples that passed all assertions.
+
+### to\_dataframe
+
+```python
+to_dataframe() -> pd.DataFrame
+```
+
+Converts the results into a pandas DataFrame for analysis.
+
+<Accordion title="Source code in dreadnode/eval/result.py" icon="code">
+```python
+def to_dataframe(self) -> "pd.DataFrame":
+    """
+    Converts the results into a pandas DataFrame for analysis.
+    """
+    return pd.DataFrame(self.to_dicts())  # type: ignore[misc]
+```
+
+
+</Accordion>
+
+### to\_dicts
+
+```python
+to_dicts() -> list[dict[str, t.Any]]
+```
+
+Flattens the results into a list of dictionaries, where each
+dictionary represents a single sample with all its context.
+
+<Accordion title="Source code in dreadnode/eval/result.py" icon="code">
+```python
+def to_dicts(self: "HasSamples") -> list[dict[str, t.Any]]:
+    """
+    Flattens the results into a list of dictionaries, where each
+    dictionary represents a single sample with all its context.
+    """
+    return [sample.to_dict() for sample in self.samples]
+```
+
+
+</Accordion>
+
+### to\_jsonl
+
+```python
+to_jsonl(path: str | Path) -> None
+```
+
+Saves the results to a JSON Lines (JSONL) file.
+
+<Accordion title="Source code in dreadnode/eval/result.py" icon="code">
+```python
+def to_jsonl(self, path: str | Path) -> None:
+    """
+    Saves the results to a JSON Lines (JSONL) file.
+    """
+    records = self.to_dicts()  # type: ignore[misc]
+    with Path(path).open("w", encoding="utf-8") as f:
+        f.writelines(json.dumps(record) + "\n" for record in records)
+```
+
+
+</Accordion>
+
+IterationResult
+---------------
+
+```python
+IterationResult(
+    iteration: int, samples: list[Sample[In, Out]] = list()
+)
+```
+
+The result of a single iteration over the dataset for a given scenario.
+
+### iteration
+
+```python
+iteration: int
+```
+
+The iteration number for this result.
+
+### samples
+
+```python
+samples: list[Sample[In, Out]] = field(default_factory=list)
+```
+
+A list of samples for this iteration.
+
+ScenarioResult
+--------------
+
+```python
+ScenarioResult(
+    params: dict[str, Any],
+    iterations: list[IterationResult[In, Out]] = list(),
+)
+```
+
+Groups all iterations for a single scenario (parameter set).
+
+### iterations
+
+```python
+iterations: list[IterationResult[In, Out]] = field(
+    default_factory=list
+)
+```
+
+A list of iteration results for this scenario.
+
+### params
+
+```python
+params: dict[str, Any]
+```
+
+The parameters defining this scenario.
+
+### samples
+
+```python
+samples: list[Sample[In, Out]]
+```
+
+Returns a single, flat list of all samples from all iterations.
+Sample
+------
+
+### assertions
+
+```python
+assertions: dict[str, bool] = Field(default_factory=dict)
+```
+
+Assertions made during measurement.
+
+### context
+
+```python
+context: dict[str, Any] | None = Field(
+    default=None, repr=False
+)
+```
+
+Contextual information about the sample - like originating dataset fields.
+
+### created\_at
+
+```python
+created_at: datetime
+```
+
+The creation timestamp of the sample, extracted from its ULID.
+
+### error
+
+```python
+error: ErrorField | None = Field(default=None, repr=False)
+```
+
+Any error that occurred.
+
+### failed
+
+```python
+failed: bool
+```
+
+Whether the underlying task failed for reasons other than score assertions.
+
+### id
+
+```python
+id: ULID = Field(default_factory=ULID)
+```
+
+Unique identifier for the sample.
+
+### index
+
+```python
+index: int = 0
+```
+
+The index of the sample in the dataset.
+
+### input
+
+```python
+input: In
+```
+
+The sample input value.
+
+### iteration
+
+```python
+iteration: int = 0
+```
+
+The iteration this sample belongs to.
+
+### metrics
+
+```python
+metrics: dict[str, list[Metric]] = Field(
+    default_factory=dict
+)
+```
+
+Metrics collected during measurement.
+
+### output
+
+```python
+output: Out | None = None
+```
+
+The sample output value.
+
+### passed
+
+```python
+passed: bool
+```
+
+Whether all assertions have passed.
+
+### scenario\_params
+
+```python
+scenario_params: dict[str, Any] = Field(
+    default_factory=dict
+)
+```
+
+The parameters defining the scenario this sample belongs to.
+
+### task
+
+```python
+task: TaskSpan[Out] | None = Field(default=None, repr=False)
+```
+
+Associated task span.
+
+### get\_average\_metric\_value
+
+```python
+get_average_metric_value(key: str | None = None) -> float
+```
+
+Computes the average value of the specified metric across all samples.
+
+**Parameters:**
+
+* **`key`**
+  (`str | None`, default:
+  `None`
+  )
+  –The key of the metric to average. If None, averages all metrics.
+
+<Accordion title="Source code in dreadnode/eval/sample.py" icon="code">
+```python
+def get_average_metric_value(self, key: str | None = None) -> float:
+    """
+    Computes the average value of the specified metric across all samples.
+
+    Args:
+        key: The key of the metric to average. If None, averages all metrics.
+    """
+    metrics = (
+        self.metrics.get(key, [])
+        if key is not None
+        else [m for ms in self.metrics.values() for m in ms]
+    )
+
+    if not metrics:
+        return 0.0
+
+    return sum(metric.value for metric in metrics) / len(metrics)
+```
+
+
+</Accordion>
+
+### to\_dict
+
+```python
+to_dict() -> dict[str, t.Any]
+```
+
+Flattens the sample's data, performing necessary transformations
+(like metric pivoting) suitable for DataFrame conversion.
+
+<Accordion title="Source code in dreadnode/eval/sample.py" icon="code">
+```python
+def to_dict(self) -> dict[str, t.Any]:
+    """
+    Flattens the sample's data, performing necessary transformations
+    (like metric pivoting) suitable for DataFrame conversion.
+    """
+    record: AnyDict = self.model_dump(
+        exclude={"metrics", "assertions", "task"},
+        mode="json",
+    )
+
+    record["passed"] = self.passed
+    record["failed"] = self.failed
+    record["task"] = self.task.name if self.task else None
+
+    for name, value in record.pop("scenario_params", {}).items():
+        record[f"param_{name}"] = value
+
+    for assertion_name, passed in self.assertions.items():
+        record[f"assertion_{assertion_name}"] = passed
+
+    record_inputs = record.get("input", {})
+    if isinstance(record_inputs, dict):
+        for name, value in record_inputs.items():
+            record[f"input_{name}"] = value
+
+    for name, metrics in self.metrics.items():
+        if metrics:
+            avg_value = sum(m.value for m in metrics) / len(metrics)
+            record[f"metric_{name}"] = avg_value
+
+    return record
+```
+
+
+</Accordion>
 load\_dataset
 -------------
 

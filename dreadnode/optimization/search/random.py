@@ -7,6 +7,7 @@ from dreadnode.optimization.search.base import (
     Categorical,
     Float,
     Int,
+    OptimizationContext,
     Search,
     SearchSpace,
 )
@@ -84,7 +85,7 @@ class RandomSearch(Search[AnyDict]):
         self.seed = seed
         self.random = random.Random(seed)  # noqa: S311 # nosec
 
-    def reset(self) -> None:
+    def reset(self, _: OptimizationContext) -> None:
         self.random = random.Random(self.seed)  # noqa: S311 # nosec
 
     async def suggest(self, step: int) -> t.AsyncIterator[Trial[AnyDict]]:

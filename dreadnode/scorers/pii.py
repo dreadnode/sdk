@@ -67,9 +67,7 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     """Lazily initializes and returns a singleton Presidio AnalyzerEngine instance."""
     global g_analyzer_engine  # noqa: PLW0603
 
-    from presidio_analyzer import (  # type: ignore[import-not-found,unused-ignore]
-        AnalyzerEngine,
-    )
+    from presidio_analyzer import AnalyzerEngine
     from presidio_analyzer.nlp_engine import (  # type: ignore[import-not-found,unused-ignore]
         NlpEngineProvider,
     )
@@ -110,7 +108,7 @@ def detect_pii_with_presidio(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        pass  # type: ignore[import-not-found]
+        import presidio_analyzer  # noqa: F401
 
     def evaluate(
         data: t.Any,

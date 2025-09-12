@@ -9,9 +9,7 @@ from numpy.typing import NDArray
 from dreadnode.data_types.base import DataType
 from dreadnode.util import catch_import_error
 
-VideoDataType: t.TypeAlias = (
-    str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any
-)
+VideoDataType: t.TypeAlias = str | Path | NDArray[t.Any] | bytes | list[NDArray[t.Any]] | t.Any
 
 
 class Video(DataType):
@@ -67,7 +65,7 @@ class Video(DataType):
         """
 
         try:
-            from moviepy.video.VideoClip import (  # type: ignore[import,unused-ignore,import-untyped]
+            from moviepy.video.VideoClip import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
                 VideoClip,
             )
         except ImportError:
@@ -158,7 +156,7 @@ class Video(DataType):
     ) -> tuple[bytes, dict[str, t.Any]]:
         """Create video file from frames."""
         with catch_import_error("dreadnode[multimodal]"):
-            from moviepy.video.io import (  # type: ignore[import,unused-ignore,import-untyped]
+            from moviepy.video.io.ImageSequenceClip import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
                 ImageSequenceClip,
             )
 
@@ -202,9 +200,7 @@ class Video(DataType):
         Returns:
             A tuple of (video_bytes, metadata_dict)
         """
-        from moviepy.video.VideoClip import (  # type: ignore[import-not-found]
-            VideoClip,
-        )
+        from moviepy.video.VideoClip import VideoClip
 
         if not isinstance(self._data, VideoClip):
             raise TypeError("data must be a MoviePy VideoClip object")

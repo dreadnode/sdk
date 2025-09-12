@@ -31,7 +31,7 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[training]"):
-        from transformers import pipeline  # type: ignore[import-not-found]
+        from transformers import pipeline  # type: ignore[import-not-found,unused-ignore]
 
     def evaluate(
         data: t.Any,
@@ -41,9 +41,7 @@ def zero_shot_classification(
         model_name: str = Config(model_name),
     ) -> Metric:
         if score_label not in labels:
-            raise ValueError(
-                f"score_label '{score_label}' must be one of the provided labels."
-            )
+            raise ValueError(f"score_label '{score_label}' must be one of the provided labels.")
 
         pipeline_key = f"zero-shot-classification_{model_name}"
         if pipeline_key not in g_transformer_pipeline_cache:
