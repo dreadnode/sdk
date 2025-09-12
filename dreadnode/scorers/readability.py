@@ -23,7 +23,7 @@ def readability(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        import textstat  # type: ignore[import-not-found]
 
     def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)

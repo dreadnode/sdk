@@ -40,7 +40,7 @@ class Audio(DataType):
             format: Optional format to use (default is wav for numpy arrays)
         """
         with catch_import_error("dreadnode[multimodal]"):
-            import soundfile  # type: ignore[import-not-found,import-untyped,unused-ignore] # noqa: F401
+            import soundfile  # type: ignore[import-not-found] # noqa: F401
 
         self._data = data
         self._sample_rate = sample_rate

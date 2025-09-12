@@ -2,8 +2,6 @@ import functools
 import typing as t
 from difflib import SequenceMatcher
 
-import litellm
-
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
@@ -11,12 +9,8 @@ from dreadnode.scorers.util import cosine_similarity
 from dreadnode.util import catch_import_error
 
 if t.TYPE_CHECKING:
-    from sentence_transformers import (  # type: ignore[import-not-found,unused-ignore]
-        SentenceTransformer,
-    )
-    from sklearn.feature_extraction.text import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-        TfidfVectorizer,
-    )
+    from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+    from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-not-found]
 
 
 def similarity(
@@ -100,7 +94,7 @@ def similarity_with_rapidfuzz(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found,unused-ignore]
+        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
 
     def evaluate(
         data: t.Any,
@@ -277,7 +271,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
             cosine_similarity as sklearn_cosine_similarity,
         )
 
@@ -371,6 +365,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
+    import litellm
 
     async def evaluate(
         data: t.Any,
@@ -425,14 +420,9 @@ def bleu(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import nltk  # type: ignore[import-not-found,import-untyped,unused-ignore]
-        from nltk.tokenize import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-            word_tokenize,
-        )
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-            sentence_bleu,
-        )
-
+        import nltk  # type: ignore[import-not-found]
+        from nltk.tokenize import word_tokenize  # type: ignore[import-not-found]
+        from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-not-found]
     try:
         nltk.data.find("tokenizers/punkt")
     except LookupError as e:

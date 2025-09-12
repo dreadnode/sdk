@@ -480,7 +480,9 @@ async def stream_map_and_merge(
     Yields:
         An asynchronous generator which yields the processed items from the processor streams.
     """
-    FINISHED = object()  # sentinel object to indicate a generator has finished  # noqa: N806
+    FINISHED = (  # noqa: N806
+        object()
+    )  # sentinel object to indicate a generator has finished
     queue = asyncio.Queue[T_out | object | Exception](maxsize=1)
 
     # Define a producer to start worker tasks for every
@@ -775,4 +777,6 @@ def resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
             return str(endpoint)
 
     # If nothing works, return original and let it fail with a helpful error
-    raise RuntimeError(f"Failed to connect to the Dreadnode Artifact storage at {endpoint}.")
+    raise RuntimeError(
+        f"Failed to connect to the Dreadnode Artifact storage at {original_endpoint}."
+    )

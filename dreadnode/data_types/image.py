@@ -45,7 +45,7 @@ class Image(DataType):
             format: Optional format to use when saving (png, jpg, etc.)
         """
         with catch_import_error("dreadnode[multimodal]"):
-            import PIL.Image  # type: ignore[import-not-found,unused-ignore]  # noqa: F401
+            import PIL.Image  # type: ignore[import-not-found]  # noqa: F401
 
         self._data = data
         self._mode = mode
@@ -114,10 +114,10 @@ class Image(DataType):
         """
         import PIL.Image
 
-        if not isinstance(self._data, PIL.Image.Image):
+        pil_image = self._data
+        if not isinstance(pil_image, PIL.Image.Image):
             raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
 
-        pil_image = self._data
         mode = self._mode or pil_image.mode
         image_format = self._format or (pil_image.format.lower() if pil_image.format else "png")
 

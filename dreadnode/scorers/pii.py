@@ -7,9 +7,7 @@ from dreadnode.scorers.contains import contains
 from dreadnode.util import catch_import_error
 
 if t.TYPE_CHECKING:
-    from presidio_analyzer import (  # type: ignore[import-not-found,unused-ignore]
-        AnalyzerEngine,
-    )
+    from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
 
     from dreadnode.common_types import JsonDict
 
@@ -68,7 +66,7 @@ def _get_presidio_analyzer() -> "AnalyzerEngine":
     global g_analyzer_engine  # noqa: PLW0603
 
     from presidio_analyzer import AnalyzerEngine
-    from presidio_analyzer.nlp_engine import (  # type: ignore[import-not-found,unused-ignore]
+    from presidio_analyzer.nlp_engine import (  # type: ignore[import-not-found]
         NlpEngineProvider,
     )
 

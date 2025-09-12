@@ -65,9 +65,7 @@ class Video(DataType):
         """
 
         try:
-            from moviepy.video.VideoClip import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-                VideoClip,
-            )
+            from moviepy.video.VideoClip import VideoClip  # type: ignore[import-not-found]
         except ImportError:
             VideoClip = None  # noqa: N806
 
@@ -156,7 +154,7 @@ class Video(DataType):
     ) -> tuple[bytes, dict[str, t.Any]]:
         """Create video file from frames."""
         with catch_import_error("dreadnode[multimodal]"):
-            from moviepy.video.io.ImageSequenceClip import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            from moviepy.video.io.ImageSequenceClip import (  # type: ignore[import-not-found]
                 ImageSequenceClip,
             )
 

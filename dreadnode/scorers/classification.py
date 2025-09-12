@@ -31,7 +31,7 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[training]"):
-        from transformers import pipeline  # type: ignore[import-not-found,unused-ignore]
+        from transformers import pipeline  # type: ignore[import-not-found]
 
     def evaluate(
         data: t.Any,

@@ -1930,7 +1930,7 @@ def zero_shot_classification(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[training]"):
-        from transformers import pipeline  # type: ignore[import-not-found,unused-ignore]
+        from transformers import pipeline  # type: ignore[import-not-found]
 
     def evaluate(
         data: t.Any,
@@ -3450,7 +3450,7 @@ def readability(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import textstat  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        import textstat  # type: ignore[import-not-found]
 
     def evaluate(data: t.Any, *, target_grade: float = target_grade) -> Metric:
         text = str(data)
@@ -3731,7 +3731,7 @@ def sentiment(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from textblob import TextBlob  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        from textblob import TextBlob  # type: ignore[import-not-found]
 
     def evaluate(data: t.Any, *, target: Sentiment = target) -> Metric:
         if target not in {"positive", "negative", "neutral"}:
@@ -3912,14 +3912,9 @@ def bleu(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        import nltk  # type: ignore[import-not-found,import-untyped,unused-ignore]
-        from nltk.tokenize import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-            word_tokenize,
-        )
-        from nltk.translate.bleu_score import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
-            sentence_bleu,
-        )
-
+        import nltk  # type: ignore[import-not-found]
+        from nltk.tokenize import word_tokenize  # type: ignore[import-not-found]
+        from nltk.translate.bleu_score import sentence_bleu  # type: ignore[import-not-found]
     try:
         nltk.data.find("tokenizers/punkt")
     except LookupError as e:
@@ -4119,6 +4114,7 @@ def similarity_with_litellm(
                   or self-hosted models.
         name: Name of the scorer.
     """
+    import litellm
 
     async def evaluate(
         data: t.Any,
@@ -4254,7 +4250,7 @@ def similarity_with_rapidfuzz(
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found,unused-ignore]
+        from rapidfuzz import fuzz, utils  # type: ignore[import-not-found]
 
     def evaluate(
         data: t.Any,
@@ -4471,7 +4467,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         name: Name of the scorer.
     """
     with catch_import_error("dreadnode[scoring]"):
-        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+        from sklearn.metrics.pairwise import (  # type: ignore[import-not-found]
             cosine_similarity as sklearn_cosine_similarity,
         )
 

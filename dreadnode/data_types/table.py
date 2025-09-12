@@ -9,12 +9,7 @@ import pandas as pd
 from dreadnode.data_types.base import DataType
 
 TableDataType = (
-    pd.DataFrame
-    | dict[t.Any, t.Any]
-    | list[t.Any]
-    | str
-    | Path
-    | np.ndarray[t.Any, t.Any]
+    pd.DataFrame | dict[t.Any, t.Any] | list[t.Any] | str | Path | np.ndarray[t.Any, t.Any]
 )
 
 
