@@ -22,7 +22,7 @@ class AgentResult:
         parts = [
             f"agent={self.agent.name}",
             f"messages={len(self.messages)}",
-            f"usage={self.usage}",
+            f"usage='{self.usage}'",
             f"steps={self.steps}",
         ]
 

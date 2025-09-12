@@ -6,28 +6,10 @@ from pathlib import Path
 import numpy as np
 
 from dreadnode.data_types.base import DataType
+from dreadnode.util import catch_import_error
 
-if t.TYPE_CHECKING:
-    import numpy as np
-
-ImageDataType = t.Union[t.Any, "np.ndarray[t.Any, t.Any]"]
+ImageDataType = np.ndarray[t.Any, t.Any] | t.Any
 ImageDataOrPathType = str | Path | bytes | ImageDataType
-
-
-def check_imports() -> None:
-    try:
-        import PIL  # type: ignore[import-not-found]
-    except ImportError as e:
-        raise ImportError(
-            "Image processing requires Pillow. Install with: pip install dreadnode[multimodal]"
-        ) from e
-
-    try:
-        import numpy as np  # type: ignore[import-not-found]
-    except ImportError as e:
-        raise ImportError(
-            "Image processing requires NumPy. Install with: pip install dreadnode[multimodal]"
-        ) from e
 
 
 class Image(DataType):
@@ -62,7 +44,9 @@ class Image(DataType):
             caption: Optional caption for the image
             format: Optional format to use when saving (png, jpg, etc.)
         """
-        check_imports()
+        with catch_import_error("dreadnode[multimodal]"):
+            import PIL.Image  # type: ignore[import-not-found]  # noqa: F401
+
         self._data = data
         self._mode = mode
         self._caption = caption
@@ -78,14 +62,15 @@ class Image(DataType):
         metadata = self._generate_metadata(image_format, mode, width, height)
         return image_bytes, metadata
 
-    def _process_image_data(self) -> tuple[bytes, str, str | None, int | None, int | None]:
+    def _process_image_data(
+        self,
+    ) -> tuple[bytes, str, str | None, int | None, int | None]:
         """
         Process the image data and return bytes, format, mode, width, and height.
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import numpy as np  # type: ignore[import-not-found]
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if isinstance(self._data, str | Path) and Path(self._data).exists():
             return self._process_file_path()
@@ -99,13 +84,15 @@ class Image(DataType):
             return self._process_base64_string()
         raise TypeError(f"Unsupported image data type: {type(self._data)}")
 
-    def _process_file_path(self) -> tuple[bytes, str, str | None, int | None, int | None]:
+    def _process_file_path(
+        self,
+    ) -> tuple[bytes, str, str | None, int | None, int | None]:
         """
         Process image from file path.
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         path_str = str(self._data)
         image_bytes = Path(path_str).read_bytes()
@@ -117,18 +104,20 @@ class Image(DataType):
             mode = mode or detected_mode
         return image_bytes, image_format, mode, width, height
 
-    def _process_pil_image(self) -> tuple[bytes, str, str | None, int | None, int | None]:
+    def _process_pil_image(
+        self,
+    ) -> tuple[bytes, str, str | None, int | None, int | None]:
         """
         Process PIL Image object.
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
-
-        if not isinstance(self._data, PIL.Image.Image):
-            raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
+        import PIL.Image
 
         pil_image = self._data
+        if not isinstance(pil_image, PIL.Image.Image):
+            raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
+
         mode = self._mode or pil_image.mode
         image_format = self._format or (pil_image.format.lower() if pil_image.format else "png")
 
@@ -155,14 +144,15 @@ class Image(DataType):
         width, height = pil_image.size
         return image_bytes, image_format, mode, width, height
 
-    def _process_numpy_array(self) -> tuple[bytes, str, str | None, int | None, int | None]:
+    def _process_numpy_array(
+        self,
+    ) -> tuple[bytes, str, str | None, int | None, int | None]:
         """
         Process numpy array to bytes.
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import numpy as np  # type: ignore[import-not-found]
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         buffer = io.BytesIO()
         image_format = self._format or "png"
@@ -186,13 +176,15 @@ class Image(DataType):
         width, height = img.size
         return image_bytes, image_format, mode, width, height
 
-    def _process_raw_bytes(self) -> tuple[bytes, str, str | None, int | None, int | None]:
+    def _process_raw_bytes(
+        self,
+    ) -> tuple[bytes, str, str | None, int | None, int | None]:
         """
         Process raw bytes.
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if not isinstance(self._data, bytes):
             raise TypeError(f"Expected bytes, got {type(self._data)}")
@@ -211,13 +203,15 @@ class Image(DataType):
 
         return image_bytes, image_format, mode, width, height
 
-    def _process_base64_string(self) -> tuple[bytes, str, str | None, int | None, int | None]:
+    def _process_base64_string(
+        self,
+    ) -> tuple[bytes, str, str | None, int | None, int | None]:
         """
         Process base64 encoded string.
         Returns:
             A tuple of (image_bytes, image_format, mode, width, height)
         """
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         if not isinstance(self._data, str):
             raise TypeError(f"Expected str, got {type(self._data)}")
@@ -233,7 +227,7 @@ class Image(DataType):
         image_format = self._format or format_part
 
         # Decode the base64 string
-        # TODO(@raja): See if we could optimize this  # noqa: TD003
+        # TODO(@raja): See if we could optimize this
         image_bytes = base64.b64decode(encoded)
 
         # Open with PIL to get properties
@@ -254,8 +248,7 @@ class Image(DataType):
         self, image_format: str, mode: str | None, width: int | None, height: int | None
     ) -> dict[str, str | int | None]:
         """Generate metadata for the image."""
-        import numpy as np  # type: ignore[import-not-found]
-        import PIL.Image  # type: ignore[import-not-found]
+        import PIL.Image
 
         metadata: dict[str, str | int | None] = {
             "extension": image_format.lower(),
@@ -314,8 +307,6 @@ class Image(DataType):
         self, array: "np.ndarray[t.Any, np.dtype[t.Any]]"
     ) -> "np.ndarray[t.Any, np.dtype[t.Any]]":
         """Convert numpy array to a format suitable for PIL."""
-        import numpy as np  # type: ignore[import-not-found]
-
         grayscale_dim = 2
         rgb_dim = 3
         # Handle grayscale (2D arrays)

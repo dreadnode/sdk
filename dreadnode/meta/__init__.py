@@ -1,3 +1,4 @@
+from dreadnode.meta.config import Component, Config, ConfigInfo, Model, component
 from dreadnode.meta.context import (
     Context,
     CurrentRun,
@@ -15,8 +16,12 @@ from dreadnode.meta.context import (
     TrialScore,
 )
 from dreadnode.meta.hydrate import hydrate
-from dreadnode.meta.introspect import get_config_model, get_config_schema, get_model_schema
-from dreadnode.meta.types import Component, Config, ConfigInfo, Model, component
+from dreadnode.meta.introspect import (
+    flatten_model,
+    get_config_model,
+    get_config_schema,
+    get_model_schema,
+)
 
 __all__ = [
     "Component",
@@ -39,6 +44,7 @@ __all__ = [
     "TrialOutput",
     "TrialScore",
     "component",
+    "flatten_model",
     "get_config_model",
     "get_config_schema",
     "get_model_schema",

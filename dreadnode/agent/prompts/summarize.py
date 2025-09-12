@@ -1,16 +1,16 @@
 from dataclasses import dataclass
 
-from dreadnode.agent.types import Chat, prompt
+import rigging as rg
 
 
 @dataclass
 class Summary:
     analysis: str
     summary: str
-    chat: Chat
+    chat: rg.Chat
 
 
-@prompt
+@rg.prompt
 async def summarize_conversation(conversation: str, *, guidance: str = "") -> Summary:  # type: ignore[empty-body]
     """
     Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.

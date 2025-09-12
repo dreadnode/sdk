@@ -7,8 +7,8 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, Field, create_model
 from pydantic_core import PydanticUndefined
 
-from dreadnode.meta.types import Component, ConfigInfo, Model
-from dreadnode.types import AnyDict
+from dreadnode.common_types import AnyDict
+from dreadnode.meta.config import Component, ConfigInfo, Model
 from dreadnode.util import get_obj_name, safe_issubclass
 
 
@@ -45,7 +45,7 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
             if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
                 continue
 
-            field_kwargs = {"description": " ", **param_info.field_kwargs, "default": default}
+            field_kwargs = {"description": "-", **param_info.field_kwargs, "default": default}
             field_kwargs.pop("default_factory", None)
             fields[field_name] = (field_type, Field(**field_kwargs))
 
@@ -82,7 +82,7 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
             if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
                 continue
 
-            field_kwargs = {"description": " ", **param_info.field_kwargs, "default": default}
+            field_kwargs = {"description": "-", **param_info.field_kwargs, "default": default}
             fields[param_name] = (field_type, Field(**field_kwargs))
 
         for attr_name, attr_info in blueprint.__dn_attr_config__.items():

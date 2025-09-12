@@ -2,24 +2,34 @@ import typing as t
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from dreadnode.optimization.trial import CandidateT, Trials
-from dreadnode.types import Primitive
+from dreadnode.common_types import Primitive
+from dreadnode.optimization.trial import CandidateT, Trial
+
+if t.TYPE_CHECKING:
+    from dreadnode.optimization.study import Direction
 
 
 class Search(ABC, t.Generic[CandidateT]):
     """Abstract base class for all optimization search strategies."""
 
-    @abstractmethod
-    def reset(self) -> None:
-        """Resets the search strategy to its initial state."""
+    def reset(self, context: "OptimizationContext") -> None:
+        """Resets the search strategy to a clean state."""
 
     @abstractmethod
-    async def suggest(self, step: int) -> Trials[CandidateT]:
+    def suggest(self, step: int) -> t.AsyncIterator[Trial[CandidateT]]:
         """Suggests the next batch of candidates."""
 
     @abstractmethod
-    async def observe(self, trials: Trials[CandidateT]) -> None:
+    async def observe(self, trials: list[Trial[CandidateT]]) -> None:
         """Informs the strategy of the results of recent trials."""
+
+
+@dataclass
+class OptimizationContext:
+    """Context to prepare search algorithms for objectives."""
+
+    objective_names: list[str]
+    directions: "list[Direction]"
 
 
 @dataclass

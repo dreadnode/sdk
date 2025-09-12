@@ -39,7 +39,17 @@
           "usage/runs",
           "usage/tasks",
           "usage/metrics",
-          "usage/scorers",
+          {
+            "group": "Scorers",
+            "pages": [
+              "usage/scorers/index",
+              "usage/scorers/built-in-scorers",
+              "usage/scorers/advanced",
+              "usage/scorers/composition"
+            ]
+          },
+          "usage/optimization",
+          "usage/airt",
           "usage/data-tracking",
           "usage/rich-objects",
           "usage/model-training",
@@ -66,6 +76,10 @@
           "sdk/artifact",
           "sdk/data_types",
           "sdk/scorers",
+          "sdk/optimization",
+          "sdk/mutations",
+          "sdk/eval",
+          "sdk/airt",
           "sdk/integrations",
           "sdk/main",
           "sdk/metric",

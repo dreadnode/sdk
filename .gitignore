@@ -1,5 +1,5 @@
-# uv lock (until we migrate)
-uv.lock
+# Poetry deprecated
+poetry.lock
 
 # Testing code
 notebooks/
@@ -93,7 +93,6 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
 
 # Jupyter Notebook
 .ipynb_checkpoints

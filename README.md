@@ -80,6 +80,7 @@ with dn.run(tags=["reverse-engineering"]):
 ## Installation
 
 We publish every version to PyPi:
+
 ```bash
 pip install -U dreadnode
 ```
@@ -87,16 +88,16 @@ pip install -U dreadnode
 If you want to build from source:
 
 ```bash
+uv sync
 
-poetry install
 # Install with multimodal extras
-poetry install --extras multimodal
+uv sync --extras multimodal
 
 # Install with training extras
-poetry install --extras training
+uv sync --extras training
 
 # Install with all extras
-poetry install --all-extras
+uv sync --all-extras
 ```
 
 ## Installation from PyPI with Optional Features

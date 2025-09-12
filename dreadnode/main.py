@@ -22,6 +22,12 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
 from dreadnode.artifact.credential_manager import CredentialManager
+from dreadnode.common_types import (
+    INHERITED,
+    AnyDict,
+    Inherited,
+    JsonValue,
+)
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
     DEFAULT_SERVER_URL,
@@ -57,12 +63,6 @@ from dreadnode.tracing.span import (
     TaskSpan,
     current_run_span,
     current_task_span,
-)
-from dreadnode.types import (
-    INHERITED,
-    AnyDict,
-    Inherited,
-    JsonValue,
 )
 from dreadnode.user_config import UserConfig
 from dreadnode.util import (
@@ -472,6 +472,20 @@ class Dreadnode:
     @t.overload
     def task(
         self,
+        func: t.Callable[P, t.Awaitable[R]],
+        /,
+    ) -> Task[P, R]: ...
+
+    @t.overload
+    def task(
+        self,
+        func: t.Callable[P, R],
+        /,
+    ) -> Task[P, R]: ...
+
+    @t.overload
+    def task(
+        self,
         func: None = None,
         /,
         *,
@@ -502,13 +516,6 @@ class Dreadnode:
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
     ) -> ScoredTaskDecorator[R]: ...
-
-    @t.overload
-    def task(
-        self,
-        func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        /,
-    ) -> Task[P, R]: ...
 
     def task(
         self,
@@ -717,7 +724,7 @@ class Dreadnode:
         if not self._initialized:
             self.configure()
 
-        _scorers = Scorer.fit_like(scorers)
+        _scorers = Scorer.fit_many(scorers)
         _assert_scores = (
             [s.name for s in _scorers] if assert_scores is True else list(assert_scores or [])
         )
@@ -799,7 +806,7 @@ class Dreadnode:
         if not self._initialized:
             self.configure()
 
-        name_prefix = name_prefix or coolname.generate_slug(2)
+        name_prefix = clean_str(name_prefix or coolname.generate_slug(2), replace_with="-")
         name = name or f"{name_prefix}-{random.randint(100, 999)}"  # noqa: S311 # nosec
 
         return RunSpan(
@@ -973,7 +980,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool,
+        value: float | bool,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,
@@ -1064,7 +1071,7 @@ class Dreadnode:
     def log_metric(
         self,
         name: str,
-        value: float | bool | Metric,
+        value: float | bool | Metric,  # noqa: FBT001
         *,
         step: int = 0,
         origin: t.Any | None = None,

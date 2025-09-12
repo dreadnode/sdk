@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING, TypeVar
 
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from loguru import logger
-from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
 from dreadnode.constants import FS_CREDENTIAL_REFRESH_BUFFER
 from dreadnode.util import resolve_endpoint
 
 if TYPE_CHECKING:
-    from dreadnode.api.models import UserDataCredentials
+    from s3fs import S3FileSystem  # type: ignore[import-untyped]
 
+    from dreadnode.api.models import UserDataCredentials
 
 T = TypeVar("T")
 
@@ -37,7 +37,7 @@ class CredentialManager:
         """Initialize with fresh credentials."""
         self._refresh_credentials()
 
-    def get_filesystem(self) -> S3FileSystem:
+    def get_filesystem(self) -> "S3FileSystem":
         """Get current filesystem, refreshing credentials if needed."""
         if self._needs_refresh():
             self._refresh_credentials()
@@ -59,6 +59,8 @@ class CredentialManager:
 
     def _refresh_credentials(self) -> None:
         """Refresh credentials and create new filesystem."""
+        from s3fs import S3FileSystem
+
         try:
             logger.info("Refreshing storage credentials")
             new_credentials = self._credential_fetcher()

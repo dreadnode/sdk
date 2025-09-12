@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from dreadnode.types import AnyDict
+from dreadnode.common_types import AnyDict
 
 
 @dataclass

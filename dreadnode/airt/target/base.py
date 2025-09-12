@@ -19,6 +19,6 @@ class Target(ABC, t.Generic[In, Out]):
         ...
 
     @abstractmethod
-    def as_task(self, input: In) -> Task[..., Out]:
-        """Creates a Task that will run the given candidate against the target."""
+    def task_factory(self, input: In) -> Task[..., Out]:
+        """Creates a Task that will run the given input against the target."""
         ...

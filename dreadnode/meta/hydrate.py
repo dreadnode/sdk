@@ -4,8 +4,8 @@ import typing as t
 
 from pydantic import BaseModel as PydanticBaseModel
 
-from dreadnode.meta.types import Component, ConfigInfo, Model
-from dreadnode.types import AnyDict
+from dreadnode.common_types import AnyDict
+from dreadnode.meta.config import Component, ConfigInfo, Model
 from dreadnode.util import get_obj_name, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
@@ -89,6 +89,7 @@ def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:  # noqa: PLR0911, 
         hydrated_list = []
         for item in obj:
             # This assumes the overrides are a dict keyed by the component's name.
+            # TODO(nick): Handle indexing extensions here (name_1, name_2, etc.)
             item_name = get_obj_name(item, short=True, clean=True)
             item_overrides = override.get(item_name)
             hydrated_list.append(_hydrate_recursive(item, item_overrides))

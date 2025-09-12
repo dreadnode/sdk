@@ -5,6 +5,7 @@ import unicodedata
 
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
+from dreadnode.util import catch_import_error
 
 
 def random_capitalization(
@@ -72,7 +73,10 @@ def insert_punctuation(
         text: str,
         *,
         ratio: float = Config(
-            ratio, ge=0.0, le=1.0, help="The ratio of word pairs to insert punctuation between"
+            ratio,
+            ge=0.0,
+            le=1.0,
+            help="The ratio of word pairs to insert punctuation between",
         ),
     ) -> str:
         words = text.split()
@@ -106,7 +110,12 @@ def diacritic(
         accent: The type of accent to apply.
         name: Name of the transform.
     """
-    diacritics = {"acute": "\u0301", "grave": "\u0300", "tilde": "\u0303", "umlaut": "\u0308"}
+    diacritics = {
+        "acute": "\u0301",
+        "grave": "\u0300",
+        "tilde": "\u0303",
+        "umlaut": "\u0308",
+    }
 
     def transform(
         text: str,
@@ -223,14 +232,8 @@ def unicode_confusable(
         name: Name of the transform.
     """
 
-    try:
-        from confusables import (  # type: ignore[import-not-found]
-            confusable_characters,
-        )
-    except ImportError:
-        raise ImportError(
-            "Confusables dependency is not installed. Install with: pip install confusables"
-        ) from ImportError("confusables library not available")
+    with catch_import_error("dreadnode[scoring]"):
+        from confusables import confusable_characters  # type: ignore[import-not-found]
 
     if not 0.0 <= ratio <= 1.0:
         raise ValueError("Application ratio must be between 0.0 and 1.0.")

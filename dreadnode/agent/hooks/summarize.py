@@ -1,12 +1,11 @@
 import contextlib
 import typing as t
 
-from litellm.exceptions import ContextWindowExceededError
+import rigging as rg
 
 from dreadnode.agent.events import AgentError, AgentEvent, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
-from dreadnode.agent.types import Generator, Message
 from dreadnode.meta import Config, component
 
 if t.TYPE_CHECKING:
@@ -25,6 +24,8 @@ CONTEXT_LENGTH_ERROR_PATTERNS = [
 def _is_context_length_error(error: BaseException) -> bool:
     """Checks if an exception is likely due to exceeding the context window."""
     with contextlib.suppress(ImportError):
+        from litellm.exceptions import ContextWindowExceededError
+
         if isinstance(error, ContextWindowExceededError):
             return True
 
@@ -45,7 +46,7 @@ def _get_last_input_tokens(event: AgentEvent) -> int:
 
 @component
 def summarize_when_long(
-    model: str | Generator | None = None,
+    model: str | rg.Generator | None = None,
     max_tokens: int = 100_000,
     min_messages_to_keep: int = 5,
 ) -> "Hook":
@@ -72,7 +73,7 @@ def summarize_when_long(
     async def summarize_when_long(  # noqa: PLR0912
         event: AgentEvent,
         *,
-        model: "str | Generator | None" = Config(  # noqa: B008
+        model: str | rg.Generator | None = Config(  # noqa: B008
             model,
             help="Model to use for summarization - fallback to the agent model",
             expose_as=str | None,
@@ -112,7 +113,7 @@ def summarize_when_long(
             return None
 
         # Exclude the system message from the summarization process.
-        system_message: Message | None = (
+        system_message: rg.Message | None = (
             messages.pop(0) if messages and messages[0].role == "system" else None
         )
 
@@ -156,10 +157,10 @@ def summarize_when_long(
             "</conversation-summary>"
         )
 
-        new_messages: list[Message] = []
+        new_messages: list[rg.Message] = []
         if system_message:
             new_messages.append(system_message)
-        new_messages.append(Message("user", summary_content, metadata={"summary": True}))
+        new_messages.append(rg.Message("user", summary_content, metadata={"summary": True}))
         new_messages.extend(messages_to_keep)
 
         return (

@@ -279,7 +279,9 @@ def __init__(self, credential_manager: CredentialManager):
 ### batch\_upload\_files
 
 ```python
-batch_upload_files(source_paths: list[str], target_paths: list[str]) -> list[str]
+batch_upload_files(
+    source_paths: list[str], target_paths: list[str]
+) -> list[str]
 ```
 
 Upload multiple files in a single batch operation.
@@ -342,7 +344,9 @@ def batch_upload_files(self, source_paths: list[str], target_paths: list[str]) -
 ### compute\_file\_hash
 
 ```python
-compute_file_hash(file_path: Path, stream_threshold_mb: int = 10) -> str
+compute_file_hash(
+    file_path: Path, stream_threshold_mb: int = 10
+) -> str
 ```
 
 Compute SHA1 hash of a file, using streaming only for larger files.
@@ -400,7 +404,9 @@ def compute_file_hash(self, file_path: Path, stream_threshold_mb: int = 10) -> s
 ### compute\_file\_hashes
 
 ```python
-compute_file_hashes(file_paths: list[Path]) -> dict[str, str]
+compute_file_hashes(
+    file_paths: list[Path],
+) -> dict[str, str]
 ```
 
 Compute SHA1 hashes for multiple files.
@@ -497,7 +503,9 @@ ArtifactTreeBuilder
 -------------------
 
 ```python
-ArtifactTreeBuilder(storage: ArtifactStorage, prefix_path: str | None = None)
+ArtifactTreeBuilder(
+    storage: ArtifactStorage, prefix_path: str | None = None
+)
 ```
 
 Builds a hierarchical tree structure for artifacts while uploading them to storage.

@@ -1,7 +1,9 @@
 import json
 import typing as t
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
+import rigging as rg
 from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
 from rich.panel import Panel
 from rich.rule import Rule
@@ -16,7 +18,6 @@ from dreadnode.agent.reactions import (
     Reaction,
     RetryWithFeedback,
 )
-from dreadnode.agent.types import Message, ToolCall, Usage
 from dreadnode.util import format_dict, shorten_string
 
 if t.TYPE_CHECKING:
@@ -24,7 +25,7 @@ if t.TYPE_CHECKING:
     from dreadnode.agent.reactions import Reaction
     from dreadnode.agent.result import AgentResult
     from dreadnode.agent.thread import Thread
-    from dreadnode.types import AnyDict
+    from dreadnode.common_types import AnyDict
 
 
 AgentEventT = t.TypeVar("AgentEventT", bound="AgentEvent")
@@ -33,22 +34,27 @@ AgentStopReason = t.Literal["finished", "max_steps_reached", "error", "stalled"]
 
 @dataclass
 class AgentEvent:
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc), kw_only=True, repr=False
+    )
+    """The timestamp of when the event occurred (UTC)."""
+
     agent: "Agent" = field(repr=False)
     """The agent associated with this event."""
     thread: "Thread" = field(repr=False)
     """The thread associated with this event."""
-    messages: "list[Message]" = field(repr=False)
+    messages: "list[rg.Message]" = field(repr=False)
     """Current messages for this run session."""
     events: "list[AgentEvent]" = field(repr=False)
     """Current events for this run session."""
 
     @property
-    def total_usage(self) -> Usage:
+    def total_usage(self) -> rg.generator.Usage:
         """Aggregates the usage from all events in the run session."""
         return _total_usage_from_events(self.events)
 
     @property
-    def last_usage(self) -> Usage | None:
+    def last_usage(self) -> rg.generator.Usage | None:
         """Returns the usage from the last generation event, if available."""
         if not self.events:
             return None
@@ -56,6 +62,27 @@ class AgentEvent:
         if isinstance(last_event, GenerationEnd):
             return last_event.usage
         return None
+
+    @property
+    def estimated_cost(self) -> float | None:
+        """Estimates the cost of the agent run based on total token usage and model pricing."""
+        import litellm
+
+        if self.agent._generator is None:  # noqa: SLF001
+            return None
+
+        model = self.agent._generator.model  # noqa: SLF001
+        while model not in litellm.model_cost:
+            if "/" not in model:
+                return None
+            model = "/".join(model.split("/")[1:])
+
+        model_info: AnyDict = litellm.model_cost[model]
+        usage = self.total_usage
+        input_token_cost = float(model_info.get("input_cost_per_token", 0))
+        output_token_cost = float(model_info.get("output_cost_per_token", 0))
+
+        return input_token_cost * usage.input_tokens + output_token_cost * usage.output_tokens
 
     def get_latest_event_by_type(self, event_type: type[AgentEventT]) -> AgentEventT | None:
         """
@@ -120,8 +147,8 @@ class StepStart(AgentEvent):
 
 @dataclass
 class GenerationEnd(AgentEventInStep):
-    message: Message
-    usage: "Usage | None"
+    message: rg.Message
+    usage: "rg.generator.Usage | None"
 
     def __repr__(self) -> str:
         message_content = shorten_string(str(self.message.content), 50)
@@ -130,11 +157,13 @@ class GenerationEnd(AgentEventInStep):
         return f"GenerationEnd(message={message})"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:
+        cost = round(self.estimated_cost, 6) if self.estimated_cost else ""
+        usage = str(self.usage) or ""
         return Panel(
             format_message(self.message, truncate=truncate),
             title="Generation End",
             title_align="left",
-            subtitle=f"[dim]{self.usage or ''!s}[/dim]",
+            subtitle=f"[dim]{usage} [{cost} USD][/dim]",
             subtitle_align="right",
             padding=(1, 1),
         )
@@ -169,7 +198,7 @@ class AgentError(AgentEventInStep):
 
 @dataclass
 class ToolStart(AgentEventInStep):
-    tool_call: ToolCall
+    tool_call: rg.tools.ToolCall
 
     def __repr__(self) -> str:
         return f"ToolStart(tool_call={self.tool_call})"
@@ -205,8 +234,8 @@ class ToolStart(AgentEventInStep):
 
 @dataclass
 class ToolEnd(AgentEventInStep):
-    tool_call: ToolCall
-    message: Message
+    tool_call: rg.tools.ToolCall
+    message: rg.Message
     stop: bool
 
     def __repr__(self) -> str:
@@ -274,11 +303,13 @@ class AgentEnd(AgentEvent):
         table.add_row("Stop Reason:", str(self.stop_reason))
         table.add_row("Steps Taken:", str(res.steps))
         table.add_row("Messages:", str(len(res.messages)))
+        table.add_row("In Tokens:", str(res.usage.input_tokens))
+        table.add_row("Out Tokens:", str(res.usage.output_tokens))
+        table.add_row("Total Tokens:", str(res.usage.total_tokens))
         table.add_row(
-            "Tokens:",
-            f"in: {res.usage.input_tokens} | out: {res.usage.output_tokens} | total: {res.usage.total_tokens}",
+            "Estimated Cost:",
+            f"{round(self.estimated_cost, 6) if self.estimated_cost else '-'} USD",
         )
-
         return Panel(
             table,
             title="Agent End",
@@ -287,9 +318,9 @@ class AgentEnd(AgentEvent):
         )
 
 
-def _total_usage_from_events(events: list[AgentEvent]) -> Usage:
+def _total_usage_from_events(events: list[AgentEvent]) -> rg.generator.Usage:
     """Calculates the total usage from a list of events."""
-    total = Usage(input_tokens=0, output_tokens=0, total_tokens=0)
+    total = rg.generator.Usage(input_tokens=0, output_tokens=0, total_tokens=0)
     for event in events:
         if isinstance(event, GenerationEnd) and event.usage:
             total += event.usage

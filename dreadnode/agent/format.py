@@ -1,5 +1,6 @@
 import typing as t
 
+import rigging as rg
 from rich import box
 from rich.console import Group, RenderableType
 from rich.markdown import Markdown
@@ -8,10 +9,6 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-from dreadnode.agent.types import (
-    ContentText,
-    Message,
-)
 from dreadnode.util import get_callable_name, shorten_string
 
 if t.TYPE_CHECKING:
@@ -81,7 +78,7 @@ def format_agent(agent: "Agent") -> RenderableType:
     )
 
 
-def format_message(message: Message, *, truncate: bool = False, markdown: bool = False) -> Panel:
+def format_message(message: rg.Message, *, truncate: bool = False, markdown: bool = False) -> Panel:
     """Formats a single message into a rich renderable."""
     color = (
         "magenta"
@@ -95,7 +92,7 @@ def format_message(message: Message, *, truncate: bool = False, markdown: bool =
 
     items: list[RenderableType] = []
     for part in message.content_parts:
-        if isinstance(part, ContentText):
+        if isinstance(part, rg.ContentText):
             text = (
                 shorten_string(part.text, max_length=500, max_lines=15, separator="\n[...]\n")
                 if truncate
@@ -130,7 +127,7 @@ def format_message(message: Message, *, truncate: bool = False, markdown: bool =
 
 
 def format_messages(
-    messages: t.Sequence[Message], *, truncate: bool = False, markdown: bool = False
+    messages: t.Sequence[rg.Message], *, truncate: bool = False, markdown: bool = False
 ) -> RenderableType:
     """Formats a list of messages into a rich renderable."""
     panels = [format_message(m, truncate=truncate, markdown=markdown) for m in messages]
