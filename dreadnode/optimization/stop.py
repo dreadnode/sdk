@@ -38,7 +38,7 @@ class StudyStopCondition(t.Generic[CandidateT]):
         )
 
 
-def stop_on_score_value(
+def score_value(
     metric_name: str | None = None,
     *,
     gt: float | None = None,
@@ -85,7 +85,7 @@ def stop_on_score_value(
     return StudyStopCondition(stop, name=f"score_value({metric_name or 'score'})")
 
 
-def stop_on_score_plateau(
+def score_plateau(
     patience: int, *, min_delta: float = 0, metric_name: str | None = None
 ) -> StudyStopCondition:
     """
@@ -131,7 +131,7 @@ def stop_on_score_plateau(
     return StudyStopCondition(stop, name=f"plateau({metric_name or 'score'}, p={patience})")
 
 
-def stop_on_total_trials(max_trials: int) -> StudyStopCondition:
+def total_trials(max_trials: int) -> StudyStopCondition:
     """
     Stops the study after a total number of trials have been processed.
 
@@ -145,7 +145,7 @@ def stop_on_total_trials(max_trials: int) -> StudyStopCondition:
     return StudyStopCondition(stop, name=f"total_trials({max_trials})")
 
 
-def stop_on_pruned_ratio(ratio: float, min_trials: int = 10) -> StudyStopCondition:
+def pruned_ratio(ratio: float, min_trials: int = 10) -> StudyStopCondition:
     """
     Stops the study if the ratio of pruned trials exceeds a threshold.
 
@@ -165,7 +165,7 @@ def stop_on_pruned_ratio(ratio: float, min_trials: int = 10) -> StudyStopConditi
     return StudyStopCondition(stop, name=f"pruned_ratio({ratio:.0%})")
 
 
-def stop_on_failed_ratio(ratio: float, min_trials: int = 10) -> StudyStopCondition:
+def failed_ratio(ratio: float, min_trials: int = 10) -> StudyStopCondition:
     """
     Stops the study if the ratio of failed trials exceeds a threshold.
 
