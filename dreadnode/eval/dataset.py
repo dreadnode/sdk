@@ -3,7 +3,7 @@ import json
 import typing as t
 from pathlib import Path
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from dreadnode.types import AnyDict
 
