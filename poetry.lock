@@ -6678,6 +6678,18 @@ files = [
 ]
 
 [[package]]
+name = "types-pyyaml"
+version = "6.0.12.20250822"
+description = "Typing stubs for PyYAML"
+optional = false
+python-versions = ">=3.9"
+groups = ["dev"]
+files = [
+    {file = "types_pyyaml-6.0.12.20250822-py3-none-any.whl", hash = "sha256:1fe1a5e146aa315483592d292b72a172b65b946a6d98aa6ddd8e4aa838ab7098"},
+    {file = "types_pyyaml-6.0.12.20250822.tar.gz", hash = "sha256:259f1d93079d335730a9db7cff2bcaf65d7e04b4a56b5927d49a612199b59413"},
+]
+
+[[package]]
 name = "types-requests"
 version = "2.32.4.20250809"
 description = "Typing stubs for requests"
@@ -7301,4 +7313,4 @@ training = ["sentence-transformers", "transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "a72bf575d623bcfc530e9e24552b1244e4bc60fa881f151bd97bcc87d2048a1c"
+content-hash = "30833263e639544a5ac0eb2b4183e61175320cf8973f4d7e7867a82a93e2a358"

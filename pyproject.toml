@@ -77,6 +77,10 @@ dn = "dreadnode.__main__:run"
 [tool.poetry.plugins."pipx.run"]
 dreadnode = 'dreadnode.__main__:run'
 
+
+[tool.poetry.group.dev.dependencies]
+types-pyyaml = "^6.0.12.20250822"
+
 [project.urls]
 Homepage = "https://github.com/dreadnode/sdk"
 Repository = "https://github.com/dreadnode/sdk"
