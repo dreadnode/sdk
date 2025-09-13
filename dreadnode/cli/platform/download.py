@@ -140,5 +140,5 @@ def download_platform(tag: str | None = None) -> LocalVersionSchema:
                 )
                 return available_local_version
 
-    print_info(f"Version {tag} is not available locally. Will download it.")
+    print_info(f"Version {tag} is not available locally. Attempting to download it now ...")
     return _download_version_files(tag)

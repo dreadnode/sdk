@@ -266,7 +266,6 @@ def create_default_env_files(current_version: LocalVersionSchema) -> None:
                     # copy the sample
                     sample_env_file_path = current_version.get_example_env_path_by_service(service)
                     if sample_env_file_path.exists():
-                        print_info(f"Copying {sample_env_file_path} to {env_file_path}...")
                         env_file_path.write_text(sample_env_file_path.read_text())
                     else:
                         print_error(
@@ -345,7 +344,6 @@ def remove_overrides_env(path: Path) -> None:
     """
     if path.exists():
         path.unlink()
-        print_info(f"Removed overrides environment file: {path}")
 
 
 def build_env_file(path: Path, **kwargs: str | None) -> None:
