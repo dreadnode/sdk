@@ -6,6 +6,7 @@ from dreadnode.cli.platform.configure import configure_platform, list_configurat
 from dreadnode.cli.platform.download import download_platform
 from dreadnode.cli.platform.login import log_into_registries
 from dreadnode.cli.platform.start import start_platform
+from dreadnode.cli.platform.status import platform_status
 from dreadnode.cli.platform.stop import stop_platform
 from dreadnode.cli.platform.upgrade import upgrade_platform
 from dreadnode.cli.platform.utils.printing import print_info
@@ -146,3 +147,18 @@ def version(
 
     else:
         print_info("No current platform version is set.")
+
+
+@cli.command()
+def status(
+    tag: t.Annotated[
+        str | None, cyclopts.Parameter(help="Optional image tag to use when checking status.")
+    ] = None,
+) -> None:
+    """Get the status of the platform with the specified or current version.
+
+    Args:
+        tag: Optional image tag to use. If not provided, uses the current
+            version or downloads the latest available version.
+    """
+    platform_status(tag=tag)
