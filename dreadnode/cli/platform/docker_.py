@@ -1,14 +1,98 @@
 import json
 import subprocess
-import time
-from pathlib import Path
+import typing as t
+from dataclasses import dataclass
+from enum import Enum
 
+from pydantic import BaseModel, Field
 from yaml import safe_dump
 
 from dreadnode.cli.api import create_api_client
-from dreadnode.cli.platform.constants import SERVICES, PlatformService
+from dreadnode.cli.platform.constants import DEFAULT_DOCKER_PROJECT_NAME, PlatformService
 from dreadnode.cli.platform.schemas import LocalVersionSchema
 from dreadnode.cli.platform.utils.printing import print_error, print_info, print_success
+
+DockerContainerState = t.Literal[
+    "running", "exited", "paused", "restarting", "removing", "created", "dead"
+]
+
+
+class CaptureOutput(str, Enum):
+    TRUE = "true"
+    FALSE = "false"
+
+
+@dataclass
+class DockerImage:
+    repository: str
+    tag: str | None = None
+    digest: str | None = None
+
+    @classmethod
+    def from_string(cls, image_string: str) -> "DockerImage":
+        """
+        Parse a Docker image string into repository, tag, and SHA components.
+
+        Examples:
+        - postgres:16 -> repository="postgres", tag="16", sha=None
+        - minio/minio:latest -> repository="minio/minio", tag="latest", sha=None
+        - image@sha256:abc123 -> repository="image", tag=None, sha="sha256:abc123"
+        """
+        # Check if there's a SHA digest (contains @)
+        if "@" in image_string:
+            repo_part, sha = image_string.split("@", 1)
+            # Check if there's also a tag before the @
+            if ":" in repo_part:
+                repository, tag = repo_part.rsplit(":", 1)
+                return cls(repository=repository, tag=tag, digest=sha)
+            return cls(repository=repo_part, tag=None, digest=sha)
+
+        # Check if there's a tag (contains :)
+        if ":" in image_string:
+            # Use rsplit to handle cases like registry.com:5000/image:tag
+            repository, tag = image_string.rsplit(":", 1)
+            return cls(repository=repository, tag=tag, digest=None)
+
+        # Just repository name
+        return cls(repository=image_string, tag=None, digest=None)
+
+    def __str__(self) -> str:
+        """Reconstruct the original image string format."""
+        result = self.repository
+        if self.tag:
+            result += f":{self.tag}"
+        if self.digest:
+            result += f"@{self.digest}"
+        return result
+
+    def __eq__(self, other) -> bool:
+        """Check if two DockerImage instances are equal."""
+        if not isinstance(other, DockerImage):
+            return False
+        return (
+            self.repository == other.repository
+            and self.tag == other.tag
+            and self.digest == other.digest
+        )
+
+    def __ne__(self, other) -> bool:
+        """Check if two DockerImage instances are not equal."""
+        return not self.__eq__(other)
+
+    def __hash__(self) -> int:
+        """Make DockerImage hashable so it can be used in sets/dicts."""
+        return hash((self.repository, self.tag, self.digest))
+
+
+class DockerPSResult(BaseModel):
+    name: str = Field(..., alias="Name")
+    exit_code: int = Field(..., alias="ExitCode")
+    state: DockerContainerState = Field(..., alias="State")
+    status: str = Field(..., alias="Status")
+
+    @property
+    def is_running(self) -> bool:
+        return self.state == "running"
 
 
 def _run_docker_compose_command(
@@ -16,6 +100,7 @@ def _run_docker_compose_command(
     # compose_file: Path,
     timeout: int = 300,
     stdin_input: str | None = None,
+    capture_output: CaptureOutput | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Execute a docker compose command with common error handling and configuration.
 
@@ -36,8 +121,7 @@ def _run_docker_compose_command(
     """
     cmd = ["docker", "compose"]
 
-    # Add compose file
-    # cmd.extend(["-f", compose_file.as_posix()])
+    cmd.extend(["-p", DEFAULT_DOCKER_PROJECT_NAME])
 
     # Add the specific command arguments
     cmd.extend(args)
@@ -55,6 +139,7 @@ def _run_docker_compose_command(
             encoding="utf-8",
             errors="replace",
             input=stdin_input,
+            capture_output=bool(capture_output == CaptureOutput.TRUE),
         )
 
     except subprocess.CalledProcessError as e:
@@ -70,88 +155,6 @@ def _run_docker_compose_command(
         raise
 
     return result
-
-
-def get_origin(ui_container: str) -> str | None:
-    """
-    Get the ORIGIN environment variable from the UI container and return
-    a friendly message for the user.
-
-    Args:
-        ui_container: Name of the UI container (default: dreadnode-ui).
-
-    Returns:
-        str | None: Message with the origin URL, or None if not found.
-    """
-    try:
-        cmd = [
-            "docker",
-            "inspect",
-            "-f",
-            "{{range .Config.Env}}{{println .}}{{end}}",
-            ui_container,
-        ]
-        cp = subprocess.run(  # noqa: S603
-            cmd,
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-
-        for line in cp.stdout.splitlines():
-            if line.startswith("ORIGIN="):
-                return line.split("=", 1)[1]
-
-    except subprocess.CalledProcessError:
-        return None
-
-    return None
-
-
-def _check_docker_creds_exist(registry: str) -> bool:
-    """Check if Docker credentials exist for the specified registry.
-
-    Args:
-        registry: Registry hostname to check credentials for.
-
-    Returns:
-        bool: True if credentials exist, False otherwise.
-    """
-    config_path = Path.home() / ".docker" / "config.json"
-
-    if not config_path.exists():
-        return False
-
-    try:
-        with config_path.open() as f:
-            config = json.load(f)
-
-        auths = config.get("auths", {})
-    except (json.JSONDecodeError, KeyError):
-        return False
-    return registry in auths
-
-
-def _are_docker_creds_fresh(registry: str, max_age_hours: int = 1) -> bool:
-    """Check if Docker credentials are fresh (recently updated).
-
-    Args:
-        registry: Registry hostname to check credentials for.
-        max_age_hours: Maximum age in hours for credentials to be considered fresh.
-
-    Returns:
-        bool: True if credentials are fresh, False otherwise.
-    """
-    config_path = Path.home() / ".docker" / "config.json"
-
-    if not config_path.exists():
-        return False
-
-    # Check file modification time
-    mtime = config_path.stat().st_mtime
-    age_hours = (time.time() - mtime) / 3600
-
-    return age_hours < max_age_hours and _check_docker_creds_exist(registry)
 
 
 def _check_docker_installed() -> bool:
@@ -221,7 +224,6 @@ def build_docker_compose_override_file(
     # that only includes the service being configured
     # and has an `env_file` attribute for the service
     override = {
-        "version": "3.8",
         "services": {
             f"platform-{service}": {
                 "env_file": [selected_version.configure_overrides_env_file.as_posix()]
@@ -232,6 +234,95 @@ def build_docker_compose_override_file(
 
     with selected_version.configure_overrides_compose_file.open("w") as f:
         safe_dump(override, f, sort_keys=False)
+
+
+def get_available_local_images() -> list[DockerImage]:
+    """Get the list of available Docker images on the local system.
+
+    Returns:
+        list[str]: List of available Docker image names.
+    """
+    cmd = ["docker", "images", "--format", ""]
+    cp = subprocess.run(  # noqa: S603
+        cmd,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    images: list[DockerImage] = []
+    for line in cp.stdout.splitlines():
+        if line.strip():
+            img = DockerImage.from_string(line.strip())
+            images.append(img)
+    return images
+
+
+def get_env_var_from_container(container_name: str, var_name: str) -> str | None:
+    """
+    Get the specified environment variable from the container and return
+    its value.
+
+    Args:
+        container_name: Name of the container to inspect.
+        var_name: Name of the environment variable to retrieve.
+
+    Returns:
+        str | None: Value of the environment variable, or None if not found.
+    """
+    try:
+        cmd = [
+            "docker",
+            "inspect",
+            "-f",
+            "{{range .Config.Env}}{{println .}}{{end}}",
+            container_name,
+        ]
+        cp = subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+
+        for line in cp.stdout.splitlines():
+            if line.startswith(f"{var_name.upper()}="):
+                return line.split("=", 1)[1]
+
+    except subprocess.CalledProcessError:
+        return None
+
+    return None
+
+
+def get_required_images(selected_version: LocalVersionSchema) -> list[DockerImage]:
+    """Get the list of required Docker images for the specified platform version.
+
+    Args:
+        selected_version: The selected version of the platform.
+
+    Returns:
+        list[str]: List of required Docker image names.
+    """
+    base = _build_docker_compose_base_command(selected_version)
+    args = [*base, "config", "--images"]
+    result = _run_docker_compose_command(
+        args,
+        timeout=120,
+        capture_output=CaptureOutput.TRUE,
+    )
+
+    if result.returncode != 0:
+        return []
+
+    required_images: list[DockerImage] = []
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        # Validate each line is a valid Docker image string
+        DockerImage.from_string(line.strip())
+        required_images.append(DockerImage.from_string(line.strip()))
+
+    return required_images
 
 
 def docker_requirements_met() -> bool:
@@ -248,9 +339,6 @@ def docker_login(registry: str) -> None:
     Raises:
         subprocess.CalledProcessError: If docker login command fails.
     """
-    if _are_docker_creds_fresh(registry):
-        print_info(f"Docker credentials for {registry} are fresh. Skipping login.")
-        return
 
     print_info(f"Logging in to Docker registry: {registry} ...")
     client = create_api_client()
@@ -273,6 +361,56 @@ def docker_login(registry: str) -> None:
     except subprocess.CalledProcessError as e:
         print_error(f"Failed to log in to container registry: {e}")
         raise
+
+
+def docker_ps(
+    selected_version: LocalVersionSchema,
+    timeout: int = 120,
+) -> list[DockerPSResult]:
+    """Get container status for the compose project as JSON.
+
+    This mirrors:
+        docker compose -f <...> -f <...> --env-file <...> --env-file <...> ps --format json [SERVICE...]
+
+    Args:
+        selected_version: Version object providing compose/env files.
+        services: Optional list of PlatformService to filter (translated to 'platform-<service>').
+        timeout: Command timeout in seconds.
+
+    Returns:
+        A list of dicts parsed from `docker compose ps --format json`.
+
+    Raises:
+        ValueError: If the returned output is not valid JSON.
+        subprocess.CalledProcessError / TimeoutExpired / FileNotFoundError: On execution errors.
+    """
+    base = _build_docker_compose_base_command(selected_version)
+    args = [*base, "ps", "--format", "json"]
+
+    result = _run_docker_compose_command(
+        args,
+        timeout=timeout,
+        capture_output=CaptureOutput.TRUE,
+    )
+
+    try:
+        # docker compose ps --format json returns a JSON array
+        if not result.stdout:
+            return []
+        stdout = str(result.stdout)
+        stdout_lines = stdout.splitlines()
+        container_info_models: list[DockerPSResult] = []
+        for line in stdout_lines:
+            if not line.strip():
+                continue
+            j = json.loads(line)
+            dpr = DockerPSResult(**j)
+            container_info_models.append(dpr)
+    except json.JSONDecodeError as e:
+        print_error(f"Failed read status from the Dreadnode Platform': {e}")
+        raise ValueError("Unexpected non-JSON output from 'docker compose ps'") from e
+
+    return container_info_models
 
 
 def docker_run(
@@ -300,7 +438,7 @@ def docker_run(
     # 3. arg overrides env file (if any)
 
     cmds += ["up", "-d"]
-    return _run_docker_compose_command(cmds, timeout, "Docker compose up")
+    return _run_docker_compose_command(cmds, timeout=timeout)
 
 
 def docker_stop(
@@ -322,4 +460,4 @@ def docker_stop(
     """
     cmds = _build_docker_compose_base_command(selected_version)
     cmds.append("down")
-    return _run_docker_compose_command(cmds, timeout, "Docker compose down")
+    return _run_docker_compose_command(cmds, timeout=timeout)

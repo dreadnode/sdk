@@ -2,10 +2,13 @@ from dreadnode.cli.platform.docker_ import (
     docker_login,
     docker_requirements_met,
     docker_run,
-    get_origin,
+    get_available_local_images,
+    get_env_var_from_container,
+    get_required_images,
 )
 from dreadnode.cli.platform.download import download_platform
-from dreadnode.cli.platform.utils.env_mgmt import remove_overrides_env, write_overrides_env
+from dreadnode.cli.platform.status import platform_is_running
+from dreadnode.cli.platform.utils.env_mgmt import write_overrides_env
 from dreadnode.cli.platform.utils.printing import print_error, print_info, print_success
 from dreadnode.cli.platform.utils.versions import (
     create_local_latest_tag,
@@ -36,22 +39,30 @@ def start_platform(tag: str | None = None, **env_overrides: str) -> None:
         selected_version = download_platform(latest_tag)
         mark_current_version(selected_version)
 
-    registries_attempted = set()
-    for image in selected_version.images:
-        if image.registry not in registries_attempted:
-            docker_login(image.registry)
-            registries_attempted.add(image.registry)
+    is_running = platform_is_running(selected_version)
+    if is_running:
+        print_info(f"Platform {selected_version.tag} is already running.")
+        print_info("Use `dreadnode platform stop` to stop it first.")
+        return
+
+    # check to see if all required images are available locally
+    required_images = get_required_images(selected_version)
+    available_images = get_available_local_images()
+    missing_images = [img for img in required_images if img not in available_images]
+    if missing_images:
+        registries_attempted = set()
+        for image in selected_version.images:
+            if image.registry not in registries_attempted:
+                docker_login(image.registry)
+                registries_attempted.add(image.registry)
 
     if env_overrides:
-        print_info("Applying environment overrides...")
         write_overrides_env(selected_version.arg_overrides_env_file, **env_overrides)
-    else:
-        remove_overrides_env(selected_version.arg_overrides_env_file)
 
     print_info(f"Starting platform: {selected_version.tag}")
     docker_run(selected_version)
     print_success(f"Platform {selected_version.tag} started successfully.")
-    origin = get_origin("dreadnode-ui")
+    origin = get_env_var_from_container("dreadnode-ui", "ORIGIN")
     if origin:
         print_info("You can access the app at the following URLs:")
         print_info(f" - {origin}")

@@ -8,3 +8,5 @@ VERSIONS_MANIFEST = "versions.json"
 
 SupportedArchitecture = t.Literal["amd64", "arm64"]
 SUPPORTED_ARCHITECTURES: list[SupportedArchitecture] = ["amd64", "arm64"]
+
+DEFAULT_DOCKER_PROJECT_NAME = "dreadnode-platform"
