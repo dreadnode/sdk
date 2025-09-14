@@ -68,6 +68,7 @@ dev = [
     "mkdocstrings-python>=1.16.12,<2.0.0",
     "ipykernel>=6.29.5,<7.0.0",
     "ipywidgets>=8.1.7,<9.0.0",
+    "types-pyyaml>=6.0.12.20250822",
 ]
 
 [project.scripts]
@@ -79,7 +80,7 @@ dreadnode = 'dreadnode.__main__:run'
 
 
 [tool.poetry.group.dev.dependencies]
-types-pyyaml = "^6.0.12.20250822"
+
 
 [project.urls]
 Homepage = "https://github.com/dreadnode/sdk"

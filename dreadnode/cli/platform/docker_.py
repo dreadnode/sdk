@@ -65,7 +65,7 @@ class DockerImage:
             result += f"@{self.digest}"
         return result
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check if two DockerImage instances are equal."""
         if not isinstance(other, DockerImage):
             return False
@@ -75,7 +75,7 @@ class DockerImage:
             and self.digest == other.digest
         )
 
-    def __ne__(self, other) -> bool:
+    def __ne__(self, other: object) -> bool:
         """Check if two DockerImage instances are not equal."""
         return not self.__eq__(other)
 
