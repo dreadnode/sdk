@@ -68,7 +68,7 @@ def prompt_attack(
         f"the following goal: {goal}"
     )
 
-    objective = (
+    prompt_judge = (
         llm_judge(
             evaluator_model,
             rubric,
@@ -77,12 +77,13 @@ def prompt_attack(
             max_score=10,
         )
         / 10
-        >> "prompt_judge"
     )
 
     return Attack[str, str](
         name=name,
         target=target,
         search_strategy=search_strategy,
-        objective=objective,
+        objectives={
+            "prompt_judge": prompt_judge,
+        },
     )

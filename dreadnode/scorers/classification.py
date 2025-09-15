@@ -52,7 +52,7 @@ def zero_shot_classification(
 
         text = str(data)
         if not text.strip():
-            return Metric(value=0.0, attributes={"error": "Input text is empty."})
+            raise ValueError("Input text is empty.")
 
         results = classifier(text, labels)
 
@@ -67,7 +67,7 @@ def zero_shot_classification(
     if name is None:
         name = f"zero_shot_{clean_str(score_label)}"
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def detect_refusal_with_zero_shot(

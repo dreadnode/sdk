@@ -1,9 +1,7 @@
 import typing as t
 
 from dreadnode.airt.attack import Attack
-from dreadnode.optimization.search.graph import beam_search
-from dreadnode.scorers import llm_judge
-from dreadnode.transforms.refine import adapt_prompt_trials, llm_refine
+from dreadnode.airt.attack.prompt import prompt_attack
 
 if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
@@ -21,46 +19,27 @@ def tap_attack(
     """
     Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
     using LLMs for both refinement (attacker) and scoring (evaluator/objective).
+
+    Uses `prompt_attack` under the hood with TAP-specific default guidance and rubric.
+
+    Args:
+        goal: The high-level objective of the attack.
+        target: The target system to be attacked.
+        attacker_model: The language model used to generate and refine prompts.
+        evaluator_model: The language model used to score the effectiveness of responses.
+        beam_width: The number of candidate prompts to maintain at each step of the search.
+        branching_factor: The number of new candidates to generate from each existing candidate.
     """
 
-    # Prompt refining
-
-    guidance = REFINE_GUIDANCE.format(goal=goal)
-    refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
-        adapt_prompt_trials, lambda x: x
-    )
-
-    # Objective
-
-    objective = (
-        llm_judge(
-            evaluator_model,
-            EVALUATION_RUBRIC.format(goal=goal),
-            min_score=1,
-            max_score=10,
-        )
-        / 10
-        >> "jailbreak_judge"
-    )
-
-    # Constraints
-
-    topic_constraint = llm_judge(evaluator_model, ON_TOPIC_RUBRIC.format(goal=goal))
-
-    # Search strategy
-
-    search_strategy = beam_search(
-        refiner,
-        initial_candidate=goal,
+    return prompt_attack(
+        goal,
+        target,
+        attacker_model,
+        evaluator_model,
+        refine_guidance=REFINE_GUIDANCE.format(goal=goal),
+        evaluation_rubric=EVALUATION_RUBRIC.format(goal=goal),
         beam_width=beam_width,
         branching_factor=branching_factor,
-    )
-
-    return Attack[str, str](
-        target=target,
-        search_strategy=search_strategy,
-        objective=objective,
-        constraints=[topic_constraint],
     )
 
 

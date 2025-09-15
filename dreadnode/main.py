@@ -820,6 +820,43 @@ class Dreadnode:
             autolog=autolog,
         )
 
+    @contextlib.contextmanager
+    def task_and_run(
+        self,
+        name: str,
+        *,
+        project: str | None = None,
+        tags: t.Sequence[str] | None = None,
+        params: AnyDict | None = None,
+        autolog: bool = True,
+        inputs: AnyDict | None = None,
+        label: str | None = None,
+    ) -> t.Iterator[TaskSpan[t.Any]]:
+        """
+        Create a task span within a new run if one is not already active.
+        """
+
+        create_run = current_run_span.get() is None
+        with contextlib.ExitStack() as stack:
+            if create_run:
+                stack.enter_context(
+                    self.run(
+                        name_prefix=name,
+                        project=project,
+                        tags=tags,
+                        params=params,
+                        autolog=autolog,
+                    )
+                )
+                self.log_inputs(**(inputs or {}))
+
+            task_span = stack.enter_context(self.task_span(name, label=label, tags=tags))
+            self.log_inputs(**(inputs or {}))
+            if not create_run:
+                self.log_inputs(**(params or {}))
+
+            yield task_span
+
     def get_run_context(self) -> RunContext:
         """
         Capture the current run context for transfer to another host, thread, or process.
@@ -865,7 +902,7 @@ class Dreadnode:
             credential_manager=self._credential_manager,  # type: ignore[arg-type]
         )
 
-    def tag(self, *tag: str, to: ToObject = "task-or-run") -> None:
+    def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> None:
         """
         Add one or many tags to the current task or run.
 
@@ -884,15 +921,16 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        target = (task or run) if to == "task-or-run" else run
-        if target is None:
+        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
+        if not targets:
             warn_at_user_stacklevel(
                 "tag() was called outside of a task or run.",
                 category=DreadnodeUsageWarning,
             )
             return
 
-        target.add_tags(tag)
+        for target in [target for target in targets if target]:
+            target.add_tags(tag)
 
     @handle_internal_errors()
     def push_update(self) -> None:
@@ -928,9 +966,9 @@ class Dreadnode:
         value: JsonValue,
     ) -> None:
         """
-        Log a single parameter to the current task or run.
+        Log a single parameter to the current run.
 
-        Parameters are key-value pairs that are associated with the task or run
+        Parameters are key-value pairs that are associated with the run
         and can be used to track configuration values, hyperparameters, or other
         metadata.
 
@@ -949,9 +987,9 @@ class Dreadnode:
     @handle_internal_errors()
     def log_params(self, **params: JsonValue) -> None:
         """
-        Log multiple parameters to the current task or run.
+        Log multiple parameters to the current run.
 
-        Parameters are key-value pairs that are associated with the task or run
+        Parameters are key-value pairs that are associated with the run
         and can be used to track configuration values, hyperparameters, or other
         metadata.
 
@@ -1381,7 +1419,7 @@ class Dreadnode:
         value: t.Any,
         *,
         label: str | None = None,
-        to: ToObject = "task-or-run",
+        to: ToObject | t.Literal["both"] = "task-or-run",
         attributes: AnyDict | None = None,
     ) -> None:
         """
@@ -1406,20 +1444,21 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        target = (task or run) if to == "task-or-run" else run
-        if target is None:
+        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
+        if not targets:
             warn_at_user_stacklevel(
                 "log_input() was called outside of a task or run.",
                 category=DreadnodeUsageWarning,
             )
             return
 
-        target.log_input(name, value, label=label, attributes=attributes)
+        for target in [target for target in targets if target]:
+            target.log_input(name, value, label=label, attributes=attributes)
 
     @handle_internal_errors()
     def log_inputs(
         self,
-        to: ToObject = "task-or-run",
+        to: ToObject | t.Literal["both"] = "task-or-run",
         **inputs: t.Any,
     ) -> None:
         """
@@ -1437,7 +1476,7 @@ class Dreadnode:
         value: t.Any,
         *,
         label: str | None = None,
-        to: ToObject = "task-or-run",
+        to: ToObject | t.Literal["both"] = "task-or-run",
         attributes: AnyDict | None = None,
     ) -> None:
         """
@@ -1472,20 +1511,21 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        target = (task or run) if to == "task-or-run" else run
-        if target is None:
+        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
+        if not targets:
             warn_at_user_stacklevel(
                 "log_output() was called outside of a task or run.",
                 category=DreadnodeUsageWarning,
             )
             return
 
-        target.log_output(name, value, label=label, attributes=attributes)
+        for target in [target for target in targets if target]:
+            target.log_output(name, value, label=label, attributes=attributes)
 
     @handle_internal_errors()
     def log_outputs(
         self,
-        to: ToObject = "task-or-run",
+        to: ToObject | t.Literal["both"] = "task-or-run",
         **outputs: t.Any,
     ) -> None:
         """

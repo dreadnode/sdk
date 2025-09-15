@@ -8,8 +8,11 @@ import numpy as np
 from dreadnode.data_types.base import DataType
 from dreadnode.util import catch_import_error
 
-ImageDataType = np.ndarray[t.Any, t.Any] | t.Any
-ImageDataOrPathType = str | Path | bytes | ImageDataType
+if t.TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
+
+ImageDataType: t.TypeAlias = "np.ndarray[t.Any, t.Any] | PILImage | t.Any"
+ImageDataOrPathType: t.TypeAlias = "str | Path | bytes | ImageDataType"
 
 
 class Image(DataType):
@@ -51,6 +54,50 @@ class Image(DataType):
         self._mode = mode
         self._caption = caption
         self._format = format
+
+    @classmethod
+    def from_pil(cls, pil_image: "PILImage", format: str = "png") -> "Image":
+        """Creates a dn.Image from a Pillow Image object."""
+        buffer = io.BytesIO()
+        pil_image.save(buffer, format=format)
+        buffer.seek(0)
+        return cls(data=buffer.read(), format=format, mode=pil_image.mode)
+
+    def to_pil(self) -> "PILImage":
+        """Returns the image as a Pillow Image object for manipulation."""
+        import PIL.Image
+
+        image_bytes, _ = self.to_serializable()
+        return PIL.Image.open(io.BytesIO(image_bytes))
+
+    def to_numpy(self, dtype: t.Any = np.uint8) -> "np.ndarray[t.Any, t.Any]":
+        """
+        Returns the image as a NumPy array with a specified dtype.
+
+        Common dtypes:
+        - np.uint8: Standard 8-bit integer pixels [0, 255]. Default.
+        - np.float32 / np.float64: Floating point pixels, typically for
+          numerical operations. Values are scaled to [0.0, 1.0].
+
+        Returns:
+            A NumPy array in HWC (Height, Width, Channels) format.
+        """
+        pil_img = self.to_pil().convert("RGB")
+        arr = np.array(pil_img)
+
+        if np.issubdtype(dtype, np.floating):
+            return arr.astype(dtype) / 255.0
+        return arr.astype(dtype)
+
+    def to_base64(self) -> str:
+        """Returns the image as a base64 encoded string."""
+        buffer = io.BytesIO()
+        self.to_pil().save(buffer, format=self._format or "PNG")
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def show(self) -> None:
+        """Displays the image using the default image viewer."""
+        self.to_pil().show()
 
     def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
         """

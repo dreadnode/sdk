@@ -9,7 +9,7 @@ if t.TYPE_CHECKING:
     import pandas as pd
 
 StudyStopReason = t.Literal[
-    "max_steps_reached",
+    "max_trials_reached",
     "stop_condition_met",
     "search_exhausted",
     "unknown",
@@ -41,11 +41,24 @@ class StudyResult(t.Generic[CandidateT]):
         return self._best_trial
 
     @property
-    def steps_taken(self) -> int:
-        """The total number of optimization steps completed."""
-        if not self.trials:
-            return 0
-        return max(t.step for t in self.trials)
+    def failed_trials(self) -> list[Trial[CandidateT]]:
+        """A list of all trials that failed."""
+        return [t for t in self.trials if t.status == "failed"]
+
+    @property
+    def pruned_trials(self) -> list[Trial[CandidateT]]:
+        """A list of all trials that were pruned."""
+        return [t for t in self.trials if t.status == "pruned"]
+
+    @property
+    def pending_trials(self) -> list[Trial[CandidateT]]:
+        """A list of all trials that are still pending."""
+        return [t for t in self.trials if t.status == "pending"]
+
+    @property
+    def running_trials(self) -> list[Trial[CandidateT]]:
+        """A list of all trials that are currently running."""
+        return [t for t in self.trials if t.status == "running"]
 
     def to_dicts(self) -> list[dict[str, t.Any]]:
         """Flattens the results into a list of dictionaries, one for each trial."""

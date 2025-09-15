@@ -122,10 +122,10 @@ def truncate_string(text: str, max_length: int = 80, *, suf: str = "...") -> str
 
 def clean_str(string: str, *, max_length: int | None = None, replace_with: str = "_") -> str:
     """
-    Clean a string by replacing all non-alphanumeric characters (except `/` and `@`)
+    Clean a string by replacing all non-alphanumeric characters (except `/`, '.', and `@`)
     with `replace_with` (`_` by default).
     """
-    result = re.sub(r"[^\w/@]+", replace_with, string.lower()).strip(replace_with)
+    result = re.sub(r"[^\w/@.]+", replace_with, string.lower()).strip(replace_with)
     if max_length is not None:
         result = result[:max_length]
     return result
@@ -228,7 +228,7 @@ def get_obj_name(obj: t.Any, *, short: bool = False, clean: bool = False) -> str
     return name
 
 
-def get_callable_name(obj: t.Callable[..., t.Any], *, short: bool = False) -> str:
+def get_callable_name(obj: t.Any, *, short: bool = False) -> str:
     """
     Return a best-effort, comprehensive name for a callable object.
 
@@ -461,21 +461,24 @@ async def join_generators(
 
 
 @asynccontextmanager
-async def stream_map_and_merge(
-    source: t.AsyncIterable[T_in],
-    processor: t.Callable[[T_in], t.AsyncIterator[T_out]],
-) -> t.AsyncIterator[t.AsyncIterator[T_out]]:
+async def stream_map_and_merge(  # noqa: PLR0915
+    source: t.AsyncGenerator[T_in, None],
+    processor: t.Callable[[T_in], t.AsyncGenerator[T_out, None]],
+    *,
+    limit: int | None = None,
+) -> t.AsyncIterator[t.AsyncGenerator[T_out, None]]:
     """
     The "one-to-many-to-one" abstraction helpful for concurrently processing
-    events from a stream using workers which themselves yield events.
+    items from a stream using workers which themselves yield items.
 
     It consumes items from a source stream and processes them concurrently
-    (constrained by `limit`), yielding results as a single, interleaved stream.
+    yielding results as a single, interleaved stream.
 
     Args:
         source: The source stream of items to process.
         processor: A function that processes each item from the source and
             returns an asynchronous generator of results.
+        limit: Maximum number of items to consume from the source before early stopping.
 
     Yields:
         An asynchronous generator which yields the processed items from the processor streams.
@@ -483,7 +486,7 @@ async def stream_map_and_merge(
     FINISHED = (  # noqa: N806
         object()
     )  # sentinel object to indicate a generator has finished
-    queue = asyncio.Queue[T_out | object | Exception](maxsize=1)
+    queue = asyncio.Queue[T_out | object | Exception]()
 
     # Define a producer to start worker tasks for every
     # item yielded from source, and have those workers
@@ -491,24 +494,38 @@ async def stream_map_and_merge(
 
     async def producer() -> None:
         pending_workers: set[asyncio.Task[None]] = set()
+        source_count: int = 0
         try:
             async for item in source:
+                source_count += 1
+                if limit is not None and source_count > limit:
+                    break
 
                 async def worker(inner_item: T_in) -> None:
+                    results = processor(inner_item)
                     try:
-                        async for result in processor(inner_item):
+                        async for result in results:
                             await queue.put(result)
+                    except asyncio.CancelledError:
+                        pass  # Make sure we don't try to use the queue if we are cancelled
                     except Exception as e:  # noqa: BLE001
-                        await queue.put(e)
+                        queue.put_nowait(e)
+                    finally:
+                        with contextlib.suppress(Exception, asyncio.CancelledError):
+                            await results.aclose()
 
                 task = asyncio.create_task(worker(item))
                 pending_workers.add(task)
                 task.add_done_callback(pending_workers.discard)
 
         finally:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await source.aclose()
             if pending_workers:
-                await asyncio.gather(*pending_workers)
-            await queue.put(FINISHED)
+                for task in pending_workers:
+                    task.cancel()
+                await asyncio.gather(*pending_workers, return_exceptions=True)
+            queue.put_nowait(FINISHED)
 
     async def generator() -> t.AsyncGenerator[T_out, None]:
         # Run the producer asynchronously so we can

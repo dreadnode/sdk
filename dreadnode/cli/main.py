@@ -15,6 +15,7 @@ from rich.prompt import Prompt
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.agent import cli as agent_cli
 from dreadnode.cli.api import create_api_client
+from dreadnode.cli.eval import cli as eval_cli
 from dreadnode.cli.github import (
     GithubRepo,
     download_and_unzip_archive,
@@ -22,6 +23,7 @@ from dreadnode.cli.github import (
 )
 from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
+from dreadnode.cli.study import cli as study_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 from dreadnode.user_config import ServerConfig, UserConfig
 
@@ -30,6 +32,8 @@ cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], h
 cli["--help"].group = "Meta"
 
 cli.command(agent_cli)
+cli.command(eval_cli)
+cli.command(study_cli)
 cli.command(platform_cli)
 cli.command(profile_cli)
 

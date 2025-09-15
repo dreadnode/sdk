@@ -1,8 +1,9 @@
+import asyncio
 import typing as t
 from datetime import datetime
 
 import typing_extensions as te
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, computed_field
 from ulid import ULID
 
 from dreadnode.eval.result import EvalResult
@@ -40,10 +41,14 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     """Reason for pruning this trial, if applicable."""
     error: str | None = None
     """Any error which occurred while processing this trial."""
-    step: int = 0
+    step: int = Field(default=0, init=False)
     """The optimization step which produced this trial."""
     parent_id: ULID | None = None
     """The id of the parent trial, used to reconstruct the search graph."""
+
+    _future: "asyncio.Future[Trial[CandidateT]]" = PrivateAttr(
+        default_factory=lambda: asyncio.get_running_loop().create_future()
+    )
 
     def __repr__(self) -> str:
         parts = [
@@ -53,6 +58,42 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         if self.score != -float("inf"):
             parts.append(f"score={self.score:.3f}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
+
+    def __await__(self) -> t.Generator[t.Any, None, "Trial[CandidateT]"]:
+        """
+        Await the completion of the trial.
+        """
+        return self._future.__await__()
+
+    def done(self) -> bool:
+        """A non-blocking check to see if the trial's evaluation is complete."""
+        return self._future.done()
+
+    @staticmethod
+    async def wait_for(*trials: "Trial[CandidateT]") -> "list[Trial[CandidateT]]":
+        """
+        Await the completion of multiple trials.
+
+        Args:
+            *trials: The trials to wait for.
+
+        Returns:
+            A future that resolves to a list of completed trials.
+        """
+        return await asyncio.gather(*(trial._future for trial in trials))  # noqa: SLF001
+
+    def objective_score(
+        self, name: str | None = None, *, default: float = -float("inf")
+    ) -> float | None:
+        """
+        Get the score for a specific named objective, or the overall score if no name is given.
+
+        Args:
+            name: The name of the objective.
+        """
+        if name is not None:
+            return self.scores.get(name, default)
+        return self.score
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -92,7 +133,12 @@ class TrialCollector(t.Protocol, t.Generic[CandidateT]):
     """
 
     def __call__(
-        self, current_trial: Trial[CandidateT], all_trials: list[Trial[CandidateT]]
+        self,
+        current_trial: Trial[CandidateT],
+        all_trials: list[Trial[CandidateT]],
+        /,
+        *args: t.Any,
+        **kwargs: t.Any,
     ) -> list[Trial[CandidateT]]: ...
 
 
@@ -102,4 +148,6 @@ class TrialSampler(t.Protocol, t.Generic[CandidateT]):
     Sample from a list of trials.
     """
 
-    def __call__(self, trials: list[Trial[CandidateT]]) -> list[Trial[CandidateT]]: ...
+    def __call__(
+        self, trials: list[Trial[CandidateT]], /, *args: t.Any, **kwargs: t.Any
+    ) -> list[Trial[CandidateT]]: ...

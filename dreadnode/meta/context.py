@@ -1,3 +1,4 @@
+import os
 import typing as t
 from abc import ABC, abstractmethod
 
@@ -322,3 +323,19 @@ class TrialScore(Context):
             raise RuntimeError("TrialScore() must be used inside an active optimization study.")
 
         return trial.score
+
+
+class EnvVar(Context):
+    """
+    A Context marker for an environment variable.
+    """
+
+    def __init__(self, name: str, *, default: t.Any | Unset = UNSET, required: bool = True):
+        super().__init__(default=default, required=required)
+        self.var_name = name
+
+    def __repr__(self) -> str:
+        return f"EnvVar(name='{self.var_name}')"
+
+    def resolve(self) -> t.Any:
+        return os.environ[self.var_name]

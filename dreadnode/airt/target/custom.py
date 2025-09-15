@@ -4,11 +4,11 @@ from pydantic import ConfigDict
 
 from dreadnode.airt.target.base import In, Out, Target
 from dreadnode.common_types import Unset
-from dreadnode.meta import Config, Model
+from dreadnode.meta import Config
 from dreadnode.task import Task
 
 
-class CustomTarget(Model, Target[t.Any, Out]):
+class CustomTarget(Target[t.Any, Out]):
     """
     Adapts any Task to be used as an attackable target.
     """

@@ -13,6 +13,7 @@ if t.TYPE_CHECKING:
     from dreadnode.transforms import (
         cipher,
         encoding,
+        image,
         perturbation,
         refine,
         stylistic,
@@ -29,6 +30,7 @@ __all__ = [
     "TransformsLike",
     "cipher",
     "encoding",
+    "image",
     "perturbation",
     "refine",
     "stylistic",
@@ -40,6 +42,7 @@ __all__ = [
 __lazy_submodules__: list[str] = [
     "cipher",
     "encoding",
+    "image",
     "perturbation",
     "stylistic",
     "substitution",

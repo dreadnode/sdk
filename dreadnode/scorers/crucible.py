@@ -28,6 +28,7 @@ def contains_crucible_flag(
     api_key: str,
     *,
     platform_url: str = "https://platform.dreadnode.io",
+    score_for_partial_flag: float = 0.5,
     name: str = "contains_crucible_flag",
 ) -> Scorer[t.Any]:
     from dreadnode import tag
@@ -38,6 +39,7 @@ def contains_crucible_flag(
         challenge: str = challenge,
         api_key: str = api_key,
         platform_url: str = platform_url,
+        score_for_partial_flag: float = score_for_partial_flag,
     ) -> Metric:
         text = str(obj)
         metric = Metric(value=0.0, attributes={"challenge": challenge})
@@ -46,7 +48,7 @@ def contains_crucible_flag(
         if not matches:
             return metric
 
-        metric.value = 0.5  # Partial credit for flag-like values
+        metric.value = score_for_partial_flag  # Partial credit for flag-like values
         metric.attributes["matches"] = matches
 
         for match in matches:

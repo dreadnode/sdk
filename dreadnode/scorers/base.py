@@ -64,6 +64,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         step: int = 0,
         auto_increment_step: bool = False,
         log_all: bool = True,
+        bound_obj: t.Any = None,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
         wraps: t.Callable[..., t.Any] | None = None,
@@ -89,6 +90,8 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         "Automatically increment an internal step counter every time this scorer is called."
         self.log_all = log_all
         "Log all sub-metrics from nested composition, or just the final resulting metric."
+        self.bound_obj = bound_obj
+        "If set, the scorer will always be called with this object instead of the caller-provided object."
 
         self.__name__ = name
 
@@ -154,6 +157,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             step=self.step,
             auto_increment_step=self.auto_increment_step,
             log_all=self.log_all,
+            bound_obj=self.bound_obj,
             config=deepcopy(self.__dn_param_config__, memo),
             context=deepcopy(self.__dn_context__, memo),
         )
@@ -197,6 +201,20 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         new.catch = catch if catch is not None else self.catch
         new.log_all = log_all if log_all is not None else self.log_all
         return new
+
+    def bind(self, obj: t.Any) -> "Scorer[T]":
+        """
+        Bind the scorer to a specific object. Any time the scorer is executed,
+        the bound object will be passed instead of the caller-provided object.
+
+        This is useful for building scoring patterns that are not directly
+        tied to the output of a task
+
+        Args:
+            obj: The object to bind the scorer to.
+        """
+        self.bound_obj = obj
+        return self
 
     def rename(self, new_name: str) -> "Scorer[T]":
         """
@@ -255,6 +273,8 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             | t.Awaitable[ScorerResult]
             | t.Awaitable[t.Sequence[ScorerResult]]
         )
+
+        obj = self.bound_obj or obj
 
         try:
             bound_args = self._bind_args(obj, *args, **kwargs)
@@ -700,6 +720,8 @@ def add(
     Returns:
         A new Scorer that adds (or averages) the values of the two input scorers.
     """
+    if len(others) == 0:
+        raise ValueError("At least one other scorer must be provided for addition.")
 
     async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(

@@ -62,4 +62,4 @@ def type_token_ratio(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)

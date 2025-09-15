@@ -17,6 +17,7 @@ from dreadnode.meta import (
     CurrentTask,
     CurrentTrial,
     DatasetField,
+    EnvVar,
     ParentTask,
     RunInput,
     RunOutput,
@@ -48,6 +49,7 @@ span = DEFAULT_INSTANCE.span
 task = DEFAULT_INSTANCE.task
 task_span = DEFAULT_INSTANCE.task_span
 run = DEFAULT_INSTANCE.run
+task_and_run = DEFAULT_INSTANCE.task_and_run
 scorer = DEFAULT_INSTANCE.scorer
 score = DEFAULT_INSTANCE.score
 push_update = DEFAULT_INSTANCE.push_update
@@ -79,6 +81,7 @@ __all__ = [
     "CurrentTrial",
     "DatasetField",
     "Dreadnode",
+    "EnvVar",
     "Image",
     "Markdown",
     "Metric",
@@ -86,7 +89,6 @@ __all__ = [
     "Object",
     "Object3D",
     "ParentTask",
-    "Run",
     "RunInput",
     "RunOutput",
     "RunParam",
@@ -100,7 +102,6 @@ __all__ = [
     "TaskSpan",
     "Text",
     "TrialCandidate",
-    "TrialInput",
     "TrialOutput",
     "TrialScore",
     "Video",
@@ -112,7 +113,6 @@ __all__ = [
     "configure_logging",
     "continue_run",
     "convert",
-    "data_types",
     "eval",
     "get_run_context",
     "link_objects",
@@ -134,6 +134,7 @@ __all__ = [
     "span",
     "tag",
     "task",
+    "task_and_run",
     "task_span",
     "transforms",
 ]

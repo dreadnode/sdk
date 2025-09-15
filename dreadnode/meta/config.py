@@ -16,7 +16,7 @@ from typing_extensions import ParamSpec
 
 from dreadnode.common_types import UNSET, AnyDict, Unset
 from dreadnode.meta.context import Context, ContextWarning
-from dreadnode.util import warn_at_user_stacklevel
+from dreadnode.util import clean_str, get_callable_name, warn_at_user_stacklevel
 
 P = ParamSpec("P")
 R = t.TypeVar("R")
@@ -39,9 +39,11 @@ class ConfigInfo:
         """Extract ConfigInfo from Annotated metadata."""
         if get_origin(annotation) is t.Annotated:
             args = t.get_args(annotation)
-            # Skip first arg (the actual type), check metadata
+            expose_as = args[0]
             for metadata in args[1:]:
                 if isinstance(metadata, ConfigInfo):
+                    if metadata.expose_as is None:
+                        return ConfigInfo(field_kwargs=metadata.field_kwargs, expose_as=expose_as)
                     return metadata
         return None
 
@@ -243,7 +245,7 @@ def Config(  # noqa: N802
 
     """
 
-    if isinstance(default, ConfigInfo):
+    if isinstance(default, ConfigInfo | Context):
         return default
 
     field_kwargs = kwargs
@@ -347,10 +349,17 @@ class Component(t.Generic[P, R]):
         self,
         func: t.Callable[P, R],
         *,
+        name: str | None = None,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
         wraps: t.Callable[..., t.Any] | None = None,
     ) -> None:
+        if name is None:
+            unwrapped = inspect.unwrap(wraps or func)
+            name = get_callable_name(unwrapped, short=True)
+
+        self.name = clean_str(name)
+        "The name of the component."
         self.func = func
         "The underlying function to call"
         self.signature = getattr(wraps or func, "__signature__", inspect.signature(func))
@@ -377,7 +386,7 @@ class Component(t.Generic[P, R]):
                 if isinstance(p.default, Context)
             }
         )
-        self.__name__ = (wraps or func).__name__
+        self.__name__ = self.name
         self.__qualname__ = (wraps or func).__qualname__
         self.__doc__ = (wraps or func).__doc__
 
@@ -399,6 +408,18 @@ class Component(t.Generic[P, R]):
         # Update the parameter names for context dependencies
         for name, dep in self.__dn_context__.items():
             dep._param_name = name  # noqa: SLF001
+
+    def __repr__(self) -> str:
+        params = ", ".join(
+            f"{name}={config.field_kwargs.get('default', '...')!r}"
+            for name, config in self.__dn_param_config__.items()
+        )
+        context = ", ".join(self.__dn_context__.keys())
+        if context:
+            if params:
+                params += ", "
+            params += f"*[{context}]"
+        return f"{self.__name__}({params})"
 
     # We need this otherwise we could trigger undeseriable behavior
     # when included in deepcopy calls above us

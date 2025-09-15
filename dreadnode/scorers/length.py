@@ -49,7 +49,7 @@ def length_ratio(
 
         return Metric(value=score, attributes={"ratio": round(ratio, 4)})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def length_in_range(
@@ -98,7 +98,7 @@ def length_in_range(
             attributes={"length": text_len, "min": min_length, "max": max_length},
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def length_target(
@@ -139,4 +139,4 @@ def length_target(
 
         return Metric(value=final_score, attributes={"length": text_len, "target": target_length})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)

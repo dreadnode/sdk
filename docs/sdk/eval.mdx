@@ -38,7 +38,7 @@ Maximum number of tasks to run in parallel.
 ```python
 dataset: Annotated[
     InputDataset[In] | list[AnyDict] | FilePath,
-    Config(expose_as=FilePath),
+    Config(expose_as=Any),
 ]
 ```
 
@@ -48,7 +48,7 @@ The dataset to use for the evaluation. Can be a list of inputs or a file path to
 
 ```python
 dataset_input_mapping: list[str] | dict[str, str] | None = (
-    Config(default=None)
+    None
 )
 ```
 
@@ -59,7 +59,7 @@ If None, will attempt to map keys that match parameter names.
 ### description
 
 ```python
-description: str = Config(default='')
+description: str = ''
 ```
 
 A brief description of the eval's purpose.
@@ -75,7 +75,7 @@ Number of times to run each scenario.
 ### label
 
 ```python
-label: str | None = Config(default=None)
+label: str | None = None
 ```
 
 Specific label to use for tasks created by this eval.
@@ -101,7 +101,7 @@ to tolerate before stopping the evaluation.
 ### name\_
 
 ```python
-name_: str | None = Config(
+name_: str | None = Field(
     default=None, alias="name", repr=False, exclude=True
 )
 ```
@@ -149,7 +149,7 @@ A list of tags associated with the evaluation.
 
 ```python
 task: Annotated[
-    Task[[In], Out] | str, Config(expose_as=str)
+    Task[[In], Out] | str, Config(expose_as=Any)
 ]
 ```
 

@@ -5,11 +5,11 @@ import rigging as rg
 
 from dreadnode.airt.target.base import Target
 from dreadnode.common_types import AnyDict
-from dreadnode.meta import Config, Model
+from dreadnode.meta import Config
 from dreadnode.task import Task
 
 
-class LLMTarget(Model, Target[t.Any, str]):
+class LLMTarget(Target[t.Any, str]):
     """
     Target backed by a rigging generator for LLM inference.
 
@@ -33,7 +33,7 @@ class LLMTarget(Model, Target[t.Any, str]):
 
     @cached_property
     def generator(self) -> rg.Generator:
-        return rg.get_generator(self.model)
+        return rg.get_generator(self.model) if isinstance(self.model, str) else self.model
 
     @property
     def name(self) -> str:

@@ -5,6 +5,7 @@ from dreadnode.meta.context import (
     CurrentTask,
     CurrentTrial,
     DatasetField,
+    EnvVar,
     ParentTask,
     RunInput,
     RunOutput,
@@ -20,6 +21,7 @@ from dreadnode.meta.introspect import (
     flatten_model,
     get_config_model,
     get_config_schema,
+    get_inputs_and_params_from_config_model,
     get_model_schema,
 )
 
@@ -32,6 +34,7 @@ __all__ = [
     "CurrentTask",
     "CurrentTrial",
     "DatasetField",
+    "EnvVar",
     "Model",
     "ParentTask",
     "RunInput",
@@ -47,6 +50,7 @@ __all__ = [
     "flatten_model",
     "get_config_model",
     "get_config_schema",
+    "get_inputs_and_params_from_config_model",
     "get_model_schema",
     "hydrate",
 ]

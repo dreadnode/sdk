@@ -145,4 +145,4 @@ def detect_pii_with_presidio(
 
         return Metric(value=final_score, attributes=metadata)
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)

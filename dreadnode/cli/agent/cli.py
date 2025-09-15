@@ -7,13 +7,12 @@ from pathlib import Path
 import cyclopts
 import rich
 
-from dreadnode import log_input
-from dreadnode import run as run_span
+from dreadnode.cli.shared import DreadnodeConfig
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
 from dreadnode.meta import get_config_model, hydrate
 from dreadnode.meta.introspect import flatten_model
 
-cli = cyclopts.App("agent", help="Run and manage agents.")
+cli = cyclopts.App("agent", help="Discover and run agents.")
 
 
 @cli.command(name=["list", "ls", "show"])
@@ -22,18 +21,16 @@ def show(
     *,
     verbose: t.Annotated[
         bool,
-        cyclopts.Parameter(
-            ["--verbose", "-v"], help="Display detailed information for each agent."
-        ),
+        cyclopts.Parameter(["--verbose", "-v"], help="Display detailed information."),
     ] = False,
 ) -> None:
     """
     Discover and list available agents in a Python file.
 
-    If no file is specified, searches for main.py, agent.py, or app.py.
+    If no file is specified, searches in standard paths.
     """
     from dreadnode.agent import Agent
-    from dreadnode.agent.format import format_agent, format_agents_table
+    from dreadnode.agent.format import format_agent, format_agents
 
     discovered = discover(Agent, file)
     if not discovered:
@@ -42,7 +39,6 @@ def show(
         return
 
     grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
-
     for path, discovered_agents in grouped_by_path:
         agents = [agent.obj for agent in discovered_agents]
         rich.print(f"Agents in [bold]{path}[/bold]:\n")
@@ -50,7 +46,7 @@ def show(
             for agent in agents:
                 rich.print(format_agent(agent))
         else:
-            rich.print(format_agents_table(agents))
+            rich.print(format_agents(agents))
 
 
 @cli.command()
@@ -58,6 +54,7 @@ async def run(  # noqa: PLR0912, PLR0915
     agent: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
+    dreadnode_config: DreadnodeConfig | None = None,
 ) -> None:
     """
     Run an agent by name, file, or module.
@@ -92,8 +89,8 @@ async def run(  # noqa: PLR0912, PLR0915
         rich.print(f":exclamation: No agents found in '{path_hint}'.")
         return
 
-    agents_by_name = {d.name: d.obj for d in discovered}
-
+    agents_by_name = {d.obj.name: d.obj for d in discovered}
+    agents_by_lower_name = {k.lower(): v for k, v in agents_by_name.items()}
     if agent_name is None:
         if len(discovered) > 1:
             rich.print(
@@ -101,12 +98,12 @@ async def run(  # noqa: PLR0912, PLR0915
             )
         agent_name = next(iter(agents_by_name.keys()))
 
-    if agent_name not in agents_by_name:
+    if agent_name.lower() not in agents_by_lower_name:
         rich.print(f":exclamation: Agent '{agent_name}' not found in '{path_hint}'.")
         rich.print(f"Available agents are: {', '.join(agents_by_name.keys())}")
         return
 
-    agent_blueprint = agents_by_name[agent_name]
+    agent_blueprint = agents_by_lower_name[agent_name.lower()]
 
     config_model = get_config_model(agent_blueprint)
     config_parameter = cyclopts.Parameter(name="*", group="Agent Config")(config_model)
@@ -121,19 +118,19 @@ async def run(  # noqa: PLR0912, PLR0915
         *,
         config: t.Any = config_default,
     ) -> None:
-        flat_config = {k: v for k, v in flatten_model(config).items() if v is not None}
+        (dreadnode_config or DreadnodeConfig()).apply()
+
         agent = hydrate(agent_blueprint, config)
+        flat_config = flatten_model(config)
 
         rich.print(f"Running agent: [bold]{agent.name}[/bold] with config:")
         for key, value in flat_config.items():
             rich.print(f" |- {key}: {value}")
         rich.print()
 
-        with run_span(name_prefix=f"agent-{agent.name}", params=flat_config, tags=agent.tags):
-            log_input("user_input", input)
-            async with agent.stream(input) as stream:
-                async for event in stream:
-                    rich.print(event)
+        async with agent.stream(input) as stream:
+            async for event in stream:
+                rich.print(event)
 
     agent_cli.__annotations__["config"] = config_parameter
 
