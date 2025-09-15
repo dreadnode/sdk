@@ -21,7 +21,7 @@ def prompt_attack(
     attacker_model: str | rg.Generator,
     evaluator_model: str | rg.Generator,
     *,
-    stop_gte_score: float = 0.8,
+    early_stopping_score: float = 0.8,
     refine_guidance: str | None = None,
     evaluation_rubric: str | None = None,
     initial_prompt: str | None = None,
@@ -39,7 +39,7 @@ def prompt_attack(
         target: The target system to be attacked.
         attacker_model: The language model used to generate and refine prompts.
         evaluator_model: The language model used to score the effectiveness of responses.
-        stop_gte_score: The score threshold at which to stop the attack early.
+        early_stopping_score: The score threshold at which to stop the attack early.
                          If None, no early stopping is applied.
         refine_guidance: Specific guidance for the attacker model on how to refine prompts.
                          If None, a default guidance based on the goal is used.
@@ -96,7 +96,7 @@ def prompt_attack(
         },
     )
 
-    if stop_gte_score is not None:
-        attack = attack.add_stop_condition(score_value("prompt_judge", gte=stop_gte_score))
+    if early_stopping_score is not None:
+        attack = attack.add_stop_condition(score_value("prompt_judge", gte=early_stopping_score))
 
     return attack
