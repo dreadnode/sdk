@@ -461,7 +461,7 @@ async def join_generators(
 
 
 @asynccontextmanager
-async def stream_map_and_merge(
+async def stream_map_and_merge(  # noqa: PLR0915
     source: t.AsyncGenerator[T_in, None],
     processor: t.Callable[[T_in], t.AsyncGenerator[T_out, None]],
     *,

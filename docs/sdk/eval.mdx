@@ -132,7 +132,7 @@ Optional preprocessor function to transform the dataset before evaluation.
 ### scorers
 
 ```python
-scorers: ScorersLike[Out] = []
+scorers: ScorersLike[Out] = Config(default_factory=list)
 ```
 
 Scorers to evaluate the task's output (appended to existing task scorers).

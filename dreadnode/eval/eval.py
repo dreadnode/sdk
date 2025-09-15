@@ -101,7 +101,7 @@ class Eval(Model, t.Generic[In, Out]):
 
     preprocessor: InputDatasetProcessor | None = None
     """Optional preprocessor function to transform the dataset before evaluation."""
-    scorers: ScorersLike[Out] = []
+    scorers: ScorersLike[Out] = Config(default_factory=list)
     """Scorers to evaluate the task's output (appended to existing task scorers)."""
     assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
     """Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions)."""
