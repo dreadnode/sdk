@@ -118,4 +118,4 @@ def llm_judge(
 
         return [score_metric, pass_metric]
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)

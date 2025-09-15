@@ -60,39 +60,25 @@ def _sample_from_space(search_space: SearchSpace, random: random.Random) -> AnyD
     return candidate
 
 
-class RandomSearch(Search[AnyDict]):
+def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Search[AnyDict]:
     """
-    A search strategy that suggests candidates by sampling uniformly and
+    Create a search strategy that suggests candidates by sampling uniformly and
     independently from the search space at each step.
 
     This strategy is "memoryless" and does not learn from the results of
     past trials. It is primarily useful as a simple baseline for comparing
     the performance of more sophisticated optimization algorithms.
+
+    Args:
+        search_space: The search space to explore.
+        seed: The random seed to use for reproducibility.
     """
 
-    def __init__(
-        self, search_space: SearchSpace, *, trials_per_step: int = 1, seed: float | None = None
-    ):
-        """
-        Initializes the RandomSearch strategy.
+    async def search(
+        _: OptimizationContext, *, seed: float | None = seed
+    ) -> t.AsyncGenerator[Trial[AnyDict], None]:
+        _random = random.Random(seed)  # noqa: S311 # nosec
+        while True:
+            yield Trial(candidate=_sample_from_space(search_space, _random))
 
-        Args:
-            search_space: The search space to explore.
-            trials_per_step: The number of trials to suggest at each step.
-        """
-        self.search_space = search_space
-        self.trials_per_step = trials_per_step
-        self.seed = seed
-        self.random = random.Random(seed)  # noqa: S311 # nosec
-
-    def reset(self, _: OptimizationContext) -> None:
-        self.random = random.Random(self.seed)  # noqa: S311 # nosec
-
-    async def suggest(self, step: int) -> t.AsyncIterator[Trial[AnyDict]]:
-        """Suggests the next batch of random candidates."""
-        for _ in range(self.trials_per_step):
-            candidate = _sample_from_space(self.search_space, self.random)
-            yield Trial(candidate=candidate, step=step)
-
-    async def observe(self, trials: list[Trial[AnyDict]]) -> None:
-        """Informs the strategy of recent trial results. This is a no-op for RandomSearch."""
+    return Search(search, name="random_search")

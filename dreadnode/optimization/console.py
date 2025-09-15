@@ -23,8 +23,6 @@ from rich.text import Text
 
 from dreadnode.optimization.events import (
     NewBestTrialFound,
-    StepEnd,
-    StepStart,
     StudyEnd,
     StudyEvent,
     StudyStart,
@@ -42,12 +40,11 @@ if t.TYPE_CHECKING:
 
 @dataclass
 class DashboardState:
-    max_steps: int = 0
-    steps_completed: int = 0
-    steps_since_best: int = 0
+    max_trials: int = 0
+    trials_completed: int = 0
+    trials_running: int = 0
+    trials_since_best: int = 0  # Track patience in trials
     best_trial: "Trial | None" = None
-    current_step_trials: int = 0
-    is_step_running: bool = False
 
 
 class StudyConsoleAdapter:
@@ -60,11 +57,9 @@ class StudyConsoleAdapter:
         self.console = console or Console()
         self.final_result: StudyResult | None = None
 
-        # The single source of truth for dynamic data
-        self.state = DashboardState(max_steps=self.study.max_steps)
+        self.state = DashboardState(max_trials=self.study.max_trials)
         self._trials: deque[Trial] = deque(maxlen=max_log_entries)
 
-        # A single, unified progress bar object
         self._progress = Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -74,14 +69,13 @@ class StudyConsoleAdapter:
             TimeRemainingColumn(),
             expand=True,
         )
-        self._steps_task_id: TaskID = self._progress.add_task(
-            "[bold]Overall Steps", total=self.study.max_steps
+        self._progress_task_id: TaskID = self._progress.add_task(
+            "[bold]Overall Progress", total=self.study.max_trials
         )
 
     def _build_header(self) -> RenderableType:
         grid = Table.grid(expand=True)
         grid.add_column("Best Score", justify="left", ratio=1)
-        grid.add_column("Patience", justify="center", ratio=1)
         grid.add_column("Status", justify="right", ratio=1)
 
         # Best Score
@@ -89,28 +83,15 @@ class StudyConsoleAdapter:
         if self.state.best_trial:
             best_score_text = Text(f"{self.state.best_trial.score:.4f}", style="bold magenta")
 
-        # Patience
-        patience_text = Text(
-            f"Waiting for improvement... ({self.state.steps_since_best} steps)", style="dim"
-        )
-        if self.state.steps_since_best == 0 and self.state.best_trial:
-            patience_text = Text("New best found", style="magenta")
-
         # Status
-        status_text = Text("Initializing ...", style="dim")
-        if self.state.is_step_running:
-            status_text = Text.from_markup(
-                f"Running step [bold]{self.state.steps_completed + 1}[/bold] ([bold]{self.state.current_step_trials}[/bold] trials)",
-                style="cyan",
-            )
-        elif self.state.steps_completed > 0:
-            status_text = Text(
-                f"Step {self.state.steps_completed} complete. Waiting ...", style="dim"
-            )
+        status_text = Text.from_markup(
+            f"Running: [bold cyan]{self.state.trials_running}[/bold cyan] | "
+            f"Since best: [bold magenta]{self.state.trials_since_best}[/bold magenta] | "
+            f"Finished: [bold]{self.state.trials_completed}[/bold] / {self.state.max_trials}",
+        )
 
         grid.add_row(
             Text.from_markup(f"[b]Best Score:[/b] {best_score_text}"),
-            patience_text,
             status_text,
         )
         return grid
@@ -160,7 +141,6 @@ class StudyConsoleAdapter:
     def _build_trials_panel(self) -> RenderableType:
         table = Table(expand=True, box=box.ROUNDED)
         table.add_column("ID", style="dim", width=8)
-        table.add_column("Step", justify="right", style="dim", width=4)
         table.add_column("Status")
         table.add_column("Score", justify="right")
 
@@ -173,7 +153,7 @@ class StudyConsoleAdapter:
             }.get(trial.status, "dim")
             status_text = f"[{color}]{trial.status}[/{color}]"
             score_str = f"{trial.score:.3f}" if trial.status == "finished" else "..."
-            table.add_row(str(trial.id)[16:], str(trial.step), status_text, score_str)
+            table.add_row(str(trial.id)[16:], status_text, score_str)
 
         return Panel(
             table if self._trials else Text("No trials yet.", style="dim", justify="center"),
@@ -192,8 +172,8 @@ class StudyConsoleAdapter:
         )
 
         layout["body"].split_row(
-            Layout(self._build_best_trial_panel(), ratio=2),
-            Layout(self._build_trials_panel(), ratio=1),
+            Layout(self._build_best_trial_panel()),
+            Layout(self._build_trials_panel()),
         )
 
         return Layout(
@@ -205,30 +185,36 @@ class StudyConsoleAdapter:
         )
 
     def _handle_event(self, event: StudyEvent[t.Any]) -> None:
+        if self.state.best_trial:
+            self.state.trials_since_best = self.state.trials_completed - self.state.best_trial.step
+
         if isinstance(event, StudyStart):
-            self.state = DashboardState(max_steps=self.study.max_steps)
-        elif isinstance(event, StepStart):
-            self.state.is_step_running = True
-            self.state.current_step_trials = 0
+            self.state = DashboardState(max_trials=self.study.max_trials)
+            self._progress.update(self._progress_task_id, total=self.study.max_trials)
+
         elif isinstance(event, TrialAdded):
             self._trials.appendleft(event.trial)
-            self.state.current_step_trials += 1
-        elif isinstance(event, TrialStart | TrialComplete | TrialPruned):
+
+        elif isinstance(event, TrialStart):
+            self.state.trials_running += 1
             for i, t in enumerate(self._trials):
                 if t.id == event.trial.id:
                     self._trials[i] = event.trial
                     break
-            else:
-                self._trials.appendleft(event.trial)
+
+        elif isinstance(event, TrialComplete | TrialPruned):
+            self.state.trials_running -= 1
+            self.state.trials_completed += 1
+            self._progress.update(self._progress_task_id, completed=self.state.trials_completed)
+            for i, t in enumerate(self._trials):
+                if t.id == event.trial.id:
+                    self._trials[i] = event.trial
+                    break
+
         elif isinstance(event, NewBestTrialFound):
             self.state.best_trial = event.trial
-            self.state.steps_since_best = 0
-        elif isinstance(event, StepEnd):
-            self.state.is_step_running = False
-            self.state.steps_completed += 1
-            if self.state.best_trial:
-                self.state.steps_since_best += 1
-            self._progress.update(self._steps_task_id, completed=self.state.steps_completed)
+            self.state.trials_since_best = 0
+
         elif isinstance(event, StudyEnd):
             self.final_result = event.result
 
@@ -242,7 +228,12 @@ class StudyConsoleAdapter:
         summary_table.add_column("Value")
         summary_table.add_row("Stop Reason:", f"[bold]{result.stop_reason}[/bold]")
         summary_table.add_row("Explanation:", result.stop_explanation or "-")
-        summary_table.add_row("Steps Taken:", str(result.steps_taken))
+        if (num_failed_trials := len(result.failed_trials)) > 0:
+            summary_table.add_row("Failed Trials:", f"[red]{num_failed_trials}[/red]")
+        if (num_pruned_trials := len(result.pruned_trials)) > 0:
+            summary_table.add_row("Pruned Trials:", f"[yellow]{num_pruned_trials}[/yellow]")
+        if (num_pending_trials := len(result.pending_trials)) > 0:
+            summary_table.add_row("Pending Trials:", f"[dim]{num_pending_trials}[/dim]")
         summary_table.add_row("Total Trials:", str(len(result.trials)))
 
         panel = Panel(summary_table, border_style="dim", title="Study Summary")

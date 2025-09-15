@@ -57,7 +57,7 @@ def similarity(
 
         return Metric(value=score, attributes={"method": method})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def similarity_with_rapidfuzz(
@@ -179,7 +179,7 @@ def similarity_with_rapidfuzz(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def string_distance(
@@ -250,7 +250,7 @@ def string_distance(
 
         return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 @functools.lru_cache(maxsize=1)
@@ -283,7 +283,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 # A global model cache to avoid reloading on every call
@@ -335,7 +335,7 @@ def similarity_with_sentence_transformers(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def similarity_with_litellm(
@@ -398,7 +398,7 @@ def similarity_with_litellm(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 def bleu(

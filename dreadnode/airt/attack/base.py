@@ -1,15 +1,13 @@
 import typing as t
 
-import typing_extensions as te
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, SkipValidation
 
 from dreadnode.airt.target.base import Target
 from dreadnode.meta import Config
-from dreadnode.optimization import Study
+from dreadnode.optimization.study import OutputT as Out
+from dreadnode.optimization.study import Study
+from dreadnode.optimization.trial import CandidateT as In
 from dreadnode.task import Task
-
-In = te.TypeVar("In", default=t.Any)
-Out = te.TypeVar("Out", default=t.Any)
 
 
 class Attack(Study[In, Out]):
@@ -19,7 +17,7 @@ class Attack(Study[In, Out]):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    target: t.Annotated[Target[In, Out], Config()]
+    target: t.Annotated[SkipValidation[Target[In, Out]], Config()]
     """The target to attack."""
 
     tags: list[str] = Config(default_factory=lambda: ["attack"])

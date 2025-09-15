@@ -20,12 +20,7 @@ class StudyEvent(t.Generic[CandidateT]):
 
 @dataclass
 class StudyStart(StudyEvent[CandidateT]):
-    max_steps: int
-
-
-@dataclass
-class StepStart(StudyEvent[CandidateT]):
-    step: int
+    max_trials: int
 
 
 @dataclass
@@ -56,11 +51,6 @@ class TrialComplete(StudyEvent[CandidateT]):
 @dataclass
 class NewBestTrialFound(StudyEvent[CandidateT]):
     trial: "Trial[CandidateT]"
-
-
-@dataclass
-class StepEnd(StudyEvent[CandidateT]):
-    step: int
 
 
 @dataclass

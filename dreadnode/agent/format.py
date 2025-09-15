@@ -15,7 +15,7 @@ if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
 
 
-def format_agents_table(agents: "list[Agent]") -> RenderableType:
+def format_agents(agents: "list[Agent]") -> RenderableType:
     """
     Takes a list of Agent objects and formats them into a concise rich Table.
     """

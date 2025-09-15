@@ -8,7 +8,7 @@ from pathlib import Path
 T = t.TypeVar("T")
 
 
-DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py")
+DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py", "attack.py", "study.py")
 
 
 @dataclass
@@ -63,10 +63,7 @@ def _discover_in_module(module_data: ModuleData, discovery_type: type[T]) -> dic
     for obj_name in dir(mod):
         obj = getattr(mod, obj_name)
         if isinstance(obj, discovery_type):
-            discovery_name = (
-                getattr(obj, "discovery_name", None) or getattr(obj, "name", obj_name) or obj_name
-            )
-            objects[discovery_name] = obj
+            objects[obj_name] = obj
 
     return objects
 

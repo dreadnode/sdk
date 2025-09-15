@@ -18,24 +18,17 @@ Direction = Literal['maximize', 'minimize']
 
 The direction of optimization for the objective score.
 
-ObjectiveLike
--------------
+ObjectivesLike
+--------------
 
 ```python
-ObjectiveLike = (
-    ScorerLike[OutputT]
-    | ScorersLike[OutputT]
-    | str
-    | list[str]
+ObjectivesLike = (
+    Sequence[ScorerLike[OutputT] | str]
+    | Mapping[str, ScorerLike[OutputT]]
 )
 ```
 
-A single or multiple optimization objective(s). Can be any of:
-
-* Single scorer instance or a scorer-like callable
-* String name of any scorer already configured on the task.
-* List/dict of multiple scorer instances or scorer-like callables (multi-objective).
-* List of string names of scorers already on the task (multi-objective).
+The objectives to optimize for.
 
 Study
 -----
@@ -76,63 +69,57 @@ for all metrics will be used as the trial's singular objective scores.
 ### description
 
 ```python
-description: str = Config(default='')
+description: str = ''
 ```
 
 A brief description of the study's purpose.
 
-### direction
+### directions
 
 ```python
-direction: Direction | list[Direction] = Config(
-    default="maximize"
+directions: list[Direction] = Config(
+    default_factory=lambda: ["maximize"]
 )
 ```
 
-The direction(s) of optimization for the objective score.
+The directions of optimization for the objective score.
 
-If multiple directions are specified, the length must match
-the number of objectives.
+The length must match the number of objectives.
 
-### max\_steps
+### max\_trials
 
 ```python
-max_steps: int = Config(default=100, ge=1)
+max_trials: int = Config(default=100, ge=1)
 ```
 
-The maximum number of optimization steps to run.
+The maximum number of trials to evaluate.
 
 ### name\_
 
 ```python
-name_: str | None = Config(
+name_: str | None = Field(
     default=None, repr=False, exclude=False, alias="name"
 )
 ```
 
 The name of the study - otherwise derived from the objective.
 
-### objective
+### objectives
 
 ```python
-objective: Annotated[
-    ObjectiveLike[OutputT], Config(expose_as=None)
+objectives: Annotated[
+    ObjectivesLike[OutputT], Config(expose_as=None)
 ]
 ```
 
-The objective(s) to optimize for. Can be any of:
+The objectives to optimize for.
 
-* Single scorer instance or a scorer-like callable
-* String name of any scorer already configured on the task.
-* List/dict of multiple scorer instances or scorer-like callables (multi-objective).
-* List of string names of scorers already on the task (multi-objective).
+Can be a list/dict of scorer-like callables or string names of scorers already on the task.
 
 ### search\_strategy
 
 ```python
-search_strategy: Annotated[
-    Search[CandidateT], Config(expose_as=None)
-]
+search_strategy: SkipValidation[Search[CandidateT]]
 ```
 
 The search strategy to use for suggesting new trials.
@@ -185,7 +172,7 @@ def clone(self) -> te.Self:
     Returns:
         A new Task instance with the same attributes as this one.
     """
-    return self.model_copy()
+    return self.model_copy(deep=True)
 ```
 
 
@@ -322,17 +309,18 @@ with_(
     search_strategy: Search[CandidateT] | None = None,
     task_factory: Callable[[CandidateT], Task[..., OutputT]]
     | None = None,
-    objective: ObjectiveLike[OutputT] | None = None,
-    direction: Direction | list[Direction] | None = None,
+    objectives: ObjectivesLike[OutputT] | None = None,
+    directions: list[Direction] | None = None,
     dataset: InputDataset[Any]
     | list[AnyDict]
     | FilePath
     | None = None,
     concurrency: int | None = None,
     constraints: ScorersLike[CandidateT] | None = None,
-    max_steps: int | None = None,
+    max_trials: int | None = None,
     stop_conditions: list[StudyStopCondition[CandidateT]]
     | None = None,
+    append: bool = False,
 ) -> te.Self
 ```
 
@@ -353,13 +341,14 @@ def with_(
     tags: list[str] | None = None,
     search_strategy: Search[CandidateT] | None = None,
     task_factory: t.Callable[[CandidateT], Task[..., OutputT]] | None = None,
-    objective: ObjectiveLike[OutputT] | None = None,
-    direction: Direction | list[Direction] | None = None,
+    objectives: ObjectivesLike[OutputT] | None = None,
+    directions: list[Direction] | None = None,
     dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = None,
     concurrency: int | None = None,
     constraints: ScorersLike[CandidateT] | None = None,
-    max_steps: int | None = None,
+    max_trials: int | None = None,
     stop_conditions: list[StudyStopCondition[CandidateT]] | None = None,
+    append: bool = False,
 ) -> te.Self:
     """
     Clone the study and modify its attributes.
@@ -367,22 +356,42 @@ def with_(
     Returns:
         A new Study instance with the modified attributes.
     """
-    return self.model_copy(
-        update={
-            "name_": name or self.name_,
-            "description": description or self.description,
-            "tags": tags or self.tags,
-            "search_strategy": search_strategy or self.search_strategy,
-            "task_factory": task_factory or self.task_factory,
-            "objective": objective or self.objective,
-            "direction": direction or self.direction,
-            "dataset": dataset if dataset is not None else self.dataset,
-            "concurrency": concurrency or self.concurrency,
-            "constraints": constraints if constraints is not None else self.constraints,
-            "max_steps": max_steps or self.max_steps,
-            "stop_conditions": stop_conditions or self.stop_conditions,
-        }
-    )
+    new = self.clone()
+
+    new.name_ = name or new.name
+    new.description = description or new.description
+    new.search_strategy = search_strategy or new.search_strategy
+    new.task_factory = task_factory or new.task_factory
+    new.dataset = dataset if dataset is not None else new.dataset
+    new.concurrency = concurrency or new.concurrency
+    new.max_trials = max_trials or new.max_trials
+
+    new_tags = tags or []
+    new_objectives = fit_objectives(objectives) if objectives is not None else []
+    new_directions = directions or ["maximize"] * len(new_objectives)
+    new_stop_conditions = stop_conditions or []
+    new_constraints = Scorer.fit_many(constraints) if constraints is not None else []
+
+    if len(new_directions) != len(new_objectives):
+        raise ValueError(
+            f"The number of directions ({len(new_directions)}) must match the "
+            f"number of objectives ({len(new_objectives)})."
+        )
+
+    if append:
+        new.tags = [*new.tags, *new_tags]
+        new.objectives = [*fit_objectives(new.objectives), *new_objectives]
+        new.directions = [*new.directions, *new_directions]
+        new.stop_conditions = [*new.stop_conditions, *new_stop_conditions]
+        new.constraints = [*Scorer.fit_many(new.constraints), *new_constraints]
+    else:
+        new.tags = new_tags or new.tags
+        new.objectives = new_objectives or new.objectives
+        new.directions = new_directions or new.directions
+        new.stop_conditions = new_stop_conditions or new.stop_conditions
+        new.constraints = new_constraints or new.constraints
+
+    return new
 ```
 
 
@@ -495,10 +504,129 @@ Current status of the trial.
 ### step
 
 ```python
-step: int = 0
+step: int = Field(default=0, init=False)
 ```
 
 The optimization step which produced this trial.
+
+### \_\_await\_\_
+
+```python
+__await__() -> t.Generator[t.Any, None, Trial[CandidateT]]
+```
+
+Await the completion of the trial.
+
+<Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
+```python
+def __await__(self) -> t.Generator[t.Any, None, "Trial[CandidateT]"]:
+    """
+    Await the completion of the trial.
+    """
+    return self._future.__await__()
+```
+
+
+</Accordion>
+
+### done
+
+```python
+done() -> bool
+```
+
+A non-blocking check to see if the trial's evaluation is complete.
+
+<Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
+```python
+def done(self) -> bool:
+    """A non-blocking check to see if the trial's evaluation is complete."""
+    return self._future.done()
+```
+
+
+</Accordion>
+
+### objective\_score
+
+```python
+objective_score(
+    name: str | None = None,
+    *,
+    default: float = -float("inf"),
+) -> float | None
+```
+
+Get the score for a specific named objective, or the overall score if no name is given.
+
+**Parameters:**
+
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –The name of the objective.
+
+<Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
+```python
+def objective_score(
+    self, name: str | None = None, *, default: float = -float("inf")
+) -> float | None:
+    """
+    Get the score for a specific named objective, or the overall score if no name is given.
+
+    Args:
+        name: The name of the objective.
+    """
+    if name is not None:
+        return self.scores.get(name, default)
+    return self.score
+```
+
+
+</Accordion>
+
+### wait\_for
+
+```python
+wait_for(
+    *trials: Trial[CandidateT],
+) -> list[Trial[CandidateT]]
+```
+
+Await the completion of multiple trials.
+
+**Parameters:**
+
+* **`*trials`**
+  (`Trial[CandidateT]`, default:
+  `()`
+  )
+  –The trials to wait for.
+
+**Returns:**
+
+* `list[Trial[CandidateT]]`
+  –A future that resolves to a list of completed trials.
+
+<Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
+```python
+@staticmethod
+async def wait_for(*trials: "Trial[CandidateT]") -> "list[Trial[CandidateT]]":
+    """
+    Await the completion of multiple trials.
+
+    Args:
+        *trials: The trials to wait for.
+
+    Returns:
+        A future that resolves to a list of completed trials.
+    """
+    return await asyncio.gather(*(trial._future for trial in trials))  # noqa: SLF001
+```
+
+
+</Accordion>
 
 TrialCollector
 --------------
@@ -519,282 +647,6 @@ Distribution()
 
 Base class for all search space distributions.
 
-GraphSearch
------------
-
-A generalized, stateful strategy for generative graph-based search.
-
-Formally, the structure is a connected directed acyclic graph (DAG) where nodes represent
-trials and edges are parent-child relationships.
-
-For each step, it:
-1 - Gathers related trials using `context_collector` for every leaf node
-2 - Applies the `transform` to [leaf, \*context] `branching_factor` times for each leaf
-3 - Suggests all new children for evaluation
-
-When trials are observed, it:
-1 - Filters out non-completed trials
-2 - Adds new children to the graph
-3 - Prunes with `pruning_sampler` to establish leaves for the next step
-
-### branching\_factor
-
-```python
-branching_factor: int = Config(default=3)
-```
-
-The number of new candidates to generate from each leaf node.
-
-### context\_collector
-
-```python
-context_collector: TrialCollector[CandidateT] = Config(
-    lineage
-)
-```
-
-A trial collector to gather relevant trials before branching.
-
-### initial\_candidate
-
-```python
-initial_candidate: CandidateT
-```
-
-The initial candidate for the search.
-
-### max\_leaves
-
-```python
-max_leaves: int = Config(default=10)
-```
-
-The maximum number of leaf nodes to maintain in the search.
-
-### pruning\_sampler
-
-```python
-pruning_sampler: TrialSampler[CandidateT] = Config(top_k)
-```
-
-A trial sampler to prune new children after each branching.
-
-### transform
-
-```python
-transform: Transform[list[Trial[CandidateT]], CandidateT]
-```
-
-The transform for generating new nodes from the current trial and related context.
-
-OptunaSearch
-------------
-
-```python
-OptunaSearch(
-    search_space: SearchSpace,
-    *,
-    sampler: BaseSampler | None = None,
-    trials_per_step: int = 1,
-)
-```
-
-An adapter that uses an Optuna study as a search strategy.
-
-Initializes the OptunaSearch with the given search space and study.
-
-**Parameters:**
-
-* **`search_space`**
-  (`SearchSpace`)
-  –The search space to explore.
-* **`sampler`**
-  (`BaseSampler | None`, default:
-  `None`
-  )
-  –An optional Optuna sampler (e.g., NSGAIISampler for MOO).
-* **`trials_per_step`**
-  (`int`, default:
-  `1`
-  )
-  –The number of trials to suggest at each step.
-
-<Accordion title="Source code in dreadnode/optimization/search/optuna_.py" icon="code">
-```python
-def __init__(
-    self,
-    search_space: SearchSpace,
-    *,
-    sampler: optuna.samplers.BaseSampler | None = None,
-    trials_per_step: int = 1,
-) -> None:
-    """
-    Initializes the OptunaSearch with the given search space and study.
-
-    Args:
-        search_space: The search space to explore.
-        sampler: An optional Optuna sampler (e.g., NSGAIISampler for MOO).
-        trials_per_step: The number of trials to suggest at each step.
-    """
-    self.trials_per_step = trials_per_step
-    self._optuna_sampler = sampler
-    self._optuna_study = optuna.create_study()
-    self._optuna_search_space = _convert_search_space(search_space)
-    self._trial_map: dict[ULID, optuna.trial.Trial] = {}
-    self._objective_names: list[str] = []
-```
-
-
-</Accordion>
-
-RandomSearch
-------------
-
-```python
-RandomSearch(
-    search_space: SearchSpace,
-    *,
-    trials_per_step: int = 1,
-    seed: float | None = None,
-)
-```
-
-A search strategy that suggests candidates by sampling uniformly and
-independently from the search space at each step.
-
-This strategy is "memoryless" and does not learn from the results of
-past trials. It is primarily useful as a simple baseline for comparing
-the performance of more sophisticated optimization algorithms.
-
-Initializes the RandomSearch strategy.
-
-**Parameters:**
-
-* **`search_space`**
-  (`SearchSpace`)
-  –The search space to explore.
-* **`trials_per_step`**
-  (`int`, default:
-  `1`
-  )
-  –The number of trials to suggest at each step.
-
-<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
-```python
-def __init__(
-    self, search_space: SearchSpace, *, trials_per_step: int = 1, seed: float | None = None
-):
-    """
-    Initializes the RandomSearch strategy.
-
-    Args:
-        search_space: The search space to explore.
-        trials_per_step: The number of trials to suggest at each step.
-    """
-    self.search_space = search_space
-    self.trials_per_step = trials_per_step
-    self.seed = seed
-    self.random = random.Random(seed)  # noqa: S311 # nosec
-```
-
-
-</Accordion>
-
-### observe
-
-```python
-observe(trials: list[Trial[AnyDict]]) -> None
-```
-
-Informs the strategy of recent trial results. This is a no-op for RandomSearch.
-
-<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
-```python
-async def observe(self, trials: list[Trial[AnyDict]]) -> None:
-    """Informs the strategy of recent trial results. This is a no-op for RandomSearch."""
-```
-
-
-</Accordion>
-
-### suggest
-
-```python
-suggest(step: int) -> t.AsyncIterator[Trial[AnyDict]]
-```
-
-Suggests the next batch of random candidates.
-
-<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
-```python
-async def suggest(self, step: int) -> t.AsyncIterator[Trial[AnyDict]]:
-    """Suggests the next batch of random candidates."""
-    for _ in range(self.trials_per_step):
-        candidate = _sample_from_space(self.search_space, self.random)
-        yield Trial(candidate=candidate, step=step)
-```
-
-
-</Accordion>
-
-Search
-------
-
-Abstract base class for all optimization search strategies.
-
-### observe
-
-```python
-observe(trials: list[Trial[CandidateT]]) -> None
-```
-
-Informs the strategy of the results of recent trials.
-
-<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
-```python
-@abstractmethod
-async def observe(self, trials: list[Trial[CandidateT]]) -> None:
-    """Informs the strategy of the results of recent trials."""
-```
-
-
-</Accordion>
-
-### reset
-
-```python
-reset(context: OptimizationContext) -> None
-```
-
-Resets the search strategy to a clean state.
-
-<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
-```python
-def reset(self, context: "OptimizationContext") -> None:
-    """Resets the search strategy to a clean state."""
-```
-
-
-</Accordion>
-
-### suggest
-
-```python
-suggest(step: int) -> t.AsyncIterator[Trial[CandidateT]]
-```
-
-Suggests the next batch of candidates.
-
-<Accordion title="Source code in dreadnode/optimization/search/base.py" icon="code">
-```python
-@abstractmethod
-def suggest(self, step: int) -> t.AsyncIterator[Trial[CandidateT]]:
-    """Suggests the next batch of candidates."""
-```
-
-
-</Accordion>
-
 beam\_search
 ------------
 
@@ -807,10 +659,10 @@ beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-) -> GraphSearch[CandidateT]
+) -> Search[CandidateT]
 ```
 
-Creates a GraphSearch configured for classic beam search.
+Creates a graph search configured for classic beam search.
 
 This strategy maintains parallel reasoning paths by keeping a "beam" of the top `k`
 best trials from the previous step. Each trial in the beam is expanded independently,
@@ -837,7 +689,7 @@ using its own lineage for context.
 
 **Returns:**
 
-* `GraphSearch[CandidateT]`
+* `Search[CandidateT]`
   –A pre-configured GraphSearch instance.
 
 <Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
@@ -848,9 +700,9 @@ def beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-) -> GraphSearch[CandidateT]:
+) -> Search[CandidateT]:
     """
-    Creates a GraphSearch configured for classic beam search.
+    Creates a graph search configured for classic beam search.
 
     This strategy maintains parallel reasoning paths by keeping a "beam" of the top `k`
     best trials from the previous step. Each trial in the beam is expanded independently,
@@ -865,13 +717,225 @@ def beam_search(
     Returns:
         A pre-configured GraphSearch instance.
     """
-    return GraphSearch[CandidateT](
-        transform=Transform.fit(transform),
+    return graph_search(
+        transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
         context_collector=lineage,
         pruning_sampler=top_k.configure(k=beam_width),
+        name="beam_search",
     )
+```
+
+
+</Accordion>
+
+binary\_image\_search
+---------------------
+
+```python
+binary_image_search(
+    start_image: Image,
+    end_image: Image,
+    *,
+    tolerance: float = 5.0,
+    distance_method: DistanceMethod = "l2",
+    decision_objective: str | None = None,
+    decision_threshold: float = 0.0,
+) -> Search[Image]
+```
+
+Performs a binary search between two images to find a new image
+which lies on the decision boundary defined by the objective and threshold.
+
+**Parameters:**
+
+* **`start_image`**
+  (`Image`)
+  –An image expected to be unsuccessful (score <= [decision\_threshold]).
+* **`end_image`**
+  (`Image`)
+  –An image expected to be successful (score > [decision\_threshold]).
+* **`tolerance`**
+  (`float`, default:
+  `5.0`
+  )
+  –The maximum acceptable distance between the start and end images.
+* **`distance_method`**
+  (`DistanceMethod`, default:
+  `'l2'`
+  )
+  –The distance metric to use for measuring similarity.
+* **`decision_objective`**
+  (`str | None`, default:
+  `None`
+  )
+  –The name of the objective to use for the decision. If None,
+
+<Accordion title="Source code in dreadnode/optimization/search/boundary.py" icon="code">
+```python
+def binary_image_search(
+    start_image: Image,
+    end_image: Image,
+    *,
+    tolerance: float = 5.0,  # relatively high because of image pixel precision
+    distance_method: DistanceMethod = "l2",
+    decision_objective: str | None = None,
+    decision_threshold: float = 0.0,
+) -> Search[Image]:
+    """
+    Performs a binary search between two images to find a new image
+    which lies on the decision boundary defined by the objective and threshold.
+
+    Args:
+        start_image: An image expected to be unsuccessful (score <= [decision_threshold]).
+        end_image: An image expected to be successful (score > [decision_threshold]).
+        tolerance: The maximum acceptable distance between the start and end images.
+        distance_method: The distance metric to use for measuring similarity.
+        decision_objective: The name of the objective to use for the decision. If None,
+    """
+    from dreadnode.transforms.image import interpolate
+
+    async def tolerable(img1: Image, img2: Image) -> bool:
+        metric = await image_distance(img1, method=distance_method)(img2)
+        return metric.value < tolerance
+
+    return boundary_search(
+        start_candidate=start_image,
+        end_candidate=end_image,
+        interpolate=interpolate(alpha=0.5),
+        tolerable=tolerable,
+        decision_objective=decision_objective,
+        decision_threshold=decision_threshold,
+    )
+```
+
+
+</Accordion>
+
+boundary\_search
+----------------
+
+```python
+boundary_search(
+    start_candidate: CandidateT,
+    end_candidate: CandidateT,
+    interpolate: TransformLike[
+        tuple[CandidateT, CandidateT], CandidateT
+    ],
+    tolerable: Callable[
+        [CandidateT, CandidateT], Awaitable[bool]
+    ],
+    *,
+    decision_objective: str | None = None,
+    decision_threshold: float = 0.0,
+) -> Search[CandidateT]
+```
+
+Performs a boundary search between two candidates to find a new candidate
+which lies on the decision boundary defined by the objective and threshold.
+
+**Parameters:**
+
+* **`start_candidate`**
+  (`CandidateT`)
+  –A candidate expected to be unsuccessful (score <= [decision\_threshold]).
+* **`end_candidate`**
+  (`CandidateT`)
+  –A candidate expected to be successful (score > [decision\_threshold]).
+* **`interpolate`**
+  (`TransformLike[tuple[CandidateT, CandidateT], CandidateT]`)
+  –A transform that takes two candidates and returns a candidate
+  that is between them.
+* **`tolerable`**
+  (`Callable[[CandidateT, CandidateT], Awaitable[bool]]`)
+  –A function that checks if the similarity (distance) between two candidates is within acceptable limits.
+* **`decision_objective`**
+  (`str | None`, default:
+  `None`
+  )
+  –The name of the objective to use for the decision. If None, uses the overall trial score.
+* **`decision_threshold`**
+  (`float`, default:
+  `0.0`
+  )
+  –The threshold value for the decision objective.
+
+<Accordion title="Source code in dreadnode/optimization/search/boundary.py" icon="code">
+```python
+def boundary_search(
+    start_candidate: CandidateT,
+    end_candidate: CandidateT,
+    interpolate: TransformLike[tuple[CandidateT, CandidateT], CandidateT],
+    tolerable: t.Callable[[CandidateT, CandidateT], t.Awaitable[bool]],
+    *,
+    decision_objective: str | None = None,
+    decision_threshold: float = 0.0,
+) -> Search[CandidateT]:
+    """
+    Performs a boundary search between two candidates to find a new candidate
+    which lies on the decision boundary defined by the objective and threshold.
+
+    Args:
+        start_candidate: A candidate expected to be unsuccessful (score <= [decision_threshold]).
+        end_candidate: A candidate expected to be successful (score > [decision_threshold]).
+        interpolate: A transform that takes two candidates and returns a candidate
+                     that is between them.
+        tolerable: A function that checks if the similarity (distance) between two candidates is within acceptable limits.
+        decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
+        decision_threshold: The threshold value for the decision objective.
+    """
+
+    async def search(context: OptimizationContext) -> t.AsyncGenerator[Trial[CandidateT], None]:
+        if decision_objective and decision_objective not in context.objective_names:
+            raise ValueError(
+                f"Decision objective '{decision_objective}' not found in the optimization context."
+            )
+
+        def is_successful(trial: Trial) -> bool:
+            score_to_check = (
+                trial.scores.get(decision_objective, 0.0) if decision_objective else trial.score
+            )
+            return score_to_check > decision_threshold
+
+        start_trial = Trial(candidate=start_candidate)
+        end_trial = Trial(candidate=end_candidate)
+        yield start_trial
+        yield end_trial
+
+        await Trial.wait_for(start_trial, end_trial)
+
+        if is_successful(start_trial):
+            raise ValueError(
+                f"start_candidate was considered successful ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
+            )
+
+        if not is_successful(end_trial):
+            raise ValueError(
+                f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
+            )
+
+        original_bound = start_candidate
+        adversarial_bound = end_candidate
+        interpolate_transform = Transform(interpolate)
+
+        while not await tolerable(original_bound, adversarial_bound):
+            midpoint_candidate = await interpolate_transform((original_bound, adversarial_bound))
+            if inspect.isawaitable(midpoint_candidate):
+                midpoint_candidate = await midpoint_candidate
+
+            midpoint_trial = Trial(candidate=midpoint_candidate)
+            yield midpoint_trial
+            await midpoint_trial
+
+            if is_successful(midpoint_trial):
+                adversarial_bound = midpoint_trial.candidate
+            else:
+                original_bound = midpoint_trial.candidate
+
+        yield Trial(candidate=adversarial_bound)
+
+    return Search(search, name="boundary_search")
 ```
 
 
@@ -890,10 +954,10 @@ graph_neighborhood_search(
     neighborhood_depth: int = 2,
     frontier_size: int = 5,
     branching_factor: int = 3,
-) -> GraphSearch[CandidateT]
+) -> Search[CandidateT]
 ```
 
-Creates a GraphSearch configured with a local neighborhood context, where the trial context
+Creates a graph search configured with a local neighborhood context, where the trial context
 passed to the transform includes the trials in the local neighborhood up to `2h-1` distance
 away where `h` is the neighborhood depth. This means the trials which are "parents",
 "grandparents", "uncles", or "cousins" can be considered during the creation of new nodes.
@@ -929,7 +993,7 @@ See: "Graph of Attacks" - https://arxiv.org/pdf/2504.19019v1
 
 **Returns:**
 
-* `GraphSearch[CandidateT]`
+* `Search[CandidateT]`
   –A pre-configured GraphSearch instance.
 
 <Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
@@ -941,9 +1005,9 @@ def graph_neighborhood_search(
     neighborhood_depth: int = 2,
     frontier_size: int = 5,
     branching_factor: int = 3,
-) -> GraphSearch[CandidateT]:
+) -> Search[CandidateT]:
     """
-    Creates a GraphSearch configured with a local neighborhood context, where the trial context
+    Creates a graph search configured with a local neighborhood context, where the trial context
     passed to the transform includes the trials in the local neighborhood up to `2h-1` distance
     away where `h` is the neighborhood depth. This means the trials which are "parents",
     "grandparents", "uncles", or "cousins" can be considered during the creation of new nodes.
@@ -963,13 +1027,118 @@ def graph_neighborhood_search(
     Returns:
         A pre-configured GraphSearch instance.
     """
-    return GraphSearch[CandidateT](
-        transform=Transform.fit(transform),
+    return graph_search(
+        transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
         context_collector=local_neighborhood.configure(depth=neighborhood_depth),
         pruning_sampler=top_k.configure(k=frontier_size),
+        name="graph_neighborhood_search",
     )
+```
+
+
+</Accordion>
+
+graph\_search
+-------------
+
+```python
+graph_search(
+    transform: TransformLike[
+        list[Trial[CandidateT]], CandidateT
+    ],
+    initial_candidate: CandidateT,
+    *,
+    branching_factor: int = 3,
+    context_collector: TrialCollector[CandidateT] = lineage,
+    pruning_sampler: TrialSampler[CandidateT] = top_k,
+    name: str = "graph_search",
+) -> Search[CandidateT]
+```
+
+Creates a generalized, stateful strategy for generative graph-based search.
+
+Formally, the structure is a connected directed acyclic graph (DAG) where nodes represent
+trials and edges are parent-child relationships.
+
+For each iteration, it:
+1 - Gathers related trials using `context_collector` for every leaf node
+2 - Applies the `transform` to [leaf, \*context] `branching_factor` times for each leaf
+3 - Suggests all new children for evaluation
+4 - Waits for all children to complete
+5 - Prunes with `pruning_sampler` to establish leaves for the next step
+
+<Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
+```python
+def graph_search(
+    transform: TransformLike[list[Trial[CandidateT]], CandidateT],
+    initial_candidate: CandidateT,
+    *,
+    branching_factor: int = 3,
+    context_collector: TrialCollector[CandidateT] = lineage,
+    pruning_sampler: TrialSampler[CandidateT] = top_k,
+    name: str = "graph_search",
+) -> Search[CandidateT]:
+    """
+    Creates a generalized, stateful strategy for generative graph-based search.
+
+    Formally, the structure is a connected directed acyclic graph (DAG) where nodes represent
+    trials and edges are parent-child relationships.
+
+    For each iteration, it:
+        1 - Gathers related trials using `context_collector` for every leaf node
+        2 - Applies the `transform` to [leaf, *context] `branching_factor` times for each leaf
+        3 - Suggests all new children for evaluation
+        4 - Waits for all children to complete
+        5 - Prunes with `pruning_sampler` to establish leaves for the next step
+    """
+
+    async def search(
+        _: OptimizationContext,
+        *,
+        transform: TransformLike[list[Trial[CandidateT]], CandidateT] = Config(transform),  # noqa: B008
+        initial_candidate: CandidateT = Config(initial_candidate),  # noqa: B008
+        branching_factor: int = Config(branching_factor),
+        context_collector: TrialCollector[CandidateT] = Config(context_collector),  # noqa: B008
+        pruning_sampler: TrialSampler[CandidateT] = Config(pruning_sampler),  # noqa: B008
+    ) -> t.AsyncGenerator[Trial[CandidateT], None]:
+        trials: list[Trial[CandidateT]] = []
+        leaves: list[Trial[CandidateT]] = []
+        transform = Transform.fit(transform)
+
+        initial_trial = Trial(candidate=initial_candidate)
+        yield initial_trial
+        await initial_trial
+
+        if initial_trial.status != "finished":
+            return
+
+        trials.append(initial_trial)
+        leaves = [initial_trial]
+
+        while leaves:
+            # Generate all new trials branching from current leaves
+            new_trials: list[Trial[CandidateT]] = []
+            for leaf in leaves:
+                trials_context = [leaf, *context_collector(leaf, trials)]
+                coroutines = [transform(trials_context) for _ in range(branching_factor)]
+                async with concurrent_gen(coroutines) as gen:
+                    async for candidate in gen:
+                        new_trial = Trial(candidate=candidate, parent_id=leaf.id)
+                        new_trials.append(new_trial)
+                        yield new_trial
+
+            # Wait for all new trials to complete
+            await Trial.wait_for(*new_trials)
+
+            # Collect finished trials and prune to get new leaves
+            finished = [t for t in new_trials if t.status == "finished"]
+            trials.extend(finished)
+            interleaved = interleave_by_parent(finished)
+            leaves = pruning_sampler(interleaved)
+
+    return Search(search, name=name)
 ```
 
 
@@ -986,7 +1155,7 @@ iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
-) -> GraphSearch[CandidateT]
+) -> Search[CandidateT]
 ```
 
 Creates a GraphSearch configured for single-path iterative refinement.
@@ -1014,8 +1183,8 @@ Set `branching_factor` > 1 to explore multiple candidates at each step.
 
 **Returns:**
 
-* `GraphSearch[CandidateT]`
-  –A pre-configured GraphSearch instance.
+* `Search[CandidateT]`
+  –A pre-configured graph search instance.
 
 <Accordion title="Source code in dreadnode/optimization/search/graph.py" icon="code">
 ```python
@@ -1024,7 +1193,7 @@ def iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
-) -> GraphSearch[CandidateT]:
+) -> Search[CandidateT]:
     """
     Creates a GraphSearch configured for single-path iterative refinement.
 
@@ -1041,15 +1210,154 @@ def iterative_search(
                           The best of these will be chosen for the next step.
 
     Returns:
-        A pre-configured GraphSearch instance.
+        A pre-configured graph search instance.
     """
-    return GraphSearch[CandidateT](
-        transform=Transform.fit(transform),
+    return graph_search(
+        transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
         context_collector=lineage,
         pruning_sampler=top_k.configure(k=1),
+        name="iterative_search",
     )
+```
+
+
+</Accordion>
+
+optuna\_search
+--------------
+
+```python
+optuna_search(
+    search_space: SearchSpace,
+    *,
+    sampler: BaseSampler | None = None,
+) -> Search[AnyDict]
+```
+
+Creates a search strategy that uses Optuna for Bayesian optimization.
+
+This strategy leverages Optuna's powerful samplers (like TPE) to intelligently
+explore a defined search space, learning from past trial results to suggest
+more promising candidates.
+
+**Parameters:**
+
+* **`search_space`**
+  (`SearchSpace`)
+  –The search space to explore, defining parameter names and distributions.
+* **`sampler`**
+  (`BaseSampler | None`, default:
+  `None`
+  )
+  –An optional Optuna sampler (e.g., TPESampler, NSGAIISampler).
+
+<Accordion title="Source code in dreadnode/optimization/search/optuna_.py" icon="code">
+```python
+def optuna_search(
+    search_space: SearchSpace,
+    *,
+    sampler: optuna.samplers.BaseSampler | None = None,
+) -> Search[AnyDict]:
+    """
+    Creates a search strategy that uses Optuna for Bayesian optimization.
+
+    This strategy leverages Optuna's powerful samplers (like TPE) to intelligently
+    explore a defined search space, learning from past trial results to suggest
+    more promising candidates.
+
+    Args:
+        search_space: The search space to explore, defining parameter names and distributions.
+        sampler: An optional Optuna sampler (e.g., TPESampler, NSGAIISampler).
+    """
+
+    async def search(
+        context: OptimizationContext,
+        *,
+        search_space: SearchSpace = search_space,
+        sampler: optuna.samplers.BaseSampler | None = sampler,
+    ) -> t.AsyncGenerator[Trial[AnyDict], None]:
+        optuna_study = optuna.create_study(directions=context.directions, sampler=sampler)
+        optuna_search_space = _convert_search_space(search_space)
+        objective_names = context.objective_names
+
+        while True:
+            optuna_trial = optuna_study.ask(optuna_search_space)
+
+            trial = Trial[AnyDict](candidate=optuna_trial.params)
+            yield trial
+            await trial
+
+            if trial.status == "finished":
+                # Provide scores in the correct order for multi-objective optimization.
+                scores = [trial.scores.get(name, 0.0) for name in objective_names]
+                optuna_study.tell(optuna_trial, scores)
+            else:
+                state = (
+                    optuna.trial.TrialState.PRUNED
+                    if trial.status == "pruned"
+                    else optuna.trial.TrialState.FAIL
+                )
+                optuna_study.tell(optuna_trial, state=state)
+
+    return Search(search)
+```
+
+
+</Accordion>
+
+random\_search
+--------------
+
+```python
+random_search(
+    search_space: SearchSpace, *, seed: float | None = None
+) -> Search[AnyDict]
+```
+
+Create a search strategy that suggests candidates by sampling uniformly and
+independently from the search space at each step.
+
+This strategy is "memoryless" and does not learn from the results of
+past trials. It is primarily useful as a simple baseline for comparing
+the performance of more sophisticated optimization algorithms.
+
+**Parameters:**
+
+* **`search_space`**
+  (`SearchSpace`)
+  –The search space to explore.
+* **`seed`**
+  (`float | None`, default:
+  `None`
+  )
+  –The random seed to use for reproducibility.
+
+<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
+```python
+def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Search[AnyDict]:
+    """
+    Create a search strategy that suggests candidates by sampling uniformly and
+    independently from the search space at each step.
+
+    This strategy is "memoryless" and does not learn from the results of
+    past trials. It is primarily useful as a simple baseline for comparing
+    the performance of more sophisticated optimization algorithms.
+
+    Args:
+        search_space: The search space to explore.
+        seed: The random seed to use for reproducibility.
+    """
+
+    async def search(
+        _: OptimizationContext, *, seed: float | None = seed
+    ) -> t.AsyncGenerator[Trial[AnyDict], None]:
+        _random = random.Random(seed)  # noqa: S311 # nosec
+        while True:
+            yield Trial(candidate=_sample_from_space(search_space, _random))
+
+    return Search(search, name="random_search")
 ```
 
 

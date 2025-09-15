@@ -61,7 +61,7 @@ def sentiment(
 
         return Metric(value=score, attributes={"polarity": polarity, "target": target})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 
 
 PerspectiveAttribute = t.Literal[
@@ -117,4 +117,4 @@ def sentiment_with_perspective(
     if name is None:
         name = f"perspective_{attribute.lower()}"
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)

@@ -23,8 +23,14 @@ def hydrate(blueprint: T, config: PydanticBaseModel | AnyDict) -> T:
     This is a recursive, non-mutating process that returns a new, fully
     hydrated blueprint.
     """
-    config_data = config.model_dump() if isinstance(config, PydanticBaseModel) else config
-    return t.cast("T", _hydrate_recursive(blueprint, config_data))
+    try:
+        config_data = config.model_dump() if isinstance(config, PydanticBaseModel) else config
+        return t.cast("T", _hydrate_recursive(blueprint, config_data))
+    except Exception as e:  # noqa: BLE001
+        warn_at_user_stacklevel(
+            f"Failed to hydrate {blueprint!r} with config {config!r}: {e}", HydrationWarning
+        )
+        return blueprint
 
 
 def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:  # noqa: PLR0911, PLR0912

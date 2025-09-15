@@ -7,7 +7,7 @@ from functools import cached_property
 from pathlib import Path
 
 import typing_extensions as te
-from pydantic import ConfigDict, FilePath, TypeAdapter, computed_field
+from pydantic import ConfigDict, Field, FilePath, TypeAdapter, computed_field
 
 from dreadnode.common_types import AnyDict, Unset
 from dreadnode.discovery import find
@@ -26,9 +26,9 @@ from dreadnode.eval.events import (
 from dreadnode.eval.result import EvalResult, IterationResult, ScenarioResult
 from dreadnode.eval.sample import Sample
 from dreadnode.meta import Config, DatasetField, Model
+from dreadnode.meta.introspect import get_config_model, get_inputs_and_params_from_config_model
 from dreadnode.scorers.base import Scorer, ScorersLike
 from dreadnode.task import Task
-from dreadnode.tracing.span import current_run_span
 from dreadnode.util import (
     concurrent_gen,
     get_callable_name,
@@ -57,16 +57,16 @@ class Eval(Model, t.Generic[In, Out]):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    task: t.Annotated[Task[[In], Out] | str, Config(expose_as=str)]
+    task: t.Annotated[Task[[In], Out] | str, Config(expose_as=t.Any)]
     """The task to evaluate. Can be a Task object or a string representing qualified task name."""
-    dataset: t.Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=FilePath)]
+    dataset: t.Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=t.Any)]
     """The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from."""
 
-    name_: str | None = Config(default=None, alias="name", repr=False, exclude=True)
+    name_: str | None = Field(default=None, alias="name", repr=False, exclude=True)
     """The name of the evaluation."""
-    description: str = Config(default="")
+    description: str = ""
     """A brief description of the eval's purpose."""
-    label: str | None = Config(default=None)
+    label: str | None = None
     """Specific label to use for tasks created by this eval."""
     tags: list[str] = Config(default_factory=lambda: ["eval"])
     """A list of tags associated with the evaluation."""
@@ -85,7 +85,7 @@ class Eval(Model, t.Generic[In, Out]):
     before terminating the evaluation run. Set to None to disable.
     """
 
-    dataset_input_mapping: list[str] | dict[str, str] | None = Config(default=None)
+    dataset_input_mapping: list[str] | dict[str, str] | None = None
     """
     A list of dataset keys to pass as input parameters to the task, or an
     explicit mapping from dataset keys to task parameter names.
@@ -101,7 +101,7 @@ class Eval(Model, t.Generic[In, Out]):
 
     preprocessor: InputDatasetProcessor | None = None
     """Optional preprocessor function to transform the dataset before evaluation."""
-    scorers: ScorersLike[Out] = Config(default_factory=list)
+    scorers: ScorersLike[Out] = []
     """Scorers to evaluate the task's output (appended to existing task scorers)."""
     assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
     """Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions)."""
@@ -252,10 +252,7 @@ class Eval(Model, t.Generic[In, Out]):
             yield sample_stream
 
     async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
-        from dreadnode import log_inputs, log_params, run, task_span
-
-        current_run = current_run_span.get()
-        inside_active_run = current_run is not None
+        from dreadnode import task_and_run
 
         base_task, dataset = await self._prepare_task_and_dataset()
         param_combinations = self._get_param_combinations()
@@ -275,27 +272,25 @@ class Eval(Model, t.Generic[In, Out]):
             total_samples=total_samples,
         )
 
-        eval_result = EvalResult[In, Out](scenarios=[])
+        configuration = get_config_model(self)()
+        trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
+        trace_params.pop("parameters", None)
 
+        eval_result = EvalResult[In, Out](scenarios=[])
         for scenario_params in param_combinations:
             trace_context = (
-                contextlib.nullcontext()
-                if not self.trace
-                else task_span(self.name, tags=self.tags, label=self.label)
-                if inside_active_run
-                else run(name_prefix=self.name, tags=self.tags)
+                task_and_run(
+                    name=self.name,
+                    tags=self.tags,
+                    inputs=trace_inputs,
+                    params={**trace_params, **scenario_params},
+                )
+                if self.trace
+                else contextlib.nullcontext()
             )
 
-            with trace_context as scenario_span:
-                run_id = ""
-                if scenario_span is not None:
-                    log_inputs(**scenario_params) if inside_active_run else log_params(
-                        **scenario_params
-                    )
-                    run_id = scenario_span.run_id
-                elif current_run:
-                    run_id = current_run.run_id
-
+            with trace_context as task:
+                run_id = task.run_id if task else ""
                 yield ScenarioStart(
                     eval=self,
                     run_id=run_id,

@@ -43,6 +43,8 @@ from dreadnode.scorers.sentiment import sentiment, sentiment_with_perspective
 if t.TYPE_CHECKING:
     from dreadnode.scorers.crucible import contains_crucible_flag
     from dreadnode.scorers.harm import detect_harm_with_openai
+    from dreadnode.scorers.image import image_distance
+    from dreadnode.scorers.json import json_path
     from dreadnode.scorers.judge import llm_judge
     from dreadnode.scorers.rigging import adapt_messages, make_messages_adapter, wrap_chat
     from dreadnode.scorers.similarity import (
@@ -79,9 +81,11 @@ __all__ = [
     "detect_sensitive_keywords",
     "detect_unsafe_shell_content",
     "equals",
+    "image_distance",
     "invert",
     "is_json",
     "is_xml",
+    "json_path",
     "length_in_range",
     "length_ratio",
     "length_target",
@@ -107,7 +111,7 @@ __all__ = [
     "zero_shot_classification",
 ]
 
-__lazy_submodules__: list[str] = ["scorers", "agent", "airt", "eval", "transforms"]
+__lazy_submodules__: list[str] = []
 __lazy_components__: dict[str, str] = {
     "llm_judge": "dreadnode.scorers.judge",
     "wrap_chat": "dreadnode.scorers.rigging",
@@ -120,6 +124,8 @@ __lazy_components__: dict[str, str] = {
     "similarity_with_tf_idf": "dreadnode.scorers.similarity",
     "similarity_with_litellm": "dreadnode.scorers.similarity",
     "bleu": "dreadnode.scorers.similarity",
+    "json_path": "dreadnode.scorers.json",
+    "image_distance": "dreadnode.scorers.image",
 }
 
 

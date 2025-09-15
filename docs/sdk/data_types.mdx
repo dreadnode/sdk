@@ -221,6 +221,130 @@ def __init__(
 
 </Accordion>
 
+### from\_pil
+
+```python
+from_pil(pil_image: Image, format: str = 'png') -> Image
+```
+
+Creates a dn.Image from a Pillow Image object.
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+@classmethod
+def from_pil(cls, pil_image: "PILImage", format: str = "png") -> "Image":
+    """Creates a dn.Image from a Pillow Image object."""
+    buffer = io.BytesIO()
+    pil_image.save(buffer, format=format)
+    buffer.seek(0)
+    return cls(data=buffer.read(), format=format, mode=pil_image.mode)
+```
+
+
+</Accordion>
+
+### show
+
+```python
+show() -> None
+```
+
+Displays the image using the default image viewer.
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+def show(self) -> None:
+    """Displays the image using the default image viewer."""
+    self.to_pil().show()
+```
+
+
+</Accordion>
+
+### to\_base64
+
+```python
+to_base64() -> str
+```
+
+Returns the image as a base64 encoded string.
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+def to_base64(self) -> str:
+    """Returns the image as a base64 encoded string."""
+    buffer = io.BytesIO()
+    self.to_pil().save(buffer, format=self._format or "PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+```
+
+
+</Accordion>
+
+### to\_numpy
+
+```python
+to_numpy(dtype: Any = np.uint8) -> np.ndarray[t.Any, t.Any]
+```
+
+Returns the image as a NumPy array with a specified dtype.
+
+Common dtypes:
+- np.uint8: Standard 8-bit integer pixels [0, 255]. Default.
+- np.float32 / np.float64: Floating point pixels, typically for
+numerical operations. Values are scaled to [0.0, 1.0].
+
+**Returns:**
+
+* `ndarray[Any, Any]`
+  –A NumPy array in HWC (Height, Width, Channels) format.
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+def to_numpy(self, dtype: t.Any = np.uint8) -> "np.ndarray[t.Any, t.Any]":
+    """
+    Returns the image as a NumPy array with a specified dtype.
+
+    Common dtypes:
+    - np.uint8: Standard 8-bit integer pixels [0, 255]. Default.
+    - np.float32 / np.float64: Floating point pixels, typically for
+      numerical operations. Values are scaled to [0.0, 1.0].
+
+    Returns:
+        A NumPy array in HWC (Height, Width, Channels) format.
+    """
+    pil_img = self.to_pil().convert("RGB")
+    arr = np.array(pil_img)
+
+    if np.issubdtype(dtype, np.floating):
+        return arr.astype(dtype) / 255.0
+    return arr.astype(dtype)
+```
+
+
+</Accordion>
+
+### to\_pil
+
+```python
+to_pil() -> PILImage
+```
+
+Returns the image as a Pillow Image object for manipulation.
+
+<Accordion title="Source code in dreadnode/data_types/image.py" icon="code">
+```python
+def to_pil(self) -> "PILImage":
+    """Returns the image as a Pillow Image object for manipulation."""
+    import PIL.Image
+
+    image_bytes, _ = self.to_serializable()
+    return PIL.Image.open(io.BytesIO(image_bytes))
+```
+
+
+</Accordion>
+
 ### to\_serializable
 
 ```python

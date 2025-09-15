@@ -33,9 +33,6 @@ from dreadnode.util import format_dict
 if t.TYPE_CHECKING:
     from dreadnode.eval import Eval
 
-# Type variable for the generic Eval object
-EvalT = t.TypeVar("EvalT", bound="Eval")
-
 
 class EvalConsoleAdapter:
     """
@@ -44,7 +41,7 @@ class EvalConsoleAdapter:
 
     def __init__(
         self,
-        eval: EvalT,
+        eval: "Eval",
         *,
         console: Console | None = None,
         max_events_to_show: int = 10,

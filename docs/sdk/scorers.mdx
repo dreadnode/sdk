@@ -10,6 +10,8 @@ title: dreadnode.scorers
 ::: dreadnode.scorers.crucible
 ::: dreadnode.scorers.format
 ::: dreadnode.scorers.harm
+::: dreadnode.scorers.image
+::: dreadnode.scorers.json
 ::: dreadnode.scorers.judge
 ::: dreadnode.scorers.length
 ::: dreadnode.scorers.lexical
@@ -62,6 +64,7 @@ Scorer(
     step: int = 0,
     auto_increment_step: bool = False,
     log_all: bool = True,
+    bound_obj: Any = None,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
     wraps: Callable[..., Any] | None = None,
@@ -86,6 +89,7 @@ def __init__(
     step: int = 0,
     auto_increment_step: bool = False,
     log_all: bool = True,
+    bound_obj: t.Any = None,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
     wraps: t.Callable[..., t.Any] | None = None,
@@ -111,6 +115,8 @@ def __init__(
     "Automatically increment an internal step counter every time this scorer is called."
     self.log_all = log_all
     "Log all sub-metrics from nested composition, or just the final resulting metric."
+    self.bound_obj = bound_obj
+    "If set, the scorer will always be called with this object instead of the caller-provided object."
 
     self.__name__ = name
 ```
@@ -133,6 +139,14 @@ auto_increment_step = auto_increment_step
 ```
 
 Automatically increment an internal step counter every time this scorer is called.
+
+### bound\_obj
+
+```python
+bound_obj = bound_obj
+```
+
+If set, the scorer will always be called with this object instead of the caller-provided object.
 
 ### catch
 
@@ -230,6 +244,44 @@ def adapt(
         return await original.normalize_and_score(adapt(obj), *args, **kwargs)
 
     return Scorer(evaluate, name=name or self.name, wraps=original)
+```
+
+
+</Accordion>
+
+### bind
+
+```python
+bind(obj: Any) -> Scorer[T]
+```
+
+Bind the scorer to a specific object. Any time the scorer is executed,
+the bound object will be passed instead of the caller-provided object.
+
+This is useful for building scoring patterns that are not directly
+tied to the output of a task
+
+**Parameters:**
+
+* **`obj`**
+  (`Any`)
+  –The object to bind the scorer to.
+
+<Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
+```python
+def bind(self, obj: t.Any) -> "Scorer[T]":
+    """
+    Bind the scorer to a specific object. Any time the scorer is executed,
+    the bound object will be passed instead of the caller-provided object.
+
+    This is useful for building scoring patterns that are not directly
+    tied to the output of a task
+
+    Args:
+        obj: The object to bind the scorer to.
+    """
+    self.bound_obj = obj
+    return self
 ```
 
 
@@ -390,6 +442,8 @@ async def normalize_and_score(self, obj: T, *args: t.Any, **kwargs: t.Any) -> li
         | t.Awaitable[ScorerResult]
         | t.Awaitable[t.Sequence[ScorerResult]]
     )
+
+    obj = self.bound_obj or obj
 
     try:
         bound_args = self._bind_args(obj, *args, **kwargs)
@@ -738,6 +792,8 @@ def add(
     Returns:
         A new Scorer that adds (or averages) the values of the two input scorers.
     """
+    if len(others) == 0:
+        raise ValueError("At least one other scorer must be provided for addition.")
 
     async def evaluate(data: T, *args: t.Any, **kwargs: t.Any) -> list[Metric]:
         (original, previous), (original_other, previous_other) = await asyncio.gather(
@@ -1951,7 +2007,7 @@ def zero_shot_classification(
 
         text = str(data)
         if not text.strip():
-            return Metric(value=0.0, attributes={"error": "Input text is empty."})
+            raise ValueError("Input text is empty.")
 
         results = classifier(text, labels)
 
@@ -1966,7 +2022,7 @@ def zero_shot_classification(
     if name is None:
         name = f"zero_shot_{clean_str(score_label)}"
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -2666,7 +2722,128 @@ def detect_harm_with_openai(
         }
         return Metric(value=max_score, attributes=attributes)
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
+```
+
+
+</Accordion>
+image\_distance
+---------------
+
+```python
+image_distance(
+    reference: Image,
+    method: DistanceMethod | DistanceMethodName = "l2",
+) -> Scorer[Image]
+```
+
+Calculates the distance between a candidate image and a reference image
+using a specified metric.
+
+**Parameters:**
+
+* **`reference`**
+  (`Image`)
+  –The reference image to compare against.
+* **`method`**
+  (`DistanceMethod | DistanceMethodName`, default:
+  `'l2'`
+  )
+  –The distance metric to use. Options are:
+  - 'l0' or 'hamming': Counts the number of differing pixels.
+  - 'l1' or 'manhattan': Sum of absolute differences (Manhattan distance).
+  - 'l2' or 'euclidean': Euclidean distance.
+  - 'linf' or 'chebyshev': Maximum absolute difference (Chebyshev distance).
+
+<Accordion title="Source code in dreadnode/scorers/image.py" icon="code">
+```python
+def image_distance(
+    reference: Image,
+    method: DistanceMethod | DistanceMethodName = "l2",
+) -> Scorer[Image]:
+    """
+    Calculates the distance between a candidate image and a reference image
+    using a specified metric.
+
+    Args:
+        reference: The reference image to compare against.
+        method: The distance metric to use. Options are:
+            - 'l0' or 'hamming': Counts the number of differing pixels.
+            - 'l1' or 'manhattan': Sum of absolute differences (Manhattan distance).
+            - 'l2' or 'euclidean': Euclidean distance.
+            - 'linf' or 'chebyshev': Maximum absolute difference (Chebyshev distance).
+    """
+
+    def evaluate(
+        data: Image,
+        *,
+        reference: Image = reference,
+        method: DistanceMethod | DistanceMethodName = method,
+    ) -> Metric:
+        data_array = data.to_numpy(dtype=np.float32)
+        reference_array = reference.to_numpy(dtype=np.float32)
+        if data_array.shape != reference_array.shape:
+            raise ValueError(
+                f"Image shapes do not match: {data_array.shape} vs {reference_array.shape}"
+            )
+
+        diff = data_array - reference_array
+        distance: float
+
+        if method in ("l2", "euclidean"):
+            distance = float(np.linalg.norm(diff.flatten(), ord=2))
+        elif method in ("l1", "manhattan"):
+            distance = float(np.linalg.norm(diff.flatten(), ord=1))
+        elif method in ("linf", "chebyshev"):
+            distance = float(np.linalg.norm(diff.flatten(), ord=np.inf))
+        elif method in ("l0", "hamming"):
+            distance = float(np.linalg.norm(diff.flatten(), ord=0))
+        else:
+            raise NotImplementedError(f"Distance metric '{method}' not implemented.")
+
+        return Metric(value=distance, attributes={"method": method})
+
+    return Scorer(evaluate, name=f"{method}_distance")
+```
+
+
+</Accordion>
+json\_path
+----------
+
+```python
+json_path(
+    path: str, default_value: float = 0.0
+) -> Scorer[t.Any]
+```
+
+Extracts a numeric value from a JSON-like object (dict/list) using a JSONPath query.
+
+<Accordion title="Source code in dreadnode/scorers/json.py" icon="code">
+```python
+def json_path(path: str, default_value: float = 0.0) -> Scorer[t.Any]:
+    """
+    Extracts a numeric value from a JSON-like object (dict/list) using a JSONPath query.
+    """
+
+    def evaluate(data: t.Any, *, path: str = path, default_value: float = default_value) -> Metric:
+        jsonpath_expr = parse(path)
+        matches = jsonpath_expr.find(data)
+        if not matches:
+            return Metric(value=default_value, attributes={"path_found": False})
+
+        # Return the value of the first match found
+        try:
+            first_value = matches[0].value
+            score = float(first_value)
+            return Metric(value=score, attributes={"path_found": True})
+        except (ValueError, TypeError):
+            # If the value isn't numeric, we can't score it. Return default.
+            return Metric(
+                value=default_value, attributes={"path_found": True, "error": "Value not numeric"}
+            )
+
+    return Scorer(evaluate, name="json_path")
 ```
 
 
@@ -2847,7 +3024,7 @@ def llm_judge(
 
         return [score_metric, pass_metric]
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -2935,7 +3112,7 @@ def length_in_range(
             attributes={"length": text_len, "min": min_length, "max": max_length},
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3027,7 +3204,7 @@ def length_ratio(
 
         return Metric(value=score, attributes={"ratio": round(ratio, 4)})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3098,7 +3275,7 @@ def length_target(
 
         return Metric(value=final_score, attributes={"length": text_len, "target": target_length})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3195,7 +3372,7 @@ def type_token_ratio(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3396,7 +3573,7 @@ def detect_pii_with_presidio(
 
         return Metric(value=final_score, attributes=metadata)
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3762,7 +3939,7 @@ def sentiment(
 
         return Metric(value=score, attributes={"polarity": polarity, "target": target})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -3852,7 +4029,7 @@ def sentiment_with_perspective(
     if name is None:
         name = f"perspective_{attribute.lower()}"
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -4030,7 +4207,7 @@ def similarity(
 
         return Metric(value=score, attributes={"method": method})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -4147,7 +4324,7 @@ def similarity_with_litellm(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -4335,7 +4512,7 @@ def similarity_with_rapidfuzz(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -4424,7 +4601,7 @@ def similarity_with_sentence_transformers(
             },
         )
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -4479,7 +4656,7 @@ def similarity_with_tf_idf(reference: str, *, name: str = "similarity") -> "Scor
         sim = sklearn_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         return Metric(value=float(sim))
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 
@@ -4602,7 +4779,7 @@ def string_distance(
 
         return Metric(value=float(score), attributes={"method": method, "normalize": normalize})
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)
 ```
 
 

@@ -4,6 +4,7 @@ title: dreadnode.airt
 
 {/*
 ::: dreadnode.airt.attack
+::: dreadnode.airt.target
 */}
 
 Attack
@@ -22,7 +23,9 @@ A list of tags associated with the attack for logging.
 ### target
 
 ```python
-target: Annotated[Target[In, Out], Config()]
+target: Annotated[
+    SkipValidation[Target[CandidateT, OutputT]], Config()
+]
 ```
 
 The target to attack.
@@ -147,7 +150,7 @@ def prompt_attack(
         f"the following goal: {goal}"
     )
 
-    objective = (
+    prompt_judge = (
         llm_judge(
             evaluator_model,
             rubric,
@@ -156,14 +159,15 @@ def prompt_attack(
             max_score=10,
         )
         / 10
-        >> "prompt_judge"
     )
 
     return Attack[str, str](
         name=name,
         target=target,
         search_strategy=search_strategy,
-        objective=objective,
+        objectives={
+            "prompt_judge": prompt_judge,
+        },
     )
 ```
 
@@ -188,6 +192,33 @@ tap_attack(
 Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
 using LLMs for both refinement (attacker) and scoring (evaluator/objective).
 
+Uses `prompt_attack` under the hood with TAP-specific default guidance and rubric.
+
+**Parameters:**
+
+* **`goal`**
+  (`str`)
+  –The high-level objective of the attack.
+* **`target`**
+  (`Target[str, str]`)
+  –The target system to be attacked.
+* **`attacker_model`**
+  (`str`)
+  –The language model used to generate and refine prompts.
+* **`evaluator_model`**
+  (`str`)
+  –The language model used to score the effectiveness of responses.
+* **`beam_width`**
+  (`int`, default:
+  `10`
+  )
+  –The number of candidate prompts to maintain at each step of the search.
+* **`branching_factor`**
+  (`int`, default:
+  `3`
+  )
+  –The number of new candidates to generate from each existing candidate.
+
 <Accordion title="Source code in dreadnode/airt/attack/tap.py" icon="code">
 ```python
 def tap_attack(
@@ -202,47 +233,119 @@ def tap_attack(
     """
     Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
     using LLMs for both refinement (attacker) and scoring (evaluator/objective).
+
+    Uses `prompt_attack` under the hood with TAP-specific default guidance and rubric.
+
+    Args:
+        goal: The high-level objective of the attack.
+        target: The target system to be attacked.
+        attacker_model: The language model used to generate and refine prompts.
+        evaluator_model: The language model used to score the effectiveness of responses.
+        beam_width: The number of candidate prompts to maintain at each step of the search.
+        branching_factor: The number of new candidates to generate from each existing candidate.
     """
 
-    # Prompt refining
-
-    guidance = REFINE_GUIDANCE.format(goal=goal)
-    refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
-        adapt_prompt_trials, lambda x: x
-    )
-
-    # Objective
-
-    objective = (
-        llm_judge(
-            evaluator_model,
-            EVALUATION_RUBRIC.format(goal=goal),
-            min_score=1,
-            max_score=10,
-        )
-        / 10
-        >> "jailbreak_judge"
-    )
-
-    # Constraints
-
-    topic_constraint = llm_judge(evaluator_model, ON_TOPIC_RUBRIC.format(goal=goal))
-
-    # Search strategy
-
-    search_strategy = beam_search(
-        refiner,
-        initial_candidate=goal,
+    return prompt_attack(
+        goal,
+        target,
+        attacker_model,
+        evaluator_model,
+        refine_guidance=REFINE_GUIDANCE.format(goal=goal),
+        evaluation_rubric=EVALUATION_RUBRIC.format(goal=goal),
         beam_width=beam_width,
         branching_factor=branching_factor,
     )
+```
 
-    return Attack[str, str](
-        target=target,
-        search_strategy=search_strategy,
-        objective=objective,
-        constraints=[topic_constraint],
-    )
+
+</Accordion>
+CustomTarget
+------------
+
+Adapts any Task to be used as an attackable target.
+
+### input\_param\_name
+
+```python
+input_param_name: str | None = None
+```
+
+The name of the parameter in the task's signature where the attack input should be injected.
+Otherwise the first non-optional parameter will be used, or no injection will occur.
+
+### name
+
+```python
+name: str
+```
+
+Returns the name of the target.
+
+### task
+
+```python
+task: Annotated[Task[..., Out], Config()]
+```
+
+The task to be called with attack input.
+
+LLMTarget
+---------
+
+Target backed by a rigging generator for LLM inference.
+
+* Accepts as input any message, conversation, or content-like structure.
+* Returns just the generated text from the LLM.
+
+### model
+
+```python
+model: str | Generator
+```
+
+The inference model, as a rigging generator identifier string or object.
+
+See: https://docs.dreadnode.io/open-source/rigging/topics/generators
+
+### params
+
+```python
+params: AnyDict | GenerateParams | None = Config(
+    default=None, expose_as=AnyDict | None
+)
+```
+
+Optional generation parameters.
+
+See: https://docs.dreadnode.io/open-source/rigging/api/generator#generateparams
+
+Target
+------
+
+Abstract base class for any target that can be attacked.
+
+### name
+
+```python
+name: str
+```
+
+Returns the name of the target.
+
+### task\_factory
+
+```python
+task_factory(input: In) -> Task[..., Out]
+```
+
+Creates a Task that will run the given input against the target.
+
+<Accordion title="Source code in dreadnode/airt/target/base.py" icon="code">
+```python
+@abc.abstractmethod
+def task_factory(self, input: In) -> Task[..., Out]:
+    """Creates a Task that will run the given input against the target."""
+    raise NotImplementedError
 ```
 
 

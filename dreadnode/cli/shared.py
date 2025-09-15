@@ -3,19 +3,29 @@ from dataclasses import dataclass
 
 import cyclopts
 
+from dreadnode.logging_ import LogLevelLiteral, configure_logging
+
 
 @cyclopts.Parameter(name="dn", group="Dreadnode")
 @dataclass
-class DreadnodeArgs:
+class DreadnodeConfig:
     server: str | None = None
-    """Dreadnode server URL"""
+    """Server URL"""
     token: str | None = None
-    """Dreadnode API token"""
-    project: str | None = "bbot-agent"
-    """Dreadnode project name"""
+    """API token"""
+    project: str | None = None
+    """Project name"""
     profile: str | None = None
-    """Dreadnode profile name"""
+    """Profile name"""
     console: t.Annotated[bool, cyclopts.Parameter(negative=False)] = False
-    """Show span information in the console"""
-    log_level: str = "INFO"
-    """Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"""
+    """Show spans in the console"""
+    log_level: LogLevelLiteral | None = None
+    """Console log level"""
+
+    def apply(self) -> None:
+        from dreadnode import configure
+
+        if self.log_level:
+            configure_logging(self.log_level)
+
+        configure(server=self.server, token=self.token, project=self.project, console=self.console)

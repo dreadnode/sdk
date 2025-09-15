@@ -7,12 +7,39 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, Field, create_model
 from pydantic_core import PydanticUndefined
 
-from dreadnode.common_types import AnyDict
+from dreadnode.common_types import AnyDict, JsonDict
 from dreadnode.meta.config import Component, ConfigInfo, Model
-from dreadnode.util import get_obj_name, safe_issubclass
+from dreadnode.util import get_obj_name, safe_issubclass, warn_at_user_stacklevel
+
+
+class IntrospectionWarning(UserWarning):
+    """Warnings related to introspection and config model generation."""
 
 
 def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBaseModel]:
+    """
+    Generates a Pydantic BaseModel type from a blueprint instance (Model or Component).
+
+    This model type describes the configuration options for the blueprint. An instantiated
+    instance of this model can be used in hydration to reconfigure the object tree on the fly.
+
+    Args:
+        blueprint: The blueprint instance (Model or Component) to generate the config model from.
+        name: The name of the config model.
+
+    Returns:
+        The generated Pydantic BaseModel type or None if no configurable fields were found.
+    """
+    try:
+        return _get_config_model(blueprint, name=name)
+    except Exception as e:  # noqa: BLE001
+        warn_at_user_stacklevel(
+            f"Failed to generate config model for {blueprint!r}: {e}", IntrospectionWarning
+        )
+        return create_model(name)  # empty model
+
+
+def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBaseModel]:
     """
     Generates a Pydantic BaseModel type from a blueprint instance (Model or Component).
 
@@ -57,10 +84,10 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
                 )
 
             obj = param_info.field_kwargs.get("default")
-            param_sig = blueprint.signature.parameters[param_name]
+            param_sig = blueprint.signature.parameters.get(param_name)
             annotation = (
-                param_sig.annotation
-                if param_sig.annotation is not inspect.Parameter.empty
+                param_info.expose_as or param_sig.annotation
+                if param_sig and param_sig.annotation is not inspect.Parameter.empty
                 else t.Any
             )
 
@@ -116,7 +143,9 @@ def get_config_schema(blueprint: t.Any) -> AnyDict:
     return get_model_schema(config_model)
 
 
-def flatten_model(model: PydanticBaseModel, prefix: str = "") -> dict[str, t.Any]:
+def flatten_model(
+    model: PydanticBaseModel, prefix: str = "", *, skip_none: bool = True
+) -> dict[str, t.Any]:
     """
     Collapses a Pydantic model instance into a flat dictionary.
 
@@ -130,6 +159,7 @@ def flatten_model(model: PydanticBaseModel, prefix: str = "") -> dict[str, t.Any
     Args:
         model: The Pydantic BaseModel instance to flatten.
         prefix: An internal parameter used for building keys during recursion.
+        skip_none: If True, fields with None values are omitted from the result.
 
     Returns:
         A flat dictionary representing the model's configuration.
@@ -148,7 +178,40 @@ def flatten_model(model: PydanticBaseModel, prefix: str = "") -> dict[str, t.Any
         else:
             flat_dict[new_key] = value
 
+    if skip_none:
+        flat_dict = {k: v for k, v in flat_dict.items() if v is not None}
+
     return flat_dict
+
+
+def get_inputs_and_params_from_config_model(
+    model: PydanticBaseModel, prefix: str = "", *, skip_none: bool = True
+) -> tuple[AnyDict, JsonDict]:
+    inputs: AnyDict = {}
+    params: JsonDict = {}
+
+    for field_name in model.__class__.model_fields:
+        value = getattr(model, field_name)
+        field_name_or_alias = model.__class__.model_fields[field_name].alias or field_name
+        new_key = f"{prefix}.{field_name_or_alias}" if prefix else field_name_or_alias
+
+        # It's a nested config model, so we recurse deeper
+        if isinstance(value, PydanticBaseModel):
+            nested_inputs, nested_params = get_inputs_and_params_from_config_model(
+                value, prefix=new_key
+            )
+            inputs.update(nested_inputs)
+            params.update(nested_params)
+        elif isinstance(value, int | float | str | bool | None):
+            params[new_key] = value
+        else:
+            inputs[new_key] = value
+
+    if skip_none:
+        inputs = {k: v for k, v in inputs.items() if v is not None}
+        params = {k: v for k, v in params.items() if v is not None}
+
+    return inputs, params
 
 
 def _find_nested_configurable(obj: t.Any) -> t.Any | None:

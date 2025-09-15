@@ -13,7 +13,6 @@ from dreadnode.agent.events import (
     AgentError,
     AgentEvent,
     AgentEventInStep,
-    AgentEventT,
     AgentStalled,
     AgentStart,
     AgentStopReason,
@@ -42,6 +41,7 @@ from dreadnode.agent.tools.base import ToolMode
 from dreadnode.agent.tools.planning import update_todo
 from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
 from dreadnode.meta import Component, Config, Model, component
+from dreadnode.meta.introspect import get_config_model, get_inputs_and_params_from_config_model
 from dreadnode.scorers import ScorersLike
 from dreadnode.util import (
     flatten_list,
@@ -278,7 +278,7 @@ class Agent(Model):
 
         # Event dispatcher
 
-        async def _dispatch(event: AgentEventT) -> t.AsyncIterator[AgentEvent]:
+        async def _dispatch(event: AgentEvent) -> t.AsyncIterator[AgentEvent]:
             nonlocal messages, events
 
             yield event
@@ -633,28 +633,34 @@ class Agent(Model):
         *,
         commit: CommitBehavior = "on-success",
     ) -> t.AsyncGenerator[AgentEvent, None]:
-        from dreadnode import log_inputs, log_outputs, score, task_span
+        from dreadnode import log_output, log_outputs, score, task_and_run
 
         hooks = self._get_hooks()
-        tool_names = [t.name for t in self.all_tools]
-        stop_names = [s.name for s in self.stop_conditions]
-        hook_names = [get_callable_name(hook, short=True) for hook in self.hooks]
         messages = [*deepcopy(thread.messages), rg.Message("user", str(user_input))]
 
+        configuration = get_config_model(self)()
+        trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
+
+        trace_inputs.update(
+            {
+                "user_input": user_input,
+                "messages": messages,
+                "instructions": self.instructions,
+                "tools": [t.name for t in self.all_tools],
+                "hooks": [get_callable_name(hook, short=True) for hook in self.hooks],
+                "stop_conditions": [s.name for s in self.stop_conditions],
+            }
+        )
+        trace_params.update(
+            {
+                "model": self.model,
+                "max_steps": self.max_steps,
+                "tool_mode": self.tool_mode,
+            }
+        )
+
         last_event: AgentEvent | None = None
-
-        with task_span(self.name, tags=self.tags):
-            log_inputs(
-                user_input=user_input,
-                instructions=self.instructions,
-                tools=tool_names,
-                hooks=hook_names,
-                model=self.model,
-                max_steps=self.max_steps,
-                tool_mode=self.tool_mode,
-                stop_conditions=stop_names,
-            )
-
+        with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
             try:
                 async with aclosing(self._stream(thread, messages, hooks, commit=commit)) as stream:
                     async for event in stream:
@@ -667,13 +673,12 @@ class Agent(Model):
 
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
+                        to="both",
                         steps_taken=min(0, last_event.result.steps - 1),
                         reason=last_event.stop_reason,
                     )
                     if last_event.result.error:
-                        log_outputs(
-                            error=last_event.result.error,
-                        )
+                        log_output("error", last_event.result.error, to="both")
                     await score(
                         last_event.result,
                         self.scorers,

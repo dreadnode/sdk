@@ -56,4 +56,4 @@ def detect_harm_with_openai(
         }
         return Metric(value=max_score, attributes=attributes)
 
-    return Scorer(evaluate, name=name, catch=True)
+    return Scorer(evaluate, name=name)

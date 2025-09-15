@@ -2,20 +2,21 @@ import asyncio
 import contextlib
 import contextvars
 import typing as t
-from copy import deepcopy
 
 import typing_extensions as te
-from pydantic import ConfigDict, FilePath, PrivateAttr, computed_field
+from pydantic import ConfigDict, Field, FilePath, SkipValidation, computed_field
 
 from dreadnode.common_types import AnyDict
 from dreadnode.error import AssertionFailedError
 from dreadnode.eval import Eval, InputDataset
 from dreadnode.meta import Config, Model
+from dreadnode.meta.introspect import (
+    get_config_model,
+    get_inputs_and_params_from_config_model,
+)
 from dreadnode.optimization.console import StudyConsoleAdapter
 from dreadnode.optimization.events import (
     NewBestTrialFound,
-    StepEnd,
-    StepStart,
     StudyEnd,
     StudyEvent,
     StudyStart,
@@ -33,7 +34,6 @@ from dreadnode.scorers import Scorer, ScorerLike, ScorersLike
 from dreadnode.task import Task
 from dreadnode.util import (
     clean_str,
-    is_homogeneous_list,
     stream_map_and_merge,
 )
 
@@ -41,47 +41,36 @@ OutputT = te.TypeVar("OutputT", default=t.Any)
 
 Direction = t.Literal["maximize", "minimize"]
 """The direction of optimization for the objective score."""
-ObjectiveLike = ScorerLike[OutputT] | ScorersLike[OutputT] | str | list[str]
-"""
-A single or multiple optimization objective(s). Can be any of:
-
-- Single scorer instance or a scorer-like callable
-- String name of any scorer already configured on the task.
-- List/dict of multiple scorer instances or scorer-like callables (multi-objective).
-- List of string names of scorers already on the task (multi-objective).
-"""
+ObjectivesLike = t.Sequence[ScorerLike[OutputT] | str] | t.Mapping[str, ScorerLike[OutputT]]
+"""The objectives to optimize for."""
 current_trial = contextvars.ContextVar[Trial | None]("current_trial", default=None)
 
 
 class Study(Model, t.Generic[CandidateT, OutputT]):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    name_: str | None = Config(default=None, repr=False, exclude=False, alias="name")
+    name_: str | None = Field(default=None, repr=False, exclude=False, alias="name")
     """The name of the study - otherwise derived from the objective."""
-    description: str = Config(default="")
+    description: str = ""
     """A brief description of the study's purpose."""
     tags: list[str] = Config(default_factory=lambda: ["study"])
     """A list of tags associated with the study for logging."""
 
-    search_strategy: t.Annotated[Search[CandidateT], Config(expose_as=None)]
+    search_strategy: SkipValidation[Search[CandidateT]]
     """The search strategy to use for suggesting new trials."""
     task_factory: t.Callable[[CandidateT], Task[..., OutputT]]
     """A function that accepts a candidate and returns a configured Task ready for evaluation."""
-    objective: t.Annotated[ObjectiveLike[OutputT], Config(expose_as=None)]
+    objectives: t.Annotated[ObjectivesLike[OutputT], Config(expose_as=None)]
     """
-    The objective(s) to optimize for. Can be any of:
+    The objectives to optimize for.
 
-    - Single scorer instance or a scorer-like callable
-    - String name of any scorer already configured on the task.
-    - List/dict of multiple scorer instances or scorer-like callables (multi-objective).
-    - List of string names of scorers already on the task (multi-objective).
+    Can be a list/dict of scorer-like callables or string names of scorers already on the task.
     """
-    direction: Direction | list[Direction] = Config(default="maximize")
+    directions: list[Direction] = Config(default_factory=lambda: ["maximize"])
     """
-    The direction(s) of optimization for the objective score.
+    The directions of optimization for the objective score.
 
-    If multiple directions are specified, the length must match
-    the number of objectives.
+    The length must match the number of objectives.
     """
 
     dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = Config(
@@ -101,52 +90,32 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
     """The maximum number of trials to evaluate in parallel."""
     constraints: ScorersLike[CandidateT] | None = Config(default=None)
     """A list of Scorer-like constraints to apply to candidates. If any constraint scores to a falsy value, the candidate is pruned."""
-    max_steps: int = Config(default=100, ge=1)
-    """The maximum number of optimization steps to run."""
+    max_trials: int = Config(default=100, ge=1)
+    """The maximum number of trials to evaluate."""
     stop_conditions: list[StudyStopCondition[CandidateT]] = Config(default_factory=list)
     """A list of conditions that, if any are met, will stop the study."""
-
-    # Private fields for parsed state (we flex our init types above)
-    _objectives: t.Sequence[Scorer[OutputT] | str] = PrivateAttr(default_factory=list)
-    _directions: list[Direction] = PrivateAttr(default_factory=list)
-    _constraints: list[Scorer[CandidateT]] = PrivateAttr(default_factory=list)
 
     def model_post_init(self, context: t.Any) -> None:
         super().model_post_init(context)
 
-        objectives: t.Sequence[Scorer[t.Any] | str]
-        if isinstance(self.objective, str):
-            objectives = [self.objective]
-        elif is_homogeneous_list(self.objective, str):
-            objectives = self.objective
-        elif isinstance(self.objective, Scorer) or callable(self.objective):
-            objectives = [Scorer.fit(self.objective)]
-        elif isinstance(self.objective, t.Mapping):
-            objectives = Scorer.fit_many(self.objective)
-        else:
-            objectives = [
-                objective if isinstance(objective, str) else Scorer.fit(objective)
-                for objective in self.objective
-            ]
-
-        self._objectives = objectives
-
-        self._constraints = Scorer.fit_many(self.constraints)
-        self._directions = (
-            [self.direction] * len(self._objectives)
-            if isinstance(self.direction, str)
-            else self.direction
+        self.objectives = fit_objectives(self.objectives)
+        self.constraints = Scorer.fit_many(self.constraints)
+        self.directions = (
+            ["maximize"] * len(self.objectives)
+            if self.directions == ["maximize"]
+            else self.directions
         )
 
-        if isinstance(self.direction, list) and len(self.direction) != len(self._objectives):
+        if len(self.directions) != len(self.objectives):
             raise ValueError(
-                f"The number of directions ({len(self.direction)}) must match the "
-                f"number of objectives ({len(self._objectives)})."
+                f"The number of directions ({len(self.directions)}) must match the "
+                f"number of objectives ({len(self.objectives)})."
             )
 
     @property
     def objective_names(self) -> list[str]:
-        return [o if isinstance(o, str) else o.name for o in self._objectives]
+        self.objectives = fit_objectives(self.objectives)
+        return [o if isinstance(o, str) else o.name for o in self.objectives]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -161,7 +130,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         Returns:
             A new Task instance with the same attributes as this one.
         """
-        return self.model_copy()
+        return self.model_copy(deep=True)
 
     def with_(
         self,
@@ -171,13 +140,14 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         tags: list[str] | None = None,
         search_strategy: Search[CandidateT] | None = None,
         task_factory: t.Callable[[CandidateT], Task[..., OutputT]] | None = None,
-        objective: ObjectiveLike[OutputT] | None = None,
-        direction: Direction | list[Direction] | None = None,
+        objectives: ObjectivesLike[OutputT] | None = None,
+        directions: list[Direction] | None = None,
         dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = None,
         concurrency: int | None = None,
         constraints: ScorersLike[CandidateT] | None = None,
-        max_steps: int | None = None,
+        max_trials: int | None = None,
         stop_conditions: list[StudyStopCondition[CandidateT]] | None = None,
+        append: bool = False,
     ) -> te.Self:
         """
         Clone the study and modify its attributes.
@@ -185,22 +155,42 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         Returns:
             A new Study instance with the modified attributes.
         """
-        return self.model_copy(
-            update={
-                "name_": name or self.name_,
-                "description": description or self.description,
-                "tags": tags or self.tags,
-                "search_strategy": search_strategy or self.search_strategy,
-                "task_factory": task_factory or self.task_factory,
-                "objective": objective or self.objective,
-                "direction": direction or self.direction,
-                "dataset": dataset if dataset is not None else self.dataset,
-                "concurrency": concurrency or self.concurrency,
-                "constraints": constraints if constraints is not None else self.constraints,
-                "max_steps": max_steps or self.max_steps,
-                "stop_conditions": stop_conditions or self.stop_conditions,
-            }
-        )
+        new = self.clone()
+
+        new.name_ = name or new.name
+        new.description = description or new.description
+        new.search_strategy = search_strategy or new.search_strategy
+        new.task_factory = task_factory or new.task_factory
+        new.dataset = dataset if dataset is not None else new.dataset
+        new.concurrency = concurrency or new.concurrency
+        new.max_trials = max_trials or new.max_trials
+
+        new_tags = tags or []
+        new_objectives = fit_objectives(objectives) if objectives is not None else []
+        new_directions = directions or ["maximize"] * len(new_objectives)
+        new_stop_conditions = stop_conditions or []
+        new_constraints = Scorer.fit_many(constraints) if constraints is not None else []
+
+        if len(new_directions) != len(new_objectives):
+            raise ValueError(
+                f"The number of directions ({len(new_directions)}) must match the "
+                f"number of objectives ({len(new_objectives)})."
+            )
+
+        if append:
+            new.tags = [*new.tags, *new_tags]
+            new.objectives = [*fit_objectives(new.objectives), *new_objectives]
+            new.directions = [*new.directions, *new_directions]
+            new.stop_conditions = [*new.stop_conditions, *new_stop_conditions]
+            new.constraints = [*Scorer.fit_many(new.constraints), *new_constraints]
+        else:
+            new.tags = new_tags or new.tags
+            new.objectives = new_objectives or new.objectives
+            new.directions = new_directions or new.directions
+            new.stop_conditions = new_stop_conditions or new.stop_conditions
+            new.constraints = new_constraints or new.constraints
+
+        return new
 
     def add_objective(
         self,
@@ -209,17 +199,17 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         direction: Direction = "maximize",
         name: str | None = None,
     ) -> te.Self:
-        self._objectives = [
-            *self._objectives,
+        self.objectives = [
+            *fit_objectives(self.objectives),
             objective
             if isinstance(objective, str)
             else Scorer[OutputT].fit(objective).with_(name=name),
         ]
-        self._directions = [*self._directions, direction]
+        self.directions = [*self.directions, direction]
         return self
 
     def add_constraint(self, constraint: ScorerLike[CandidateT]) -> te.Self:
-        self._constraints = [*self._constraints, Scorer.fit(constraint)]
+        self.constraints = [*Scorer.fit_many(self.constraints), Scorer.fit(constraint)]
         return self
 
     def add_stop_condition(self, condition: StudyStopCondition[CandidateT]) -> te.Self:
@@ -238,10 +228,11 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         from dreadnode import score as dn_score
         from dreadnode import task_span
 
-        try:
-            token = current_trial.set(trial)
-            task = self.task_factory(trial.candidate)
+        task = self.task_factory(trial.candidate)
 
+        token = current_trial.set(trial)
+
+        try:
             trial.status = "running"
             yield TrialStart(study=self, trials=[], trial=trial)
 
@@ -253,7 +244,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
                 await dn_score(
                     trial.candidate,
-                    self._constraints,
+                    Scorer.fit_many(self.constraints),
                     step=trial.step,
                     assert_scores=True,
                 )
@@ -261,7 +252,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 # Get the task
 
                 scorers: list[Scorer[OutputT]] = [
-                    scorer for scorer in self._objectives if isinstance(scorer, Scorer)
+                    scorer
+                    for scorer in fit_objectives(self.objectives)
+                    if isinstance(scorer, Scorer)
                 ]
 
                 evaluator = Eval(
@@ -274,7 +267,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 trial.eval_result = await evaluator.run()
 
                 for i, name in enumerate(self.objective_names):
-                    direction = self._directions[i]
+                    direction = self.directions[i]
                     raw_score = trial.all_scores.get(name, -float("inf"))
                     adjusted_score = raw_score if direction == "maximize" else -raw_score
                     trial.scores[name] = adjusted_score
@@ -301,88 +294,81 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         else:
             yield TrialComplete(study=self, trials=[], trial=trial)
 
-    def _reset(self) -> None:
-        self.search_strategy = deepcopy(self.search_strategy)
-        self.search_strategy.reset(
-            OptimizationContext(
-                objective_names=self.objective_names,
-                directions=self._directions,
-            )
-        )
-
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
         """
         Execute the complete optimization study and yield events for each phase.
         """
-        self._reset()
-
         stop_reason: StudyStopReason = "unknown"
         stop_explanation: str | None = None
         all_trials: list[Trial[CandidateT]] = []
         best_trial: Trial[CandidateT] | None = None
+        semaphore = asyncio.Semaphore(self.concurrency)
+        stop_condition_met = False
+        optimization_context = OptimizationContext(
+            objective_names=self.objective_names,
+            directions=self.directions,
+        )
+        yield StudyStart(study=self, trials=all_trials, max_trials=self.max_trials)
 
-        yield StudyStart(study=self, trials=all_trials, max_steps=self.max_steps)
+        async def process_trial(
+            trial: Trial[CandidateT],
+        ) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
+            nonlocal semaphore
+            nonlocal all_trials
 
-        for step in range(1, self.max_steps + 1):
-            yield StepStart(study=self, trials=all_trials, step=step)
+            try:
+                trial.step = len(all_trials)
+                all_trials.append(trial)
 
-            step_trials: list[Trial[CandidateT]] = []
-            semaphore = asyncio.Semaphore(self.concurrency)
+                yield TrialAdded(study=self, trials=all_trials, trial=trial)
 
-            async def process_trial(
-                trial: Trial[CandidateT],
-            ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
-                nonlocal semaphore
-
-                yield TrialAdded(study=self, trials=[], trial=trial)
-
-                async with semaphore:  # noqa: B023
+                async with semaphore:
                     async for event in self._process_trial(trial):
+                        event.trials = all_trials
                         yield event
+            finally:
+                trial._future.set_result(trial)  # noqa: SLF001
 
-            async with stream_map_and_merge(
-                source=self.search_strategy.suggest(step),
-                processor=process_trial,
-            ) as events:
-                async for event in events:
-                    if isinstance(event, TrialStart):
-                        all_trials.append(event.trial)
-                        step_trials.append(event.trial)
+        async with stream_map_and_merge(
+            source=self.search_strategy(optimization_context),
+            processor=process_trial,
+            limit=self.max_trials,
+        ) as events:
+            async for event in events:
+                yield event
 
-                    event.trials = all_trials
+                if isinstance(event, (TrialComplete, TrialPruned)):
+                    if event.trial.status == "finished" and (
+                        best_trial is None or event.trial.score > best_trial.score
+                    ):
+                        best_trial = event.trial
+                        yield NewBestTrialFound(study=self, trials=all_trials, trial=best_trial)
 
-                    if isinstance(event, (TrialComplete, TrialPruned)):  # noqa: SIM102
-                        if best_trial is None or event.trial.score > best_trial.score:
-                            best_trial = event.trial
-                            yield NewBestTrialFound(study=self, trials=all_trials, trial=best_trial)
+                    for stop_condition in self.stop_conditions:
+                        if stop_condition(all_trials):
+                            stop_explanation = stop_condition.name
+                            stop_condition_met = True
+                            break
 
-                    yield event
-
-            if not step_trials:
-                stop_reason = "search_exhausted"
-                yield StepEnd(study=self, trials=all_trials, step=step)
-                break
-
-            await self.search_strategy.observe(step_trials)
-
-            yield StepEnd(study=self, trials=all_trials, step=step)
-
-            stop = False
-            for stop_condition in self.stop_conditions:
-                if stop_condition(all_trials):
-                    stop_reason = "stop_condition_met"
-                    stop_explanation = stop_condition.name
-                    stop = True
+                if stop_condition_met:
+                    print("Stop condition met, ending study.")
                     break
 
-            if stop:
-                break
+        stop_reason = (
+            "stop_condition_met"
+            if stop_condition_met
+            else "max_trials_reached"
+            if len(all_trials) >= self.max_trials
+            else "search_exhausted"
+        )
 
         yield StudyEnd(
             study=self,
             trials=all_trials,
             result=StudyResult(
-                trials=all_trials, stop_reason=stop_reason, stop_explanation=stop_explanation
+                trials=all_trials,
+                stop_reason=stop_reason,
+                stop_explanation=stop_explanation,
             ),
         )
 
@@ -399,27 +385,13 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             log_metric("best_score", event.trial.score, step=event.trial.step)
 
     async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
-        from dreadnode import log_inputs, log_outputs, log_params, run, task_span
-        from dreadnode.tracing.span import current_run_span
+        from dreadnode import log_outputs, task_and_run
 
-        run_using_tasks = current_run_span.get() is not None
-        trace_context = (
-            task_span(self.name, tags=self.tags)
-            if run_using_tasks
-            else run(name_prefix=self.name, tags=self.tags)
-        )
+        configuration = get_config_model(self)()
+        trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
 
-        # config_model = get_config_model(self)
-        # flat_config = {k: v for k, v in flatten_model(config_model()).items() if v is not None}
-        flat_config: AnyDict = {}
-
-        with trace_context:
-            if run_using_tasks:
-                log_inputs(**flat_config)
-            else:
-                log_params(**flat_config)
-
-            last_event: StudyEvent[CandidateT] | None = None
+        last_event: StudyEvent[CandidateT] | None = None
+        with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
             try:
                 async with contextlib.aclosing(self._stream()) as stream:
                     async for event in stream:
@@ -434,7 +406,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                         outputs["best_score"] = result.best_trial.score
                         outputs["best_candidate"] = result.best_trial.candidate
                         outputs["best_output"] = result.best_trial.output
-                    log_outputs(**outputs)
+                    log_outputs(to="both", **outputs)
 
     @contextlib.asynccontextmanager
     async def stream(
@@ -484,3 +456,10 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
         adapter = StudyConsoleAdapter(self)
         return await adapter.run()
+
+
+def fit_objectives(objectives: ObjectivesLike[OutputT]) -> t.Sequence[Scorer[OutputT] | str]:
+    if isinstance(objectives, t.Mapping):
+        return Scorer.fit_many(objectives)
+
+    return [obj if isinstance(obj, str) else Scorer.fit(obj) for obj in objectives]

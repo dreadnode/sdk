@@ -1,27 +1,27 @@
 import typing as t
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from dreadnode.common_types import Primitive
+from dreadnode.meta.config import Component
 from dreadnode.optimization.trial import CandidateT, Trial
 
 if t.TYPE_CHECKING:
     from dreadnode.optimization.study import Direction
 
 
-class Search(ABC, t.Generic[CandidateT]):
-    """Abstract base class for all optimization search strategies."""
+# @t.runtime_checkable
+# class Search(t.Protocol):
+#     async def __call__(
+#         self,
+#         context: "OptimizationContext",
+#     ) -> t.AsyncIterator[Trial[CandidateT]]: ...
 
-    def reset(self, context: "OptimizationContext") -> None:
-        """Resets the search strategy to a clean state."""
 
-    @abstractmethod
-    def suggest(self, step: int) -> t.AsyncIterator[Trial[CandidateT]]:
-        """Suggests the next batch of candidates."""
-
-    @abstractmethod
-    async def observe(self, trials: list[Trial[CandidateT]]) -> None:
-        """Informs the strategy of the results of recent trials."""
+class Search(
+    Component[["OptimizationContext"], t.AsyncGenerator[Trial[CandidateT], None]],
+    t.Generic[CandidateT],
+):
+    pass
 
 
 @dataclass
