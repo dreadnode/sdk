@@ -5,7 +5,7 @@ from copy import deepcopy
 import typing_extensions as te
 
 from dreadnode.meta import Component, ConfigInfo, Context
-from dreadnode.util import get_callable_name, warn_at_user_stacklevel
+from dreadnode.util import warn_at_user_stacklevel
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
@@ -44,13 +44,11 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
     ):
-        super().__init__(t.cast("t.Callable[[In], Out]", func), config=config, context=context)
+        super().__init__(
+            t.cast("t.Callable[[In], Out]", func), name=name, config=config, context=context
+        )
 
-        if name is None:
-            unwrapped = inspect.unwrap(func)
-            name = get_callable_name(unwrapped, short=True)
-
-        self.name = name
+        self.name = self.name
         "The name of the transform, used for reporting and logging."
         self.catch = catch
         """

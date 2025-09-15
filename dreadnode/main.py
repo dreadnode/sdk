@@ -740,7 +740,7 @@ class Dreadnode:
                 metric_name = str(getattr(metric, "_scorer_name", scorer.name))
                 metric_name = clean_str(metric_name)
                 metrics.setdefault(metric_name, []).append(
-                    self.log_metric(metric_name, metric, origin=object)
+                    self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
                 )
 
         failed_assertions: dict[str, list[Metric]] = {}

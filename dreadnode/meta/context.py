@@ -34,7 +34,7 @@ class Context(ABC):
         return f"Context({', '.join(parts)})"
 
     @abstractmethod
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         """
         Resolves the dependency's value.
 
@@ -43,13 +43,34 @@ class Context(ABC):
         """
         raise NotImplementedError
 
+    def resolve(self) -> t.Any:
+        """
+        Resolves the dependency's value, handling required/default logic and warnings.
+
+        Returns:
+            The resolved value for the dependency, or the default if not found and not required.
+        """
+        error_name = self._param_name or f"{self!r}"
+        try:
+            resolved = self._resolve()
+            if resolved is UNSET and self.required:
+                raise TypeError(f"{self!r} did not resolve to a value")  # noqa: TRY301
+        except Exception as e:
+            if (resolved := self.default) is UNSET:
+                if self.required:
+                    raise TypeError(f"Missing required dependency: '{error_name}'") from e
+                resolved = None
+                warn_at_user_stacklevel(f"Failed to resolve '{error_name}': {e}", ContextWarning)
+
+        return resolved
+
 
 class CurrentRun(Context):
     """
     Retrieve the current run span from the current context.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("CurrentRun() must be used inside an active run")
         return run
@@ -60,7 +81,7 @@ class CurrentTask(Context):
     Retrieve the current task span from the current context.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         if (task := current_task_span.get()) is None:
             raise RuntimeError("CurrentTask() must be used inside an active task")
         return task
@@ -71,7 +92,7 @@ class ParentTask(Context):
     Retrieve the parent of the current task span from the current context.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         if (task := current_task_span.get()) is None:
             raise RuntimeError("ParentTask() must be used inside an active task")
         if (parent := task.parent) is None:
@@ -122,7 +143,7 @@ class SpanContext(Context):
 
     def __repr__(self) -> str:
         parts = [
-            f"name='{self.ref_name!r}'",
+            f"name='{self.ref_name}'",
             f"source='{self.source}'",
             f"scope='{self.scope}'",
             f"required={self.required!r}",
@@ -133,7 +154,7 @@ class SpanContext(Context):
             parts.append(f"process={self.process}")
         return f"SpanContext({', '.join(parts)})"
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         task = current_task_span.get()
         run = current_run_span.get()
 
@@ -253,7 +274,7 @@ class DatasetField(Context):
     def __repr__(self) -> str:
         return f"DatasetField(name='{self.ref_name}')"
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         from dreadnode.eval.eval import current_dataset_row
 
         if (row := current_dataset_row.get()) is None:
@@ -274,7 +295,7 @@ class CurrentTrial(Context):
     Retrieve the current trial during an optimization study.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         from dreadnode.optimization.study import current_trial
 
         if (trial := current_trial.get()) is None:
@@ -288,7 +309,7 @@ class TrialCandidate(Context):
     Retrieve the candidate of the current trial during an optimization study.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         from dreadnode.optimization.study import current_trial
 
         if (trial := current_trial.get()) is None:
@@ -302,7 +323,7 @@ class TrialOutput(Context):
     Retrieve the output of the current trial during an optimization study.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         from dreadnode.optimization.study import current_trial
 
         if (trial := current_trial.get()) is None:
@@ -316,7 +337,7 @@ class TrialScore(Context):
     Retrieve the score of the current trial during an optimization study.
     """
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         from dreadnode.optimization.study import current_trial
 
         if (trial := current_trial.get()) is None:
@@ -337,5 +358,5 @@ class EnvVar(Context):
     def __repr__(self) -> str:
         return f"EnvVar(name='{self.var_name}')"
 
-    def resolve(self) -> t.Any:
+    def _resolve(self) -> t.Any:
         return os.environ[self.var_name]

@@ -114,9 +114,7 @@ module = [
 disable_error_code = ["unused-ignore", "import-untyped"]
 
 [tool.pyright]
-reportMissingImports = false       # mypy handles this
-reportMissingModuleSource = false  # mypy handles this
-reportAttributeAccessIssue = false # mypy handles this
+typeCheckingMode = "off" # we prefer mypy and don't want to deal with small differences
 
 [tool.ty.environment]
 python-version = "3.10"

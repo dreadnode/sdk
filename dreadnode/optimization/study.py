@@ -257,6 +257,8 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     if isinstance(scorer, Scorer)
                 ]
 
+                # TODO(nick): Add max_errors* settings to study so
+                # then can be passed down the to eval.
                 evaluator = Eval(
                     task=task,
                     dataset=self.dataset or [{}],
@@ -265,6 +267,23 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 )
 
                 trial.eval_result = await evaluator.run()
+
+                # If our entire evaluation failed, reflect that in the trial
+                # status so it can be handled appropriately upstream.
+                #
+                # TODO(nick): Certainly some different options here depending
+                # on how the study behaves, ideally we would have it reflect
+                # this issue in the trial_result?
+                if all(sample.failed for sample in trial.eval_result.samples):
+                    first_error = next(
+                        sample.error for sample in trial.eval_result.samples if sample.failed
+                    )
+                    raise ValueError(f"All samples failed during evaluation: {first_error}")  # noqa: TRY301
+
+                # TODO(nick): It's confusing to invert the value of the score here just so it
+                # aligns with objectives. We should opt to store the real value, and have our
+                # get_score method handle the inversion. We should also probably include direction
+                # information on our trial so it can be referred to later
 
                 for i, name in enumerate(self.objective_names):
                     direction = self.directions[i]
@@ -278,9 +297,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
                 trial.status = "finished"
 
-        except AssertionFailedError:
+        except AssertionFailedError as e:
             trial.status = "pruned"
-            trial.pruning_reason = ""
+            trial.pruning_reason = f"Constraint not satisfied: {e}"
 
         except Exception as e:  # noqa: BLE001
             trial.status = "failed"

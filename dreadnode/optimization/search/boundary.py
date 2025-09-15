@@ -38,10 +38,7 @@ def boundary_search(
             )
 
         def is_successful(trial: Trial) -> bool:
-            score_to_check = (
-                trial.scores.get(decision_objective, 0.0) if decision_objective else trial.score
-            )
-            return score_to_check > decision_threshold
+            return trial.get_score(decision_objective) > decision_threshold
 
         start_trial = Trial(candidate=start_candidate)
         end_trial = Trial(candidate=end_candidate)
@@ -64,6 +61,9 @@ def boundary_search(
         adversarial_bound = end_candidate
         interpolate_transform = Transform(interpolate)
 
+        # TODO(nick): When tolerance is met immediately, it can be confusing that
+        # the attack just returns as search_exhausted. Maybe we add some kind of log
+        # reason to be put in the Trial?
         while not await tolerable(original_bound, adversarial_bound):
             midpoint_candidate = await interpolate_transform((original_bound, adversarial_bound))
             if inspect.isawaitable(midpoint_candidate):
@@ -87,7 +87,7 @@ def binary_image_search(
     start_image: Image,
     end_image: Image,
     *,
-    tolerance: float = 5.0,  # relatively high because of image pixel precision
+    tolerance: float = 1e-2,  # We assume normalized distance
     distance_method: DistanceMethod = "l2",
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,

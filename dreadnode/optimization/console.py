@@ -32,6 +32,7 @@ from dreadnode.optimization.events import (
     TrialStart,
 )
 from dreadnode.optimization.result import StudyResult
+from dreadnode.util import shorten_string
 
 if t.TYPE_CHECKING:
     from dreadnode.optimization.study import Study
@@ -111,7 +112,8 @@ class StudyConsoleAdapter:
         scores_table.add_column("Score", justify="right", min_width=8)
         for name in self.study.objective_names:
             scores_table.add_row(
-                name, f"[bold magenta]{trial.scores.get(name, -float('inf')):.3f}[/bold magenta]"
+                name,
+                f"[bold magenta]{trial.get_score(name, -float('inf')):.3f}[/bold magenta]",
             )
 
         for name, value in trial.all_scores.items():
@@ -119,20 +121,21 @@ class StudyConsoleAdapter:
                 scores_table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.3f}[/dim]")
 
         # Main content grid
+        candidate_str = shorten_string(str(trial.candidate), max_length=300)
+        output_str = shorten_string(str(trial.output), max_length=300) if trial.output else ""
+
         grid = Table.grid(expand=True)
         grid.add_column()
         grid.add_row(Panel(scores_table, title="Scores", title_align="left"))
         grid.add_row(
             Panel(
-                Text(str(trial.candidate), style="dim"),
+                Text(candidate_str, style="dim"),
                 title="Candidate",
                 title_align="left",
             )
         )
         if trial.output:
-            grid.add_row(
-                Panel(Text(str(trial.output), style="dim"), title="Output", title_align="left")
-            )
+            grid.add_row(Panel(Text(output_str, style="dim"), title="Output", title_align="left"))
 
         return Panel(
             grid, title="[bold magenta]Current Best[/bold magenta]", border_style="magenta"

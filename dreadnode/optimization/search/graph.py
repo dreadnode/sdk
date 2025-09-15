@@ -119,6 +119,7 @@ def beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
+    context_depth: int = 5,
 ) -> Search[CandidateT]:
     """
     Creates a graph search configured for classic beam search.
@@ -140,7 +141,7 @@ def beam_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,
+        context_collector=lineage.configure(depth=context_depth),
         pruning_sampler=top_k.configure(k=beam_width),
         name="beam_search",
     )

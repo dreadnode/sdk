@@ -323,36 +323,35 @@ class Eval(Model, t.Generic[In, Out]):
                         configured_task, dataset, scenario_params, iteration
                     ) as sample_stream:
                         async for sample in sample_stream:
-                            if sample.failed:
-                                total_errors += 1
-                                consecutive_errors += 1
-                                max_errors_reached = (
-                                    self.max_errors and total_errors >= self.max_errors
-                                )
-                                max_consecutive_reached = (
-                                    self.max_consecutive_errors
-                                    and consecutive_errors >= self.max_consecutive_errors
-                                )
-
-                                if not max_errors_reached and not max_consecutive_reached:
-                                    continue
-
-                                scenario_result.iterations.append(iteration_result)
-                                eval_result.scenarios.append(scenario_result)
-
-                                yield EvalEnd(
-                                    eval=self,
-                                    result=eval_result,
-                                    stop_reason="max_errors_reached"
-                                    if max_errors_reached
-                                    else "max_consecutive_errors_reached",
-                                )
-                                return
-                            else:
-                                consecutive_errors = 0
-
                             yield SampleComplete(eval=self, run_id=run_id, sample=sample)
                             iteration_result.samples.append(sample)
+
+                            if not sample.failed:
+                                consecutive_errors = 0
+                                continue
+
+                            total_errors += 1
+                            consecutive_errors += 1
+                            max_errors_reached = self.max_errors and total_errors >= self.max_errors
+                            max_consecutive_reached = (
+                                self.max_consecutive_errors
+                                and consecutive_errors >= self.max_consecutive_errors
+                            )
+
+                            if not max_errors_reached and not max_consecutive_reached:
+                                continue
+
+                            scenario_result.iterations.append(iteration_result)
+                            eval_result.scenarios.append(scenario_result)
+
+                            yield EvalEnd(
+                                eval=self,
+                                result=eval_result,
+                                stop_reason="max_errors_reached"
+                                if max_errors_reached
+                                else "max_consecutive_errors_reached",
+                            )
+                            return
 
                     yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
                     scenario_result.iterations.append(iteration_result)

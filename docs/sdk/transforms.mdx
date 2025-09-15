@@ -66,13 +66,11 @@ def __init__(
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
 ):
-    super().__init__(t.cast("t.Callable[[In], Out]", func), config=config, context=context)
+    super().__init__(
+        t.cast("t.Callable[[In], Out]", func), name=name, config=config, context=context
+    )
 
-    if name is None:
-        unwrapped = inspect.unwrap(func)
-        name = get_callable_name(unwrapped, short=True)
-
-    self.name = name
+    self.name = self.name
     "The name of the transform, used for reporting and logging."
     self.catch = catch
     """

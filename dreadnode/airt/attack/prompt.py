@@ -25,6 +25,7 @@ def prompt_attack(
     initial_prompt: str | None = None,
     beam_width: int = 3,
     branching_factor: int = 3,
+    context_depth: int = 5,
     name: str = "prompt_attack",
 ) -> Attack[str, str]:
     """
@@ -43,6 +44,8 @@ def prompt_attack(
         initial_prompt: The starting prompt for the search. If None, the goal is used.
         beam_width: The number of candidate prompts to maintain at each step of the search.
         branching_factor: The number of new candidates to generate from each existing candidate.
+        context_depth: The number of previous trials to include as context for each refinement step.
+        name: The name of the attack.
     """
 
     # Prompt refining
@@ -59,6 +62,7 @@ def prompt_attack(
         initial_candidate=initial_prompt or goal,
         beam_width=beam_width,
         branching_factor=branching_factor,
+        context_depth=context_depth,
     )
 
     # Objective

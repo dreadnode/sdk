@@ -2,6 +2,7 @@ import typing as t
 
 from dreadnode.airt.attack import Attack
 from dreadnode.airt.attack.prompt import prompt_attack
+from dreadnode.scorers.judge import llm_judge
 
 if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
@@ -15,6 +16,7 @@ def tap_attack(
     *,
     beam_width: int = 10,
     branching_factor: int = 3,
+    context_depth: int = 5,
 ) -> Attack[str, str]:
     """
     Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
@@ -29,7 +31,10 @@ def tap_attack(
         evaluator_model: The language model used to score the effectiveness of responses.
         beam_width: The number of candidate prompts to maintain at each step of the search.
         branching_factor: The number of new candidates to generate from each existing candidate.
+        context_depth: The number of previous attempts to include as context for each refinement step.
     """
+
+    topic_constraint = llm_judge(evaluator_model, ON_TOPIC_RUBRIC.format(goal=goal))
 
     return prompt_attack(
         goal,
@@ -40,7 +45,8 @@ def tap_attack(
         evaluation_rubric=EVALUATION_RUBRIC.format(goal=goal),
         beam_width=beam_width,
         branching_factor=branching_factor,
-    )
+        context_depth=context_depth,
+    ).with_(constraints={"on_topic": topic_constraint})
 
 
 REFINE_GUIDANCE = """\

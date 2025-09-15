@@ -55,14 +55,6 @@ class Image(DataType):
         self._caption = caption
         self._format = format
 
-    @classmethod
-    def from_pil(cls, pil_image: "PILImage", format: str = "png") -> "Image":
-        """Creates a dn.Image from a Pillow Image object."""
-        buffer = io.BytesIO()
-        pil_image.save(buffer, format=format)
-        buffer.seek(0)
-        return cls(data=buffer.read(), format=format, mode=pil_image.mode)
-
     def to_pil(self) -> "PILImage":
         """Returns the image as a Pillow Image object for manipulation."""
         import PIL.Image

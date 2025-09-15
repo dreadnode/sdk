@@ -189,7 +189,7 @@ class Task(Component[P, R], t.Generic[P, R]):
                 ),
             )
 
-        super().__init__(func, config=config, context=context)
+        super().__init__(func, name=name, config=config, context=context)
 
         self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
 

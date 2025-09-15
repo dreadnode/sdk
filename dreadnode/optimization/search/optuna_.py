@@ -72,7 +72,7 @@ def optuna_search(
 
             if trial.status == "finished":
                 # Provide scores in the correct order for multi-objective optimization.
-                scores = [trial.scores.get(name, 0.0) for name in objective_names]
+                scores = [trial.get_score(name, default=0.0) for name in objective_names]
                 optuna_study.tell(optuna_trial, scores)
             else:
                 state = (

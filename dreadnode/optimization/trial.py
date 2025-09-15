@@ -82,14 +82,13 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         """
         return await asyncio.gather(*(trial._future for trial in trials))  # noqa: SLF001
 
-    def objective_score(
-        self, name: str | None = None, *, default: float = -float("inf")
-    ) -> float | None:
+    def get_score(self, name: str | None = None, default: float = -float("inf")) -> float:
         """
-        Get the score for a specific named objective, or the overall score if no name is given.
+        Get a specific named objective score, or the overall score if no name is given.
 
         Args:
             name: The name of the objective.
+            default: The value to return if the named score is not found.
         """
         if name is not None:
             return self.scores.get(name, default)

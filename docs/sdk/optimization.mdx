@@ -547,17 +547,15 @@ def done(self) -> bool:
 
 </Accordion>
 
-### objective\_score
+### get\_score
 
 ```python
-objective_score(
-    name: str | None = None,
-    *,
-    default: float = -float("inf"),
-) -> float | None
+get_score(
+    name: str | None = None, default: float = -float("inf")
+) -> float
 ```
 
-Get the score for a specific named objective, or the overall score if no name is given.
+Get a specific named objective score, or the overall score if no name is given.
 
 **Parameters:**
 
@@ -566,17 +564,21 @@ Get the score for a specific named objective, or the overall score if no name is
   `None`
   )
   –The name of the objective.
+* **`default`**
+  (`float`, default:
+  `-float('inf')`
+  )
+  –The value to return if the named score is not found.
 
 <Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
 ```python
-def objective_score(
-    self, name: str | None = None, *, default: float = -float("inf")
-) -> float | None:
+def get_score(self, name: str | None = None, default: float = -float("inf")) -> float:
     """
-    Get the score for a specific named objective, or the overall score if no name is given.
+    Get a specific named objective score, or the overall score if no name is given.
 
     Args:
         name: The name of the objective.
+        default: The value to return if the named score is not found.
     """
     if name is not None:
         return self.scores.get(name, default)
@@ -659,6 +661,7 @@ beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
+    context_depth: int = 5,
 ) -> Search[CandidateT]
 ```
 
@@ -700,6 +703,7 @@ def beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
+    context_depth: int = 5,
 ) -> Search[CandidateT]:
     """
     Creates a graph search configured for classic beam search.
@@ -721,7 +725,7 @@ def beam_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,
+        context_collector=lineage.configure(depth=context_depth),
         pruning_sampler=top_k.configure(k=beam_width),
         name="beam_search",
     )
@@ -738,7 +742,7 @@ binary_image_search(
     start_image: Image,
     end_image: Image,
     *,
-    tolerance: float = 5.0,
+    tolerance: float = 0.01,
     distance_method: DistanceMethod = "l2",
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
@@ -758,7 +762,7 @@ which lies on the decision boundary defined by the objective and threshold.
   –An image expected to be successful (score > [decision\_threshold]).
 * **`tolerance`**
   (`float`, default:
-  `5.0`
+  `0.01`
   )
   –The maximum acceptable distance between the start and end images.
 * **`distance_method`**
@@ -778,7 +782,7 @@ def binary_image_search(
     start_image: Image,
     end_image: Image,
     *,
-    tolerance: float = 5.0,  # relatively high because of image pixel precision
+    tolerance: float = 1e-2,  # We assume normalized distance
     distance_method: DistanceMethod = "l2",
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
@@ -893,10 +897,7 @@ def boundary_search(
             )
 
         def is_successful(trial: Trial) -> bool:
-            score_to_check = (
-                trial.scores.get(decision_objective, 0.0) if decision_objective else trial.score
-            )
-            return score_to_check > decision_threshold
+            return trial.get_score(decision_objective) > decision_threshold
 
         start_trial = Trial(candidate=start_candidate)
         end_trial = Trial(candidate=end_candidate)
@@ -919,6 +920,9 @@ def boundary_search(
         adversarial_bound = end_candidate
         interpolate_transform = Transform(interpolate)
 
+        # TODO(nick): When tolerance is met immediately, it can be confusing that
+        # the attack just returns as search_exhausted. Maybe we add some kind of log
+        # reason to be put in the Trial?
         while not await tolerable(original_bound, adversarial_bound):
             midpoint_candidate = await interpolate_transform((original_bound, adversarial_bound))
             if inspect.isawaitable(midpoint_candidate):
@@ -1291,7 +1295,7 @@ def optuna_search(
 
             if trial.status == "finished":
                 # Provide scores in the correct order for multi-objective optimization.
-                scores = [trial.scores.get(name, 0.0) for name in objective_names]
+                scores = [trial.get_score(name, default=0.0) for name in objective_names]
                 optuna_study.tell(optuna_trial, scores)
             else:
                 state = (
