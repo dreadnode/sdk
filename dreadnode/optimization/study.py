@@ -351,7 +351,6 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                             break
 
                 if stop_condition_met:
-                    print("Stop condition met, ending study.")
                     break
 
         stop_reason = (
