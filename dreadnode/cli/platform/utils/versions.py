@@ -104,6 +104,25 @@ def get_current_version() -> LocalVersionSchema | None:
     return None
 
 
+def get_local_version(tag: str) -> LocalVersionSchema:
+    """Get a specific local platform version by its tag.
+
+    Args:
+        tag: The tag of the version to retrieve.
+
+    Returns:
+        LocalVersionSchema: The version schema matching the provided tag.
+
+    Raises:
+        ValueError: If no version with the specified tag is found.
+    """
+    available_local_versions = get_available_local_versions()
+    for version in available_local_versions.versions:
+        if version.tag == tag:
+            return version
+    raise ValueError(f"No local version found with tag: {tag}")
+
+
 def mark_current_version(current_version: LocalVersionSchema) -> None:
     """Mark a specific version as the current active version.
 
