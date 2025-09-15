@@ -14,6 +14,7 @@ def tap_attack(
     attacker_model: str,
     evaluator_model: str,
     *,
+    early_stopping_score: float = 0.8,
     beam_width: int = 10,
     branching_factor: int = 3,
     context_depth: int = 5,
@@ -29,6 +30,8 @@ def tap_attack(
         target: The target system to be attacked.
         attacker_model: The language model used to generate and refine prompts.
         evaluator_model: The language model used to score the effectiveness of responses.
+        early_stopping_score: The llm judge (jailbreak) score threshold at which to stop the attack early.
+                         If None, no early stopping is applied.
         beam_width: The number of candidate prompts to maintain at each step of the search.
         branching_factor: The number of new candidates to generate from each existing candidate.
         context_depth: The number of previous attempts to include as context for each refinement step.
@@ -43,6 +46,7 @@ def tap_attack(
         evaluator_model,
         refine_guidance=REFINE_GUIDANCE.format(goal=goal),
         evaluation_rubric=EVALUATION_RUBRIC.format(goal=goal),
+        early_stopping_score=early_stopping_score,
         beam_width=beam_width,
         branching_factor=branching_factor,
         context_depth=context_depth,
