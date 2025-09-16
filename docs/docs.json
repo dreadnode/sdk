@@ -31,6 +31,10 @@
         ]
       },
       {
+        "group": "AI Red Teaming",
+        "pages": ["airt/overview", "airt/quick-start", "airt/concepts"]
+      },
+      {
         "group": "Usage",
         "pages": [
           "usage/agents",
