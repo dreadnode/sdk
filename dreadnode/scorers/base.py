@@ -1016,6 +1016,8 @@ def task_input(
         ])
         async def summarize(text: str) -> str:
             ...
+        ```
+
     Args:
         input_name: The name of the task input to use as the score.
         adapt: An optional function to adapt the task input to a float score.

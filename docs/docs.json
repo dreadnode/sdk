@@ -34,16 +34,28 @@
         "group": "Usage",
         "pages": [
           "usage/agents",
-          "usage/cli",
+          {
+            "group": "AI Red Teaming (AIRT)",
+            "pages": [
+              "usage/airt/index",
+              "usage/airt/image-attacks",
+              "usage/airt/llm-attacks",
+              "usage/airt/targets",
+              "usage/airt/results"
+            ]
+          },
           "usage/projects",
           "usage/runs",
           "usage/tasks",
           "usage/metrics",
           "usage/scorers",
-          "usage/optimization",
+          "usage/transforms",
+          "usage/evals",
+          "usage/studies",
           "usage/data-tracking",
           "usage/rich-objects",
           "usage/model-training",
+          "usage/cli",
           "usage/export"
         ]
       },
@@ -63,19 +75,19 @@
       {
         "group": "SDK",
         "pages": [
+          "sdk/airt",
           "sdk/api",
           "sdk/artifact",
           "sdk/data_types",
-          "sdk/scorers",
-          "sdk/optimization",
-          "sdk/mutations",
           "sdk/eval",
-          "sdk/airt",
           "sdk/integrations",
           "sdk/main",
           "sdk/metric",
+          "sdk/optimization",
+          "sdk/scorers",
           "sdk/serialization",
-          "sdk/task"
+          "sdk/task",
+          "sdk/transforms"
         ]
       }
     ]

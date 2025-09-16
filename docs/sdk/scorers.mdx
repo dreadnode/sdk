@@ -1747,16 +1747,24 @@ to a task as the score value.
 
 **Examples:**
 
-```
+```python
 @dn.task(scorers=[
-dn.scorers.task\_input("text", lambda text: len(text) / 100) # Score based on length of input text
+    dn.scorers.task_input("text", lambda text: len(text) / 100)  # Score based on length of input text
 ])
 async def summarize(text: str) -> str:
-...
+    ...
+```
 
-Args:
-input\_name: The name of the task input to use as the score.
-adapt: An optional function to adapt the task input to a float score.
+**Parameters:**
+
+* **`input_name`**
+  (`str`)
+  –The name of the task input to use as the score.
+* **`adapt`**
+  (`Callable[[Any], float] | None`, default:
+  `None`
+  )
+  –An optional function to adapt the task input to a float score.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
@@ -1776,6 +1784,8 @@ def task_input(
         ])
         async def summarize(text: str) -> str:
             ...
+        ~~~
+
     Args:
         input_name: The name of the task input to use as the score.
         adapt: An optional function to adapt the task input to a float score.

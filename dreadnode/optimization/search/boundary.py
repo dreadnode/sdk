@@ -23,8 +23,8 @@ def boundary_search(
     which lies on the decision boundary defined by the objective and threshold.
 
     Args:
-        start: A candidate on the left side of the decision boundary (score <= [decision_threshold]).
-        end: A candidate on the right side of the decision boundary (score > [decision_threshold]).
+        start: A candidate on the left side of the decision boundary (`score <= [decision_threshold]`).
+        end: A candidate on the right side of the decision boundary (`score > [decision_threshold]`).
         interpolate: A transform that takes two candidates and an alpha value between and returns a candidate
                      that is between them.
         tolerance: The maximum acceptable difference between the upper and lower alpha values.
@@ -106,8 +106,8 @@ def bisection_image_search(
     which lies on the decision boundary defined by the objective and threshold.
 
     Args:
-        start: An image on the left side of the decision boundary (score <= [decision_threshold]).
-        end: An image on the right side of the decision boundary (score > [decision_threshold]).
+        start: An image on the left side of the decision boundary (`score <= [decision_threshold]`).
+        end: An image on the right side of the decision boundary (`score > [decision_threshold]`).
         tolerance: The maximum acceptable difference between the upper and lower alpha values.
         decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
         decision_threshold: The threshold value for the decision objective.

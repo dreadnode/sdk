@@ -1,0 +1,407 @@
+---
+title: "Optimization Studies"
+description: "Optimize the inputs and configuration for any task, from finding the perfect prompt to tuning complex parameters."
+public: true
+---
+
+The optimization framework helps you solve a common but difficult problem: finding the best possible input to get the best possible output from a system. You can use it to systematically test and refine inputs to maximize a desired outcome, without needing to know the internal workings of the system you're testing. The central component you'll use to orchestrate this process is the **`Study`**.
+
+### The Anatomy of a Study
+
+Before we write any code, let's establish a mental model. Every **`Study`** you create is a container that brings together four core components to run an optimization process:
+
+1.  **The `Study`**: The main orchestrator that manages the entire experiment, from generating candidates to collecting results.
+2.  **The `Search Strategy`**: The algorithm that intelligently proposes new inputs, or "candidates," to evaluate.
+3.  **The `Task Factory`**: A function you provide that takes a candidate and returns a runnable `dreadnode.Task`. This defines the system you are testing.
+4.  **The `Objective`**: One or more `Scorer` instances that measure how successful the task's output was, guiding the search toward better candidates.
+
+## How-To: Hyperparameter Tuning
+
+One of the most common optimization tasks is hyperparameter tuning. Let's walk through how you can use a `Study` to find the best `temperature` and `top_p` settings for an LLM to generate a concise, high-quality answer. This is a form of *search space optimization*, where you're looking for the best point within a defined set of possibilities.
+
+### 1. Defining a `SearchSpace`
+
+First, you need to define the parameters you want to explore. You do this by creating a **`SearchSpace`**, which is a dictionary that maps parameter names to their possible value ranges using special distribution helpers.
+
+```python
+import dreadnode as dn
+from dreadnode.optimization.search import Float, Categorical
+
+# Define the parameters we want to tune.
+llm_search_space = {
+    "temperature": Float(low=0.1, high=1.0),
+    "top_p": Float(low=0.5, high=1.0),
+    "guidance_style": Categorical(["concise", "detailed", "technical"]),
+}
+```
+Here, we've told the optimizer to explore floating-point values for `temperature` and `top_p` within their respective ranges, and to choose one of three string options for `guidance_style`.
+
+### 2. Searching the Space with `random_search`
+
+Now, let's put this `SearchSpace` to work. We'll start with **`random_search`**, a strategy that simply picks random combinations of parameters from the space you defined.
+
+Let's create a `Study` to find the parameter set that produces a response closest to a target length of 100 characters.
+
+```python
+import dreadnode as dn
+from dreadnode.optimization.search import random_search
+from dreadnode.airt.target import LLMTarget
+from dreadnode.scorers import length_target
+
+# 1. Define the system under test.
+# The Task Factory will be our LLMTarget, which accepts the candidate parameters.
+target = LLMTarget(
+    model="groq/meta-llama/llama-3.1-8b-instant",
+)
+
+# 2. Define the objective.
+# We want the output length to be as close to 100 as possible.
+objective_scorer = length_target(100)
+
+# 3. Create the Study.
+tuning_study = dn.Study(
+    name="llm-hyperparameter-tuning",
+    search_strategy=random_search(llm_search_space),
+    task_factory=target.task_factory,
+    objectives={"conciseness": objective_scorer},
+    max_trials=20,
+)
+
+# 4. Run the study and see live progress.
+result = await tuning_study.console()
+```
+When you run this, the `Study` will execute 20 trials. In each trial, `random_search` will generate a new candidate (a dictionary like `{'temperature': 0.75, 'top_p': 0.9, 'guidance_style': 'concise'}`). The `LLMTarget` will use these as parameters for a generation, and the `length_target` scorer will evaluate the output. The `.console()` runner shows you the progress and best score found so far in real-time.
+
+### 3. Upgrading to an Intelligent Search
+
+Random search is a good baseline, but it's not very efficient. You can easily switch to a more intelligent algorithm by replacing the search strategy. **`optuna_search`** uses Bayesian optimization to learn from past trial results, suggesting more promising candidates over time.
+
+It's a drop-in replacement.
+
+```python
+import dreadnode as dn
+from dreadnode.optimization.search import optuna_search
+
+# The only change is swapping the search strategy.
+# Everything else (target, objective, etc.) remains the same.
+intelligent_tuning_study = tuning_study.with_(
+    search_strategy=optuna_search(llm_search_space)
+)
+
+result = await intelligent_tuning_study.console()
+```
+
+You'll notice that an `optuna_search` study often finds a better result in fewer trials because it's not just guessing—it's learning.
+
+## How-To: Generative Refinement
+
+The other major optimization paradigm isn't about finding a point in a fixed space, but about starting with an initial idea and iteratively improving it. This is perfect for tasks like prompt engineering.
+
+### The Engine of Refinement: Transforms
+
+For iterative search, the `Search Strategy` needs a way to create *new* candidates from *old* ones. This is done using a **`Transform`**. A `Transform` is a component that takes an input (like the prompt from a previous trial) and modifies it to create a new, potentially better version.
+
+### Your First Iterative Search
+
+Let's build a study that starts with the simple prompt "The capital of France is" and tries to refine it to produce a more interesting, trivia-like response.
+
+We'll use **`iterative_search`**, a strategy that creates a single chain of refinements by always applying a `Transform` to the best-performing trial from the previous step.
+
+```python
+import dreadnode as dn
+from dreadnode.optimization.search import iterative_search
+from dreadnode.transforms import suffix
+from dreadnode.scorers import similarity
+from dreadnode.airt.target import LLMTarget
+
+# 1. Define a simple Transform. This one just adds a suffix to the input string.
+refiner = suffix("Provide your answer in the style of a fun trivia fact.")
+
+# 2. Define our target and objective.
+target = LLMTarget(model="groq/meta-llama/llama-3.1-8b-instant")
+objective_scorer = similarity(reference="Paris, the City of Light, is the capital of France!")
+
+# 3. Create the Study with an initial prompt.
+refinement_study = dn.Study(
+    name="prompt-refinement",
+    search_strategy=iterative_search(
+        transform=refiner,
+        initial_candidate="The capital of France is" # The starting point for our chain.
+    ),
+    task_factory=target.task_factory,
+    objectives={"similarity": objective_scorer},
+    max_trials=5,
+)
+
+# 4. Run the study.
+result = await refinement_study.console()
+```
+This study starts with the `initial_candidate`. In each subsequent step, `iterative_search` takes the best prompt so far, applies the `refiner` transform to it, and runs the new prompt as the next trial.
+
+## Common Configuration
+
+The following configurations apply to any `Study` you build, whether it's for hyperparameter tuning or generative refinement.
+
+### Defining Objectives
+
+You define the goal of your study with the `objectives` and `directions` parameters.
+
+-   `objectives`: A dictionary mapping a name to a `Scorer` instance.
+-   `directions`: A list that must correspond to the `objectives`, specifying whether to `"maximize"` or `"minimize"` each scorer's value. The default is to maximize everything.
+
+<Warning>
+When using multiple objectives, the final `trial.score` that search strategies use is an **average** of all objective scores. If your scorers produce values on different scales (e.g., one is 0-1 and another is 0-100), the larger-scale scorer will dominate the average. It is your responsibility to normalize scores to a comparable range if you want them to be weighted equally.
+
+```python
+# Normalize the length score to a 0-1 range to match the similarity score.
+normalized_length = length_target(100) / 100
+
+my_study = dn.Study(
+    objectives={
+        "similarity": similarity(...),
+        "conciseness": normalized_length,
+    }
+)
+```
+</Warning>
+
+### Setting Stop Conditions
+
+Running a fixed number of trials isn't always efficient. You can use `stop_conditions` to terminate a study as soon as a goal is met or it's no longer making progress.
+
+-   **`score_value`**: Stop when a specific objective's score meets a threshold.
+-   **`score_plateau`**: Stop if the best score hasn't improved for a certain number of trials.
+-   **`max_trials`**: The default condition, stopping after a fixed number of trials.
+
+Here's how to make a study stop as soon as it finds a sufficiently similar response.
+```python
+import dreadnode as dn
+from dreadnode.optimization.stop import score_value
+
+# This study will stop after 100 trials OR as soon as the
+# 'similarity' score is greater than or equal to 0.9.
+study_with_stop = refinement_study.with_(
+    max_trials=100,
+    stop_conditions=[
+        score_value("similarity", gte=0.9)
+    ]
+)
+```
+
+### Analyzing Results
+
+After a study completes, `.run()` or `.console()` returns a **`StudyResult`** object, which contains all the data from the experiment.
+
+The most common task is to get the single best input found during the study. You can access this via the `.best_trial` property.
+
+```python
+# Assume 'result' is the StudyResult from a completed run.
+best_trial = result.best_trial
+
+if best_trial:
+    print("--- Best Candidate Found ---")
+    print(best_trial.candidate)
+
+    print("\n--- Target Output ---")
+    print(best_trial.output)
+
+    print(f"\n--- Final Score: {best_trial.score:.3f} ---")
+
+# For deeper analysis, you can export all trial data to a pandas DataFrame.
+df = result.to_dataframe()
+```
+
+## Advanced Search Strategies
+
+### From a Chain to a Tree: Beam Search
+
+The most direct way to explore multiple paths is with **`beam_search`**. Instead of only refining the single best candidate from the previous step, `beam_search` maintains a "beam" of the top `k` candidates. In each step, it generates several new candidates from *each* of the candidates in the beam, evaluates them, and then selects the new top `k` to form the beam for the next iteration.
+
+This approach is especially effective for prompt engineering, where exploring multiple phrasings or strategies simultaneously can lead to better results. Let's build a study that uses an LLM to refine a prompt.
+
+First, you'll need a `Transform` that can perform the refinement. The pre-built **`llm_refine`** transform is designed for this. It takes a history of previous attempts and uses a generator model to propose an improved prompt.
+
+```python
+import dreadnode as dn
+from dreadnode.optimization.search import beam_search
+from dreadnode.transforms.refine import llm_refine, adapt_prompt_trials
+from dreadnode.scorers import llm_judge
+from dreadnode.airt.target import LLMTarget
+
+# 1. The Transform: An LLM that refines prompts.
+#    `adapt_prompt_trials` formats the trial history for the refiner.
+refiner = llm_refine(
+    model="groq/meta-llama/llama-3.1-8b-instant",
+    guidance="Improve this prompt to be more persuasive and detailed."
+).adapt(adapt_prompt_trials, lambda x: x)
+
+# 2. The Target and Objective.
+#    The target is the model we are trying to prompt effectively.
+#    The objective is another LLM that judges the target's output.
+target = LLMTarget(model="groq/meta-llama/llama-3.1-8b-instant")
+objective = llm_judge(
+    model="groq/meta-llama/llama-3.1-70b-versatile",
+    rubric="Score 1-10 how well the output describes the concept of photosynthesis for a 5th grader.",
+    min_score=1,
+    max_score=10,
+) / 10 # Normalize score to 0-1
+
+# 3. The Study using beam_search.
+prompt_study = dn.Study(
+    name="beam-search-for-prompts",
+    search_strategy=beam_search(
+        transform=refiner,
+        initial_candidate="Explain photosynthesis.",
+        beam_width=3,          # Keep the top 3 prompts at each step.
+        branching_factor=2,    # Create 2 new prompts from each of the 3 in the beam.
+    ),
+    task_factory=target.task_factory,
+    objectives={"quality": objective},
+    max_trials=10, # 1 initial + (3 beam * 2 branch * N steps)
+)
+
+result = await prompt_study.console()
+```
+Here, `beam_width=3` means the study always keeps track of the three best-performing prompts. `branching_factor=2` means that in the next step, it will generate two new, refined prompts from each of those three, for a total of six new candidates to evaluate.
+
+### Customizing the Search Graph
+
+Graph-based strategies like `beam_search` are actually convenient wrappers around the more general-purpose **`graph_search`**. By using `graph_search` directly, you can gain fine-grained control over two key aspects of the search process: how historical context is gathered and how the next generation of candidates is selected.
+
+#### 1. Controlling Historical Context (`context_collector`)
+
+The `context_collector` is a function that gathers relevant past trials to provide as context to your `Transform`.
+
+-   **`lineage`** (default for `beam_search`): Gathers the direct ancestors of a trial (parent, grandparent, etc.). This is useful for iterative refinement where the chain of reasoning is important.
+-   **`local_neighborhood`**: Gathers a wider context, including "siblings" and "cousins" in the search tree. This is useful for encouraging more diverse exploration.
+
+#### 2. Selecting the Next Generation (`pruning_sampler`)
+
+After your `Transform` generates a new batch of candidates, the `pruning_sampler` decides which ones are promising enough to keep for the *next* round of refinement.
+
+-   **`top_k`** (default for `beam_search`): A simple, greedy approach that just keeps the `k` best-scoring trials.
+-   **`tournament`**: Selects candidates through a series of random head-to-head competitions, which can help maintain diversity and avoid getting stuck on a single good idea too early.
+
+Here is how you would manually configure a `graph_search` to use a wider context and a tournament-based selection.
+
+```python
+import dreadnode as dn
+from dreadnode.optimization.search import graph_search
+from dreadnode.optimization.collectors import local_neighborhood
+from dreadnode.optimization.sampling import tournament
+
+# Assume `refiner`, `target`, and `objective` are defined as in the previous example.
+
+custom_graph_study = dn.Study(
+    name="custom-graph-search",
+    search_strategy=graph_search(
+        transform=refiner,
+        initial_candidate="Explain photosynthesis.",
+        # --- Customization ---
+        context_collector=local_neighborhood(depth=2),
+        pruning_sampler=tournament(k=3, pool_size=3), # k is equivalent to beam_width
+        # ---
+        branching_factor=2,
+    ),
+    task_factory=target.task_factory,
+    objectives={"quality": objective},
+    max_trials=10,
+)
+
+result = await custom_graph_study.console()
+```
+
+### Specialized Search Algorithms
+
+The optimization framework is not limited to text generation. It includes search strategies designed for other kinds of problems, like finding vulnerabilities in decision-based systems.
+
+#### Decision Boundary Search
+
+Sometimes the goal isn't to maximize a continuous score, but to find the precise "tipping point" where a system's binary decision changes (e.g., where a content filter flips from "allowed" to "denied"). **`boundary_search`** is designed for this. It performs an efficient binary search between a known "failing" candidate and a known "passing" candidate to find the point on the boundary.
+
+A common application is finding the minimal visual distortion required to fool an image classifier. The **`bisection_image_search`** is a pre-configured version for this task.
+
+```python
+import dreadnode as dn
+from dreadnode.data_types import Image
+from dreadnode.scorers import Scorer
+from dreadnode.optimization.search import bisection_image_search
+
+# A mock classifier that acts as our objective.
+# It returns 1.0 if the image is mostly white, 0.0 otherwise.
+@dn.scorer
+def is_bright(image: Image) -> float:
+    return 1.0 if image.to_numpy().mean() > 0.5 else 0.0
+
+# A black image (fails the "is_bright" check)
+start_image = Image(dn.Image("black.png").to_pil().resize((64, 64)))
+# A white image (passes the "is_bright" check)
+end_image = Image(dn.Image("white.png").to_pil().resize((64, 64)))
+
+boundary_study = dn.Study(
+    name="image-boundary-search",
+    search_strategy=bisection_image_search(
+        start=start_image,
+        end=end_image,
+        decision_objective="is_bright", # The scorer to use for the binary decision.
+        decision_threshold=0.5,      # The score value that counts as "passing".
+    ),
+    task_factory=lambda image: dn.task(lambda: image, name="identity"), # Task just returns the image
+    objectives={"is_bright": is_bright},
+)
+
+result = await boundary_study.console()
+
+# The best trial's candidate will be the gray image right at the 0.5 brightness boundary.
+best_image = result.best_trial.candidate
+```
+
+### Implementing a Custom Search Strategy
+
+For completely novel problems, you can implement your own search strategy. A search strategy is simply an `async` generator function that `yield`s `Trial` objects.
+
+The key pattern to understand is the interaction between `yield` and `await`:
+
+-   `yield trial`: You send a candidate to the `Study` runner for evaluation. This is non-blocking; your generator can continue to `yield` more trials immediately.
+-   `await trial`: You pause your generator's execution until that specific trial has been fully evaluated and scored. This allows you to use its result to decide what candidate to generate next.
+
+Here is a template for a simple hill-climbing algorithm, which explores a random neighbor of the current best candidate and only moves if it finds an improvement.
+
+```python
+import random
+import dreadnode as dn
+from dreadnode.optimization.trial import Trial
+from dreadnode.optimization.search import OptimizationContext
+
+# A simple transform that makes a small random change to a number.
+def jitter(n: float) -> float:
+    return n + random.uniform(-0.1, 0.1)
+
+async def hill_climbing_search(
+    context: OptimizationContext,
+) -> dn.t.AsyncGenerator[Trial[float], None]:
+
+    # Start with an initial trial.
+    current_best_trial = Trial(candidate=0.5)
+    yield current_best_trial
+    await current_best_trial # Wait for it to be scored.
+
+    for _ in range(100): # Max iterations
+        # Create a new candidate based on the previous best.
+        new_candidate = jitter(current_best_trial.candidate)
+
+        neighbor_trial = Trial(candidate=new_candidate)
+        yield neighbor_trial
+        await neighbor_trial
+
+        # Compare scores and update the current best if an improvement was found.
+        if neighbor_trial.score > current_best_trial.score:
+            current_best_trial = neighbor_trial
+
+# You can now use this generator in a Study.
+hill_climbing_study = dn.Study(
+    # ...
+    search_strategy=hill_climbing_search,
+    # ...
+)
+```
