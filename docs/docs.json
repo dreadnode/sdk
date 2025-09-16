@@ -17,7 +17,7 @@
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["intro", "install"]
+        "pages": ["intro", "install", "config"]
       },
       {
         "group": "Example Agents",
@@ -33,23 +33,14 @@
       {
         "group": "Usage",
         "pages": [
+          "usage/agents",
           "usage/cli",
-          "usage/config",
           "usage/projects",
           "usage/runs",
           "usage/tasks",
           "usage/metrics",
-          {
-            "group": "Scorers",
-            "pages": [
-              "usage/scorers/index",
-              "usage/scorers/built-in-scorers",
-              "usage/scorers/advanced",
-              "usage/scorers/composition"
-            ]
-          },
+          "usage/scorers",
           "usage/optimization",
-          "usage/airt",
           "usage/data-tracking",
           "usage/rich-objects",
           "usage/model-training",

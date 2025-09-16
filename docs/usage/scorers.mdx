@@ -1,0 +1,378 @@
+---
+title: "Scorers"
+description: "Measure, verify, and grade your task outputs with reusable evaluations."
+public: true
+---
+
+**Scorers** are a core feature for building robust and reliable systems. They provide a modular framework for evaluating task outputs, solving the problem of embedding messy and repetitive validation logic directly within your core functions. By decoupling evaluation from execution, you can easily define, compose, and reuse powerful checks for quality, safety, and correctness across your entire application.
+
+Consider a task that needs to generate a valid JSON string. Without Scorers, you might mix your evaluation logic with your business logic:
+
+```python
+import json
+import dreadnode as dn
+
+# --- Before Scorers ---
+@dn.task
+async def generate_json_manual(prompt: str) -> str:
+    output = '{"key": "value",}' # Assume this is an LLM call that returns invalid JSON
+
+    # Manual validation logic is mixed in with the task's core responsibility
+    try:
+        json.loads(output)
+        dn.log_metric("is_valid_json", 1.0)
+    except json.JSONDecodeError:
+        dn.log_metric("is_valid_json", 0.0)
+
+    return output
+```
+
+With Scorers, you can separate these concerns cleanly. Here's how you'd write the same logic:
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+# --- With Scorers ---
+@dn.task(scorers=[
+    scorers.is_json(name="is_valid_json")
+])
+async def generate_json_with_scorer(prompt: str) -> str:
+    # The task now only focuses on its primary job
+    return '{"key": "value",}'
+```
+
+The result is the same—a `Metric` named `is_valid_json` is logged—but the code is far more maintainable, and the `is_json` scorer is now a reusable component you can apply to any task.
+
+## Basic Usage: Attaching to Tasks
+
+The most common way to use a **Scorer** is by attaching it directly to a `dreadnode.task` decorator. When the task completes, its return value is automatically passed to each scorer for evaluation and the resulting metric is logged.
+
+Let's look at a complete example that checks if an LLM's output is a refusal to answer.
+
+```python
+import asyncio
+import dreadnode as dn
+from dreadnode import scorers
+
+# All built-in scorers are "factories"—you call them to get a configured instance.
+# Here, we use the `name` parameter to control the metric's name in the UI.
+refusal_scorer = scorers.detect_refusal(name="is_refusal")
+
+@dn.task(scorers=[refusal_scorer])
+async def answer_question(question: str) -> str:
+    # This response will be flagged as a refusal by the scorer.
+    return "I'm sorry, I cannot answer that question."
+
+async def main():
+    with dn.run("refusal-check-example"):
+        await answer_question("What is the secret formula?")
+
+if __name__ == "__main__":
+    dn.configure()
+    asyncio.run(main())
+```
+
+When you run this code, the `refusal_scorer` automatically evaluates the output of `answer_question`. It will detect the refusal phrase and log a `Metric` named `is_refusal` with a value of `1.0` to the current run.
+
+<Tip>
+Using the `name` parameter when creating a scorer is a best practice. It gives you direct control over the metric names that appear in your run logs, making your results much easier to read and filter.
+</Tip>
+
+## Enforcing Quality with `assert_scores`
+
+Simply scoring an output is useful for measurement, but often you need to enforce a quality gate. You can make a task fail if a score doesn't meet your criteria by using the `assert_scores` parameter on the `dreadnode.task` decorator.
+
+When an assertion fails, the task raises an `AssertionFailedError`. This is the primary mechanism for building automated red-teaming and quality assurance directly into your workflows.
+
+```python
+import asyncio
+import dreadnode as dn
+from dreadnode import scorers
+from dreadnode.error import AssertionFailedError
+
+# The name we give the scorer ("is_refusal") is the key we use
+# in `assert_scores`.
+is_refusal_scorer = scorers.detect_refusal(name="is_refusal")
+
+# This task will now fail if the "is_refusal" score is truthy (i.e., 1.0).
+@dn.task(
+    scorers=[is_refusal_scorer],
+    assert_scores=["is_refusal"]
+)
+async def answer_question(question: str) -> str:
+    return "I'm sorry, I cannot answer that question."
+
+async def main():
+    with dn.run("assert-refusal-example"):
+        try:
+            await answer_question("What is the secret formula?")
+        except AssertionFailedError as e:
+            print(f"Task failed as expected: {e}")
+
+if __name__ == "__main__":
+    dn.configure()
+    asyncio.run(main())
+```
+
+### Putting Assertions to Work
+
+The `AssertionFailedError` is not just for crashing your program; it's a signal that other parts of the SDK can use to build resilient and intelligent workflows.
+
+<CodeGroup>
+
+```python Retrying
+# Use task.retry() to re-run a non-deterministic task until it
+# passes all its assertions. This is perfect for quality control.
+
+@dn.task(scorers=[is_polite], assert_scores=["is_polite"])
+async def generate_polite_response():
+    # ... non-deterministic generation ...
+
+# This will run up to 3 times, returning the first polite response.
+polite_response = await generate_polite_response.retry(3)
+```
+
+```python Safe Execution
+# Use task.try_() to safely execute a task. If it fails due to an
+# assertion, it will return `None` instead of raising an exception.
+
+@dn.task(scorers=[is_json], assert_scores=["is_json"])
+async def generate_json():
+    # ... might produce invalid JSON ...
+
+# Safely get the result, or None if it's not valid JSON.
+valid_json = await generate_json.try_()
+if valid_json:
+    # ... proceed with valid data ...
+```
+
+```python Evals
+# In an Eval, a failed assertion automatically marks a sample as "failed"
+# in the final results, allowing you to calculate pass rates.
+
+my_eval = dn.Eval(
+    task=my_task_with_assertions,
+    dataset=[...],
+)
+results = await my_eval.run()
+
+print(f"Pass Rate: {results.pass_rate:.2%}")
+```
+
+</CodeGroup>
+
+## Imperative Scoring with `dreadnode.score()`
+
+While the decorator pattern is perfect for validating a task's final output, you'll sometimes need to evaluate an intermediate value _inside_ a task. You can do this by calling a scorer directly (`await scorer(data)`), but the recommended approach is to use `dreadnode.score()`.
+
+`dreadnode.score()` is a high-level utility that streamlines this process: it runs the scorer, converts the result into a `Metric` object, and **automatically logs it to the current task or run**.
+
+This pattern is ideal for:
+
+- Validating data at multiple steps within a complex chain.
+- Implementing conditional logic (e.g., only run an expensive step if a cheap validation passes).
+
+Here's how you could score an intermediate "outline" before generating the final text.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+# A task that generates an outline first, then expands on it.
+@dn.task
+async def generate_long_form_answer(question: str) -> str:
+    # 1. Generate an intermediate value (the outline).
+    outline = f"1. Introduction to {question}\n2. Core Concepts\n3. Conclusion"
+
+    # 2. Score the intermediate value. `dreadnode.score()` will automatically
+    # log the "outline_length" metric to the current task span.
+    length_scorer = scorers.length_in_range(min_length=50, max_length=500, name="outline_length")
+    await dn.score(outline, scorers=[length_scorer])
+
+    # 3. Generate the final output.
+    final_text = f"{outline}\n\nLet's dive deeper into the introduction..."
+    return final_text
+
+with dn.run("intermediate-scoring-example"):
+    await generate_long_form_answer("Scorers")
+```
+
+By using `dreadnode.score()`, you gain fine-grained control to measure and validate data at any point in your application's logic, not just at the boundaries of a task.
+
+## Logical Composition
+
+You can build rule-based checks by combining scorers with logical operators. This is ideal for situations where an output must meet several criteria simultaneously, or pass if it meets at least one.
+
+### Requiring Multiple Conditions with `&` (AND)
+
+To ensure all conditions are met, you can chain scorers together with the `&` operator. The resulting composed scorer will only produce a `1.0` if _all_ of its components return a truthy value.
+
+Let's say you need to validate that a generated response is not only valid JSON but also contains a specific key.
+
+```python
+import asyncio
+import dreadnode as dn
+from dreadnode import scorers
+
+# Define two separate checks
+is_valid_json = scorers.is_json(name="is_valid_json")
+has_user_id = scorers.contains("user_id", name="has_user_id")
+
+# Combine them into a single, comprehensive scorer
+is_valid_user_object = is_valid_json & has_user_id
+
+
+@dn.task(
+    scorers=[is_valid_user_object],
+    assert_scores=[is_valid_user_object.name] # Fails if either check fails
+)
+async def process_user_data(data: str) -> str:
+    # This output passes both checks
+    return '{"user_id": 123, "data": "..."}'
+
+async def main():
+    with dn.run("and-composition-example"):
+        await process_user_data("...")
+
+if __name__ == "__main__":
+    dn.configure()
+    asyncio.run(main())
+```
+
+### Requiring Any Condition with `|` (OR)
+
+To check if at least one of several conditions is met, use the `|` operator. The composed scorer will return `1.0` if _any_ of its components return a truthy value.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+# Define checks for different politeness cues
+contains_please = scorers.contains("please")
+contains_thank_you = scorers.contains("thank you")
+
+# The final scorer passes if either phrase is found
+is_polite = contains_please | contains_thank_you
+
+
+@dn.task(scorers=[is_polite])
+async def generate_response() -> str:
+    return "Thank you for your inquiry."
+```
+
+### Inverting Logic with `~` (NOT)
+
+The `~` operator is one of the most common composition tools. It inverts the logic of a scorer, returning `1.0` if the original scorer's value is falsy (e.g., `0.0`) and `0.0` otherwise. This is perfect for turning a "detection" scorer into a "passes if not detected" scorer.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+# `detect_refusal` returns 1.0 if a refusal is found.
+# `~detect_refusal` returns 1.0 if NO refusal is found.
+is_helpful = ~scorers.detect_refusal()
+
+@dn.task(scorers=[is_helpful], assert_scores=[is_helpful.name])
+async def get_answer(prompt: str) -> str:
+    # This will pass, as no refusal is detected.
+    return "The answer is 42."
+```
+
+## Thresholding and Comparison
+
+Many scorers, like `similarity`, return a continuous value (e.g., a float between 0.0 and 1.0). To use these with `assert_scores`, you need to convert them into a binary pass/fail signal. You can do this with standard Python comparison operators: `>`, `<`, `>=`, `<=`.
+
+Here's how you can create a scorer that passes only if the semantic similarity to a reference text is above 80%.
+
+```python
+import asyncio
+import dreadnode as dn
+from dreadnode import scorers
+
+reference_answer = "The capital of France is Paris."
+
+# This creates a new scorer that returns 1.0 if similarity > 0.8, and 0.0 otherwise.
+is_similar_enough = (
+    scorers.similarity_with_sentence_transformers(reference=reference_answer)
+    > 0.8
+)
+
+@dn.task(scorers=[is_similar_enough], assert_scores=[is_similar_enough.name])
+async def answer_geography_question(question: str) -> str:
+    # This output is semantically similar enough to pass.
+    return "Paris is the capital city of France."
+
+async def main():
+    with dn.run("thresholding-example"):
+        await answer_geography_question("Which city is the capital of France?")
+
+if __name__ == "__main__":
+    dn.configure()
+    asyncio.run(main())
+```
+
+## Arithmetic Composition
+
+You can perform arithmetic on scorer outputs to create sophisticated, multi-factor scoring systems where different signals contribute to a final quality score.
+
+A powerful pattern is to score a response based on its similarity to a "good" example while penalizing it for similarity to a known "bad" example.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+good_example = "I can help with that. The product you're looking for is the X-1."
+bad_example = "I cannot provide specific product recommendations." # A refusal
+
+# Score similarity to the desired output
+similarity_to_good = scorers.similarity(reference=good_example)
+
+# Score similarity to the anti-pattern
+similarity_to_bad = scorers.similarity(reference=bad_example)
+
+# The final score is the difference. Higher is better.
+preference_score = similarity_to_good - similarity_to_bad
+
+@dn.task(scorers=[preference_score])
+async def generate_recommendation() -> str:
+    return "Of course, I can assist. The X-1 model is what you need."
+```
+
+For combining multiple factors, the `weighted_avg` helper is the recommended tool. It lets you define the relative importance of different quality metrics.
+
+```python
+from dreadnode.scorers import weighted_avg
+
+# Evaluate a response based on three factors with different weights.
+# Safety is most important (weight 2.0), then accuracy (1.5), then conciseness (0.5).
+overall_quality = weighted_avg(
+    (~scorers.detect_harm_with_openai(), 2.0),
+    (scorers.similarity(reference="expected answer") > 0.75, 1.5),
+    (scorers.length_target(100), 0.5),
+)
+
+@dn.task(scorers=[overall_quality])
+async def generate_safe_and_accurate_response() -> str:
+    # ... generation logic ...
+```
+
+## Naming Composed Scorers
+
+When you compose scorers, a default name is generated for the resulting metric (e.g., `similarity_sub_similarity`). These names can become long and difficult to work with in `assert_scores` or in the UI.
+
+It is a strong best practice to explicitly name your final, composed scorers using the `>>` operator.
+
+```python
+# Unwieldy default name
+unnamed_scorer = scorers.is_json() & scorers.contains("user_id")
+print(unnamed_scorer.name) # -> is_json_and_contains
+
+# Clean, explicit name
+named_scorer = (scorers.is_json() & scorers.contains("user_id")) >> "valid_user_object"
+print(named_scorer.name) # -> valid_user_object
+```
+
+<Tip>
+The `>>` operator is the recommended way to name a composed scorer. It preserves all the intermediate metrics from the original scorers for detailed logging. If you *only* want the final composed metric and wish to discard the intermediate ones, you can use the `//` operator instead: `my_scorer // "final_score_only"`.
+</Tip>
