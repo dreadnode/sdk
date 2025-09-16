@@ -401,12 +401,13 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             log_metric("best_score", event.trial.score, step=event.trial.step)
 
     async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
-        from dreadnode import log_outputs, task_and_run
-        from dreadnode.tracing.span import current_run_span
+        from dreadnode import get_current_run, log_outputs, task_and_run
 
         configuration = get_config_model(self)()
         trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
-        will_create_run = current_run_span is None
+        log_to: t.Literal["both", "task-or-run"] = (
+            "both" if get_current_run() is None else "task-or-run"
+        )
 
         last_event: StudyEvent[CandidateT] | None = None
         with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
@@ -424,7 +425,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                         outputs["best_score"] = result.best_trial.score
                         outputs["best_candidate"] = result.best_trial.candidate
                         outputs["best_output"] = result.best_trial.output
-                    log_outputs(to="both" if will_create_run else "task-or-run", **outputs)
+                    log_outputs(to=log_to, **outputs)
 
     @contextlib.asynccontextmanager
     async def stream(

@@ -163,6 +163,12 @@ class Dreadnode:
         # Silently fail if profile config is not available or invalid
         return None
 
+    def get_current_run(self) -> RunSpan | None:
+        return current_run_span.get()
+
+    def get_current_task(self) -> TaskSpan[t.Any] | None:
+        return current_task_span.get()
+
     def configure(
         self,
         *,
@@ -1589,9 +1595,9 @@ class Dreadnode:
         """
         for sample in samples:
             metrics: MetricsLike | None = None
-            if len(sample) == 3:  # noqa: PLR2004
+            if len(sample) == 3:
                 input_data, output_data, metrics = sample
-            elif len(sample) == 2:  # noqa: PLR2004
+            elif len(sample) == 2:
                 input_data, output_data = sample
             else:
                 raise ValueError(
