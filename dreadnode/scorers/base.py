@@ -8,6 +8,7 @@ import typing_extensions as te
 
 from dreadnode.common_types import UNSET, JsonDict, Unset
 from dreadnode.meta import Component, ConfigInfo, Context
+from dreadnode.meta.context import TaskInput, TaskOutput
 from dreadnode.metric import Metric
 from dreadnode.util import get_callable_name, warn_at_user_stacklevel
 
@@ -920,11 +921,14 @@ def clip(
 
 
 # Core Scorers
+#
+# TODO(nick): Lots of odd overlap here between intents, would
+# like to come back and do a full pass on these.
 
 
 def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
     """
-    Create a scorer that checks for equality between the input and a reference value.
+    Create a scorer that checks for equality between the object and a reference value.
 
     Returns a 1.0 if they are equal, and 0.0 otherwise.
 
@@ -938,3 +942,85 @@ def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
         return Metric(1.0 if data == reference else 0.0)
 
     return Scorer[T](evaluate, name=name)
+
+
+def forward(value: t.Any, *, name: str = "forward") -> Scorer[t.Any]:
+    """
+    Create a scorer that forwards a known value as the score.
+
+    This is useful for patterns where you want to fix a score value,
+    or use some portion of the task input/output as the score.
+
+    Examples:
+        ```
+        # Always return a score of 0.75
+        fixed = forward(0.75)
+
+        # Use the length of the input text as the score
+        length_scorer = forward(dn.TaskInput("text").adapt(len))
+        ```
+
+    Args:
+        value: The value to forward.
+        name: Optional name for the forward scorer. If None, derives the name
+            from the value.
+    """
+
+    async def evaluate(data: t.Any, *, value: float = value) -> ScorerResult:  # noqa: ARG001
+        return value
+
+    return Scorer[t.Any](evaluate, name=name or f"forward_{value}")
+
+
+def task_output(
+    adapt: t.Callable[[t.Any], float] | None = None, *, name: str = "task_output"
+) -> Scorer[t.Any]:
+    """
+    Create a scorer that forwards from the output of a task with an optional adapter.
+
+    This is useful when you want to use (and process) the output of a task
+    as the score value.
+
+    Examples:
+        ```
+        @dn.task(scorers=[
+            dn.scorers.task_output(lambda output: len(output) / 100)  # Score based on length of output
+        ])
+        async def summarize(text: str) -> str:
+            ...
+        ```
+
+    Args:
+        adapt: An optional function to adapt the task output to a float score.
+        name: Optional name for the scorer. If None, defaults to "task_output".
+    """
+    context = TaskOutput()
+    if adapt is not None:
+        context.adapt(adapt)
+    return forward(context, name=name)
+
+
+def task_input(
+    input_name: str, adapt: t.Callable[[t.Any], float] | None = None, *, name: str = "task_input"
+) -> Scorer[t.Any]:
+    """
+    Create a scorer that forwards from a named input to a task with an optional adapter.
+
+    This is useful when you want to use (and process) one of the inputs
+    to a task as the score value.
+
+    Examples:
+        ```
+        @dn.task(scorers=[
+            dn.scorers.task_input("text", lambda text: len(text) / 100)  # Score based on length of input text
+        ])
+        async def summarize(text: str) -> str:
+            ...
+    Args:
+        input_name: The name of the task input to use as the score.
+        adapt: An optional function to adapt the task input to a float score.
+    """
+    context = TaskInput(input_name)
+    if adapt is not None:
+        context.adapt(adapt)
+    return forward(context, name=name)

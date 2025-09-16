@@ -1,47 +1,50 @@
-import inspect
 import typing as t
+
+from loguru import logger
 
 from dreadnode.data_types import Image
 from dreadnode.optimization.search.base import OptimizationContext, Search
 from dreadnode.optimization.trial import CandidateT, Trial
-from dreadnode.scorers.image import DistanceMethod, image_distance
 from dreadnode.transforms import Transform, TransformLike
 
 
 def boundary_search(
-    start_candidate: CandidateT,
-    end_candidate: CandidateT,
-    interpolate: TransformLike[tuple[CandidateT, CandidateT], CandidateT],
-    tolerable: t.Callable[[CandidateT, CandidateT], t.Awaitable[bool]],
+    start: CandidateT,
+    end: CandidateT,
+    interpolate: TransformLike[tuple[CandidateT, CandidateT, float], CandidateT],
     *,
+    tolerance: float = 1e-2,
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
+    name: str = "boundary",
 ) -> Search[CandidateT]:
     """
     Performs a boundary search between two candidates to find a new candidate
     which lies on the decision boundary defined by the objective and threshold.
 
     Args:
-        start_candidate: A candidate expected to be unsuccessful (score <= [decision_threshold]).
-        end_candidate: A candidate expected to be successful (score > [decision_threshold]).
-        interpolate: A transform that takes two candidates and returns a candidate
+        start: A candidate on the left side of the decision boundary (score <= [decision_threshold]).
+        end: A candidate on the right side of the decision boundary (score > [decision_threshold]).
+        interpolate: A transform that takes two candidates and an alpha value between and returns a candidate
                      that is between them.
-        tolerable: A function that checks if the similarity (distance) between two candidates is within acceptable limits.
+        tolerance: The maximum acceptable difference between the upper and lower alpha values.
         decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
         decision_threshold: The threshold value for the decision objective.
     """
 
     async def search(context: OptimizationContext) -> t.AsyncGenerator[Trial[CandidateT], None]:
+        def is_successful(trial: Trial) -> bool:
+            return trial.get_directional_score(decision_objective) > decision_threshold
+
+        logger.info("Starting boundary search")
+
         if decision_objective and decision_objective not in context.objective_names:
             raise ValueError(
                 f"Decision objective '{decision_objective}' not found in the optimization context."
             )
 
-        def is_successful(trial: Trial) -> bool:
-            return trial.get_directional_score(decision_objective) > decision_threshold
-
-        start_trial = Trial(candidate=start_candidate)
-        end_trial = Trial(candidate=end_candidate)
+        start_trial = Trial(candidate=start)
+        end_trial = Trial(candidate=end)
         yield start_trial
         yield end_trial
 
@@ -57,38 +60,44 @@ def boundary_search(
                 f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
             )
 
-        original_bound = start_candidate
-        adversarial_bound = end_candidate
-        interpolate_transform = Transform(interpolate)
-
         # TODO(nick): When tolerance is met immediately, it can be confusing that
         # the attack just returns as search_exhausted. Maybe we add some kind of log
         # reason to be put in the Trial?
-        while not await tolerable(original_bound, adversarial_bound):
-            midpoint_candidate = await interpolate_transform((original_bound, adversarial_bound))
-            if inspect.isawaitable(midpoint_candidate):
-                midpoint_candidate = await midpoint_candidate
+
+        lower_bound_alpha = 0.0
+        upper_bound_alpha = 1.0
+        interpolate_transform = Transform(interpolate)
+
+        adversarial_candidate = end
+
+        while (upper_bound_alpha - lower_bound_alpha) > tolerance:
+            midpoint_alpha = (lower_bound_alpha + upper_bound_alpha) / 2.0
+            midpoint_candidate = await interpolate_transform((start, end, midpoint_alpha))
+
+            logger.info(
+                f"Boundary search iteration: lower={lower_bound_alpha:.4f}, upper={upper_bound_alpha:.4f}, midpoint={midpoint_alpha:.4f}"
+            )
 
             midpoint_trial = Trial(candidate=midpoint_candidate)
             yield midpoint_trial
             await midpoint_trial
 
             if is_successful(midpoint_trial):
-                adversarial_bound = midpoint_trial.candidate
+                upper_bound_alpha = midpoint_alpha
+                adversarial_candidate = midpoint_trial.candidate
             else:
-                original_bound = midpoint_trial.candidate
+                lower_bound_alpha = midpoint_alpha
 
-        yield Trial(candidate=adversarial_bound)
+        yield Trial(candidate=adversarial_candidate)
 
-    return Search(search, name="boundary_search")
+    return Search(search, name=name)
 
 
-def binary_image_search(
-    start_image: Image,
-    end_image: Image,
+def bisection_image_search(
+    start: Image,
+    end: Image,
     *,
-    tolerance: float = 1e-2,  # We assume normalized distance
-    distance_method: DistanceMethod = "l2",
+    tolerance: float = 1e-2,
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
 ) -> Search[Image]:
@@ -97,23 +106,24 @@ def binary_image_search(
     which lies on the decision boundary defined by the objective and threshold.
 
     Args:
-        start_image: An image expected to be unsuccessful (score <= [decision_threshold]).
-        end_image: An image expected to be successful (score > [decision_threshold]).
-        tolerance: The maximum acceptable distance between the start and end images.
-        distance_method: The distance metric to use for measuring similarity.
-        decision_objective: The name of the objective to use for the decision. If None,
+        start: An image on the left side of the decision boundary (score <= [decision_threshold]).
+        end: An image on the right side of the decision boundary (score > [decision_threshold]).
+        tolerance: The maximum acceptable difference between the upper and lower alpha values.
+        decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
+        decision_threshold: The threshold value for the decision objective.
     """
-    from dreadnode.transforms.image import interpolate
+    from dreadnode.transforms.image import interpolate_images
 
-    async def tolerable(img1: Image, img2: Image) -> bool:
-        metric = await image_distance(img1, method=distance_method)(img2)
-        return metric.value < tolerance
+    async def interpolate(args: tuple[Image, Image, float]) -> Image:
+        imgs, alpha = args[:2], args[2]
+        return await interpolate_images(alpha)(imgs)
 
     return boundary_search(
-        start_candidate=start_image,
-        end_candidate=end_image,
-        interpolate=interpolate(alpha=0.5),
-        tolerable=tolerable,
+        start=start,
+        end=end,
+        interpolate=interpolate,
+        tolerance=tolerance,
         decision_objective=decision_objective,
         decision_threshold=decision_threshold,
+        name="bisection_image",
     )

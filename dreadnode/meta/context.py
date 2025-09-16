@@ -19,10 +19,16 @@ class Context(ABC):
     for retrieving a value by name.
     """
 
-    def __init__(self, *, default: t.Any | Unset = UNSET, required: bool = True):
+    def __init__(
+        self,
+        *,
+        default: t.Any | Unset = UNSET,
+        required: bool = True,
+    ):
         self.required = required
         self.default = default
         self._param_name: str | Unset = UNSET
+        self._adapter: t.Callable[[t.Any], t.Any] | None = None
 
     def __repr__(self) -> str:
         parts = [
@@ -43,6 +49,16 @@ class Context(ABC):
         """
         raise NotImplementedError
 
+    def adapt(self, adapter: t.Callable[[t.Any], t.Any]) -> "Context":
+        """
+        Applies an adapter to the value after resolution.
+
+        Args:
+            adapter: A function to process the resolved value.
+        """
+        self._adapter = adapter
+        return self
+
     def resolve(self) -> t.Any:
         """
         Resolves the dependency's value, handling required/default logic and warnings.
@@ -55,6 +71,8 @@ class Context(ABC):
             resolved = self._resolve()
             if resolved is UNSET and self.required:
                 raise TypeError(f"{self!r} did not resolve to a value")  # noqa: TRY301
+            if self._adapter and resolved is not UNSET:
+                resolved = self._adapter(resolved)
         except Exception as e:
             if (resolved := self.default) is UNSET:
                 if self.required:
@@ -118,7 +136,6 @@ class SpanContext(Context):
         source: SpanContextSource,
         *,
         scope: SpanContextScope = "task",
-        process: t.Callable[[t.Any], t.Any] | None = None,
         default: t.Any | Unset = UNSET,
         required: bool = True,
     ) -> None:
@@ -127,7 +144,6 @@ class SpanContext(Context):
             name: The name of the value to retrieve.
             source: The source to retrieve from ('input', 'output', 'param').
             scope: The scope to look in ('task' or 'run'). Defaults to 'task'.
-            process: An optional function to process the retrieved value.
             default: A default value if the named value is not found.
             required: Whether the context is required or not (otherwise use `default` or `None`).
         """
@@ -139,7 +155,6 @@ class SpanContext(Context):
         self.ref_name = name
         self.source = source
         self.scope = scope
-        self.process = process
 
     def __repr__(self) -> str:
         parts = [
@@ -150,8 +165,6 @@ class SpanContext(Context):
         ]
         if self.default is not UNSET:
             parts.append(f"default={self.default!r}")
-        if self.process is not None:
-            parts.append(f"process={self.process}")
         return f"SpanContext({', '.join(parts)})"
 
     def _resolve(self) -> t.Any:
@@ -181,14 +194,7 @@ class SpanContext(Context):
                 f"Available: {available}"
             ) from e
 
-        processed_value = value
-        if self.process:
-            try:
-                processed_value = self.process(value)
-            except Exception as e:  # noqa: BLE001
-                warn_at_user_stacklevel(f"Error processing {self!r}: {e}", ContextWarning)
-
-        return processed_value
+        return value
 
 
 def TaskInput(  # noqa: N802
@@ -198,7 +204,7 @@ def TaskInput(  # noqa: N802
     Reference an input from the nearest task.
 
     Args:
-        name: The name of the input to reference (otherwise the parameter name is used).
+        name: The name of the input to reference.
         default: A default value if the named input is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """
@@ -206,13 +212,13 @@ def TaskInput(  # noqa: N802
 
 
 def TaskOutput(  # noqa: N802
-    name: str, *, default: t.Any | Unset = UNSET, required: bool = True
+    name: str = "output", *, default: t.Any | Unset = UNSET, required: bool = True
 ) -> SpanContext:
     """
     Reference an output from the nearest task.
 
     Args:
-        name: The name of the output to reference (otherwise the parameter name is used).
+        name: The name of the output to reference.
         default: A default value if the named output is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """
@@ -226,7 +232,7 @@ def RunParam(  # noqa: N802
     Reference a parameter from the current run.
 
     Args:
-        name: The name of the parameter to reference (otherwise the parameter name is used).
+        name: The name of the parameter to reference.
         default: A default value if the named parameter is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """
@@ -240,7 +246,7 @@ def RunInput(  # noqa: N802
     Reference an input from the current run.
 
     Args:
-        name: The name of the input to reference (otherwise the parameter name is used).
+        name: The name of the input to reference.
         default: A default value if the named input is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """
@@ -254,7 +260,7 @@ def RunOutput(  # noqa: N802
     Reference an output from the current run.
 
     Args:
-        name: The name of the output to reference (otherwise the parameter name is used).
+        name: The name of the output to reference.
         default: A default value if the named output is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """

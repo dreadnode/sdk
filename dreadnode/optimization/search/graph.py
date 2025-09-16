@@ -16,7 +16,7 @@ def graph_search(
     branching_factor: int = 3,
     context_collector: TrialCollector[CandidateT] = lineage,
     pruning_sampler: TrialSampler[CandidateT] = top_k,
-    name: str = "graph_search",
+    name: str = "graph",
 ) -> Search[CandidateT]:
     """
     Creates a generalized, stateful strategy for generative graph-based search.
@@ -109,7 +109,7 @@ def iterative_search(
         branching_factor=branching_factor,
         context_collector=lineage,
         pruning_sampler=top_k.configure(k=1),
-        name="iterative_search",
+        name="iterative",
     )
 
 
@@ -143,7 +143,7 @@ def beam_search(
         branching_factor=branching_factor,
         context_collector=lineage.configure(depth=context_depth),
         pruning_sampler=top_k.configure(k=beam_width),
-        name="beam_search",
+        name="beam",
     )
 
 
@@ -182,5 +182,5 @@ def graph_neighborhood_search(
         branching_factor=branching_factor,
         context_collector=local_neighborhood.configure(depth=neighborhood_depth),
         pruning_sampler=top_k.configure(k=frontier_size),
-        name="graph_neighborhood_search",
+        name="graph_neighborhood",
     )

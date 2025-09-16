@@ -1,3 +1,4 @@
+import statistics
 import typing as t
 from collections import deque
 from dataclasses import dataclass
@@ -42,6 +43,7 @@ if t.TYPE_CHECKING:
 @dataclass
 class DashboardState:
     max_trials: int = 0
+    trials_pending: int = 0
     trials_completed: int = 0
     trials_running: int = 0
     trials_since_best: int = 0  # Track patience in trials
@@ -74,10 +76,44 @@ class StudyConsoleAdapter:
             "[bold]Overall Progress", total=self.study.max_trials
         )
 
+    def _get_score_progress_indicator(self, trial_score: float) -> tuple[str, str]:
+        """Returns (indicator_text, style) based on standard deviations from mean."""
+        completed_scores = [
+            t.score for t in self._trials if t.status == "finished" and t.score is not -float("inf")
+        ]
+
+        if len(completed_scores) < 2:
+            return "", "dim"
+
+        try:
+            mean_score = statistics.mean(completed_scores)
+            std_dev = statistics.stdev(completed_scores)
+        except statistics.StatisticsError:
+            return "", "dim"
+
+        if std_dev == 0:  # All scores are identical
+            return "", "dim"
+
+        z_score = (trial_score - mean_score) / std_dev
+
+        # Color coding based on standard deviations
+        if z_score >= 2.0:
+            style = "green4"
+        elif z_score >= 1.0:
+            style = "dark_green"
+        elif z_score < -1.0:
+            style = "dark_red"
+        elif z_score < -2.0:
+            style = "deep_pink4"
+        else:
+            style = "dim"
+
+        return f"{z_score:+.1f}", style
+
     def _build_header(self) -> RenderableType:
         grid = Table.grid(expand=True)
         grid.add_column("Best Score", justify="left", ratio=1)
-        grid.add_column("Status", justify="right", ratio=1)
+        grid.add_column("Status", justify="right", ratio=2)
 
         # Best Score
         best_score_text = Text("---", style="dim")
@@ -88,6 +124,7 @@ class StudyConsoleAdapter:
         status_text = Text.from_markup(
             f"Running: [bold cyan]{self.state.trials_running}[/bold cyan] | "
             f"Since best: [bold magenta]{self.state.trials_since_best}[/bold magenta] | "
+            f"Pending: [bold]{self.state.trials_pending}[/bold] | "
             f"Finished: [bold]{self.state.trials_completed}[/bold] / {self.state.max_trials}",
         )
 
@@ -109,16 +146,16 @@ class StudyConsoleAdapter:
 
         scores_table = Table.grid(padding=(0, 2))
         scores_table.add_column("Name")
-        scores_table.add_column("Score", justify="right", min_width=8)
+        scores_table.add_column("Score", justify="right", min_width=10)
         for name in self.study.objective_names:
             scores_table.add_row(
                 name,
-                f"[bold magenta]{trial.scores.get(name, -float('inf')):.3f}[/bold magenta]",
+                f"[bold magenta]{trial.scores.get(name, -float('inf')):.6f}[/bold magenta]",
             )
 
         for name, value in trial.all_scores.items():
             if name not in self.study.objective_names:
-                scores_table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.3f}[/dim]")
+                scores_table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.6f}[/dim]")
 
         # Main content grid
         candidate_str = shorten_string(
@@ -151,7 +188,7 @@ class StudyConsoleAdapter:
         table = Table(expand=True, box=box.ROUNDED)
         table.add_column("ID", style="dim", width=8)
         table.add_column("Status")
-        table.add_column("Score", justify="right")
+        table.add_column("Score/σ", justify="right")  # noqa: RUF001
 
         for trial in self._trials:
             color = {
@@ -161,7 +198,13 @@ class StudyConsoleAdapter:
                 "running": "cyan",
             }.get(trial.status, "dim")
             status_text = f"[{color}]{trial.status}[/{color}]"
-            score_str = f"{trial.score:.3f}" if trial.status == "finished" else "..."
+
+            if trial.status == "finished":
+                indicator, indicator_style = self._get_score_progress_indicator(trial.score)
+                score_str = f"[bold]{trial.score:.6f}[/bold] [{indicator_style}]{indicator}[/{indicator_style}]"
+            else:
+                score_str = "..."
+
             table.add_row(str(trial.id)[16:], status_text, score_str)
 
         return Panel(
@@ -181,8 +224,8 @@ class StudyConsoleAdapter:
         )
 
         layout["body"].split_row(
-            Layout(self._build_best_trial_panel(), ratio=2),
-            Layout(self._build_trials_panel(), ratio=1),
+            Layout(self._build_best_trial_panel()),
+            Layout(self._build_trials_panel()),
         )
 
         return Layout(
@@ -202,9 +245,11 @@ class StudyConsoleAdapter:
             self._progress.update(self._progress_task_id, total=self.study.max_trials)
 
         elif isinstance(event, TrialAdded):
+            self.state.trials_pending += 1
             self._trials.appendleft(event.trial)
 
         elif isinstance(event, TrialStart):
+            self.state.trials_pending -= 1
             self.state.trials_running += 1
             for i, t in enumerate(self._trials):
                 if t.id == event.trial.id:
@@ -254,10 +299,11 @@ class StudyConsoleAdapter:
             self.console.print(Panel("[yellow]No successful trials were completed.[/yellow]"))
 
     async def run(self) -> StudyResult:
-        with Live(console=self.console, get_renderable=self._build_dashboard, screen=True):
+        with Live(self._build_dashboard(), console=self.console, screen=True) as live:
             async with self.study.stream() as stream:
                 async for event in stream:
                     self._handle_event(event)
+                    live.update(self._build_dashboard())
 
         if self.final_result:
             self._render_final_summary(self.final_result)

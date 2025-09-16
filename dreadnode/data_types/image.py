@@ -19,11 +19,9 @@ class Image(DataType):
     """
     Image media type for Dreadnode logging.
 
-    Supports:
-    - Local file paths (str or Path)
-    - PIL Image objects
-    - Numpy arrays
-    - Base64 encoded strings
+    This class maintains a high-fidelity float32 numpy array as the canonical
+    representation, ensuring no precision loss during use in transforms, scorers,
+    and optimization routines.
     """
 
     def __init__(
@@ -38,11 +36,11 @@ class Image(DataType):
 
         Args:
             data: The image data, which can be:
-                - A path to a local image file (str or Path)
-                - A PIL Image object
-                - A numpy array
-                - Base64 encoded string
-                - Raw bytes
+                - A file path (str or Path)
+                - A base64-encoded string (starting with "data:image/")
+                - Raw bytes of an image file
+                - A numpy array (HWC or HW format)
+                - A Pillow Image object
             mode: Optional mode for the image (RGB, L, etc.)
             caption: Optional caption for the image
             format: Optional format to use when saving (png, jpg, etc.)
@@ -50,316 +48,331 @@ class Image(DataType):
         with catch_import_error("dreadnode[multimodal]"):
             import PIL.Image  # type: ignore[import-not-found]  # noqa: F401
 
-        self._data = data
-        self._mode = mode
         self._caption = caption
-        self._format = format
 
-    def to_pil(self) -> "PILImage":
-        """Returns the image as a Pillow Image object for manipulation."""
-        import PIL.Image
+        self._source_metadata = self._extract_source_metadata(data, format)
+        self._format = self._source_metadata.get("format", "png")
+        self._canonical_array, self._mode = self._load_and_convert(data, mode)
 
-        image_bytes, _ = self.to_serializable()
-        return PIL.Image.open(io.BytesIO(image_bytes))
+        # Caches for conversions
+        self._pil_cache: PILImage | None = None
+        self._base64_cache: str | None = None
 
-    def to_numpy(self, dtype: t.Any = np.uint8) -> "np.ndarray[t.Any, t.Any]":
+    def _extract_source_metadata(
+        self, data: ImageDataOrPathType, format_hint: str | None
+    ) -> dict[str, t.Any]:
+        """Extract metadata from source without full conversion."""
+        metadata = {"source-type": "unknown"}
+
+        if isinstance(data, (str, Path)):
+            path = Path(data)
+            if path.exists():
+                metadata.update(
+                    {
+                        "source-type": "file",
+                        "source-path": str(path),
+                        "format": format_hint or path.suffix.lstrip(".").lower() or "png",
+                    }
+                )
+            elif isinstance(data, str) and data.startswith("data:image/"):
+                header = data.split(",", 1)[0]
+                fmt = header.split("/")[1].split(";")[0] if "/" in header else "png"
+                metadata.update({"source-type": "base64", "format": format_hint or fmt})
+            else:
+                metadata["format"] = format_hint or "png"
+        elif hasattr(data, "mode"):  # PIL Image
+            pil_format = getattr(data, "format", None)
+            detected_format = pil_format.lower() if pil_format else "png"
+            metadata.update(
+                {
+                    "source-type": "PIL.Image",
+                    "format": format_hint or detected_format,
+                }
+            )
+        elif isinstance(data, np.ndarray):
+            metadata.update(
+                {
+                    "source-type": "numpy.ndarray",
+                    "array-shape": str(data.shape),
+                    "array-dtype": str(data.dtype),
+                    "format": format_hint or "png",
+                }
+            )
+        elif isinstance(data, bytes):
+            metadata.update({"source-type": "bytes", "format": format_hint or "png"})
+        else:
+            metadata["format"] = format_hint or "png"
+
+        return metadata
+
+    def _load_and_convert(
+        self, data: ImageDataOrPathType, mode: str | None
+    ) -> tuple["np.ndarray[t.Any, np.dtype[np.float32]]", str]:
         """
-        Returns the image as a NumPy array with a specified dtype.
-
-        Common dtypes:
-        - np.uint8: Standard 8-bit integer pixels [0, 255]. Default.
-        - np.float32 / np.float64: Floating point pixels, typically for
-          numerical operations. Values are scaled to [0.0, 1.0].
+        Load and convert any input to canonical float32 array format.
 
         Returns:
-            A NumPy array in HWC (Height, Width, Channels) format.
+            Tuple of (canonical_array, mode) where canonical_array is always:
+            - dtype: float32
+            - range: [0.0, 1.0]
+            - format: HWC (Height, Width, Channels) or HW for grayscale
         """
-        pil_img = self.to_pil().convert("RGB")
-        arr = np.array(pil_img)
 
-        if np.issubdtype(dtype, np.floating):
-            return arr.astype(dtype) / 255.0
-        return arr.astype(dtype)
+        # Handle numpy arrays directly to preserve precision
+        if isinstance(data, np.ndarray):
+            return self._convert_numpy_direct(data, mode)
+
+        # For other types, go through PIL (with careful handling)
+        pil_img = self._to_pil_from_any(data)
+
+        # Determine final mode
+        final_mode = mode or pil_img.mode
+        if final_mode != pil_img.mode:
+            pil_img = pil_img.convert(final_mode)
+
+        # Convert to canonical numpy array
+        canonical_array = np.array(pil_img, dtype=np.float32)
+
+        # Smart normalization based on data characteristics
+        canonical_array = self._normalize_to_unit_range(canonical_array)
+
+        # Ensure proper shape (remove single-channel dimension for grayscale)
+        if canonical_array.ndim == 3 and canonical_array.shape[2] == 1:
+            canonical_array = canonical_array[:, :, 0]
+
+        return canonical_array, final_mode
+
+    def _convert_numpy_direct(
+        self, array: "np.ndarray[t.Any, t.Any]", mode: str | None
+    ) -> tuple["np.ndarray[t.Any, np.dtype[np.float32]]", str]:
+        """Convert numpy array directly to canonical format without PIL roundtrip."""
+        # Make a copy and ensure valid format
+        arr = self._ensure_valid_image_array(array.copy())
+
+        # Infer or use provided mode
+        final_mode = mode or self._infer_mode_from_shape(arr.shape)
+
+        # Convert to float32 and normalize
+        canonical_array = arr.astype(np.float32)
+        canonical_array = self._normalize_to_unit_range(canonical_array)
+
+        # Handle shape for grayscale
+        if canonical_array.ndim == 3 and canonical_array.shape[2] == 1 and final_mode == "L":
+            canonical_array = canonical_array[:, :, 0]
+
+        return canonical_array, final_mode
+
+    def _normalize_to_unit_range(
+        self, array: "np.ndarray[t.Any, t.Any]"
+    ) -> "np.ndarray[t.Any, t.Any]":
+        """Smart normalization to [0,1] range based on data characteristics."""
+        if array.dtype.kind == "f":  # Already float
+            # Already in [0,1]
+            if array.max() <= 1.0 and array.min() >= 0.0:
+                return array
+
+            # Likely [0,255] float
+            if array.max() <= 255.0 and array.min() >= 0.0:
+                return array / 255.0
+
+            # Unusual range - normalize to [0,1]
+            min_val, max_val = array.min(), array.max()
+            if max_val > min_val:
+                return (array - min_val) / (max_val - min_val)  # type: ignore[no-any-return]
+            return array
+
+        # Binary image
+        if array.max() <= 1:
+            return array.astype(np.float32)
+
+        # Assume [0,255] or similar
+        return array.astype(np.float32) / 255.0
+
+    def _to_pil_from_any(self, data: ImageDataOrPathType) -> "PILImage":
+        """Convert any supported input type to PIL Image."""
+        import PIL.Image
+
+        if isinstance(data, PIL.Image.Image):
+            return data.copy()  # Always work with a copy
+
+        if isinstance(data, (str, Path)):
+            path = Path(data)
+            if path.exists():
+                return PIL.Image.open(path)
+            if isinstance(data, str) and data.startswith("data:image/"):
+                _, encoded = data.split(",", 1)
+                image_bytes = base64.b64decode(encoded)
+                return PIL.Image.open(io.BytesIO(image_bytes))
+            raise FileNotFoundError(f"Image file not found: {path}")
+
+        if isinstance(data, bytes):
+            return PIL.Image.open(io.BytesIO(data))
+
+        if isinstance(data, np.ndarray):
+            return self._numpy_to_pil(data)
+
+        raise TypeError(f"Unsupported image data type: {type(data)}")
+
+    def _numpy_to_pil(self, array: "np.ndarray[t.Any, t.Any]") -> "PILImage":
+        """Convert numpy array to PIL Image with proper handling."""
+        import PIL.Image
+
+        # Make a copy to avoid modifying input
+        arr = array.copy()
+
+        # Ensure valid array format
+        arr = self._ensure_valid_image_array(arr)
+
+        # Handle different data types and ranges
+        if arr.dtype.kind == "f":  # floating point
+            if arr.max() <= 1.0:
+                # Already in [0,1], convert to uint8
+                arr = (arr * 255).astype(np.uint8)
+            else:
+                # Assume [0,255] range, just convert type
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+        else:
+            # Integer type, ensure uint8 range
+            arr = np.clip(arr, 0, 255).astype(np.uint8)
+
+        # Infer mode from shape
+        mode = self._infer_mode_from_shape(arr.shape)
+
+        return PIL.Image.fromarray(arr, mode=mode)
+
+    def _ensure_valid_image_array(
+        self, array: "np.ndarray[t.Any, t.Any]"
+    ) -> "np.ndarray[t.Any, t.Any]":
+        """Ensure numpy array is in valid image format (HWC or HW)."""
+        if array.ndim == 2:  # Grayscale
+            return array
+
+        if array.ndim == 3:
+            h, _, c = array.shape
+            if c in (1, 3, 4):  # channels-last (HWC)
+                return array
+            if h in (1, 3, 4):  # channels-first (CHW)
+                return np.transpose(array, (1, 2, 0))
+
+        raise ValueError(f"Unsupported array shape: {array.shape}")
+
+    def _infer_mode_from_shape(self, shape: tuple[int, ...]) -> str:
+        """Infer PIL mode from array shape."""
+        if len(shape) == 2:
+            return "L"  # Grayscale
+        if len(shape) == 3:
+            channels = shape[2]
+            if channels == 1:
+                return "L"
+            if channels == 3:
+                return "RGB"
+            if channels == 4:
+                return "RGBA"
+
+        raise ValueError(f"Cannot infer mode from shape: {shape}")
+
+    @property
+    def canonical_array(self) -> "np.ndarray[t.Any, np.dtype[np.float32]]":
+        """
+        Get the canonical high-fidelity representation.
+
+        Returns:
+            float32 numpy array in [0,1] range, HWC format
+        """
+        return self._canonical_array.copy()  # Always return a copy for safety
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Get the shape of the canonical array."""
+        return self._canonical_array.shape  # type: ignore[no-any-return]
+
+    @property
+    def mode(self) -> str:
+        """Get the image mode (L, RGB, RGBA, etc.)."""
+        return self._mode
+
+    def to_numpy(self, dtype: t.Any = np.float32) -> "np.ndarray[t.Any, t.Any]":
+        """
+        Returns the image as a NumPy array with specified dtype.
+
+        Args:
+            dtype: Target dtype. Common options:
+                - np.float32/np.float64: Values in [0.0, 1.0] (recommended)
+                - np.uint8: Values in [0, 255]
+
+        Returns:
+            NumPy array in HWC format (or HW for grayscale)
+        """
+        arr = self._canonical_array.copy()
+
+        if np.issubdtype(dtype, np.integer):  # noqa: SIM108
+            # Convert to integer range [0, 255]
+            arr = (arr * 255.0).astype(dtype)
+        else:
+            # Keep float range [0, 1]
+            arr = arr.astype(dtype)
+
+        return arr
+
+    def to_pil(self) -> "PILImage":
+        """Returns the image as a Pillow Image object."""
+        if self._pil_cache is None:
+            # Convert canonical array to PIL
+            arr = (self._canonical_array * 255).astype(np.uint8)
+
+            import PIL.Image
+
+            self._pil_cache = PIL.Image.fromarray(arr, mode=self._mode)
+
+        return self._pil_cache.copy()  # Return copy to prevent mutation
 
     def to_base64(self) -> str:
         """Returns the image as a base64 encoded string."""
-        buffer = io.BytesIO()
-        self.to_pil().save(buffer, format=self._format or "PNG")
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        if self._base64_cache is None:
+            buffer = io.BytesIO()
+            self.to_pil().save(buffer, format=self._format.upper())
+            self._base64_cache = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        return self._base64_cache
 
     def show(self) -> None:
         """Displays the image using the default image viewer."""
         self.to_pil().show()
 
-    def to_serializable(self) -> tuple[t.Any, dict[str, t.Any]]:
+    def to_serializable(self) -> tuple[bytes, dict[str, t.Any]]:
         """
         Convert the image to bytes and return with metadata.
+
         Returns:
-            A tuple of (image_bytes, metadata_dict)
+            Tuple of (image_bytes, metadata_dict)
         """
-        image_bytes, image_format, mode, width, height = self._process_image_data()
-        metadata = self._generate_metadata(image_format, mode, width, height)
-        return image_bytes, metadata
-
-    def _process_image_data(
-        self,
-    ) -> tuple[bytes, str, str | None, int | None, int | None]:
-        """
-        Process the image data and return bytes, format, mode, width, and height.
-        Returns:
-            A tuple of (image_bytes, image_format, mode, width, height)
-        """
-        import PIL.Image
-
-        if isinstance(self._data, str | Path) and Path(self._data).exists():
-            return self._process_file_path()
-        if isinstance(self._data, PIL.Image.Image):
-            return self._process_pil_image()
-        if isinstance(self._data, np.ndarray):
-            return self._process_numpy_array()
-        if isinstance(self._data, bytes):
-            return self._process_raw_bytes()
-        if isinstance(self._data, str) and self._data.startswith("data:image/"):
-            return self._process_base64_string()
-        raise TypeError(f"Unsupported image data type: {type(self._data)}")
-
-    def _process_file_path(
-        self,
-    ) -> tuple[bytes, str, str | None, int | None, int | None]:
-        """
-        Process image from file path.
-        Returns:
-            A tuple of (image_bytes, image_format, mode, width, height)
-        """
-        import PIL.Image
-
-        path_str = str(self._data)
-        image_bytes = Path(path_str).read_bytes()
-        image_format = self._format or Path(path_str).suffix.lstrip(".") or "png"
-        mode, width, height = self._mode, None, None
-        with PIL.Image.open(path_str) as img:
-            width, height = img.size
-            detected_mode = img.mode
-            mode = mode or detected_mode
-        return image_bytes, image_format, mode, width, height
-
-    def _process_pil_image(
-        self,
-    ) -> tuple[bytes, str, str | None, int | None, int | None]:
-        """
-        Process PIL Image object.
-        Returns:
-            A tuple of (image_bytes, image_format, mode, width, height)
-        """
-        import PIL.Image
-
-        pil_image = self._data
-        if not isinstance(pil_image, PIL.Image.Image):
-            raise TypeError(f"Expected PIL.Image, got {type(self._data)}")
-
-        mode = self._mode or pil_image.mode
-        image_format = self._format or (pil_image.format.lower() if pil_image.format else "png")
-
         buffer = io.BytesIO()
-        img_to_save = pil_image
-
-        if mode and pil_image.mode != mode:
-            if mode == "RGBA" and pil_image.mode in ("RGB", "L"):
-                # For RGB to RGBA, add an alpha channel
-                # Convert to RGBA first
-                img_to_save = pil_image.convert("RGBA")
-            else:
-                # Standard conversion
-                img_to_save = pil_image.convert(mode)
-
-        # Make sure format supports alpha if using RGBA mode
-        if mode == "RGBA" and image_format.lower() in ("jpg", "jpeg"):
-            # JPEG doesn't support transparency, switch to PNG
-            image_format = "png"
-
-        # Save image to buffer
-        img_to_save.save(buffer, format=image_format)
+        pil_img = self.to_pil()
+        pil_img.save(buffer, format=self._format.upper())
         image_bytes = buffer.getvalue()
-        width, height = pil_image.size
-        return image_bytes, image_format, mode, width, height
 
-    def _process_numpy_array(
-        self,
-    ) -> tuple[bytes, str, str | None, int | None, int | None]:
-        """
-        Process numpy array to bytes.
-        Returns:
-            A tuple of (image_bytes, image_format, mode, width, height)
-        """
-        import PIL.Image
-
-        buffer = io.BytesIO()
-        image_format = self._format or "png"
-
-        mode = self._mode or (
-            self._guess_mode(self._data) if isinstance(self._data, np.ndarray) else None
-        )
-        if not isinstance(self._data, np.ndarray):
-            raise TypeError(f"Expected numpy.ndarray, got {type(self._data)}")
-        valid_array = self._ensure_valid_image_array(self._data)
-
-        # Explicitly handle float arrays with values in [0, 1]
-        if valid_array.dtype.kind == "f" and valid_array.max() <= 1.0:
-            valid_array = (valid_array * 255).astype(np.uint8)
-        elif valid_array.dtype != np.uint8:
-            valid_array = np.clip(valid_array, 0, 255).astype(np.uint8)
-
-        img = PIL.Image.fromarray(valid_array, mode=mode)
-        img.save(buffer, format=image_format)
-        image_bytes = buffer.getvalue()
-        width, height = img.size
-        return image_bytes, image_format, mode, width, height
-
-    def _process_raw_bytes(
-        self,
-    ) -> tuple[bytes, str, str | None, int | None, int | None]:
-        """
-        Process raw bytes.
-        Returns:
-            A tuple of (image_bytes, image_format, mode, width, height)
-        """
-        import PIL.Image
-
-        if not isinstance(self._data, bytes):
-            raise TypeError(f"Expected bytes, got {type(self._data)}")
-        image_bytes = self._data
-        image_format = self._format or "png"
-        mode, width, height = self._mode, None, None
-        with PIL.Image.open(io.BytesIO(image_bytes)) as img:
-            width, height = img.size
-            detected_mode = img.mode
-            mode = mode or detected_mode
-
-            if mode and img.mode != mode:
-                buffer = io.BytesIO()
-                img.convert(mode).save(buffer, format=image_format)
-                image_bytes = buffer.getvalue()
-
-        return image_bytes, image_format, mode, width, height
-
-    def _process_base64_string(
-        self,
-    ) -> tuple[bytes, str, str | None, int | None, int | None]:
-        """
-        Process base64 encoded string.
-        Returns:
-            A tuple of (image_bytes, image_format, mode, width, height)
-        """
-        import PIL.Image
-
-        if not isinstance(self._data, str):
-            raise TypeError(f"Expected str, got {type(self._data)}")
-
-        # Handle data URL format (data:image/png;base64,...)
-        if "," in self._data:
-            header, encoded = self._data.split(",", 1)
-            format_part = header.split("/")[1].split(";")[0] if "/" in header else "png"
-        else:
-            encoded = self._data
-            format_part = "png"  # Default for raw base64
-
-        image_format = self._format or format_part
-
-        # Decode the base64 string
-        # TODO(@raja): See if we could optimize this
-        image_bytes = base64.b64decode(encoded)
-
-        # Open with PIL to get properties
-        with PIL.Image.open(io.BytesIO(image_bytes)) as img:
-            width, height = img.size
-            detected_mode = img.mode
-            mode = self._mode or detected_mode
-
-            # Convert mode if needed
-            if mode and img.mode != mode:
-                buffer = io.BytesIO()
-                img.convert(mode).save(buffer, format=image_format)
-                image_bytes = buffer.getvalue()
-
-        return image_bytes, image_format, mode, width, height
-
-    def _generate_metadata(
-        self, image_format: str, mode: str | None, width: int | None, height: int | None
-    ) -> dict[str, str | int | None]:
-        """Generate metadata for the image."""
-        import PIL.Image
-
-        metadata: dict[str, str | int | None] = {
-            "extension": image_format.lower(),
+        # Rich metadata including source information
+        metadata = {
+            "extension": self._format.lower(),
             "x-python-datatype": "dreadnode.Image.bytes",
+            "mode": self.mode,
+            "width": self.shape[1] if len(self.shape) >= 2 else self.shape[0],
+            "height": self.shape[0],
         }
 
-        if isinstance(self._data, str | Path) and Path(self._data).exists():
-            metadata["source-type"] = "file"
-            metadata["source-path"] = str(self._data)
-        elif isinstance(self._data, PIL.Image.Image):
-            metadata["source-type"] = "PIL.Image"
-        elif isinstance(self._data, np.ndarray):
-            metadata["source-type"] = "numpy.ndarray"
-            metadata["array-shape"] = str(self._data.shape)
-            metadata["array-dtype"] = str(self._data.dtype)
-        elif isinstance(self._data, bytes):
-            metadata["source-type"] = "bytes"
-        elif isinstance(self._data, str) and self._data.startswith("data:image/"):
-            metadata["source-type"] = "base64"
+        # Add source metadata
+        metadata.update(self._source_metadata)
 
-        if mode:
-            metadata["mode"] = mode
-
-        if width is not None and height is not None:
-            metadata["width"] = width
-            metadata["height"] = height
+        if len(self.shape) == 3:
+            metadata["channels"] = self.shape[2]
+        else:
+            metadata["channels"] = 1
 
         if self._caption:
             metadata["caption"] = self._caption
 
-        return metadata
+        return image_bytes, metadata
 
-    def _guess_mode(self, data: "np.ndarray[t.Any, np.dtype[t.Any]]") -> str:
-        """Guess what type of image the np.array is representing."""
-        ndims = data.ndim
-        grayscale_dim = 2
-        rgb_dim = 3
-        if ndims == grayscale_dim:
-            return "L"
-
-        if ndims == rgb_dim:
-            # Map shape to mode for channels-last (HWC) and channels-first (CHW)
-            shape_to_mode = {
-                (1,): "L",
-                (3,): "RGB",
-                (4,): "RGBA",
-            }
-            if data.shape[2:] in shape_to_mode:
-                return shape_to_mode[data.shape[2:]]
-            if data.shape[:1] in shape_to_mode:
-                return shape_to_mode[data.shape[:1]]
-
-        raise ValueError(f"Unsupported array shape for image: {data.shape}")
-
-    def _ensure_valid_image_array(
-        self, array: "np.ndarray[t.Any, np.dtype[t.Any]]"
-    ) -> "np.ndarray[t.Any, np.dtype[t.Any]]":
-        """Convert numpy array to a format suitable for PIL."""
-        grayscale_dim = 2
-        rgb_dim = 3
-        # Handle grayscale (2D arrays)
-        if array.ndim == grayscale_dim:
-            return array
-
-        # Handle standard 3D arrays
-        if array.ndim == rgb_dim:
-            # Channels-last format (HWC) - standard for PIL
-            if array.shape[2] in (1, 3, 4):
-                return array
-
-            # Channels-first format (CHW) - convert to channels-last
-            if array.shape[0] in (1, 3, 4):
-                return np.transpose(array, (1, 2, 0))
-
-        raise ValueError(f"Unsupported numpy array shape: {array.shape}")
+    def __repr__(self) -> str:
+        shape_str = "x".join(map(str, self._canonical_array.shape))
+        return f"Image({shape_str}, {self._mode}, {self._canonical_array.dtype})"

@@ -6,7 +6,7 @@ from dreadnode.optimization.search.base import (
     Search,
     SearchSpace,
 )
-from dreadnode.optimization.search.boundary import binary_image_search, boundary_search
+from dreadnode.optimization.search.boundary import bisection_image_search, boundary_search
 from dreadnode.optimization.search.graph import (
     beam_search,
     graph_neighborhood_search,
@@ -14,7 +14,7 @@ from dreadnode.optimization.search.graph import (
     iterative_search,
 )
 from dreadnode.optimization.search.optuna_ import optuna_search
-from dreadnode.optimization.search.random import random_search
+from dreadnode.optimization.search.random import random_image_search, random_search
 
 __all__ = [
     "Categorical",
@@ -24,11 +24,12 @@ __all__ = [
     "Search",
     "SearchSpace",
     "beam_search",
-    "binary_image_search",
+    "bisection_image_search",
     "boundary_search",
     "graph_neighborhood_search",
     "graph_search",
     "iterative_search",
     "optuna_search",
+    "random_image_search",
     "random_search",
 ]

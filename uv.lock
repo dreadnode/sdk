@@ -688,6 +688,7 @@ dependencies = [
     { name = "cyclopts" },
     { name = "fsspec", extra = ["s3"] },
     { name = "httpx" },
+    { name = "jsonpath" },
     { name = "logfire" },
     { name = "loguru" },
     { name = "numpy" },
@@ -768,6 +769,7 @@ requires-dist = [
     { name = "dreadnode", extras = ["training", "multimodal", "scoring"], marker = "extra == 'all'" },
     { name = "fsspec", extras = ["s3"], specifier = ">=2023.1.0,<=2025.3.0" },
     { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
+    { name = "jsonpath", specifier = ">=0.82.2" },
     { name = "logfire", specifier = ">=3.5.3,<=3.20.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "moviepy", marker = "extra == 'multimodal'", specifier = ">=2.1.2,<3.0.0" },
@@ -1405,6 +1407,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/e8/5d/447af5ea094b9e4c4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/e8/685f47e0d754320684db4425a0967f7d3fa70126bffd76110b7009a0090f/joblib-1.5.2-py3-none-any.whl", hash = "sha256:4e1f0bdbb987e6d843c70cf43714cb276623def372df3c22fe5266b2670bc241", size = 308396 },
 ]
+
+[[package]]
+name = "jsonpath"
+version = "0.82.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/a1/693351acd0a9edca4de9153372a65e75398898ea7f8a5c722ab00f464929/jsonpath-0.82.2.tar.gz", hash = "sha256:d87ef2bcbcded68ee96bc34c1809b69457ecec9b0c4dd471658a12bd391002d1", size = 10353 }
 
 [[package]]
 name = "jsonpath-ng"

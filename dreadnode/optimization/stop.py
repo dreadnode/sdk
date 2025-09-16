@@ -28,13 +28,13 @@ class StudyStopCondition(t.Generic[CandidateT]):
     def __and__(self, other: "StudyStopCondition[CandidateT]") -> "StudyStopCondition[CandidateT]":
         """Combines this condition with another using AND logic."""
         return StudyStopCondition(
-            lambda trials: self(trials) and other(trials), name=f"({self.name}_and_{other.name})"
+            lambda trials: self(trials) and other(trials), name=f"{self.name}_and_{other.name}"
         )
 
     def __or__(self, other: "StudyStopCondition[CandidateT]") -> "StudyStopCondition[CandidateT]":
         """Combines this condition with another using OR logic."""
         return StudyStopCondition(
-            lambda trials: self(trials) or other(trials), name=f"({self.name}_or_{other.name})"
+            lambda trials: self(trials) or other(trials), name=f"{self.name}_or_{other.name}"
         )
 
 
@@ -62,23 +62,23 @@ def score_value(
         lte: Less than or equal to threshold.
     """
 
-    def stop(trials: list[Trial]) -> bool:
-        for trial in trials:
-            if trial.status != "finished":
-                continue
+    def stop(trials: list[Trial]) -> bool:  # noqa: PLR0911
+        if not trials:
+            return False
 
-            value_to_check = trial.scores.get(metric_name) if metric_name else trial.score
-            if value_to_check is None:
-                continue
+        trial = trials[-1]
+        value_to_check = trial.scores.get(metric_name) if metric_name else trial.score
+        if value_to_check is None:
+            return False
 
-            if gt is not None and value_to_check > gt:
-                return True
-            if gte is not None and value_to_check >= gte:
-                return True
-            if lt is not None and value_to_check < lt:
-                return True
-            if lte is not None and value_to_check <= lte:
-                return True
+        if gt is not None and value_to_check > gt:
+            return True
+        if gte is not None and value_to_check >= gte:
+            return True
+        if lt is not None and value_to_check < lt:
+            return True
+        if lte is not None and value_to_check <= lte:  # noqa: SIM103
+            return True
 
         return False
 

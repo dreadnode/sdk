@@ -9,14 +9,6 @@ if t.TYPE_CHECKING:
     from dreadnode.optimization.study import Direction
 
 
-# @t.runtime_checkable
-# class Search(t.Protocol):
-#     async def __call__(
-#         self,
-#         context: "OptimizationContext",
-#     ) -> t.AsyncIterator[Trial[CandidateT]]: ...
-
-
 class Search(
     Component[["OptimizationContext"], t.AsyncGenerator[Trial[CandidateT], None]],
     t.Generic[CandidateT],

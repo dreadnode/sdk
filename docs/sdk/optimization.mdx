@@ -743,23 +743,22 @@ def beam_search(
         branching_factor=branching_factor,
         context_collector=lineage.configure(depth=context_depth),
         pruning_sampler=top_k.configure(k=beam_width),
-        name="beam_search",
+        name="beam",
     )
 ```
 
 
 </Accordion>
 
-binary\_image\_search
----------------------
+bisection\_image\_search
+------------------------
 
 ```python
-binary_image_search(
-    start_image: Image,
-    end_image: Image,
+bisection_image_search(
+    start: Image,
+    end: Image,
     *,
     tolerance: float = 0.01,
-    distance_method: DistanceMethod = "l2",
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
 ) -> Search[Image]
@@ -770,36 +769,35 @@ which lies on the decision boundary defined by the objective and threshold.
 
 **Parameters:**
 
-* **`start_image`**
+* **`start`**
   (`Image`)
-  –An image expected to be unsuccessful (score <= [decision\_threshold]).
-* **`end_image`**
+  –An image on the left side of the decision boundary (score <= [decision\_threshold]).
+* **`end`**
   (`Image`)
-  –An image expected to be successful (score > [decision\_threshold]).
+  –An image on the right side of the decision boundary (score > [decision\_threshold]).
 * **`tolerance`**
   (`float`, default:
   `0.01`
   )
-  –The maximum acceptable distance between the start and end images.
-* **`distance_method`**
-  (`DistanceMethod`, default:
-  `'l2'`
-  )
-  –The distance metric to use for measuring similarity.
+  –The maximum acceptable difference between the upper and lower alpha values.
 * **`decision_objective`**
   (`str | None`, default:
   `None`
   )
-  –The name of the objective to use for the decision. If None,
+  –The name of the objective to use for the decision. If None, uses the overall trial score.
+* **`decision_threshold`**
+  (`float`, default:
+  `0.0`
+  )
+  –The threshold value for the decision objective.
 
 <Accordion title="Source code in dreadnode/optimization/search/boundary.py" icon="code">
 ```python
-def binary_image_search(
-    start_image: Image,
-    end_image: Image,
+def bisection_image_search(
+    start: Image,
+    end: Image,
     *,
-    tolerance: float = 1e-2,  # We assume normalized distance
-    distance_method: DistanceMethod = "l2",
+    tolerance: float = 1e-2,
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
 ) -> Search[Image]:
@@ -808,25 +806,26 @@ def binary_image_search(
     which lies on the decision boundary defined by the objective and threshold.
 
     Args:
-        start_image: An image expected to be unsuccessful (score <= [decision_threshold]).
-        end_image: An image expected to be successful (score > [decision_threshold]).
-        tolerance: The maximum acceptable distance between the start and end images.
-        distance_method: The distance metric to use for measuring similarity.
-        decision_objective: The name of the objective to use for the decision. If None,
+        start: An image on the left side of the decision boundary (score <= [decision_threshold]).
+        end: An image on the right side of the decision boundary (score > [decision_threshold]).
+        tolerance: The maximum acceptable difference between the upper and lower alpha values.
+        decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
+        decision_threshold: The threshold value for the decision objective.
     """
-    from dreadnode.transforms.image import interpolate
+    from dreadnode.transforms.image import interpolate_images
 
-    async def tolerable(img1: Image, img2: Image) -> bool:
-        metric = await image_distance(img1, method=distance_method)(img2)
-        return metric.value < tolerance
+    async def interpolate(args: tuple[Image, Image, float]) -> Image:
+        imgs, alpha = args[:2], args[2]
+        return await interpolate_images(alpha)(imgs)
 
     return boundary_search(
-        start_candidate=start_image,
-        end_candidate=end_image,
-        interpolate=interpolate(alpha=0.5),
-        tolerable=tolerable,
+        start=start,
+        end=end,
+        interpolate=interpolate,
+        tolerance=tolerance,
         decision_objective=decision_objective,
         decision_threshold=decision_threshold,
+        name="bisection_image",
     )
 ```
 
@@ -838,17 +837,16 @@ boundary\_search
 
 ```python
 boundary_search(
-    start_candidate: CandidateT,
-    end_candidate: CandidateT,
+    start: CandidateT,
+    end: CandidateT,
     interpolate: TransformLike[
-        tuple[CandidateT, CandidateT], CandidateT
-    ],
-    tolerable: Callable[
-        [CandidateT, CandidateT], Awaitable[bool]
+        tuple[CandidateT, CandidateT, float], CandidateT
     ],
     *,
+    tolerance: float = 0.01,
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
+    name: str = "boundary",
 ) -> Search[CandidateT]
 ```
 
@@ -857,19 +855,21 @@ which lies on the decision boundary defined by the objective and threshold.
 
 **Parameters:**
 
-* **`start_candidate`**
+* **`start`**
   (`CandidateT`)
-  –A candidate expected to be unsuccessful (score <= [decision\_threshold]).
-* **`end_candidate`**
+  –A candidate on the left side of the decision boundary (score <= [decision\_threshold]).
+* **`end`**
   (`CandidateT`)
-  –A candidate expected to be successful (score > [decision\_threshold]).
+  –A candidate on the right side of the decision boundary (score > [decision\_threshold]).
 * **`interpolate`**
-  (`TransformLike[tuple[CandidateT, CandidateT], CandidateT]`)
-  –A transform that takes two candidates and returns a candidate
+  (`TransformLike[tuple[CandidateT, CandidateT, float], CandidateT]`)
+  –A transform that takes two candidates and an alpha value between and returns a candidate
   that is between them.
-* **`tolerable`**
-  (`Callable[[CandidateT, CandidateT], Awaitable[bool]]`)
-  –A function that checks if the similarity (distance) between two candidates is within acceptable limits.
+* **`tolerance`**
+  (`float`, default:
+  `0.01`
+  )
+  –The maximum acceptable difference between the upper and lower alpha values.
 * **`decision_objective`**
   (`str | None`, default:
   `None`
@@ -884,39 +884,42 @@ which lies on the decision boundary defined by the objective and threshold.
 <Accordion title="Source code in dreadnode/optimization/search/boundary.py" icon="code">
 ```python
 def boundary_search(
-    start_candidate: CandidateT,
-    end_candidate: CandidateT,
-    interpolate: TransformLike[tuple[CandidateT, CandidateT], CandidateT],
-    tolerable: t.Callable[[CandidateT, CandidateT], t.Awaitable[bool]],
+    start: CandidateT,
+    end: CandidateT,
+    interpolate: TransformLike[tuple[CandidateT, CandidateT, float], CandidateT],
     *,
+    tolerance: float = 1e-2,
     decision_objective: str | None = None,
     decision_threshold: float = 0.0,
+    name: str = "boundary",
 ) -> Search[CandidateT]:
     """
     Performs a boundary search between two candidates to find a new candidate
     which lies on the decision boundary defined by the objective and threshold.
 
     Args:
-        start_candidate: A candidate expected to be unsuccessful (score <= [decision_threshold]).
-        end_candidate: A candidate expected to be successful (score > [decision_threshold]).
-        interpolate: A transform that takes two candidates and returns a candidate
+        start: A candidate on the left side of the decision boundary (score <= [decision_threshold]).
+        end: A candidate on the right side of the decision boundary (score > [decision_threshold]).
+        interpolate: A transform that takes two candidates and an alpha value between and returns a candidate
                      that is between them.
-        tolerable: A function that checks if the similarity (distance) between two candidates is within acceptable limits.
+        tolerance: The maximum acceptable difference between the upper and lower alpha values.
         decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
         decision_threshold: The threshold value for the decision objective.
     """
 
     async def search(context: OptimizationContext) -> t.AsyncGenerator[Trial[CandidateT], None]:
+        def is_successful(trial: Trial) -> bool:
+            return trial.get_directional_score(decision_objective) > decision_threshold
+
+        logger.info("Starting boundary search")
+
         if decision_objective and decision_objective not in context.objective_names:
             raise ValueError(
                 f"Decision objective '{decision_objective}' not found in the optimization context."
             )
 
-        def is_successful(trial: Trial) -> bool:
-            return trial.get_directional_score(decision_objective) > decision_threshold
-
-        start_trial = Trial(candidate=start_candidate)
-        end_trial = Trial(candidate=end_candidate)
+        start_trial = Trial(candidate=start)
+        end_trial = Trial(candidate=end)
         yield start_trial
         yield end_trial
 
@@ -932,30 +935,37 @@ def boundary_search(
                 f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
             )
 
-        original_bound = start_candidate
-        adversarial_bound = end_candidate
-        interpolate_transform = Transform(interpolate)
-
         # TODO(nick): When tolerance is met immediately, it can be confusing that
         # the attack just returns as search_exhausted. Maybe we add some kind of log
         # reason to be put in the Trial?
-        while not await tolerable(original_bound, adversarial_bound):
-            midpoint_candidate = await interpolate_transform((original_bound, adversarial_bound))
-            if inspect.isawaitable(midpoint_candidate):
-                midpoint_candidate = await midpoint_candidate
+
+        lower_bound_alpha = 0.0
+        upper_bound_alpha = 1.0
+        interpolate_transform = Transform(interpolate)
+
+        adversarial_candidate = end
+
+        while (upper_bound_alpha - lower_bound_alpha) > tolerance:
+            midpoint_alpha = (lower_bound_alpha + upper_bound_alpha) / 2.0
+            midpoint_candidate = await interpolate_transform((start, end, midpoint_alpha))
+
+            logger.info(
+                f"Boundary search iteration: lower={lower_bound_alpha:.4f}, upper={upper_bound_alpha:.4f}, midpoint={midpoint_alpha:.4f}"
+            )
 
             midpoint_trial = Trial(candidate=midpoint_candidate)
             yield midpoint_trial
             await midpoint_trial
 
             if is_successful(midpoint_trial):
-                adversarial_bound = midpoint_trial.candidate
+                upper_bound_alpha = midpoint_alpha
+                adversarial_candidate = midpoint_trial.candidate
             else:
-                original_bound = midpoint_trial.candidate
+                lower_bound_alpha = midpoint_alpha
 
-        yield Trial(candidate=adversarial_bound)
+        yield Trial(candidate=adversarial_candidate)
 
-    return Search(search, name="boundary_search")
+    return Search(search, name=name)
 ```
 
 
@@ -1053,7 +1063,7 @@ def graph_neighborhood_search(
         branching_factor=branching_factor,
         context_collector=local_neighborhood.configure(depth=neighborhood_depth),
         pruning_sampler=top_k.configure(k=frontier_size),
-        name="graph_neighborhood_search",
+        name="graph_neighborhood",
     )
 ```
 
@@ -1073,7 +1083,7 @@ graph_search(
     branching_factor: int = 3,
     context_collector: TrialCollector[CandidateT] = lineage,
     pruning_sampler: TrialSampler[CandidateT] = top_k,
-    name: str = "graph_search",
+    name: str = "graph",
 ) -> Search[CandidateT]
 ```
 
@@ -1098,7 +1108,7 @@ def graph_search(
     branching_factor: int = 3,
     context_collector: TrialCollector[CandidateT] = lineage,
     pruning_sampler: TrialSampler[CandidateT] = top_k,
-    name: str = "graph_search",
+    name: str = "graph",
 ) -> Search[CandidateT]:
     """
     Creates a generalized, stateful strategy for generative graph-based search.
@@ -1238,7 +1248,7 @@ def iterative_search(
         branching_factor=branching_factor,
         context_collector=lineage,
         pruning_sampler=top_k.configure(k=1),
-        name="iterative_search",
+        name="iterative",
     )
 ```
 
@@ -1311,7 +1321,7 @@ def optuna_search(
 
             if trial.status == "finished":
                 # Provide scores in the correct order for multi-objective optimization.
-                scores = [trial.scores.get(name, default=0.0) for name in objective_names]
+                scores = [trial.scores.get(name, 0.0) for name in objective_names]
                 optuna_study.tell(optuna_trial, scores)
             else:
                 state = (
@@ -1321,7 +1331,47 @@ def optuna_search(
                 )
                 optuna_study.tell(optuna_trial, state=state)
 
-    return Search(search)
+    return Search(search, name="optuna")
+```
+
+
+</Accordion>
+
+random\_image\_search
+---------------------
+
+```python
+random_image_search(
+    shape: tuple[int, ...], *, seed: int | None = None
+) -> Search[Image]
+```
+
+A simple search strategy that generates a fixed number of random noise images.
+
+**Parameters:**
+
+* **`shape`**
+  (`tuple[int, ...]`)
+  –The shape of the images to generate (e.g., (224, 224, 3)).
+
+<Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
+```python
+def random_image_search(shape: tuple[int, ...], *, seed: int | None = None) -> Search[Image]:
+    """
+    A simple search strategy that generates a fixed number of random noise images.
+
+    Args:
+        shape: The shape of the images to generate (e.g., (224, 224, 3)).
+    """
+
+    np_random = np.random.default_rng(seed)
+
+    async def search(_: OptimizationContext) -> t.AsyncGenerator[Trial[Image], None]:
+        while True:
+            random_array = np_random.integers(0, 256, size=shape, dtype=np.uint8)
+            yield Trial(candidate=Image(random_array))
+
+    return Search(search, name="random_image")
 ```
 
 
@@ -1377,7 +1427,7 @@ def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Se
         while True:
             yield Trial(candidate=_sample_from_space(search_space, _random))
 
-    return Search(search, name="random_search")
+    return Search(search, name="random")
 ```
 
 

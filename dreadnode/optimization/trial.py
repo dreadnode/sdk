@@ -60,7 +60,7 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         parts = [
             f"id={self.id}",
             f"status='{self.status}'",
-            f"score={self.score:.3f}"
+            f"score={self.score:.3f}",
             f"scores={{{', '.join(f'{k}={v:.3f}' for k, v in self.scores.items())}}}",
         ]
         return f"{self.__class__.__name__}({', '.join(parts)})"

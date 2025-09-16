@@ -7,12 +7,11 @@ from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 
 DistanceMethod = t.Literal["l0", "l1", "l2", "linf"]
-DistanceMethodName = t.Literal["hamming", "manhattan", "euclidean", "chebyshev"]
 
 
 def image_distance(
     reference: Image,
-    method: DistanceMethod | DistanceMethodName = "l2",
+    method: DistanceMethod = "l2",
     *,
     normalize: bool = True,
 ) -> Scorer[Image]:
@@ -36,7 +35,7 @@ def image_distance(
         data: Image,
         *,
         reference: Image = reference,
-        method: DistanceMethod | DistanceMethodName = method,
+        method: DistanceMethod = method,
         normalize: bool = normalize,
     ) -> Metric:
         if not isinstance(data, Image):
@@ -44,8 +43,8 @@ def image_distance(
         if not isinstance(reference, Image):
             raise TypeError(f"Expected reference to be an Image, got {type(reference)}")
 
-        data_array = data.to_numpy(dtype=np.float32)
-        reference_array = reference.to_numpy(dtype=np.float32)
+        data_array = data.to_numpy()
+        reference_array = reference.to_numpy()
         if data_array.shape != reference_array.shape:
             raise ValueError(
                 f"Image shapes do not match: {data_array.shape} vs {reference_array.shape}"
@@ -54,30 +53,30 @@ def image_distance(
         diff = data_array - reference_array
         distance: float
 
-        if method in ("l2", "euclidean"):
+        if method == "l0":
+            distance = float(np.linalg.norm(diff.flatten(), ord=0))
+            if normalize:
+                # Max L0 distance is the total number of elements
+                max_dist = float(data_array.size)
+                distance /= max_dist
+        elif method == "l1":
+            distance = float(np.linalg.norm(diff.flatten(), ord=1))
+            if normalize:
+                # Max L1 distance is N * 1.0 = N
+                max_dist = float(data_array.size)
+                distance /= max_dist
+        elif method == "l2":
             distance = float(np.linalg.norm(diff.flatten(), ord=2))
             if normalize:
                 # Max L2 distance is sqrt(N * (1.0^2)) = sqrt(N)
                 # where N is the number of elements (pixels * channels)
                 max_dist = np.sqrt(data_array.size)
                 distance /= max_dist
-        elif method in ("l1", "manhattan"):
-            distance = float(np.linalg.norm(diff.flatten(), ord=1))
-            if normalize:
-                # Max L1 distance is N * 1.0 = N
-                max_dist = float(data_array.size)
-                distance /= max_dist
-        elif method in ("linf", "chebyshev"):
+        elif method == "linf":
             distance = float(np.linalg.norm(diff.flatten(), ord=np.inf))
             if normalize:
                 # Max Linf distance is the max difference for a single element, which is 1.0
                 max_dist = 1.0
-                distance /= max_dist
-        elif method in ("l0", "hamming"):
-            distance = float(np.linalg.norm(diff.flatten(), ord=0))
-            if normalize:
-                # Max L0 distance is the total number of elements
-                max_dist = float(data_array.size)
                 distance /= max_dist
         else:
             raise NotImplementedError(f"Distance metric '{method}' not implemented.")
