@@ -257,6 +257,8 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     if isinstance(scorer, Scorer)
                 ]
 
+                # TODO(nick): Add max_errors* settings to study so
+                # then can be passed down the to eval.
                 evaluator = Eval(
                     task=task,
                     dataset=self.dataset or [{}],
@@ -266,21 +268,36 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
                 trial.eval_result = await evaluator.run()
 
+                # If our entire evaluation failed, reflect that in the trial
+                # status so it can be handled appropriately upstream.
+                #
+                # TODO(nick): Certainly some different options here depending
+                # on how the study behaves, ideally we would have it reflect
+                # this issue in the trial_result?
+                if all(sample.failed for sample in trial.eval_result.samples):
+                    first_error = next(
+                        sample.error for sample in trial.eval_result.samples if sample.failed
+                    )
+                    raise ValueError(f"All samples failed during evaluation: {first_error}")  # noqa: TRY301
+
                 for i, name in enumerate(self.objective_names):
                     direction = self.directions[i]
                     raw_score = trial.all_scores.get(name, -float("inf"))
-                    adjusted_score = raw_score if direction == "maximize" else -raw_score
-                    trial.scores[name] = adjusted_score
+                    directional_score = raw_score if direction == "maximize" else -raw_score
+                    trial.scores[name] = raw_score
+                    trial.directional_scores[name] = directional_score
 
                 trial.score = (
-                    sum(trial.scores.values()) / len(trial.scores) if trial.scores else 0.0
+                    sum(trial.directional_scores.values()) / len(trial.directional_scores)
+                    if trial.directional_scores
+                    else 0.0
                 )
 
                 trial.status = "finished"
 
-        except AssertionFailedError:
+        except AssertionFailedError as e:
             trial.status = "pruned"
-            trial.pruning_reason = ""
+            trial.pruning_reason = f"Constraint not satisfied: {e}"
 
         except Exception as e:  # noqa: BLE001
             trial.status = "failed"
@@ -384,10 +401,13 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             log_metric("best_score", event.trial.score, step=event.trial.step)
 
     async def _stream_traced(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
-        from dreadnode import log_outputs, task_and_run
+        from dreadnode import get_current_run, log_outputs, task_and_run
 
         configuration = get_config_model(self)()
         trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
+        log_to: t.Literal["both", "task-or-run"] = (
+            "both" if get_current_run() is None else "task-or-run"
+        )
 
         last_event: StudyEvent[CandidateT] | None = None
         with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
@@ -405,7 +425,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                         outputs["best_score"] = result.best_trial.score
                         outputs["best_candidate"] = result.best_trial.candidate
                         outputs["best_output"] = result.best_trial.output
-                    log_outputs(to="both", **outputs)
+                    log_outputs(to=log_to, **outputs)
 
     @contextlib.asynccontextmanager
     async def stream(

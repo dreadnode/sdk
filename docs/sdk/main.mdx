@@ -1665,9 +1665,9 @@ def log_samples(
     """
     for sample in samples:
         metrics: MetricsLike | None = None
-        if len(sample) == 3:  # noqa: PLR2004
+        if len(sample) == 3:
             input_data, output_data, metrics = sample
-        elif len(sample) == 2:  # noqa: PLR2004
+        elif len(sample) == 2:
             input_data, output_data = sample
         else:
             raise ValueError(
@@ -1953,7 +1953,7 @@ async def score(
             metric_name = str(getattr(metric, "_scorer_name", scorer.name))
             metric_name = clean_str(metric_name)
             metrics.setdefault(metric_name, []).append(
-                self.log_metric(metric_name, metric, origin=object)
+                self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
             )
 
     failed_assertions: dict[str, list[Metric]] = {}

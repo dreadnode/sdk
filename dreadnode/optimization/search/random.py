@@ -2,7 +2,10 @@ import math
 import random
 import typing as t
 
+import numpy as np
+
 from dreadnode.common_types import AnyDict
+from dreadnode.data_types import Image
 from dreadnode.optimization.search.base import (
     Categorical,
     Float,
@@ -81,4 +84,22 @@ def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Se
         while True:
             yield Trial(candidate=_sample_from_space(search_space, _random))
 
-    return Search(search, name="random_search")
+    return Search(search, name="random")
+
+
+def random_image_search(shape: tuple[int, ...], *, seed: int | None = None) -> Search[Image]:
+    """
+    A simple search strategy that generates a fixed number of random noise images.
+
+    Args:
+        shape: The shape of the images to generate (e.g., (224, 224, 3)).
+    """
+
+    np_random = np.random.default_rng(seed)
+
+    async def search(_: OptimizationContext) -> t.AsyncGenerator[Trial[Image], None]:
+        while True:
+            random_array = np_random.integers(0, 256, size=shape, dtype=np.uint8)
+            yield Trial(candidate=Image(random_array))
+
+    return Search(search, name="random_image")

@@ -17,7 +17,7 @@
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["intro", "install"]
+        "pages": ["intro", "install", "config"]
       },
       {
         "group": "Example Agents",
@@ -33,26 +33,29 @@
       {
         "group": "Usage",
         "pages": [
-          "usage/cli",
-          "usage/config",
+          "usage/agents",
+          {
+            "group": "AI Red Teaming (AIRT)",
+            "pages": [
+              "usage/airt/index",
+              "usage/airt/targets",
+              "usage/airt/llm-attacks",
+              "usage/airt/image-attacks",
+              "usage/airt/results"
+            ]
+          },
           "usage/projects",
           "usage/runs",
           "usage/tasks",
           "usage/metrics",
-          {
-            "group": "Scorers",
-            "pages": [
-              "usage/scorers/index",
-              "usage/scorers/built-in-scorers",
-              "usage/scorers/advanced",
-              "usage/scorers/composition"
-            ]
-          },
-          "usage/optimization",
-          "usage/airt",
+          "usage/scorers",
+          "usage/transforms",
+          "usage/evals",
+          "usage/studies",
           "usage/data-tracking",
           "usage/rich-objects",
           "usage/model-training",
+          "usage/cli",
           "usage/export"
         ]
       },
@@ -62,7 +65,9 @@
           "how-to/write-an-eval",
           "how-to/write-a-ctf-agent",
           "how-to/airtbench-agent",
-          "how-to/write-a-dotnet-reversing-agent"
+          "how-to/write-a-dotnet-reversing-agent",
+          "how-to/solve-bear4",
+          "how-to/solve-granny"
         ]
       },
       {
@@ -72,19 +77,19 @@
       {
         "group": "SDK",
         "pages": [
+          "sdk/airt",
           "sdk/api",
           "sdk/artifact",
           "sdk/data_types",
-          "sdk/scorers",
-          "sdk/optimization",
-          "sdk/mutations",
           "sdk/eval",
-          "sdk/airt",
           "sdk/integrations",
           "sdk/main",
           "sdk/metric",
+          "sdk/optimization",
+          "sdk/scorers",
           "sdk/serialization",
-          "sdk/task"
+          "sdk/task",
+          "sdk/transforms"
         ]
       }
     ]

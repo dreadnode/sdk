@@ -15,7 +15,7 @@ from pydantic_core import PydanticUndefined
 from typing_extensions import ParamSpec
 
 from dreadnode.common_types import UNSET, AnyDict, Unset
-from dreadnode.meta.context import Context, ContextWarning
+from dreadnode.meta.context import Context
 from dreadnode.util import clean_str, get_callable_name, warn_at_user_stacklevel
 
 P = ParamSpec("P")
@@ -532,20 +532,7 @@ class Component(t.Generic[P, R]):
 
             if name in self.__dn_context__:
                 context = self.__dn_context__[name]
-                resolved: t.Any | Unset = UNSET
-
-                try:
-                    resolved = context.resolve()
-                    if resolved is UNSET and context.required:
-                        raise TypeError(f"{context!r} did not resolve to a value")  # noqa: TRY301
-                except Exception as e:
-                    if (resolved := context.default) is UNSET:
-                        if context.required:
-                            raise TypeError(f"Missing required dependency: '{name}'") from e
-                        resolved = None
-                        warn_at_user_stacklevel(f"Failed to resolve '{name}': {e}", ContextWarning)
-
-                args_dict[name] = resolved
+                args_dict[name] = context.resolve()
 
         bound_args = self.signature.bind(**args_dict)
         bound_args.apply_defaults()

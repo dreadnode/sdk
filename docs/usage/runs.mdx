@@ -1,12 +1,16 @@
 ---
 title: 'Runs'
-description: 'Understand the building blocks of your experiments'
+description: 'Track your agents, research workflows, and experiments'
 public: true
 ---
 
-Runs are the core unit of your work in Strikes. They provide the context for all your data collection and represent a complete execution session. Think of runs as the "experiment" or "session" for your code.
+Runs give you complete visibility into your research workflows, from model training to security assessments to agent evaluations. Every **run** captures the full context of your work—whether you're training models, testing security vulnerabilities, running agent workflows, or evaluating performance across multiple tasks.
 
-## Creating Runs
+Think of runs as your research sessions. Each run contains all the data, metrics, and artifacts from a complete operation, making it easy to reproduce results and share findings with your team.
+
+## Basic Usage
+
+Let's start with the simplest way to create a run:
 
 The most common way to create a run is using the context manager syntax:
 
@@ -15,178 +19,244 @@ import dreadnode as dn
 
 dn.configure()
 
-with dn.run("my-experiment"):
-    # Everything in this block is part of the run
-    pass
+with dn.run("my-work"):
+    # Everything in this block is tracked
+    model = train_model(training_data)
+    dn.log_metric("accuracy", model.evaluate())
 ```
 
-The run automatically starts when you enter the `with` block and ends when you exit it. All data logged (inputs, outputs, metrics, artifacts) and tasks executed within the block are associated with this run.
+The run starts when you enter the `with` block and ends when you exit. All data you log—inputs, outputs, metrics, artifacts—gets automatically associated with this run.
 
-You can also manually enter and exit runs by using `__enter__` and `__exit__` methods, but the context manager syntax is more pythonic.
+## Naming Your Runs
 
-## Run Names
+Use descriptive names to identify your security research sessions:
 
-You can provide a name for your run to make it easier to identify:
+<CodeGroup dropdown>
+```python Named runs
+with dn.run("transformer-training"):
+    train_transformer_model()
 
-```python
-with dn.run("training-run-v1"):
-    # Named run
-    pass
+with dn.run("agent-evaluation"):
+    test_agent_performance()
+
+with dn.run("vulnerability-scan"):
+    scan_for_vulnerabilities()
 ```
 
-If you don't provide a name, Strikes will generate one for you automatically using a combination of random words and numbers:
-
-```python
+```python Auto-generated names
+# Strikes generates names like "clever-rabbit-492"
 with dn.run():
-    # Auto-named run (e.g., "clever-rabbit-492")
-    pass
+    run_experiment()
 ```
 
-## Run Tags
-
-Tags help you categorize and filter runs. You can add tags when creating a run or dynamically during execution:
-
-```python
-# Add tags when creating a run
-with dn.run("my-experiment", tags=["production", "model-v2"]):
-
-    # Add additional tags on the fly
-    dn.tag("gpu-training", "checkpoint-enabled")
-
-    # Tags can be conditional
-    if use_advanced_config:
-        dn.tag("advanced-config")
+```python Prefixed names
+# Creates names like "hyperparameter-search-837"
+with dn.run(name_prefix="hyperparameter-search"):
+    optimize_parameters()
 ```
+</CodeGroup>
+
+You'll find prefixed names particularly useful when running multiple related experiments or when iterating on different approaches.
+
+## Organizing with Tags
+
+Tags help you categorize and filter your research. Add them when creating runs or dynamically during execution:
+
+<CodeGroup dropdown>
+```python Model Training
+with dn.run("llm-training", tags=["transformer", "fine-tuning", "production"]):
+
+    # Add tags based on training progress
+    if convergence_detected:
+        dn.tag("converged")
+
+    # Tag based on results
+    if validation_score > threshold:
+        dn.tag("high-performance")
+        dn.tag("deploy-candidate")
+```
+
+```python Security Research
+with dn.run("web-app-assessment", tags=["security", "webapp", "sqli"]):
+
+    # Add tags as you discover attack vectors
+    if detect_cms(target_url):
+        dn.tag("wordpress")
+
+    # Tag based on findings
+    if vulnerability_found:
+        dn.tag("critical-finding")
+```
+
+```python Agent Workflows
+with dn.run("agent-benchmark", tags=["agent", "evaluation", "reasoning"]):
+
+    # Tag based on agent capabilities
+    if agent.supports_tool_use:
+        dn.tag("tool-capable")
+
+    if performance_score > 0.9:
+        dn.tag("high-performer")
+```
+</CodeGroup>
 
 Tags make it easy to:
-- Find related runs in the UI and when exporting data
-- Group runs by experiment type, environment, or configuration
-- Filter and analyze results across multiple runs
+- **Find related work**: Group all model training runs or filter by experiment type
+- **Track methodologies**: Separate different training approaches or evaluation methods
+- **Organize by performance**: Tag high-performing models or successful experiments
+- **Filter exports**: Export only runs from specific projects or time periods
 
-## Setting the Project
+## Project Organization
 
-Runs are always associated with a project. You can specify which project a run belongs to:
-
-```python
-# Specify a project for a single run
-with dn.run("my-experiment", project="model-training"):
-    pass
-```
-
-If you don't specify a project, the run will use the default project configured in `dn.configure()` or be placed in a project named "Default".
-
-## Run Attributes
-
-You can add arbitrary attributes to a run for additional metadata:
+Runs belong to **projects**—your way of organizing different research areas or engagements:
 
 ```python
-with dn.run("my-experiment", environment="staging", version="1.2.3"):
-    # Run with custom attributes
-    pass
+# Organize runs by research area
+with dn.run("transformer-training", project="large-language-models"):
+    train_transformer(dataset)
+
+with dn.run("agent-evaluation", project="reasoning-agents"):
+    evaluate_agent_performance(test_suite)
+
+with dn.run("vulnerability-scan", project="security-assessment"):
+    scan_application_security(target_app)
 ```
 
-These attributes are stored with the run and can be used for filtering and organization when you perform [data exports](/usage/export).
+If you don't specify a project, runs use the default project from `dn.configure()` or get placed in "Default".
 
-## Execute Runs
+## Common Execution Patterns
 
-You can either execute multiple runs independently from one another or in parallel with each other.
+You can execute runs independently or in parallel depending on your research needs.
 
-### Multiple Independent Runs
+### Sequential Testing
 
-You can create multiple independent runs in sequence:
+Run multiple independent experiments to compare different approaches:
 
-```python
-# Run experiment with different learning rates
-learning_rates = [0.1, 0.01, 0.001]
+<CodeGroup dropdown>
+```python Hyperparameter Search
+# Test different model configurations
+configs = [
+    {"learning_rate": 0.001, "batch_size": 32},
+    {"learning_rate": 0.01, "batch_size": 64},
+    {"learning_rate": 0.1, "batch_size": 128}
+]
 
-for lr in learning_rates:
-    with dn.run(f"training-lr-{lr}"):
-        dn.log_param("learning_rate", lr)
-        result = train_model(lr=lr)
-        dn.log_metric("accuracy", result["accuracy"])
+for i, config in enumerate(configs):
+    with dn.run(f"training-run-{i+1}"):
+        dn.log_params(**config)
+        model = train_model(**config)
+        accuracy = evaluate_model(model)
+        dn.log_metric("accuracy", accuracy)
+        if accuracy > best_threshold:
+            dn.log_output("model_checkpoint", model.state_dict())
 ```
 
-Each run is completely separate with its own data and lifecycle.
+```python Security Testing
+# Test different exploit techniques
+techniques = [
+    "sql_injection",
+    "xss_reflected",
+    "csrf_attack"
+]
 
-### Parallel Runs
+for technique in techniques:
+    with dn.run(f"security-test-{technique}"):
+        dn.log_param("technique", technique)
+        result = test_vulnerability(target, technique)
+        dn.log_metric("successful", result.exploitable)
+        if result.exploitable:
+            dn.log_output("proof_of_concept", result.details)
+```
+</CodeGroup>
 
-For more efficient experimentation, you can run multiple experiments in parallel:
+Each run captures separate test results with complete isolation.
+
+### Parallel Execution
+
+For efficient experimentation, run multiple operations simultaneously:
 
 ```python
 import asyncio
 
-async def run_experiment(config):
-    with dn.run(f"experiment-{config['id']}"):
+async def train_model_variant(config):
+    with dn.run(f"model-{config['architecture']}"):
         dn.log_params(**config)
-        result = await async_train_model(**config)
-        dn.log_metrics(**result)
+        model = await async_train_model(**config)
+        metrics = await evaluate_model(model)
+        dn.log_metrics({
+            "accuracy": metrics.accuracy,
+            "training_time": metrics.duration
+        })
+        return metrics
 
-# Define different configurations
+# Define different model architectures
 configs = [
-    {"id": 1, "learning_rate": 0.1, "batch_size": 32},
-    {"id": 2, "learning_rate": 0.01, "batch_size": 64},
-    {"id": 3, "learning_rate": 0.001, "batch_size": 128}
+    {"architecture": "transformer", "layers": 12, "hidden_size": 768},
+    {"architecture": "lstm", "layers": 3, "hidden_size": 512},
+    {"architecture": "cnn", "filters": 128, "kernel_size": 3}
 ]
 
-# Run experiments in parallel
-await asyncio.gather(*[run_experiment(config) for config in configs])
+# Train all variants simultaneously
+results = await asyncio.gather(*[train_model_variant(config) for config in configs])
 ```
 
-This pattern is particularly useful for hyperparameter searches or evaluating multiple models.
+This approach is essential for large-scale hyperparameter searches and model comparisons.
 
-### Distributed Execution
+### Distributed Operations
 
-For complex workflows that span multiple processes, hosts, or containers, you can capture and transfer run context to continue runs across distributed environments:
+For complex workflows spanning multiple systems, you can transfer run context across distributed environments:
 
 ```python
 import dreadnode as dn
 
-# On the main process/host
+# On the coordination system
 with dn.run("distributed-training") as run:
-    dn.log_params(model="transformer", dataset="large-corpus")
+    dn.log_params(model_type="transformer", dataset="large-corpus")
 
-    # Capture the run context for transfer
+    # Capture run context for worker systems
     context = dn.get_run_context()
 
-    # Send context to worker processes/hosts
-    # (via message queue, HTTP headers, file, etc.)
-    send_to_workers(context)
+    # Distribute context to training workers
+    # (via message queue, API calls, shared storage, etc.)
+    dispatch_to_workers(context, data_shards)
 
-# On worker processes/hosts
-def worker_task(run_context):
-    # Continue the same run in distributed environment
+# On remote training workers
+def worker_training(run_context, data_shard):
+    # Continue the coordinated run
     with dn.continue_run(run_context):
-        # All logging is associated with the original run
-        dn.log_metric("worker_progress", 0.8)
-        dn.log_output("worker_result", process_batch())
+        # All training metrics associate with the main run
+        results = train_on_shard(data_shard)
+        dn.log_metric("shard_loss", results.loss)
+        dn.log_output("shard_weights", results.weights)
 ```
 
-The `get_run_context()` function captures the necessary state for continuation, including::
+The `get_run_context()` function captures essential state including:
 - Run ID and metadata
 - OpenTelemetry trace context for distributed tracing
-- Project name
+- Project association
 
-This enables patterns like:
-- **Distributed training**: Continue runs across multiple GPU workers
-- **Containerized workflows**: Transfer runs between container steps
-- **Cloud computing**: Move runs between different cloud instances
-- **Multi-process evaluation**: Parallel evaluation across worker processes
-- **Server-side processing**: Continue runs in a web server context for world models or supporting system
+This enables advanced research patterns:
+- **Distributed training**: Coordinate model training across multiple GPUs/nodes
+- **Containerized workflows**: Move runs between Docker containers or Kubernetes pods
+- **Cloud deployments**: Continue runs across different cloud instances
+- **Agent coordination**: Parallel execution across multiple reasoning agents
+- **Multi-stage pipelines**: Track complex workflows across different systems
 
 ```python
 # Example: Distributed hyperparameter search
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 
-def worker_experiment(run_context, hyperparams):
-    """Worker function that continues a run"""
+def training_worker(run_context, hyperparams):
+    """Worker that trains model with specific hyperparameters"""
     with dn.continue_run(run_context):
-        # Train model with these hyperparams
+        # Train model with these hyperparameters
         model = train_model(**hyperparams)
         accuracy = evaluate_model(model)
 
         dn.log_params(**hyperparams)
         dn.log_metric("accuracy", accuracy)
+        dn.log_output("model_checkpoint", model.state_dict())
         return accuracy
 
 async def distributed_search():
@@ -195,114 +265,138 @@ async def distributed_search():
 
         # Define search space
         param_combinations = [
-            {"lr": 0.1, "batch_size": 32},
-            {"lr": 0.01, "batch_size": 64},
-            {"lr": 0.001, "batch_size": 128}
+            {"lr": 0.1, "batch_size": 32, "dropout": 0.1},
+            {"lr": 0.01, "batch_size": 64, "dropout": 0.2},
+            {"lr": 0.001, "batch_size": 128, "dropout": 0.3}
         ]
 
-        # Run experiments in parallel across processes
+        # Run training in parallel across workers
         with ProcessPoolExecutor() as executor:
             futures = [
-                executor.submit(worker_experiment, context, params)
+                executor.submit(training_worker, context, params)
                 for params in param_combinations
             ]
 
-            results = [future.result() for future in futures]
+            accuracies = [future.result() for future in futures]
 
-        # All worker results are automatically part of the main run
-        dn.log_metric("best_accuracy", max(results))
+        # All worker results automatically part of coordinated run
+        dn.log_metric("best_accuracy", max(accuracies))
 
 await distributed_search()
 ```
 
-### Live Monitoring
+### Real-time Monitoring
 
-Strikes automatically provides live monitoring for your runs. As you log metrics, parameters, and other data, updates are batched and sent to the server periodically, allowing you to watch your experiments progress in real-time through the UI.
+Strikes provides live visibility into your research operations. Updates are automatically batched and sent to the server, letting you monitor progress in real-time through the UI:
 
 ```python
-with dn.run("training-experiment"):
-    for epoch in range(100):
+with dn.run("model-training"):
+    for epoch in range(num_epochs):
         # Training step
-        loss = train_step()
-        accuracy = evaluate_step()
+        train_loss = train_epoch(model, train_loader)
+        val_accuracy = validate_model(model, val_loader)
 
-        # Data appears in UI automatically - no extra work needed
-        dn.log_metric("loss", loss, step=epoch)
-        dn.log_metric("accuracy", accuracy, step=epoch)
+        # Data appears in UI automatically
+        dn.log_metric("train_loss", train_loss, step=epoch)
+        dn.log_metric("val_accuracy", val_accuracy, step=epoch)
 
-        # Continue training - updates happen in the background
+        # Continue training - UI updates in background
 ```
 
-The default settings provide a good default balance between real-time visibility and data efficiency.
+You'll see your training progress update automatically without any extra configuration.
 
-#### Manual Updates (Advanced)
+#### Immediate Updates
 
-For cases where you need immediate visibility of specific data points, you can force an update:
+For critical results that need immediate visibility, force an update:
 
 ```python
-with dn.run("critical-experiment"):
-    for checkpoint in critical_checkpoints:
-        result = process_checkpoint(checkpoint)
-        dn.log_metric("checkpoint_score", result.score)
+with dn.run("model-evaluation"):
+    for checkpoint in model_checkpoints:
+        result = evaluate_checkpoint(checkpoint)
 
-        # Force immediate update be delivered.
-        dn.push_update()
+        if result.accuracy > best_so_far:
+            dn.log_metric("new_best_accuracy", result.accuracy)
+            dn.log_output("best_model", checkpoint.state_dict())
+
+            # Push important milestones immediately
+            dn.push_update()  # (1)!
 ```
+
+1. Forces immediate delivery of breakthrough results to your team
 
 ### Error Handling
 
-Runs automatically capture and log errors, marking the run as failed if an exception is raised. If you want to handle errors gracefully and continue logging, you can use a try-except block within the run context:
+Runs automatically capture exceptions and mark failed operations. Handle errors gracefully to continue logging even when individual operations fail:
 
 ```python
-with dn.run("risky-experiment"):
-    try:
-        # Run code that might fail
-        result = potentially_failing_function()
-        dn.log_metric("success", 1.0)
-    except Exception as e:
-        dn.log_metric("error", 1.0)
+with dn.run("agent-evaluation"):
+    for test_case in evaluation_suite:
+        try:
+            # Run agent on test case that might fail
+            response = agent.process_task(test_case)
+            dn.log_metric("task_success", response.success)
+            if response.success:
+                dn.log_output("agent_response", response.output)
+        except TimeoutError:
+            dn.log_metric("task_timeout", 1.0)
+        except Exception as e:
+            dn.log_metric("task_error", 1.0)
+            dn.log_output("error_details", str(e))
 ```
 
-## Task Hierarchy and Relationships
+## Advanced Patterns
 
-Every run maintains a list of its top-level tasks (tasks that are called directly within the run context, not as children of other tasks):
+### Task Hierarchy Analysis
+
+Every run maintains relationships with its **tasks**—the individual operations executed within the run context:
 
 ```python
-with dn.run("data-processing") as run:
-    # These tasks are added to the run's task list
-    cleaning_result = await clean_data.run(raw_data)
-    analysis_result = await analyze_data.run(cleaned_data)
+with dn.run("model-pipeline") as run:
+    # These tasks are tracked as part of the run
+    processed_data = await data_preprocessing.run(raw_dataset)
+    trained_model = await model_training.run(processed_data)
+    eval_results = await model_evaluation.run(trained_model)
 
-# Access all top-level tasks in the run
-print(f"Run has {len(run.tasks)} top-level tasks")
+# Analyze the run's task execution
+print(f"Pipeline included {len(run.tasks)} primary stages")
 
 for task in run.tasks:
-    print(f"Task: {task}")
-    print(f"Run: {task.run}")
-    print(f"Child tasks: {len(task.tasks)}")
+    print(f"Stage: {task.name}")
+    print(f"Duration: {task.duration}ms")
+    print(f"Subtasks: {len(task.tasks)}")
 ```
 
-You can recursively gather all tasks within a run using `.all_tasks` and perform analysis on them:
+You can analyze all tasks recursively to understand operation success rates:
 
 ```python
-with dn.run("comprehensive-analysis") as run:
-    await complex_workflow(data)
+with dn.run("multi-model-evaluation") as run:
+    await evaluate_model_suite(model_collection)
 
+    # Get complete task hierarchy
     all_tasks = run.all_tasks
-    print(f"Run '{run.run_id}' executed {len(all_tasks)} total tasks")
+    print(f"Evaluation '{run.run_id}' executed {len(all_tasks)} total tasks")
 
-    # Analyze execution times, success rates, etc.
+    # Calculate success metrics
     successful_tasks = [t for t in all_tasks if not t.failed]
     success_rate = len(successful_tasks) / len(all_tasks) if all_tasks else 0.0
-    print(f"Success rate: {success_rate * 100:.1f}%")
-    dn.log_metric("success_rate", success_rate)
+
+    dn.log_metric("evaluation_success_rate", success_rate)
+    print(f"Overall success rate: {success_rate * 100:.1f}%")
 ```
 
 ## Best Practices
 
-1. **Use meaningful names**: Give your runs descriptive names that indicate their purpose.
-2. **Use parameters**: Parameters are a great way to filter and compare runs later, so use them frequently.
-3. **Create separate runs for separate experiments**: Don't try to jam multiple experiments into a single run—you can create multiple runs inside your code.
-4. **Use projects for organization**: Group related runs into projects.
-5. **Create comparison runs**: When testing different approaches, ensure parameters and metrics are consistent to enable meaningful comparison.
-6. **Leverage task hierarchy**: Organize complex workflows using hierarchical tasks within runs to maintain clear execution structure.
+<Tip>
+**Consistent naming** makes your research searchable. Use patterns like `{model}-{dataset}-{iteration}` or `{experiment_type}-{variant}` for easy filtering.
+</Tip>
+
+1. **Use descriptive run names**: `"transformer-training-v2"` instead of `"experiment-1"`
+2. **Log parameters extensively**: Track hyperparameters, data configurations, model architectures—anything that affects results
+3. **Separate runs by scope**: Create distinct runs for training, evaluation, and deployment phases
+4. **Organize with projects**: Group related work like `"language-models-2024"` or `"security-research"`
+5. **Standardize metrics**: Use consistent metric names across similar experiments to enable comparison
+6. **Structure complex workflows**: Use hierarchical tasks to organize multi-stage pipelines and maintain clear execution flow
+
+<Warning>
+Never log sensitive data like API keys, credentials, or personal information in run parameters or outputs. Use references, hashed identifiers, or environment variables instead.
+</Warning>

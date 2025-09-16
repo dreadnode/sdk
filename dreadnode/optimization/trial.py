@@ -27,12 +27,18 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     score: float = -float("inf")
     """
     The primary, single-value fitness score for this trial.
-    This is an average of all objective scores for this trial (higher is better).
+    This is an average of all objective scores for this trial adjusted
+    based on their directions (higher is better).
     """
     scores: dict[str, float] = {}
+    """A dictionary of all named objective scores for this trial."""
+    directional_scores: dict[str, float] = {}
     """
-    A dictionary of all named objective scores for this trial, adjusted
-    for the optimization direction (higher is better).
+    A dictionary of all named objective scores adjusted
+    for their optimization direction (higher is better).
+
+    Typically this is used internally to sort trials for
+    sampling and selection.
     """
 
     eval_result: EvalResult | None = None
@@ -54,9 +60,9 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         parts = [
             f"id={self.id}",
             f"status='{self.status}'",
+            f"score={self.score:.3f}",
+            f"scores={{{', '.join(f'{k}={v:.3f}' for k, v in self.scores.items())}}}",
         ]
-        if self.score != -float("inf"):
-            parts.append(f"score={self.score:.3f}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
     def __await__(self) -> t.Generator[t.Any, None, "Trial[CandidateT]"]:
@@ -82,14 +88,16 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         """
         return await asyncio.gather(*(trial._future for trial in trials))  # noqa: SLF001
 
-    def objective_score(
-        self, name: str | None = None, *, default: float = -float("inf")
-    ) -> float | None:
+    def get_directional_score(
+        self, name: str | None = None, default: float = -float("inf")
+    ) -> float:
         """
-        Get the score for a specific named objective, or the overall score if no name is given.
+        Get a specific named objective score - adjusted for optimization direction (higher is better),
+        or the overall score if no name is given.
 
         Args:
             name: The name of the objective.
+            default: The value to return if the named score is not found.
         """
         if name is not None:
             return self.scores.get(name, default)

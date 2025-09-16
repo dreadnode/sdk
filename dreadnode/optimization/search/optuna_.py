@@ -82,4 +82,4 @@ def optuna_search(
                 )
                 optuna_study.tell(optuna_trial, state=state)
 
-    return Search(search)
+    return Search(search, name="optuna")

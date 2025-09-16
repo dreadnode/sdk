@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 
 import typing_extensions as te
 
-from dreadnode.common_types import JsonDict
+from dreadnode.common_types import UNSET, JsonDict, Unset
 from dreadnode.meta import Component, ConfigInfo, Context
+from dreadnode.meta.context import TaskInput, TaskOutput
 from dreadnode.metric import Metric
-from dreadnode.util import clean_str, get_callable_name, warn_at_user_stacklevel
+from dreadnode.util import get_callable_name, warn_at_user_stacklevel
 
 T = t.TypeVar("T")
 T_contra = t.TypeVar("T_contra", contravariant=True)
@@ -64,7 +65,7 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         step: int = 0,
         auto_increment_step: bool = False,
         log_all: bool = True,
-        bound_obj: t.Any = None,
+        bound_obj: t.Any | Unset = UNSET,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
         wraps: t.Callable[..., t.Any] | None = None,
@@ -72,13 +73,9 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         if isinstance(func, Scorer):
             func = func.func
 
-        super().__init__(func, config=config, context=context, wraps=wraps)
+        super().__init__(func, name=name, config=config, context=context, wraps=wraps)
 
-        if name is None:
-            unwrapped = inspect.unwrap(func)
-            name = get_callable_name(unwrapped, short=True)
-
-        self.name = clean_str(name)
+        self.name = self.name
         "The name of the scorer, used for reporting metrics."
         self.attributes = attributes or {}
         "A dictionary of attributes for metrics produced by this Scorer."
@@ -92,8 +89,6 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         "Log all sub-metrics from nested composition, or just the final resulting metric."
         self.bound_obj = bound_obj
         "If set, the scorer will always be called with this object instead of the caller-provided object."
-
-        self.__name__ = name
 
     def __repr__(self) -> str:
         func_name = get_callable_name(self.func, short=True)
@@ -202,19 +197,32 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         new.log_all = log_all if log_all is not None else self.log_all
         return new
 
-    def bind(self, obj: t.Any) -> "Scorer[T]":
+    def bind(self, obj: t.Any) -> "Scorer[t.Any]":
         """
         Bind the scorer to a specific object. Any time the scorer is executed,
         the bound object will be passed instead of the caller-provided object.
 
         This is useful for building scoring patterns that are not directly
-        tied to the output of a task
+        tied to the output of a task.
+
+        Examples:
+            ```
+            @dn.task(scorers=[
+                dn.scorers.image_distance(reference).bind(dn.TaskInput("image"))
+            ])
+            async def classify(image: dn.Image) -> str:
+                ...
+            ```
 
         Args:
             obj: The object to bind the scorer to.
+
+        Returns:
+            A new Scorer bound to the specified object.
         """
-        self.bound_obj = obj
-        return self
+        new = self.clone()
+        new.bound_obj = obj
+        return new
 
     def rename(self, new_name: str) -> "Scorer[T]":
         """
@@ -274,7 +282,11 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
             | t.Awaitable[t.Sequence[ScorerResult]]
         )
 
-        obj = self.bound_obj or obj
+        if not isinstance(self.bound_obj, Unset):
+            if isinstance(self.bound_obj, Context):
+                obj = self.bound_obj.resolve()
+            else:
+                obj = self.bound_obj
 
         try:
             bound_args = self._bind_args(obj, *args, **kwargs)
@@ -312,6 +324,17 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         metrics[0]._scorer_name = self.name  # type: ignore [attr-defined] # noqa: SLF001
         metrics[0]._scorer = self  # type: ignore [attr-defined] # noqa: SLF001
         metrics[0].attributes.update(self.attributes)
+
+        # Strip any metrics from the composition stack which would
+        # be confused because of name collisions. Otherwise we could
+        # get duplicate metrics reported despite them coming from different
+        # places in the stack.
+        #
+        # TODO(nick): Should look at a more explicit warning here for users.
+        metrics = [
+            metrics[0],
+            *[m for m in metrics[1:] if getattr(m, "_scorer_name", None) != self.name],
+        ]
 
         if not self.log_all:
             metrics = metrics[:1]  # Only return the primary metric if log_all is False
@@ -898,11 +921,14 @@ def clip(
 
 
 # Core Scorers
+#
+# TODO(nick): Lots of odd overlap here between intents, would
+# like to come back and do a full pass on these.
 
 
 def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
     """
-    Create a scorer that checks for equality between the input and a reference value.
+    Create a scorer that checks for equality between the object and a reference value.
 
     Returns a 1.0 if they are equal, and 0.0 otherwise.
 
@@ -916,3 +942,87 @@ def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
         return Metric(1.0 if data == reference else 0.0)
 
     return Scorer[T](evaluate, name=name)
+
+
+def forward(value: t.Any, *, name: str = "forward") -> Scorer[t.Any]:
+    """
+    Create a scorer that forwards a known value as the score.
+
+    This is useful for patterns where you want to fix a score value,
+    or use some portion of the task input/output as the score.
+
+    Examples:
+        ```
+        # Always return a score of 0.75
+        fixed = forward(0.75)
+
+        # Use the length of the input text as the score
+        length_scorer = forward(dn.TaskInput("text").adapt(len))
+        ```
+
+    Args:
+        value: The value to forward.
+        name: Optional name for the forward scorer. If None, derives the name
+            from the value.
+    """
+
+    async def evaluate(data: t.Any, *, value: float = value) -> ScorerResult:  # noqa: ARG001
+        return value
+
+    return Scorer[t.Any](evaluate, name=name or f"forward_{value}")
+
+
+def task_output(
+    adapt: t.Callable[[t.Any], float] | None = None, *, name: str = "task_output"
+) -> Scorer[t.Any]:
+    """
+    Create a scorer that forwards from the output of a task with an optional adapter.
+
+    This is useful when you want to use (and process) the output of a task
+    as the score value.
+
+    Examples:
+        ```
+        @dn.task(scorers=[
+            dn.scorers.task_output(lambda output: len(output) / 100)  # Score based on length of output
+        ])
+        async def summarize(text: str) -> str:
+            ...
+        ```
+
+    Args:
+        adapt: An optional function to adapt the task output to a float score.
+        name: Optional name for the scorer. If None, defaults to "task_output".
+    """
+    context = TaskOutput()
+    if adapt is not None:
+        context.adapt(adapt)
+    return forward(context, name=name)
+
+
+def task_input(
+    input_name: str, adapt: t.Callable[[t.Any], float] | None = None, *, name: str = "task_input"
+) -> Scorer[t.Any]:
+    """
+    Create a scorer that forwards from a named input to a task with an optional adapter.
+
+    This is useful when you want to use (and process) one of the inputs
+    to a task as the score value.
+
+    Examples:
+        ```
+        @dn.task(scorers=[
+            dn.scorers.task_input("text", lambda text: len(text) / 100)  # Score based on length of input text
+        ])
+        async def summarize(text: str) -> str:
+            ...
+        ```
+
+    Args:
+        input_name: The name of the task input to use as the score.
+        adapt: An optional function to adapt the task input to a float score.
+    """
+    context = TaskInput(input_name)
+    if adapt is not None:
+        context.adapt(adapt)
+    return forward(context, name=name)

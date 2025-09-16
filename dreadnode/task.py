@@ -189,7 +189,7 @@ class Task(Component[P, R], t.Generic[P, R]):
                 ),
             )
 
-        super().__init__(func, config=config, context=context)
+        super().__init__(func, name=name, config=config, context=context)
 
         self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
 
@@ -402,6 +402,16 @@ class Task(Component[P, R], t.Generic[P, R]):
         self,
         input_param_name: str | None = None,
     ) -> "CustomTarget[R]":
+        """
+        Convert this task into a CustomTarget that can be used in AIRT attack patterns.
+
+        Args:
+            input_param_name: The name of the parameter in the task's signature where the attack input should be injected.
+                              Otherwise the first non-optional parameter will be used, or no injection will occur.
+
+        Returns:
+            A CustomTarget wrapping this task.
+        """
         from dreadnode.airt.target.custom import CustomTarget
 
         return CustomTarget(task=self, input_param_name=input_param_name)

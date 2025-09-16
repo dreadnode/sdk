@@ -1,0 +1,81 @@
+---
+title: "Analyzing Attack Results"
+description: ""
+public: true
+---
+
+Running an attack is the first step in the red teaming process. The real value comes from analyzing the results to understand your model's vulnerabilities and guide improvements. Every AIRT attack run returns a `StudyResult` object, which is your primary tool for this analysis.
+
+## Understanding the `StudyResult` Object
+
+The `StudyResult` object is a comprehensive record of the entire attack. You get this object back from both the `.run()` and `.console()` methods.
+
+Let's assume you've just run an attack and have the results:
+
+```python
+# results = await attack.run()
+```
+
+Here are the most important properties you'll work with:
+
+-   `results.best_trial`: This gives you direct access to the single most successful attempt from the entire run, based on the `score` of your objectives.
+-   `results.trials`: This is a complete list of all trials (both successful and unsuccessful) that were executed.
+-   `results.failed_trials`: A list of trials that failed due to an error during execution.
+-   `results.pruned_trials`: A list of trials that were skipped because they failed a `constraint`.
+
+## Inspecting the Most Successful Attack
+
+The most common first step after a run is to inspect the best adversarial example found. The `best_trial` object contains everything you need to understand what succeeded and why.
+
+```python
+# Assuming 'results' is the output from an attack run
+best_trial = results.best_trial
+
+if best_trial:
+    print("--- Most Successful Trial ---")
+    print(f"Final Score: {best_trial.score:.3f}\n")
+
+    # The 'candidate' is the successful input (e.g., prompt or image)
+    print("CANDIDATE (INPUT):")
+    print(best_trial.candidate)
+    print("-" * 20)
+
+    # The 'output' is the model's response to that input
+    print("TARGET'S RESPONSE (OUTPUT):")
+    print(best_trial.output)
+    print("-" * 20)
+
+    # 'scores' is a dict of all objective scores for this trial
+    print("SCORE BREAKDOWN:")
+    for name, score in best_trial.scores.items():
+        print(f"- {name}: {score:.3f}")
+```
+
+This gives you a clear, actionable record of the vulnerability, which can be used for debugging, reporting, or creating fine-tuning datasets.
+
+## Exporting Results for Deeper Analysis
+
+For large-scale attacks or detailed reporting, you'll want to export the full set of results. The `StudyResult` object has built-in methods to convert the run data into common formats.
+
+The most useful method is `.to_dataframe()`, which converts all trial data into a pandas DataFrame for powerful analysis and visualization.
+
+```python
+import pandas as pd
+
+# Convert the entire run history to a DataFrame
+df = results.to_dataframe()
+
+# Now you can use pandas to analyze the data
+print(f"Total trials run: {len(df)}")
+
+# Find all prompts that achieved a jailbreak score over 0.9
+successful_prompts = df[df["metric_prompt_judge"] > 0.9]
+print(f"Found {len(successful_prompts)} highly successful prompts.")
+
+# Display the top 5 prompts by score
+print(df.sort_values(by="score", ascending=False).head(5)[['score', 'candidate']])
+```
+
+<Tip>
+You can also export results directly to files using `.to_jsonl(path)` for easy storage and sharing.
+</Tip>

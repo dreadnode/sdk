@@ -1,0 +1,106 @@
+---
+title: "Defining Targets"
+description: "Turn any model, API, or function into a testable Target for the AIRT framework."
+public: true
+---
+
+A **`Target`** is the bridge between the AIRT framework and the system you want to test. To run an attack, you first need to represent your model or API as a `Target`. Dreadnode provides a built-in `LLMTarget` for working with language models and a flexible `CustomTarget` for everything else.
+
+## Targeting Language Models with `LLMTarget`
+
+For testing language models, you should use the **`LLMTarget`**. It provides a direct interface to any model compatible with the [Rigging library](/rigging/index.md), which includes providers like OpenAI, Anthropic, Groq, and many others.
+
+Here's how you define a `Target` for an LLM, including generation parameters.
+
+```python
+import dreadnode as dn
+from dreadnode.airt.target import LLMTarget
+
+# Target a model using its rigging identifier string
+target = LLMTarget(
+    model="groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+    params={
+        "temperature": 0.7,
+        "max_tokens": 1024
+    }
+)
+
+print(f"Target configured for model: {target.name}")
+```
+
+Once defined, you can pass this `target` directly into an attack configuration, such as `tap_attack` or `goat_attack`.
+
+## Testing Custom Systems with `CustomTarget`
+
+To test any system that isn't a standard LLM—like a proprietary model, a complex API endpoint, or a local function—you use the **`CustomTarget`**. It works by wrapping any `dreadnode.task`.
+
+This allows you to make virtually any piece of your application "attackable."
+
+### Step 1: Wrap Your Logic in a `dreadnode.task`
+
+First, you need to represent the logic you want to test as a `dreadnode.task`. This task must accept the input that your attack's search strategy will generate (e.g., a `prompt` string or a `dn.Image` object).
+
+Here’s how you would wrap a call to a custom image classification API.
+
+```python
+import dreadnode as dn
+import httpx
+
+API_KEY = "YOUR_API_KEY" # Replace with your actual key
+API_URL = "https://api.mycompany.com/v1/classify"
+
+@dn.task
+async def classify_image(image: dn.Image) -> dict:
+    # The task takes a dreadnode.Image and returns the API's JSON response.
+    # The AIRT framework will pass generated images to this 'image' parameter.
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            API_URL,
+            files={"upload": image.to_serializable()[0]},
+            headers={"Authorization": f"Bearer {API_KEY}"}
+        )
+        response.raise_for_status()
+        return response.json()
+```
+
+### Step 2: Pass the Task to `CustomTarget`
+
+With your task defined, you can now create the `Target` by passing the task object to `CustomTarget`.
+
+```python
+from dreadnode.airt.target import CustomTarget
+
+# The task is now an attackable target that can be used
+# in any AIRT Attack configuration.
+custom_target = CustomTarget(task=classify_image)
+```
+
+### Controlling Input Injection
+
+By default, `CustomTarget` will inject the attacker's generated input into the first required parameter of your task's function signature (in the example above, the `image` parameter).
+
+For tasks with multiple parameters, you can be explicit about where the input should go by using the `input_param_name` argument.
+
+```python
+@dn.task
+def multi_param_task(prompt: str, style: str = "professional"):
+    # ... logic ...
+    return f"Response in {style}: ..."
+
+# The attack's input will be passed to the 'prompt' parameter.
+explicit_target = CustomTarget(
+    task=multi_param_task,
+    input_param_name="prompt"
+)
+```
+
+<Tip>
+Explicitly setting `input_param_name` is a good practice for clarity, especially in complex tasks. It makes your `Target`'s behavior obvious to anyone reading the code.
+</Tip>
+
+## Next Steps
+
+Now that you have defined a `Target`, you are ready to configure an attack against it.
+
+- See the [Generative Attacks on LLMs](./generative-attacks.md) guide to use your `LLMTarget`.
+- See the [Adversarial Image Attacks](./image-attacks.md) guide for examples using a `CustomTarget`.

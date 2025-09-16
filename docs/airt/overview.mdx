@@ -1,0 +1,38 @@
+---
+title: Strikes AIRT Overview
+slug: airt-overview
+description: Evaluate and red-team AI systems.
+---
+
+Strikes AIRT tooling is a small, composable toolkit for **evaluating and testing AI systems** for security and safety, by generating, refining, and scoring adversarial inputs. 
+
+It treats red teaming as a **search problem**: propose a candidate prompt/input, observe the target's response, score how well it met a goal, then iterate-guided by search strategies, constraints, with early stopping.
+
+
+## Features of Strikes AIRT
+
+* **Systematic**: Encodes red teaming as an optimization loop rather than ad-hoc trials.
+* **Model-agnostic**: Targets are abstract; you can attack LLMs, tools, or any Strikes `Task`.
+* **Composable**: Mix and match refinement strategies, scorers, constraints, and search algorithms.
+* **Pragmatic defaults**: Included attack templates (GoAT, TAP) and standard LLM-judge scoring rubrics.
+* **Safe evaluation**: Built to test and measure safety posture under controlled conditions.
+
+
+## The Big Picture
+
+At a high level, an attack run looks like this:
+
+1. **Define a goal** - e.g., "cause the model to do X".
+2. **Pick a target** - the system under test (LLM, toolchain, API, etc.).
+3. **Choose an attack template** - a strategy that refines prompts and explores the space.
+4. **Set objectives, constraints and stopping conditions** - what "success" means, what must stay on-topic, and when to stop.
+5. **Run the search** - iteratively proposes inputs, observes outputs, scores them, and focuses its search.
+
+
+## The Results
+
+An attack run produces a **study** with:
+* A list of **tasks** (input prompts, target outputs, scores).
+
+The results are shipped to the Dreadnode platform (if connected) for logging, auditability, and team review.
+You can inspect tasks, prompts, and scores to diagnose attack successes and failures.

@@ -163,6 +163,12 @@ class Dreadnode:
         # Silently fail if profile config is not available or invalid
         return None
 
+    def get_current_run(self) -> RunSpan | None:
+        return current_run_span.get()
+
+    def get_current_task(self) -> TaskSpan[t.Any] | None:
+        return current_task_span.get()
+
     def configure(
         self,
         *,
@@ -740,7 +746,7 @@ class Dreadnode:
                 metric_name = str(getattr(metric, "_scorer_name", scorer.name))
                 metric_name = clean_str(metric_name)
                 metrics.setdefault(metric_name, []).append(
-                    self.log_metric(metric_name, metric, origin=object)
+                    self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
                 )
 
         failed_assertions: dict[str, list[Metric]] = {}
@@ -1589,9 +1595,9 @@ class Dreadnode:
         """
         for sample in samples:
             metrics: MetricsLike | None = None
-            if len(sample) == 3:  # noqa: PLR2004
+            if len(sample) == 3:
                 input_data, output_data, metrics = sample
-            elif len(sample) == 2:  # noqa: PLR2004
+            elif len(sample) == 2:
                 input_data, output_data = sample
             else:
                 raise ValueError(

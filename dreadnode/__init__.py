@@ -68,6 +68,8 @@ log_sample = DEFAULT_INSTANCE.log_sample
 log_samples = DEFAULT_INSTANCE.log_samples
 link_objects = DEFAULT_INSTANCE.link_objects
 log_artifact = DEFAULT_INSTANCE.log_artifact
+get_current_run = DEFAULT_INSTANCE.get_current_run
+get_current_task = DEFAULT_INSTANCE.get_current_task
 
 __version__ = VERSION
 

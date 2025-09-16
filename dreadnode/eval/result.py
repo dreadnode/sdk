@@ -61,8 +61,15 @@ class EvalResultMixin:
         metrics_by_name: dict[str, list[float]] = defaultdict(list)
         for sample in self.samples:
             for name, metric_list in sample.metrics.items():
-                for metric in metric_list:
-                    metrics_by_name[name].append(metric.value)
+                # TODO(nick): Originally we were including internal
+                # values (metrics reported multiple times within the same sample),
+                # but I think it's safer to just take the last metric here.
+
+                # for metric in metric_list:
+                #     metrics_by_name[name].append(metric.value)
+
+                if metric_list:
+                    metrics_by_name[name].append(metric_list[-1].value)
 
         summary: dict[str, dict[str, float]] = {}
         for name, values in metrics_by_name.items():
