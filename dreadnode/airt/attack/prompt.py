@@ -25,6 +25,7 @@ def prompt_attack(
     refine_guidance: str | None = None,
     evaluation_rubric: str | None = None,
     initial_prompt: str | None = None,
+    include_input_for_judge: bool = True,
     beam_width: int = 3,
     branching_factor: int = 3,
     context_depth: int = 5,
@@ -80,7 +81,7 @@ def prompt_attack(
         llm_judge(
             evaluator_model,
             rubric,
-            input=TrialCandidate(),
+            input=TrialCandidate() if include_input_for_judge else None,
             min_score=1,
             max_score=10,
         )

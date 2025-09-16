@@ -113,7 +113,7 @@ class StudyConsoleAdapter:
         for name in self.study.objective_names:
             scores_table.add_row(
                 name,
-                f"[bold magenta]{trial.get_score(name, -float('inf')):.3f}[/bold magenta]",
+                f"[bold magenta]{trial.scores.get(name, -float('inf')):.3f}[/bold magenta]",
             )
 
         for name, value in trial.all_scores.items():
@@ -121,8 +121,14 @@ class StudyConsoleAdapter:
                 scores_table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.3f}[/dim]")
 
         # Main content grid
-        candidate_str = shorten_string(str(trial.candidate), max_length=300)
-        output_str = shorten_string(str(trial.output), max_length=300) if trial.output else ""
+        candidate_str = shorten_string(
+            str(trial.candidate), max_length=500, separator="\n\n[...]\n\n"
+        )
+        output_str = (
+            shorten_string(str(trial.output), max_length=500, separator="\n\n[...]\n\n")
+            if trial.output
+            else ""
+        )
 
         grid = Table.grid(expand=True)
         grid.add_column()
@@ -175,8 +181,8 @@ class StudyConsoleAdapter:
         )
 
         layout["body"].split_row(
-            Layout(self._build_best_trial_panel()),
-            Layout(self._build_trials_panel()),
+            Layout(self._build_best_trial_panel(), ratio=2),
+            Layout(self._build_trials_panel(), ratio=1),
         )
 
         return Layout(

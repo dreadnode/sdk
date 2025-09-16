@@ -427,6 +427,18 @@ created_at: datetime
 
 The creation timestamp of the trial, extracted from its ULID.
 
+### directional\_scores
+
+```python
+directional_scores: dict[str, float] = {}
+```
+
+A dictionary of all named objective scores adjusted
+for their optimization direction (higher is better).
+
+Typically this is used internally to sort trials for
+sampling and selection.
+
 ### error
 
 ```python
@@ -482,7 +494,8 @@ score: float = -float('inf')
 ```
 
 The primary, single-value fitness score for this trial.
-This is an average of all objective scores for this trial (higher is better).
+This is an average of all objective scores for this trial adjusted
+based on their directions (higher is better).
 
 ### scores
 
@@ -490,8 +503,7 @@ This is an average of all objective scores for this trial (higher is better).
 scores: dict[str, float] = {}
 ```
 
-A dictionary of all named objective scores for this trial, adjusted
-for the optimization direction (higher is better).
+A dictionary of all named objective scores for this trial.
 
 ### status
 
@@ -547,15 +559,16 @@ def done(self) -> bool:
 
 </Accordion>
 
-### get\_score
+### get\_directional\_score
 
 ```python
-get_score(
+get_directional_score(
     name: str | None = None, default: float = -float("inf")
 ) -> float
 ```
 
-Get a specific named objective score, or the overall score if no name is given.
+Get a specific named objective score - adjusted for optimization direction (higher is better),
+or the overall score if no name is given.
 
 **Parameters:**
 
@@ -572,9 +585,12 @@ Get a specific named objective score, or the overall score if no name is given.
 
 <Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
 ```python
-def get_score(self, name: str | None = None, default: float = -float("inf")) -> float:
+def get_directional_score(
+    self, name: str | None = None, default: float = -float("inf")
+) -> float:
     """
-    Get a specific named objective score, or the overall score if no name is given.
+    Get a specific named objective score - adjusted for optimization direction (higher is better),
+    or the overall score if no name is given.
 
     Args:
         name: The name of the objective.
@@ -897,7 +913,7 @@ def boundary_search(
             )
 
         def is_successful(trial: Trial) -> bool:
-            return trial.get_score(decision_objective) > decision_threshold
+            return trial.get_directional_score(decision_objective) > decision_threshold
 
         start_trial = Trial(candidate=start_candidate)
         end_trial = Trial(candidate=end_candidate)
@@ -1295,7 +1311,7 @@ def optuna_search(
 
             if trial.status == "finished":
                 # Provide scores in the correct order for multi-objective optimization.
-                scores = [trial.get_score(name, default=0.0) for name in objective_names]
+                scores = [trial.scores.get(name, default=0.0) for name in objective_names]
                 optuna_study.tell(optuna_trial, scores)
             else:
                 state = (

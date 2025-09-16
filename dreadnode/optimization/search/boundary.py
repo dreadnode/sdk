@@ -38,7 +38,7 @@ def boundary_search(
             )
 
         def is_successful(trial: Trial) -> bool:
-            return trial.get_score(decision_objective) > decision_threshold
+            return trial.get_directional_score(decision_objective) > decision_threshold
 
         start_trial = Trial(candidate=start_candidate)
         end_trial = Trial(candidate=end_candidate)

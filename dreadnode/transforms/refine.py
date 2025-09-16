@@ -1,5 +1,6 @@
 import typing as t
-from textwrap import dedent
+from collections import defaultdict
+from textwrap import dedent, indent
 
 import rigging as rg
 
@@ -8,6 +9,8 @@ from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 
 if t.TYPE_CHECKING:
+    from ulid import ULID
+
     from dreadnode.optimization.trial import Trial
 
 T = t.TypeVar("T")
@@ -92,3 +95,54 @@ def adapt_prompt_trials(trials: "list[Trial[str]]") -> str:
         for trial in reversed(trials)
     ]
     return "\n".join(context_parts)
+
+
+def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
+    """
+    Builds a clean, nested XML graph string from a list of Trials for an LLM prompt.
+
+    This should be used in contexts where you want to provide the model with
+    a clear view of the trial graph structure, including parent-child relationships.
+
+    Key Features:
+    - Maps noisy ULIDs to clean, zero-indexed integers for prompt clarity.
+    - Represents the graph structure directly through nested XML tags.
+    - Handles multiple root nodes and disconnected subgraphs gracefully.
+    """
+    if not trials:
+        return ""
+
+    trial_map: dict[ULID, Trial] = {trial.id: trial for trial in trials}
+    ulid_to_int_map: dict[ULID, int] = {ulid: i for i, ulid in enumerate(trial_map.keys())}
+    children_map = defaultdict(list)
+    root_nodes: list[Trial] = []
+
+    for trial in trials:
+        if trial.parent_id is None or trial.parent_id not in trial_map:
+            root_nodes.append(trial)
+        else:
+            children_map[trial.parent_id].append(trial)
+
+    root_nodes.sort(key=lambda t: ulid_to_int_map[t.id])
+
+    def _format_node(trial: "Trial") -> str:
+        int_id = ulid_to_int_map[trial.id]
+        parent_attr = ""
+        if trial.parent_id and trial.parent_id in ulid_to_int_map:
+            parent_int_id = ulid_to_int_map[trial.parent_id]
+            parent_attr = f" parent_id={parent_int_id}"
+
+        children = sorted(children_map.get(trial.id, []), key=lambda t: ulid_to_int_map[t.id])
+
+        formatted_children = ""
+        if children_parts := [_format_node(child) for child in children]:
+            formatted_children = "\n" + indent("\n".join(children_parts), "  ")
+
+        return dedent(f"""
+        <attempt id={int_id}{parent_attr} score={trial.score:.2f}>
+            <prompt>{trial.candidate}</prompt>
+            <response>{trial.output}</response>{formatted_children}
+        </attempt>
+        """).strip()
+
+    return "\n".join([_format_node(root) for root in root_nodes])

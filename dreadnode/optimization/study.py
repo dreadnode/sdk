@@ -280,19 +280,17 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     )
                     raise ValueError(f"All samples failed during evaluation: {first_error}")  # noqa: TRY301
 
-                # TODO(nick): It's confusing to invert the value of the score here just so it
-                # aligns with objectives. We should opt to store the real value, and have our
-                # get_score method handle the inversion. We should also probably include direction
-                # information on our trial so it can be referred to later
-
                 for i, name in enumerate(self.objective_names):
                     direction = self.directions[i]
                     raw_score = trial.all_scores.get(name, -float("inf"))
-                    adjusted_score = raw_score if direction == "maximize" else -raw_score
-                    trial.scores[name] = adjusted_score
+                    directional_score = raw_score if direction == "maximize" else -raw_score
+                    trial.scores[name] = raw_score
+                    trial.directional_scores[name] = directional_score
 
                 trial.score = (
-                    sum(trial.scores.values()) / len(trial.scores) if trial.scores else 0.0
+                    sum(trial.directional_scores.values()) / len(trial.directional_scores)
+                    if trial.directional_scores
+                    else 0.0
                 )
 
                 trial.status = "finished"

@@ -37,7 +37,7 @@ class LLMTarget(Target[t.Any, str]):
 
     @property
     def name(self) -> str:
-        return self.generator.to_identifier(short=True)
+        return self.generator.to_identifier(short=True).split("/")[-1]
 
     def task_factory(self, input: t.Any) -> Task[[], str]:
         from dreadnode import task
@@ -51,7 +51,7 @@ class LLMTarget(Target[t.Any, str]):
             else rg.GenerateParams()
         )
 
-        @task(name=f"generate - {self.name}", label="llm_target_generate", tags=["target"])
+        @task(name="target - {self.name}", tags=["target"])
         async def generate(
             messages: list[rg.Message] = messages,
             params: rg.GenerateParams = params,

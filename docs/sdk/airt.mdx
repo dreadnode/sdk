@@ -30,6 +30,171 @@ target: Annotated[
 
 The target to attack.
 
+goat\_attack
+------------
+
+```python
+goat_attack(
+    goal: str,
+    target: Target[str, str],
+    attacker_model: str,
+    evaluator_model: str,
+    *,
+    early_stopping_score: float = 0.9,
+    neighborhood_depth: int = 2,
+    frontier_size: int = 5,
+    branching_factor: int = 3,
+    name: str = "goat_attack",
+) -> Attack[str, str]
+```
+
+Creates a generative jailbreak attack using the Graph of Attacks (GoAT) pattern,
+using LLMs for both refinement (attacker) and scoring (evaluator/objective).
+
+See: "Graph of Attacks" - https://arxiv.org/abs/2504.19019
+
+**Parameters:**
+
+* **`goal`**
+  (`str`)
+  –The high-level objective of the attack.
+* **`target`**
+  (`Target[str, str]`)
+  –The target system to be attacked.
+* **`attacker_model`**
+  (`str`)
+  –The language model used to generate and refine prompts.
+* **`evaluator_model`**
+  (`str`)
+  –The language model used to score the effectiveness of responses.
+* **`early_stopping_score`**
+  (`float`, default:
+  `0.9`
+  )
+  –The llm judge (jailbreak) score threshold at which
+  to stop the attack early. If None, no early stopping is applied.
+* **`neighborhood_depth`**
+  (`int`, default:
+  `2`
+  )
+  –The depth 'h' used to calculate the size of the local neighborhood context.
+* **`frontier_size`**
+  (`int`, default:
+  `5`
+  )
+  –The number of best candidates to keep for the iteration.
+* **`branching_factor`**
+  (`int`, default:
+  `3`
+  )
+  –The number of new candidates to generate from each existing candidate.
+* **`name`**
+  (`str`, default:
+  `'goat_attack'`
+  )
+  –The name of the attack.
+
+**Returns:**
+
+* `Attack[str, str]`
+  –A configured Attack instance.
+
+<Accordion title="Source code in dreadnode/airt/attack/goat.py" icon="code">
+```python
+def goat_attack(
+    goal: str,
+    target: "Target[str, str]",
+    attacker_model: str,
+    evaluator_model: str,
+    *,
+    early_stopping_score: float = 0.9,
+    neighborhood_depth: int = 2,
+    frontier_size: int = 5,
+    branching_factor: int = 3,
+    name: str = "goat_attack",
+) -> Attack[str, str]:
+    """
+    Creates a generative jailbreak attack using the Graph of Attacks (GoAT) pattern,
+    using LLMs for both refinement (attacker) and scoring (evaluator/objective).
+
+    See: "Graph of Attacks" - https://arxiv.org/abs/2504.19019
+
+    Args:
+        goal: The high-level objective of the attack.
+        target: The target system to be attacked.
+        attacker_model: The language model used to generate and refine prompts.
+        evaluator_model: The language model used to score the effectiveness of responses.
+        early_stopping_score: The llm judge (jailbreak) score threshold at which
+                            to stop the attack early. If None, no early stopping is applied.
+        neighborhood_depth: The depth 'h' used to calculate the size of the local neighborhood context.
+        frontier_size: The number of best candidates to keep for the iteration.
+        branching_factor: The number of new candidates to generate from each existing candidate.
+        name: The name of the attack.
+
+    Returns:
+        A configured Attack instance.
+    """
+
+    # Prompt refining
+
+    guidance = REFINE_GUIDANCE.format(goal=goal)
+    refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
+        adapt_prompt_trials_as_graph, lambda x: x
+    )
+
+    # Search strategy
+
+    search_strategy = graph_neighborhood_search(
+        refiner,
+        initial_candidate=goal,
+        neighborhood_depth=neighborhood_depth,
+        frontier_size=frontier_size,
+        branching_factor=branching_factor,
+    )
+
+    # Objective
+
+    rubric = EVALUATION_RUBRIC.format(goal=goal)
+
+    prompt_judge = (
+        llm_judge(
+            evaluator_model,
+            rubric,
+            min_score=1,
+            max_score=10,
+        )
+        / 10
+    )
+
+    # Constraint
+
+    topic_constraint = llm_judge(
+        evaluator_model,
+        ON_TOPIC_RUBRIC.format(goal=goal),
+        min_score=0,
+        max_score=1,
+        name="on_topic",
+    )
+
+    attack = Attack[str, str](
+        name=name,
+        target=target,
+        search_strategy=search_strategy,
+        objectives={
+            "prompt_judge": prompt_judge,
+        },
+        constraints=[topic_constraint],
+    )
+
+    if early_stopping_score is not None:
+        attack = attack.add_stop_condition(score_value("prompt_judge", gte=early_stopping_score))
+
+    return attack
+```
+
+
+</Accordion>
+
 prompt\_attack
 --------------
 
@@ -44,6 +209,7 @@ prompt_attack(
     refine_guidance: str | None = None,
     evaluation_rubric: str | None = None,
     initial_prompt: str | None = None,
+    include_input_for_judge: bool = True,
     beam_width: int = 3,
     branching_factor: int = 3,
     context_depth: int = 5,
@@ -124,6 +290,7 @@ def prompt_attack(
     refine_guidance: str | None = None,
     evaluation_rubric: str | None = None,
     initial_prompt: str | None = None,
+    include_input_for_judge: bool = True,
     beam_width: int = 3,
     branching_factor: int = 3,
     context_depth: int = 5,
@@ -179,7 +346,7 @@ def prompt_attack(
         llm_judge(
             evaluator_model,
             rubric,
-            input=TrialCandidate(),
+            input=TrialCandidate() if include_input_for_judge else None,
             min_score=1,
             max_score=10,
         )
@@ -214,15 +381,17 @@ tap_attack(
     attacker_model: str,
     evaluator_model: str,
     *,
-    early_stopping_score: float = 0.8,
+    early_stopping_score: float = 0.9,
     beam_width: int = 10,
     branching_factor: int = 3,
     context_depth: int = 5,
 ) -> Attack[str, str]
 ```
 
-Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
+Creates a generative jailbreak attack in the Tree of Attacks (TAP) pattern,
 using LLMs for both refinement (attacker) and scoring (evaluator/objective).
+
+See: "Tree of Attacks" - https://arxiv.org/abs/2312.02119
 
 Uses `prompt_attack` under the hood with TAP-specific default guidance and rubric.
 
@@ -242,7 +411,7 @@ Uses `prompt_attack` under the hood with TAP-specific default guidance and rubri
   –The language model used to score the effectiveness of responses.
 * **`early_stopping_score`**
   (`float`, default:
-  `0.8`
+  `0.9`
   )
   –The llm judge (jailbreak) score threshold at which to stop the attack early.
   If None, no early stopping is applied.
@@ -270,14 +439,16 @@ def tap_attack(
     attacker_model: str,
     evaluator_model: str,
     *,
-    early_stopping_score: float = 0.8,
+    early_stopping_score: float = 0.9,
     beam_width: int = 10,
     branching_factor: int = 3,
     context_depth: int = 5,
 ) -> Attack[str, str]:
     """
-    Creates a Generative Attack optimized for the TAP (Tree-of-thought Attack Prompting) pattern,
+    Creates a generative jailbreak attack in the Tree of Attacks (TAP) pattern,
     using LLMs for both refinement (attacker) and scoring (evaluator/objective).
+
+    See: "Tree of Attacks" - https://arxiv.org/abs/2312.02119
 
     Uses `prompt_attack` under the hood with TAP-specific default guidance and rubric.
 
@@ -303,6 +474,7 @@ def tap_attack(
         refine_guidance=REFINE_GUIDANCE.format(goal=goal),
         evaluation_rubric=EVALUATION_RUBRIC.format(goal=goal),
         early_stopping_score=early_stopping_score,
+        include_input_for_judge=False,
         beam_width=beam_width,
         branching_factor=branching_factor,
         context_depth=context_depth,

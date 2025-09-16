@@ -99,11 +99,6 @@ def score_plateau(
         metric_name: The name of the metric to check - otherwise an average of all objective metrics are used.
     """
 
-    def get_score(t: Trial) -> float:
-        if metric_name is None:
-            return t.score
-        return t.scores.get(metric_name, -float("inf"))
-
     def stop(
         trials: list[Trial], *, patience: int = patience, min_delta: float = min_delta
     ) -> bool:
@@ -117,13 +112,13 @@ def score_plateau(
         if last_step < patience:
             return False
 
-        current_best_score = max(get_score(t) for t in finished_trials)
+        current_best_score = max(t.get_directional_score(metric_name) for t in finished_trials)
 
         historical_trials = [t for t in finished_trials if t.step <= (last_step - patience)]
         if not historical_trials:
             return False
 
-        historical_best_score = max(get_score(t) for t in historical_trials)
+        historical_best_score = max(t.get_directional_score(metric_name) for t in historical_trials)
         improvement = current_best_score - historical_best_score
 
         return improvement < min_delta if min_delta > 0 else improvement > 0
