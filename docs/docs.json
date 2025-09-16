@@ -65,7 +65,9 @@
           "how-to/write-an-eval",
           "how-to/write-a-ctf-agent",
           "how-to/airtbench-agent",
-          "how-to/write-a-dotnet-reversing-agent"
+          "how-to/write-a-dotnet-reversing-agent",
+          "how-to/solve-bear4",
+          "how-to/solve-granny"
         ]
       },
       {

@@ -21,7 +21,7 @@ def prompt_attack(
     attacker_model: str | rg.Generator,
     evaluator_model: str | rg.Generator,
     *,
-    early_stopping_score: float = 0.8,
+    early_stopping_score: float | None = 0.9,
     refine_guidance: str | None = None,
     evaluation_rubric: str | None = None,
     initial_prompt: str | None = None,

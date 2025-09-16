@@ -1,0 +1,240 @@
+---
+title: "Solve Granny with LLM Attacks"
+description: "How to solve the Granny Crucible challenge using the AIRT framework."
+public: true
+---
+
+## Setting Up the Attack
+
+First, you will represent the challenge's API endpoint as a `dreadnode.task`. This task will take a `dn.Image` object, send it to the classifier, and return the model's predictions. This task is then wrapped in a **`Target`** to integrate with AIRT's search algorithms.
+
+```python
+import dreadnode as dn
+import httpx
+
+# You can find your API key on the Crucible challenge page.
+API_KEY = "<YOUR_CRUCIBLE_API_KEY>"
+
+@dn.task
+async def query_granny(image: dn.Image) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://granny.platform.dreadnode.io/submit",
+            headers={"X-API-Key": API_KEY},
+            json={"data": image.to_base64()},
+            timeout=30.0,
+        )
+    response.raise_for_status()
+    # Return the full JSON response, which includes the flag on success.
+    return response.json()
+
+# Convert the task into a target for the attack.
+target = query_granny.as_target()
+
+# Load the reference image provided by the challenge.
+reference_img = dn.Image("reference.png")
+```
+
+## Building the Adversarial Attack
+
+This is a decision-based attack: you don't need to maximize a continuous score, but rather find an input that crosses a decision boundary (from any class *to* "Granny Smith"). The `hop_skip_jump_search` strategy is designed for this exact scenario.
+
+### Defining the Objectives
+
+The attack has two competing goals:
+
+1.  **Flip the Classification:** The model's top prediction must be "Granny Smith". You will create a scorer that returns `1.0` if this condition is met. This will be the `decision_objective` that guides the search.
+2.  **Minimize Visual Changes:** The modified image must remain visually similar to the original. You will use the built-in `image_distance` scorer to measure this and instruct the `Study` to minimize it.
+
+```python
+from dreadnode import scorers
+from dreadnode.meta import TaskInput
+
+# Objective 1: Check if the top prediction is 'Granny Smith'.
+is_granny_smith = scorers.task_output(
+    lambda out: out.get("output", [["", ""]])[0][1] == "Granny Smith"
+) >> "is_granny_smith"
+
+# Objective 2: Measure the L2 distance from the original reference image.
+# We .bind() this scorer to the task's input image.
+l2_distance = scorers.image_distance(
+    reference=reference_img,
+    method="l2"
+).bind(TaskInput("image"))
+```
+
+### Assembling the Attack with `hop_skip_jump_search`
+
+The **`hop_skip_jump_search`** algorithm efficiently finds the boundary between two classes. You provide it with a `source` image (the original) and a `decision_objective`. It will automatically find an initial adversarial example and then binary-search towards the source image to find the minimal perturbation needed to flip the model's decision.
+
+```python
+from dreadnode.airt.attack import Attack
+from dreadnode.airt.search import hop_skip_jump_search
+
+attack = Attack(
+    name="Granny-HSJ-Attack",
+    target=target,
+    # The search strategy is the core of the attack.
+    search_strategy=hop_skip_jump_search(
+        source=reference_img,
+        decision_objective="is_granny_smith",
+        decision_threshold=0.5, # The scorer returns 0 or 1, so > 0.5 means success.
+    ),
+    # Define the objectives and their optimization directions.
+    objectives={
+        "is_granny_smith": is_granny_smith,
+        "l2_distance": l2_distance,
+    },
+    directions=["maximize", "minimize"],
+    max_trials=500,
+    concurrency=10,
+)
+```
+
+## Running and Analyzing the Attack
+
+Now you are ready to run the attack. The `.console()` runner will show you the progress as `hop_skip_jump_search` iteratively refines the image.
+
+```python
+# Launch the attack and monitor progress.
+result = await attack.console()
+
+# Inspect the best adversarial image found.
+best_trial = result.best_trial
+
+if best_trial:
+    adversarial_image = best_trial.candidate
+    final_distance = best_trial.scores.get("l2_distance")
+
+    print("\n--- Attack Complete ---")
+    print(f"Final L2 Distance: {final_distance:.4f}")
+
+    # You can view the image to see how subtle the changes are.
+    # adversarial_image.show()
+
+    # The output contains the model's prediction and the flag.
+    print(f"Model Output: {best_trial.output}")
+```
+
+## Alternative Strategy: `simba_search`
+
+For some problems, a simpler, query-based attack may be sufficient. The **`simba_search`** algorithm works by making small, random pixel changes and keeping only those that improve the objective score. While less efficient than `hop_skip_jump_search` for finding a decision boundary, it's a robust alternative for general score maximization.
+
+<CodeGroup>
+```python SimBA Attack Setup
+from dreadnode.airt.search import simba_search
+from dreadnode.scorers import json_path
+
+# For SimBA, we need a continuous score to maximize.
+# We'll use the model's confidence in the "Granny Smith" class.
+granny_smith_confidence = json_path(
+    '$.output[?(@[1] == "Granny Smith")][0][0]',
+    default=0.0
+) >> "granny_smith_confidence"
+
+simba_attack = Attack(
+    name="Granny-SimBA-Attack",
+    target=target,
+    search_strategy=simba_search(
+        original=reference_img,
+        objective="granny_smith_confidence", # Guide the search with this objective.
+        theta=0.05,
+    ),
+    objectives={
+        "granny_smith_confidence": granny_smith_confidence,
+        "l2_distance": l2_distance,
+    },
+    directions=["maximize", "minimize"],
+    max_trials=1000,
+)
+```
+
+```python SimBA Execution
+# Run the SimBA attack.
+simba_result = await simba_attack.console()
+
+# Analyze the result.
+best_simba_trial = simba_result.best_trial
+if best_simba_trial:
+    print(f"Best confidence found: {best_simba_trial.score:.4f}")
+```
+</CodeGroup>
+
+<Info>
+The modular design of AIRT makes it easy to swap search strategies. You can experiment with different algorithms like `simba_search` and `hop_skip_jump_search` to find the most effective approach for your specific problem without changing your `Target` or `Objectives`.
+</Info>
+
+## Full Solution Code
+
+Here is the complete, runnable code for solving the "granny" challenge using the recommended `hop_skip_jump_search` strategy.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+from dreadnode.airt.attack import Attack
+from dreadnode.airt.search import hop_skip_jump_search
+from dreadnode.meta import TaskInput
+import httpx
+
+# Configure Dreadnode to log your runs.
+dn.configure()
+
+API_KEY = "<YOUR_CRUCIBLE_API_KEY>"
+
+@dn.task
+async def query_granny(image: dn.Image) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://granny.platform.dreadnode.io/submit",
+            headers={"X-API-Key": API_KEY},
+            json={"data": image.to_base64()},
+            timeout=30.0,
+        )
+    response.raise_for_status()
+    return response.json()
+
+# 1. Define the target and load the reference image.
+target = query_granny.as_target()
+reference_img = dn.Image("reference.png")
+
+# 2. Define the objectives.
+is_granny_smith = scorers.task_output(
+    lambda out: out.get("output", [["", ""]])[0][1] == "Granny Smith"
+) >> "is_granny_smith"
+
+l2_distance = scorers.image_distance(
+    reference=reference_img,
+    method="l2"
+).bind(TaskInput("image"))
+
+# 3. Configure the attack with the HopSkipJump search strategy.
+attack = Attack(
+    name="Granny-HSJ-Attack",
+    target=target,
+    search_strategy=hop_skip_jump_search(
+        source=reference_img,
+        decision_objective="is_granny_smith",
+        decision_threshold=0.5,
+    ),
+    objectives={
+        "is_granny_smith": is_granny_smith,
+        "l2_distance": l2_distance,
+    },
+    directions=["maximize", "minimize"],
+    max_trials=500,
+    concurrency=10,
+)
+
+# 4. Run the attack.
+result = await attack.console()
+
+# 5. Print the best result.
+best_trial = result.best_trial
+if best_trial and best_trial.scores.get("is_granny_smith", 0) >= 1.0:
+    print("\n--- Attack Successful! ---")
+    print(f"Final L2 Distance: {best_trial.scores.get('l2_distance'):.4f}")
+    print(f"Model Output: {best_trial.output}")
+    # best_trial.candidate.show() # Uncomment to view the image
+else:
+    print("\n--- Attack did not find a successful adversarial example. ---")
+```
