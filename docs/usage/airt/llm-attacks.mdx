@@ -25,7 +25,7 @@ dn.configure(project="airt-tap-attack-example")
 # 1. Define the Target LLM you want to test
 target_llm = LLMTarget(
     model="o3-mini",
-    params={"temperature": 0.0} # Use low temperature for deterministic responses
+    params={"temperature": 0.0},  # Use low temperature for deterministic responses
 )
 
 # 2. Configure the TAP Attack
@@ -37,15 +37,24 @@ attack = tap_attack(
     evaluator_model="gpt-4o-mini",
 ).with_(max_trials=30)
 
-# 3. Run the attack with a live console dashboard
-results = await attack.console()
 
-# After the run, you can inspect the most successful prompt found
-best_trial = results.best_trial
-if best_trial and best_trial.score > 0.8:
-    print("Successful jailbreak found!")
-    print(f"Score: {best_trial.score:.2f}")
-    print(f"Prompt: {best_trial.candidate}")
+# 3. Run the attack with a live console dashboard
+async def main():
+    results = await attack.console()
+
+    # After the run, you can inspect the most successful prompt found
+    best_trial = results.best_trial
+    if best_trial and best_trial.score > 0.8:
+        print("Successful jailbreak found!")
+        print(f"Score: {best_trial.score:.2f}")
+        print(f"Prompt: {best_trial.candidate}")
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())
+
 ```
 
 This example uses `tap_attack` to orchestrate a search. It will iteratively generate and refine prompts, scoring each one until it finds a candidate that successfully jailbreaks the `target_llm`.
