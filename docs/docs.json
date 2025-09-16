@@ -31,10 +31,6 @@
         ]
       },
       {
-        "group": "AI Red Teaming",
-        "pages": ["airt/overview", "airt/quick-start", "airt/concepts"]
-      },
-      {
         "group": "Usage",
         "pages": [
           "usage/agents",
@@ -42,9 +38,9 @@
             "group": "AI Red Teaming (AIRT)",
             "pages": [
               "usage/airt/index",
-              "usage/airt/image-attacks",
-              "usage/airt/llm-attacks",
               "usage/airt/targets",
+              "usage/airt/llm-attacks",
+              "usage/airt/image-attacks",
               "usage/airt/results"
             ]
           },
