@@ -16,10 +16,11 @@ You can run this full example directly.
 import dreadnode as dn
 from dreadnode.airt import Attack, simba_search
 from dreadnode.airt.target import CustomTarget
-from dreadnode.scorers import json_path, image_distance
+from dreadnode.scorers import image_distance, json_path
 
 # Ensure dreadnode is configured for your project
 dn.configure(project="airt-image-attack-example")
+
 
 # Step 1: Define a task that calls your image classification model or API.
 # This is a placeholder for a real API call.
@@ -27,15 +28,16 @@ dn.configure(project="airt-image-attack-example")
 async def classify_image(image: dn.Image) -> dict:
     # In a real scenario, this would call your model and return its predictions.
     # For this example, we'll simulate a simple response.
-    if image.to_numpy().mean() > 0.5: # A simple check to simulate classification change
-      return {"predictions": [{"label": "Granny Smith", "confidence": 0.95}]}
+    if image.to_numpy().mean() > 0.5:  # A simple check to simulate classification change
+        return {"predictions": [{"label": "Granny Smith", "confidence": 0.95}]}
     return {"predictions": [{"label": "Cat", "confidence": 0.98}]}
+
 
 # Step 2: Wrap the task in a CustomTarget.
 target = CustomTarget(task=classify_image)
 
 # Step 3: Configure the Attack.
-source_image = dn.Image("path/to/your/cat_image.png") # Replace with a real image path
+source_image = dn.Image("path/to/cat.png")  # Replace with a real image path
 
 attack = Attack(
     name="image-misclassification-attack",
@@ -44,23 +46,30 @@ attack = Attack(
     objectives={
         # Objective 1: Maximize the confidence of the wrong label.
         "is_granny_smith": json_path('$.predictions[?(@.label == "Granny Smith")].confidence'),
-
         # Objective 2: Minimize the visual difference from the original image.
-        "l2_distance": image_distance(source_image).bind(dn.TaskInput("image"))
+        "l2_distance": image_distance(source_image).bind(dn.TaskInput("image")),
     },
     # The directions must match the objectives above.
     directions=["maximize", "minimize"],
-    max_trials=500
+    max_trials=500,
 )
 
-# Step 4: Run the attack.
-results = await attack.console()
 
-best_trial = results.best_trial
-if best_trial:
-    print(f"Attack finished! Best score: {best_trial.score:.2f}")
-    # You can now save or inspect the successful adversarial image:
-    # best_trial.candidate.to_pil().save("adversarial_image.png")
+# Step 4: Run the attack.
+async def main():
+    results = await attack.console()
+    best_trial = results.best_trial
+    if best_trial:
+        print(f"Attack finished! Best score: {best_trial.score:.2f}")
+        # You can now save or inspect the successful adversarial image:
+        # best_trial.candidate.to_pil().save("adversarial_image.png")
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())
+
 ```
 
 This example configures an `Attack` that is guided by two competing goals: forcing the model's output towards "Granny Smith" while keeping the generated image as close as possible to the original `source_image`.
