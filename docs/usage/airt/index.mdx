@@ -33,16 +33,25 @@ attack = tap_attack(
     evaluator_model="gpt-4o-mini",
 ).with_(max_trials=25)
 
+
 # 3. Run the attack and inspect the results.
 # The .console() method provides a live dashboard of the attack's progress.
-results = await attack.console()
+async def main():
+    results = await attack.console()
 
-# The result object contains all data from the run.
-best_trial = results.best_trial
-if best_trial and best_trial.score > 0.8:
-    print("Successful jailbreak found!")
-    print(f"Score: {best_trial.score:.2f}")
-    print(f"Prompt: {best_trial.candidate}")
+    # The result object contains all data from the run.
+    best_trial = results.best_trial
+    if best_trial and best_trial.score > 0.8:
+        print("Successful jailbreak found!")
+        print(f"Score: {best_trial.score:.2f}")
+        print(f"Prompt: {best_trial.candidate}")
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())
+
 ```
 
 This example shows the standard workflow: you define a `Target`, configure a pre-built `Attack` like `tap_attack` with your `goal`, and run it to find successful adversarial inputs.
