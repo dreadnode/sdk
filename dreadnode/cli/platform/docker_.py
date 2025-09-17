@@ -4,6 +4,7 @@ import typing as t
 from dataclasses import dataclass
 from enum import Enum
 
+import yaml
 from pydantic import BaseModel, Field
 from yaml import safe_dump
 
@@ -66,22 +67,25 @@ class DockerImage:
         return result
 
     def __eq__(self, other: object) -> bool:
-        """Check if two DockerImage instances are equal."""
+        """Check if two DockerImage instances are equal.
+
+        If they both have digests, compare digests.
+        If they both have tags, compare tags.
+
+        """
         if not isinstance(other, DockerImage):
             return False
-        return (
-            self.repository == other.repository
-            and self.tag == other.tag
-            and self.digest == other.digest
-        )
+        if self.repository != other.repository:
+            return False
+        if self.digest and other.digest:
+            return self.digest == other.digest
+        if self.tag and other.tag:
+            return self.tag == other.tag
+        return False
 
     def __ne__(self, other: object) -> bool:
         """Check if two DockerImage instances are not equal."""
         return not self.__eq__(other)
-
-    def __hash__(self) -> int:
-        """Make DockerImage hashable so it can be used in sets/dicts."""
-        return hash((self.repository, self.tag, self.digest))
 
 
 class DockerPSResult(BaseModel):
@@ -95,9 +99,77 @@ class DockerPSResult(BaseModel):
         return self.state == "running"
 
 
+def _build_docker_compose_base_command(
+    selected_version: LocalVersionSchema,
+) -> list[str]:
+    cmds = []
+    compose_files = [selected_version.compose_file]
+    env_files = [
+        selected_version.api_env_file,
+        selected_version.ui_env_file,
+    ]
+
+    if (
+        selected_version.configure_overrides_compose_file.exists()
+        and selected_version.configure_overrides_env_file.exists()
+    ):
+        compose_files.append(selected_version.configure_overrides_compose_file)
+        env_files.append(selected_version.configure_overrides_env_file)
+
+    for compose_file in compose_files:
+        cmds.extend(["-f", compose_file.as_posix()])
+
+    if selected_version.arg_overrides_env_file.exists():
+        env_files.append(selected_version.arg_overrides_env_file)
+
+    for env_file in env_files:
+        cmds.extend(["--env-file", env_file.as_posix()])
+    return cmds
+
+
+def _check_docker_installed() -> bool:
+    """Check if Docker is installed on the system."""
+    try:
+        cmd = ["docker", "--version"]
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    except subprocess.CalledProcessError:
+        print_error("Docker is not installed. Please install Docker and try again.")
+        return False
+
+    return True
+
+
+def _check_docker_compose_installed() -> bool:
+    """Check if Docker Compose is installed on the system."""
+    try:
+        cmd = ["docker", "compose", "--version"]
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        print_error("Docker Compose is not installed. Please install Docker Compose and try again.")
+        return False
+    return True
+
+
+def get_required_service_names(selected_version: LocalVersionSchema) -> list[str]:
+    """Get the list of require service names from the docker-compose file."""
+    contents: dict[str, t.Any] = yaml.safe_load(selected_version.compose_file.read_text())
+    services = contents.get("services", {}) or {}
+    return [name for name, cfg in services.items() if isinstance(cfg, dict) and "x-required" in cfg]
+
+
 def _run_docker_compose_command(
     args: list[str],
-    # compose_file: Path,
     timeout: int = 300,
     stdin_input: str | None = None,
     capture_output: CaptureOutput | None = None,
@@ -157,65 +229,6 @@ def _run_docker_compose_command(
     return result
 
 
-def _check_docker_installed() -> bool:
-    """Check if Docker is installed on the system."""
-    try:
-        cmd = ["docker", "--version"]
-        subprocess.run(  # noqa: S603
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-    except subprocess.CalledProcessError:
-        print_error("Docker is not installed. Please install Docker and try again.")
-        return False
-
-    return True
-
-
-def _check_docker_compose_installed() -> bool:
-    """Check if Docker Compose is installed on the system."""
-    try:
-        cmd = ["docker", "compose", "--version"]
-        subprocess.run(  # noqa: S603
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except subprocess.CalledProcessError:
-        print_error("Docker Compose is not installed. Please install Docker Compose and try again.")
-        return False
-    return True
-
-
-def _build_docker_compose_base_command(
-    selected_version: LocalVersionSchema,
-) -> list[str]:
-    cmds = []
-    compose_files = [selected_version.compose_file]
-    env_files = [selected_version.api_env_file, selected_version.ui_env_file]
-
-    if (
-        selected_version.configure_overrides_compose_file.exists()
-        and selected_version.configure_overrides_env_file.exists()
-    ):
-        compose_files.append(selected_version.configure_overrides_compose_file)
-        env_files.append(selected_version.configure_overrides_env_file)
-
-    for compose_file in compose_files:
-        cmds.extend(["-f", compose_file.as_posix()])
-
-    if selected_version.arg_overrides_env_file.exists():
-        env_files.append(selected_version.arg_overrides_env_file)
-
-    for env_file in env_files:
-        cmds.extend(["--env-file", env_file.as_posix()])
-    return cmds
-
-
 def build_docker_compose_override_file(
     services: list[PlatformService],
     selected_version: LocalVersionSchema,
@@ -225,9 +238,7 @@ def build_docker_compose_override_file(
     # and has an `env_file` attribute for the service
     override = {
         "services": {
-            f"platform-{service}": {
-                "env_file": [selected_version.configure_overrides_env_file.as_posix()]
-            }
+            f"{service}": {"env_file": [selected_version.configure_overrides_env_file.as_posix()]}
             for service in services
         },
     }
@@ -242,7 +253,7 @@ def get_available_local_images() -> list[DockerImage]:
     Returns:
         list[str]: List of available Docker image names.
     """
-    cmd = ["docker", "images", "--format", ""]
+    cmd = ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}@{{.Digest}}"]
     cp = subprocess.run(  # noqa: S603
         cmd,
         check=True,
@@ -250,7 +261,7 @@ def get_available_local_images() -> list[DockerImage]:
         capture_output=True,
     )
     images: list[DockerImage] = []
-    for line in cp.stdout.splitlines():
+    for line in cp.stdout.splitlines()[1:]:  # Skip header line
         if line.strip():
             img = DockerImage.from_string(line.strip())
             images.append(img)
