@@ -87,6 +87,14 @@ class DockerImage:
         """Check if two DockerImage instances are not equal."""
         return not self.__eq__(other)
 
+    def __hash__(self) -> int:
+        """Generate a hash for the DockerImage instance."""
+        if self.tag:
+            return hash((self.repository, self.tag))
+        if self.digest:
+            return hash((self.repository, self.digest))
+        return hash((self.repository,))
+
 
 class DockerPSResult(BaseModel):
     name: str = Field(..., alias="Name")
