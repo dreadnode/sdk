@@ -241,9 +241,9 @@ class ApiClient:
                 "POST", "/auth/device/token", json_data={"device_code": device_code}
             )
 
-            if response.status_code == 200:  # noqa: PLR2004
+            if response.status_code == 200:
                 return AccessRefreshTokenResponse(**response.json())
-            if response.status_code != 401:  # noqa: PLR2004
+            if response.status_code != 401:
                 raise RuntimeError(self._get_error_message(response))
 
             time.sleep(interval)
@@ -591,10 +591,10 @@ class ApiClient:
             # Single run - use the run ID
             run_id = df["run_id"].iloc[0]
             base_name = f"run_{run_id}"
-        elif total_runs <= 10:  # noqa: PLR2004
+        elif total_runs <= 10:
             # Few runs - include count
             base_name = f"runs_{total_runs}_page_{page}"
-        elif total_runs <= 100:  # noqa: PLR2004
+        elif total_runs <= 100:
             # Medium batch - include count
             base_name = f"runs_{total_runs}_batch_{page}"
         else:

@@ -179,7 +179,7 @@ def zalgo(
         seed: Random seed for reproducibility.
         name: Name of the transform.
     """
-    if not 0 <= intensity <= 100:  # noqa: PLR2004
+    if not 0 <= intensity <= 100:
         raise ValueError("Intensity must be between 0 and 100.")
     if not 0.0 <= ratio <= 1.0:
         raise ValueError("Application ratio must be between 0.0 and 1.0.")

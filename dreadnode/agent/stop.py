@@ -318,7 +318,7 @@ def elapsed_time(max_seconds: int) -> StopCondition:
     """
 
     def stop(events: Sequence[AgentEvent]) -> bool:
-        if len(events) < 2:  # noqa: PLR2004
+        if len(events) < 2:
             return False
 
         first_event = events[0]

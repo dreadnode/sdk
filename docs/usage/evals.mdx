@@ -257,3 +257,122 @@ When you run this code, you will see a TUI that includes:
 -   **Summary Statistics:** A live-updating summary of the pass/fail rate.
 
 Using `.console()` is perfect for interactive development and for monitoring large benchmark runs.
+
+### **Advanced Patterns**
+
+Once you are comfortable with the basics, you can use these advanced features to build more resilient and sophisticated evaluation pipelines.
+
+#### **Loading Datasets from Files**
+
+For larger evaluations, defining your dataset in-memory isn't practical. You can load a dataset directly from a file by providing a string or `pathlib.Path` object. Supported formats include `.jsonl`, `.csv`, `.json`, and `.yaml`.
+
+Let's assume you have a file named `dataset.jsonl` with the following content:
+
+```json title="dataset.jsonl"
+{"country": "France", "expected_capital": "Paris"}
+{"country": "Japan", "expected_capital": "Tokyo"}
+```
+
+You can then reference this file directly in your `Eval`.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+@dn.task
+async def get_capital(country: str) -> str:
+    capitals = {"France": "Paris", "Japan": "Tokyo"}
+    return capitals.get(country, "I don't know.")
+
+correctness_check = scorers.equals(dn.DatasetField("expected_capital")) >> "is_correct"
+
+# Simply pass the file path to the `dataset` argument.
+file_based_eval = get_capital.as_eval(
+    dataset="dataset.jsonl",
+    dataset_input_mapping=["country"],
+    scorers=[correctness_check],
+    assert_scores=["is_correct"],
+)
+
+result = await file_based_eval.run()
+print(f"Pass Rate: {result.pass_rate:.2%}")
+```
+
+#### **Customizing Input Mapping**
+
+The system can automatically map dataset columns to task parameters if their names match. However, if your dataset columns have different names than your task's parameters, you must provide an explicit mapping using `dataset_input_mapping`.
+
+Here's how you would map a dataset with a `location` column to the task's `country` parameter.
+
+```python
+import dreadnode as dn
+from dreadnode import scorers
+
+@dn.task
+async def get_capital(country: str) -> str: # Task expects `country`
+    capitals = {"France": "Paris"}
+    return capitals.get(country, "I don't know.")
+
+# Dataset uses `location` instead of `country`.
+dataset_with_mismatched_keys = [
+    {"location": "France", "expected_capital": "Paris"}
+]
+
+# Use a dict to map `dataset_key: task_parameter_name`.
+mapping_eval = get_capital.as_eval(
+    dataset=dataset_with_mismatched_keys,
+    dataset_input_mapping={"location": "country"},
+    scorers=[scorers.equals(dn.DatasetField("expected_capital")) >> "is_correct"],
+)
+
+result = await mapping_eval.run()
+print(result.samples[0].input)
+```
+
+#### **Building Resilient Evaluations**
+
+When working with large datasets or non-deterministic tasks, some samples may fail due to transient issues or bad data. You can configure your `Eval` to tolerate a certain number of failures without stopping the entire run.
+
+-   `max_errors`: The total number of sample errors to tolerate before stopping.
+-   `max_consecutive_errors`: The number of *consecutive* sample errors to tolerate before stopping.
+
+```python
+@dn.task
+async def flaky_task(value: int) -> int:
+    if value == 2:
+        raise ValueError("This value causes an error!")
+    return value * 2
+
+dataset = [{"value": 1}, {"value": 2}, {"value": 3}, {"value": 4}]
+
+# This evaluation will stop after the first error.
+# result = await flaky_task.as_eval(dataset=dataset).run() # This would raise an error and stop.
+
+# This evaluation will tolerate up to 5 total errors and continue running.
+resilient_eval = flaky_task.as_eval(
+    dataset=dataset,
+    max_errors=5,
+)
+
+result = await resilient_eval.run()
+print(f"Total samples processed: {len(result.samples)}")
+print(f"Samples with errors: {len([s for s in result.samples if s.error])}")
+```
+
+#### **Programmatic Event Streaming**
+
+The `.console()` method is a convenient wrapper around a lower-level event stream. If you need to build custom logic or UIs based on evaluation events, you can consume this stream directly using `async with eval.stream()`.
+
+This is useful for advanced cases like sending real-time alerts or implementing custom early-stopping logic.
+
+```python
+# Uses the `capital_eval` from a previous example.
+async with capital_eval.stream() as stream:
+    async for event in stream:
+        if isinstance(event, dn.eval.SampleComplete):
+            if event.sample.failed:
+                print(f"Detected a failure on sample {event.sample.index}!")
+        elif isinstance(event, dn.eval.EvalEnd):
+            print(f"Evaluation finished with stop reason: {event.stop_reason}")
+
+```

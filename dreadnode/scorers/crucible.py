@@ -16,7 +16,7 @@ async def _check_flag(
         payload = {"challenge": challenge_id, "flag": flag}
 
         async with session.post(url, headers=headers, json=payload) as response:
-            if response.status == 200:  # noqa: PLR2004
+            if response.status == 200:
                 data = await response.json()
                 return bool(data.get("correct", False))
 

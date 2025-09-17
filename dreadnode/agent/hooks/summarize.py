@@ -66,7 +66,7 @@ def summarize_when_long(
         min_messages_to_keep: The minimum number of messages to retain after summarization (default is 5).
     """
 
-    if min_messages_to_keep < 2:  # noqa: PLR2004
+    if min_messages_to_keep < 2:
         raise ValueError("min_messages_to_keep must be at least 2.")
 
     @component

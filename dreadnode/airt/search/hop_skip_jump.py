@@ -169,8 +169,8 @@ def hop_skip_jump_search(  # noqa: PLR0915
             # 3d - Projection
 
             projector = bisection_image_search(
-                start_image=source,
-                end_image=current,
+                source,
+                current,
                 decision_objective=decision_objective,
                 decision_threshold=decision_threshold,
                 tolerance=theta,

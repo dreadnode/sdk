@@ -23,7 +23,7 @@ def atbash_cipher(*, name: str = "atbash") -> Transform[str, str]:
 def caesar_cipher(offset: int, *, name: str = "caesar") -> Transform[str, str]:
     """Encodes text using the Caesar cipher."""
 
-    if not -25 <= offset <= 25:  # noqa: PLR2004
+    if not -25 <= offset <= 25:
         raise ValueError("Caesar offset must be between -25 and 25.")
 
     def transform(
@@ -56,9 +56,9 @@ def rot47_cipher(*, name: str = "rot47") -> Transform[str, str]:
         transformed = []
         for char in text:
             char_ord = ord(char)
-            if 33 <= char_ord <= 126:  # noqa: PLR2004
+            if 33 <= char_ord <= 126:
                 shifted_ord = char_ord + 47
-                if shifted_ord > 126:  # noqa: PLR2004
+                if shifted_ord > 126:
                     shifted_ord -= 94
                 transformed.append(chr(shifted_ord))
             else:

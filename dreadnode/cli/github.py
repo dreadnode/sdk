@@ -146,7 +146,7 @@ class GithubRepo(str):  # noqa: SLOT000
     def exists(self) -> bool:
         """Check if a repo exists (or is private) on GitHub."""
         response = httpx.get(f"https://github.com/{self.namespace}/{self.repo}")
-        return response.status_code == 200  # noqa: PLR2004
+        return response.status_code == 200
 
     def __repr__(self) -> str:
         return f"GithubRepo(namespace='{self.namespace}', repo='{self.repo}', ref='{self.ref}')"

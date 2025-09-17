@@ -40,7 +40,7 @@ def swap(
         ),
     ) -> str:
         items = list(text) if unit == "char" else re.findall(r"\w+|\S+", text)
-        if len(items) < 2:  # noqa: PLR2004
+        if len(items) < 2:
             return text
 
         num_to_swap = int(len(items) * ratio)

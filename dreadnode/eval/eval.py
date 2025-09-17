@@ -149,7 +149,7 @@ class Eval(Model, t.Generic[In, Out]):
     def _generic_types(cls) -> tuple[type[In], type[Out]]:
         for c in cls.__mro__:
             metadata = getattr(c, "__pydantic_generic_metadata__", {})
-            if len(args := (metadata.get("args", ()) or getattr(c, "__args__", ()))) == 2:  # noqa: PLR2004
+            if len(args := (metadata.get("args", ()) or getattr(c, "__args__", ()))) == 2:
                 return args  # type: ignore[no-any-return]
         return t.Any, t.Any  # type: ignore[return-value]
 
