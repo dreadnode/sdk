@@ -1,8 +1,8 @@
 import typing as t
 
-PlatformService = t.Literal["api", "ui"]
-API_SERVICE: PlatformService = "api"
-UI_SERVICE: PlatformService = "ui"
+PlatformService = t.Literal["dreadnode-api", "dreadnode-ui"]
+API_SERVICE: PlatformService = "dreadnode-api"
+UI_SERVICE: PlatformService = "dreadnode-ui"
 SERVICES: list[PlatformService] = [API_SERVICE, UI_SERVICE]
 VERSIONS_MANIFEST = "versions.json"
 

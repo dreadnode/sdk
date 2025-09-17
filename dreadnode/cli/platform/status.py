@@ -1,4 +1,4 @@
-from dreadnode.cli.platform.docker_ import docker_ps
+from dreadnode.cli.platform.docker_ import docker_ps, get_required_service_names
 from dreadnode.cli.platform.schemas import LocalVersionSchema
 from dreadnode.cli.platform.utils.printing import print_error, print_success
 from dreadnode.cli.platform.utils.versions import get_current_version, get_local_version
@@ -11,22 +11,14 @@ def platform_is_running(selected_version: LocalVersionSchema) -> bool:
         tag: Optional image tag to use. If not provided, uses the current
             version or downloads the latest available version.
     """
-
+    required_services = get_required_service_names(selected_version)
     container_details = docker_ps(selected_version)
     if not container_details:
         return False
-    return all(
-        container.is_running
-        for container in container_details
-        if container.name
-        in {
-            "dreadnode-postgres",
-            "dreadnode-clickhouse",
-            "dreadnode-traefik",
-            "dreadnode-ui",
-            "dreadnode-api",
-        }
-    )
+    for service in required_services:
+        if service not in [c.name for c in container_details if c.status == "running"]:
+            return False
+    return True
 
 
 def platform_status(tag: str | None = None) -> bool:
