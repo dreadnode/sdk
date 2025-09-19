@@ -11,11 +11,17 @@ from yaml import safe_dump
 from dreadnode.cli.api import create_api_client
 from dreadnode.cli.platform.constants import DEFAULT_DOCKER_PROJECT_NAME, PlatformService
 from dreadnode.cli.platform.schemas import LocalVersionSchema
+from dreadnode.cli.platform.utils.env_mgmt import read_env_file
 from dreadnode.cli.platform.utils.printing import print_error, print_info, print_success
 
 DockerContainerState = t.Literal[
     "running", "exited", "paused", "restarting", "removing", "created", "dead"
 ]
+
+
+# create a DockerError exception that I can catch
+class DockerError(Exception):
+    pass
 
 
 class CaptureOutput(str, Enum):
@@ -127,6 +133,9 @@ def _build_docker_compose_base_command(
     for compose_file in compose_files:
         cmds.extend(["-f", compose_file.as_posix()])
 
+    for profile in _get_profiles_to_enable(selected_version):
+        cmds.extend(["--profile", profile])
+
     if selected_version.arg_overrides_env_file.exists():
         env_files.append(selected_version.arg_overrides_env_file)
 
@@ -174,6 +183,61 @@ def get_required_service_names(selected_version: LocalVersionSchema) -> list[str
     contents: dict[str, t.Any] = yaml.safe_load(selected_version.compose_file.read_text())
     services = contents.get("services", {}) or {}
     return [name for name, cfg in services.items() if isinstance(cfg, dict) and "x-required" in cfg]
+
+
+def _get_profiles_to_enable(selected_version: LocalVersionSchema) -> list[str]:
+    """Get the list of profiles to enable based on environment variables.
+
+    If any of the `x-profile-disabled-vars` are set in the environment,
+    the profile will be disabled.
+
+    E.g.
+
+        services:
+          myservice:
+            image: myimage:latest
+            profiles:
+              - myprofile
+            x-profile-override-vars:
+              - MY_SERVICE_HOST
+
+    If MY_SERVICE_HOST is set in the environment, the `myprofile` profile
+    will NOT be excluded from the docker compose --profile <profile> cmd.
+
+    Args:
+        selected_version: The selected version of the platform.
+
+    Returns:
+        List of profile names to enable.
+    """
+
+    contents: dict[str, t.Any] = yaml.safe_load(selected_version.compose_file.read_text())
+    services = contents.get("services", {}) or {}
+    profiles_to_enable: set[str] = set()
+    for service in services.values():
+        if not isinstance(service, dict):
+            continue
+        profiles = service.get("profiles", [])
+        if not profiles or not isinstance(profiles, list):
+            continue
+        x_override_vars = service.get("x-profile-override-vars", [])
+        if not x_override_vars or not isinstance(x_override_vars, list):
+            profiles_to_enable.update(profiles)
+            continue
+
+        configuration_file = selected_version.configure_overrides_env_file
+        overrides_file = selected_version.arg_overrides_env_file
+        env_vars = {}
+        if configuration_file.exists():
+            env_vars.update(read_env_file(configuration_file))
+        if overrides_file.exists():
+            env_vars.update(read_env_file(overrides_file))
+        # check if any of the override vars are set in the env
+        if any(var in env_vars for var in x_override_vars):
+            continue  # skip enabling this profile
+        profiles_to_enable.update(profiles)
+
+    return list(profiles_to_enable)
 
 
 def _run_docker_compose_command(
@@ -224,15 +288,15 @@ def _run_docker_compose_command(
 
     except subprocess.CalledProcessError as e:
         print_error(f"{cmd_str} failed with exit code {e.returncode}")
-        raise
+        raise DockerError(f"Docker command failed: {e}") from e
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         print_error(f"{cmd_str} timed out after {timeout} seconds")
-        raise
+        raise DockerError(f"Docker command timed out after {timeout} seconds") from e
 
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         print_error("Docker or docker compose not found. Please ensure Docker is installed.")
-        raise
+        raise DockerError(f"Docker compose file not found: {e}") from e
 
     return result
 
@@ -269,7 +333,7 @@ def get_available_local_images() -> list[DockerImage]:
         capture_output=True,
     )
     images: list[DockerImage] = []
-    for line in cp.stdout.splitlines()[1:]:  # Skip header line
+    for line in cp.stdout.splitlines():
         if line.strip():
             img = DockerImage.from_string(line.strip())
             images.append(img)
