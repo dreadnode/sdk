@@ -25,3 +25,28 @@ The CLI fetches credentials from the API and runs `docker login` per unique regi
 This has not been developed for, nor tested on Windows.
 
 You can try to use WSL2 + Docker Desktop. The CLI checks `docker` and `docker compose` availability regardless of OS.
+
+#### How do I migrate from an older platform install method?
+
+If you installed using the old `install.sh` script, you can migrate your data by running the following commands to:
+
+```bash
+#!/bin/bash
+
+set -e
+
+
+
+echo "Migrating data from platform to dreadnode..."
+
+echo "Migrating Postgres..."
+docker run --rm -v platform_postgres-data:/from -v dreadnode-postgres-data:/to alpine sh -c 'cd /from && cp -a . /to'
+
+echo "Migrating Clickhouse..."
+docker run --rm -v platform_clickhouse-data:/from -v dreadnode-clickhouse-data:/to alpine sh -c 'cd /from && cp -a . /to'
+
+echo "Migrating Minio..."
+docker run --rm -v platform_minio-data:/from -v dreadnode-minio-data:/to alpine sh -c 'cd /from && cp -a . /to'
+
+echo "Migration complete."
+```
