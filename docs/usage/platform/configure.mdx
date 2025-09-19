@@ -1,0 +1,154 @@
+---
+title: 'Configure'
+description: 'Set persistent platform configuration via key-value overrides; list, unset, or apply one-off overrides at start'
+public: true
+---
+
+Use the `configure` command to **persist platform overrides** (e.g., ports, proxy host) for the **current** platform version, or for a **specific image tag**.  
+You can also supply **one-off (ephemeral) overrides** directly to `start` for a single run—see **Start-time overrides** below.
+
+<Info>
+Overrides are stored with the selected platform version and take effect the **next time you start or restart** the platform. You can modify or remove them at any time.
+</Info>
+
+## TL;DR
+
+```bash
+# Persist one or more overrides on the current version
+dreadnode platform configure KEY VALUE [KEY2 VALUE2 ...]
+
+# Target a specific version by image tag when persisting
+dreadnode platform configure KEY VALUE --tag v1.3.4
+
+# List currently active persistent overrides
+dreadnode platform configure --list
+
+# Unset (remove) one or more persistent overrides
+dreadnode platform configure --unset KEY [KEY2 KEY3 ...]
+````
+
+### Examples
+
+```bash
+# Configure an HTTP proxy host and expose the API on a custom port
+dreadnode platform configure proxy-host myproxy.local api-port 8080
+
+# Target a specific image tag (when you have multiple downloaded)
+dreadnode platform configure proxy-host corp-proxy --tag v1.3.4
+
+# Remove a single override
+dreadnode platform configure --unset proxy-host
+
+# Remove multiple overrides at once
+dreadnode platform configure --unset proxy-host api-port
+```
+
+## Behavior & File Outputs
+
+When you run `configure`:
+
+1. The command resolves the **selected platform version**:
+
+   * If `--tag` is provided, it uses that local version.
+   * Otherwise, it uses your **current** platform version.
+2. It **writes your overrides** to that version's configuration-overrides file.
+3. It also ensures a Docker Compose override is prepared so changes apply cleanly on the next start.
+
+On start, the platform **regenerates** its runtime configuration (Compose files and a composite `.env`) and **applies your persistent overrides on top** of the base service configuration.
+
+<Info>
+If **no current platform version** is set (and no `--tag` is provided), you'll be prompted to start or download a platform version first.
+</Info>
+
+## Flags (configure)
+
+* `--list, -l`
+  Prints the currently configured persistent overrides for the selected version. Cannot be combined with positional `KEY VALUE` arguments.
+
+* `--unset, -u`
+  Removes the specified keys. Provide one or more keys (**values are not required** when using `--unset`).
+
+* `--tag <image-tag>`
+  Apply changes to a **specific** downloaded image tag instead of the current version.
+
+## Input Rules (configure)
+
+* Without `--unset`, arguments must be provided as **key-value pairs**:
+
+  ```bash
+  dreadnode platform configure KEY VALUE [KEY2 VALUE2 ...]
+  ```
+* With `--unset`, provide **one or more keys** (no values):
+
+  ```bash
+  dreadnode platform configure --unset KEY [KEY2 ...]
+  ```
+
+---
+
+# Start-time overrides (one-off)
+
+You can pass **temporary overrides** directly to `start`. These apply **only to that run** and are cleared the next time you start **without** those flags.
+
+```bash
+# Start the current (or resolved) version
+dreadnode platform start
+
+# Start a specific image tag
+dreadnode platform start --tag v1.3.4
+
+# Start with one-off overrides (use --key value form)
+dreadnode platform start --proxy-host myproxy.local --api-port 8080
+```
+
+### How it works
+
+* `start` accepts arbitrary **`--key value`** pairs as environment overrides (e.g., `--proxy-host myproxy.local`).
+* If any are provided, they are written to a **start-argument overrides file** for this run.
+* If none are provided, the **start-argument overrides file is removed** before launching, returning you to your **persistent** configuration.
+
+### Precedence (highest first)
+
+1. **Start-time (one-off) overrides** passed via `dreadnode platform start --key value`
+2. **Persistent overrides** set via `dreadnode platform configure`
+3. **Base configuration** and service defaults
+
+This means a key like `proxy-host` passed to `start` will **override** the same key from `configure`—but **only for that run**.
+
+### Examples
+
+```bash
+# Temporarily change API port for this run only
+dreadnode platform start --api-port 9090
+
+# Temporarily bypass proxy for this run, regardless of persistent settings
+dreadnode platform start --proxy-host ""
+
+# Combine with a tag you haven't marked current yet
+dreadnode platform start --tag v2.0.0 --api-port 8081
+```
+
+<Note>
+To make a one-off override permanent, set it with `dreadnode platform configure KEY VALUE`, then start without the flag.
+</Note>
+
+## Start behavior
+
+* If Docker/Docker Compose requirements aren't met, the command exits with an error.
+* With `--tag`, the specified tag is **downloaded (if necessary)** and marked current before running.
+* Without `--tag`, if a current version exists it is used; otherwise the **latest** is downloaded and marked current.
+* On success, you'll see the app URL(s) if available.
+
+---
+
+## Migration Notes (from older docs)
+
+* **Old behavior:** `platform configure` opened per-service env files (e.g., `.dreadnode-api.env`, `.dreadnode-ui.env`) in your editor.
+* **New behavior:**
+
+  * `platform configure` **persists** key-value overrides (no editor).
+  * `platform start` can accept **ephemeral** key-value overrides via `--key value` flags for a single run.
+
+<Note>
+You can still edit service env files directly if needed, but for repeatable, layered config, prefer `configure` for persistence and `start --key value` for safe one-offs.
+</Note>

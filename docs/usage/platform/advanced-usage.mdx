@@ -1,0 +1,175 @@
+---
+title: 'Advanced Usage'
+description: 'Configure the Dreadnode Platform for remote deployments and custom environments'
+public: true
+---
+
+The `dreadnode` Platform can be configured for advanced deployment scenarios such as remote databases, proxy hosts, and external ClickHouse clusters. 
+These options are managed via the environment files (`.dreadnode-api.env` and `.dreadnode-ui.env`).
+
+<Warning>
+Modifying these files will impact your local instance. Always back up your configurations before making changes.
+</Warning>
+
+---
+### Using a Proxy Host (Remote UI Access)
+
+If you are running the UI on a remote host (not `localhost`), configure the **proxy host** (the domain/IP that external users will access):
+
+```bash
+# .dreadnode-ui.env
+PROXY_HOST=platform.example.com
+ALLOWED_HOSTS="platform.example.com"
+```
+
+* `PROXY_HOST` defines the hostname where users will access the UI.
+* `ALLOWED_HOSTS` must include the same value to pass and is passed to the Content Security Policy.
+* Update DNS or reverse proxy settings (e.g., Nginx, Caddy) to point traffic to the correct container.
+
+---
+
+### Configuring a Remote Database
+
+By default, the API service connects to a local Postgres database running in Docker.
+To use a **remote database**, update the following variables in `.dreadnode-api.env`:
+
+```bash
+# .dreadnode-api.env
+DATABASE_USER=myuser
+DATABASE_PASSWORD=secure-password
+DATABASE_NAME=platform
+DATABASE_PORT=5432
+DATABASE_HOST=db.example.com
+````
+
+* `DATABASE_HOST` should be the hostname or IP of your Postgres server.
+* Ensure that the Postgres server accepts external connections, is reachable from your Docker containers, and your firewall/security groups allow access.
+
+<Warning>
+Changing the database configuration will start with a blank schema unless you migrate existing data. Make sure you back up your local database if you need persistence.
+</Warning>
+
+---
+
+By default, ClickHouse is run locally in Docker. To use a **remote ClickHouse cluster**, adjust `.dreadnode-api.env`:
+
+```bash
+# .dreadnode-api.env
+STRIKES_CLICKHOUSE_HOST=clickhouse.example.com
+STRIKES_CLICKHOUSE_PORT=8443
+STRIKES_CLICKHOUSE_USER=clickuser
+STRIKES_CLICKHOUSE_PASSWORD=secure-password
+STRIKES_CLICKHOUSE_DATABASE=platform
+```
+
+* `STRIKES_CLICKHOUSE_HOST` should be your remote server hostname.
+* Ensure the cluster is reachable from the host running the platform.
+
+---
+
+## Back up & Restore Docker Volumes (Best Practices)
+
+The volumes used by Docker will persist on disk, but a reliable backup strategy is recommended such as:
+
+**Logical backups (application-aware)** — recommended for databases (e.g., `pg_dump` for Postgres, `BACKUP` for ClickHouse).
+
+Use logical backups for consistency and faster point-in-time recovery; use volume snapshots for belt-and-suspenders disaster recovery.
+
+### Identify Your Volumes
+
+```bash
+# Show compose resources (project must be in this directory)
+docker compose ls
+docker compose config | grep -A2 volumes:
+docker volume ls | grep <your-project-prefix>
+```
+
+> Compose typically prefixes volumes using the project name (e.g., `dreadnode_api-data`, `dreadnode_db-data`).
+
+---
+
+Logical Backups
+
+#### Postgres (pg\_dump)
+
+Back up using `pg_dump` from the running DB container or a throwaway client:
+
+```bash
+# From host, run a temporary Postgres client container to dump the remote/local DB
+docker run --rm \
+  -e PGPASSWORD=$DATABASE_PASSWORD \
+  postgres:16 \
+  pg_dump -h $DATABASE_HOST -p ${DATABASE_PORT:-5432} \
+  -U $DATABASE_USER -d $DATABASE_NAME \
+  -Fc -f - > postgres_$(date +%Y%m%d_%H%M%S).dump
+```
+
+Restore:
+
+```bash
+# Create target DB first if needed:
+# createdb -h $DATABASE_HOST -p ${DATABASE_PORT:-5432} -U $DATABASE_USER $DATABASE_NAME
+
+cat postgres_YYYYMMDD_HHMMSS.dump | docker run -i --rm \
+  -e PGPASSWORD=$DATABASE_PASSWORD \
+  postgres:16 \
+  pg_restore -h $DATABASE_HOST -p ${DATABASE_PORT:-5432} \
+  -U $DATABASE_USER -d $DATABASE_NAME --clean --if-exists
+```
+
+<Info>
+Use the same major version of `postgres` in your dump/restore container as your server for best compatibility.
+</Info>
+
+#### ClickHouse (native BACKUP)
+
+If you use ClickHouse 21.8+ (typical), run native backups to S3/MinIO:
+
+```sql
+-- From a clickhouse-client shell or HTTP API:
+BACKUP DATABASE platform TO S3(
+  's3://my-clickhouse-backups/platform/{timestamp}',
+  'YOUR_KEY_ID', 'YOUR_SECRET',
+  'us-east-1', 'https://s3.amazonaws.com'
+);
+```
+
+Restore:
+
+```sql
+RESTORE DATABASE platform FROM S3(
+  's3://my-clickhouse-backups/platform/<backup-timestamp>',
+  'YOUR_KEY_ID', 'YOUR_SECRET',
+  'us-east-1', 'https://s3.amazonaws.com'
+);
+```
+
+<Warning>
+For consistent backups, prefer **logical** methods (pg_dump / ClickHouse BACKUP) rather than copying live database files.
+</Warning>
+
+---
+
+
+### Example: Hybrid Deployment
+
+For a resilient hybrid deployment, you might:
+
+* Run **API & UI** services in Docker on a cloud VM.
+* Point the **database** to a managed Postgres (e.g., AWS RDS).
+* Use a **remote ClickHouse cluster** (e.g., AWS ClickHouse Cloud).
+* Store artifacts in **AWS S3** (with a **CloudFront** CDN set as `S3_AWS_EXTERNAL_ENDPOINT_URL`).
+* Expose the UI via a **proxy host** with TLS termination.
+* Schedule nightly **pg\_dump** & ClickHouse **BACKUP** to S3, weekly volume snapshots, and test restores monthly.
+
+---
+
+<Info>
+Whenever you make changes to `.dreadnode-api.env` or `.dreadnode-ui.env`, restart the platform with:
+
+```bash
+dreadnode platform stop
+dreadnode platform start
+```
+
+</Info>
