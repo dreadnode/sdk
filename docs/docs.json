@@ -56,7 +56,23 @@
           "usage/rich-objects",
           "usage/model-training",
           "usage/cli",
-          "usage/export"
+          "usage/export",
+          {
+            "group": "Platform",
+            "pages": [
+              "platform/self-hosted/overview",
+              "platform/self-hosted/install",
+              "platform/self-hosted/quickstart",
+              "platform/self-hosted/usage",
+              "platform/self-hosted/configure",
+              "platform/self-hosted/commands",
+              "platform/self-hosted/environment",
+              "platform/self-hosted/versioning",
+              "platform/self-hosted/advanced-usage",
+              "platform/self-hosted/troubleshooting",
+              "platform/self-hosted/faq"
+            ]
+          }
         ]
       },
       {
