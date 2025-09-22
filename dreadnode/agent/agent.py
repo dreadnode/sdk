@@ -24,6 +24,7 @@ from dreadnode.agent.events import (
     _total_usage_from_events,
 )
 from dreadnode.agent.hooks import retry_with_feedback
+from dreadnode.agent.judge import Judge
 from dreadnode.agent.reactions import (
     Continue,
     Fail,
@@ -42,7 +43,6 @@ from dreadnode.agent.tools.planning import update_todo
 from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
 from dreadnode.meta import Component, Config, Model, component
 from dreadnode.meta.introspect import get_config_model, get_inputs_and_params_from_config_model
-from dreadnode.scorers import ScorersLike
 from dreadnode.util import (
     flatten_list,
     get_callable_name,
@@ -94,10 +94,12 @@ class Agent(Model):
     """The logical condition for successfully stopping a run."""
     thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
     """Stateful thread for this agent, for when otherwise not specified during execution."""
-    scorers: ScorersLike[AgentResult] = Config(default_factory=list)
-    """Scorers to evaluate the agent output."""
-    assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
-    """Scores to ensure are truthy, otherwise the agent task is marked as failed."""
+    # scorers: ScorersLike[AgentResult] = Config(default_factory=list)
+    # """Scorers to evaluate the agent output."""
+    # assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
+    # """Scores to ensure are truthy, otherwise the agent task is marked as failed."""
+
+    judge: Judge | None = Config(default=None)
 
     _generator: rg.Generator | None = PrivateAttr(None, init=False)
 
@@ -173,25 +175,25 @@ class Agent(Model):
 
         return transforms
 
-    def _get_hooks(self) -> dict[type[AgentEvent], list[Hook]]:
-        hooks: dict[type[AgentEvent], list[Hook]] = {}
-        for hook in self.hooks:
-            sig = inspect.signature(hook)
-            if not (params := list(sig.parameters.values())):
-                continue
-            event_type = params[0].annotation
+    # def _get_hooks(self) -> dict[type[AgentEvent], list[Hook]]:
+    #     hooks: dict[type[AgentEvent], list[Hook]] = {}
+    #     for hook in self.hooks:
+    #         sig = inspect.signature(hook)
+    #         if not (params := list(sig.parameters.values())):
+    #             continue
+    #         event_type = params[0].annotation
 
-            if hasattr(event_type, "__origin__") and event_type.__origin__ is t.Union:
-                union_args = event_type.__args__
-                for arg in union_args:
-                    if inspect.isclass(arg) and issubclass(arg, AgentEvent):
-                        hooks.setdefault(arg, []).append(hook)
-            elif inspect.isclass(event_type) and issubclass(event_type, AgentEvent):
-                hooks.setdefault(event_type, []).append(hook)
-            else:
-                hooks.setdefault(AgentEvent, []).append(hook)
+    #         if hasattr(event_type, "__origin__") and event_type.__origin__ is t.Union:
+    #             union_args = event_type.__args__
+    #             for arg in union_args:
+    #                 if inspect.isclass(arg) and issubclass(arg, AgentEvent):
+    #                     hooks.setdefault(arg, []).append(hook)
+    #         elif inspect.isclass(event_type) and issubclass(event_type, AgentEvent):
+    #             hooks.setdefault(event_type, []).append(hook)
+    #         else:
+    #             hooks.setdefault(AgentEvent, []).append(hook)
 
-        return hooks
+    #     return hooks
 
     async def _generate(
         self,
@@ -269,7 +271,6 @@ class Agent(Model):
         self,
         thread: "Thread",
         messages: list[rg.Message],
-        hooks: HookMap,
         *,
         commit: CommitBehavior,
     ) -> t.AsyncGenerator[AgentEvent, None]:
@@ -285,14 +286,14 @@ class Agent(Model):
 
             events.append(event)
 
-            # If we have no hooks, just return the event
-            applicable_hooks = list(set(hooks.get(type(event), []) + hooks.get(AgentEvent, [])))
-            if not applicable_hooks:
+            # # If we have no hooks, just return the event
+            # applicable_hooks = list(set(hooks.get(type(event), []) + hooks.get(AgentEvent, [])))
+            if not self.hooks:
                 return
 
             # Run all applicable hooks and collect their reactions
             hook_reactions: dict[str, Reaction | None] = {}
-            for hook in applicable_hooks:
+            for hook in self.hooks:
                 hook_name = getattr(
                     hook, "__name__", getattr(hook, "__qualname__", safe_repr(hook))
                 )
@@ -633,9 +634,8 @@ class Agent(Model):
         *,
         commit: CommitBehavior = "on-success",
     ) -> t.AsyncGenerator[AgentEvent, None]:
-        from dreadnode import log_output, log_outputs, score, task_and_run
+        from dreadnode import log_output, log_outputs, task_and_run
 
-        hooks = self._get_hooks()
         messages = [*deepcopy(thread.messages), rg.Message("user", str(user_input))]
 
         configuration = get_config_model(self)()
@@ -662,7 +662,7 @@ class Agent(Model):
         last_event: AgentEvent | None = None
         with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
             try:
-                async with aclosing(self._stream(thread, messages, hooks, commit=commit)) as stream:
+                async with aclosing(self._stream(thread, messages, commit=commit)) as stream:
                     async for event in stream:
                         last_event = event
                         self._log_event_metrics(event)
@@ -679,11 +679,16 @@ class Agent(Model):
                     )
                     if last_event.result.error:
                         log_output("error", last_event.result.error, to="both")
-                    await score(
-                        last_event.result,
-                        self.scorers,
-                        assert_scores=self.assert_scores,
-                    )
+
+                    if self.judge:
+                        from dreadnode import log_metric
+
+                        metric = self.judge.evaluate(last_event.result)
+
+                        # Log the judge's metric to the trace
+                        log_metric(
+                            metric.name, metric.value, attributes=metric.attributes, to="both"
+                        )
 
     def get_prompt(self) -> str:
         """

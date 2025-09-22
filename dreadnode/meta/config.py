@@ -276,9 +276,6 @@ def Config(  # noqa: N802
     return ConfigInfo(field_kwargs=field_kwargs, expose_as=expose_as)
 
 
-@te.dataclass_transform(
-    kw_only_default=True, field_specifiers=(Config, PydanticField, PydanticPrivateAttr)
-)
 class ConfigurableMeta(ModelMetaclass):
     def __new__(
         cls,
@@ -320,6 +317,9 @@ class ConfigurableMeta(ModelMetaclass):
         return new_cls
 
 
+@te.dataclass_transform(
+    kw_only_default=True, field_specifiers=(Config, PydanticField, PydanticPrivateAttr)
+)
 class Model(PydanticBaseModel, metaclass=ConfigurableMeta):
     def configure(self, **overrides: t.Any) -> te.Self:
         """Create a new model with updated default configuration values."""

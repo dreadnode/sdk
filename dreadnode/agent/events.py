@@ -15,6 +15,7 @@ from dreadnode.agent.reactions import (
     Continue,
     Fail,
     Finish,
+    Hook,
     Reaction,
     RetryWithFeedback,
 )
@@ -22,7 +23,6 @@ from dreadnode.util import format_dict, shorten_string
 
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
-    from dreadnode.agent.reactions import Reaction
     from dreadnode.agent.result import AgentResult
     from dreadnode.agent.thread import Thread
     from dreadnode.common_types import AnyDict
@@ -30,6 +30,42 @@ if t.TYPE_CHECKING:
 
 AgentEventT = t.TypeVar("AgentEventT", bound="AgentEvent")
 AgentStopReason = t.Literal["finished", "max_steps_reached", "error", "stalled"]
+
+
+EventCondition = t.Callable[[AgentEventT], bool]
+
+
+def on_event(
+    event_type: type[AgentEventT],  # make this t.Literal with a factory
+    condition: EventCondition[AgentEventT] | None = None,
+) -> t.Callable[[t.Callable[[AgentEventT], t.Awaitable[Reaction | None]]], Hook]:
+    """
+    A generic decorator factory to create hooks that trigger for a specific
+    event type and an optional filtering condition.
+
+    Args:
+        event_type: The specific subclass of AgentEvent to listen for.
+        condition: An optional callable that receives the event and returns
+                   True if the hook should run.
+
+    Returns:
+        A decorator that wraps an async function into a full Hook.
+    """
+
+    def decorator(func: t.Callable[[AgentEventT], t.Awaitable[Reaction | None]]) -> Hook:
+        async def wrapper(event: AgentEvent) -> Reaction | None:
+            if not isinstance(event, event_type):
+                return None
+
+            if condition is not None and not condition(event):
+                return None
+
+            return await func(event)
+
+        wrapper.__name__ = func.__name__
+        return wrapper
+
+    return decorator
 
 
 @dataclass
