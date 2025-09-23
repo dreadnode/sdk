@@ -1,13 +1,16 @@
 import typing as t
+from typing import TypeVar
+
+import rigging.parsing as parse
+from rigging.model import Model as OutputModel
 
 from dreadnode.agent.events import AgentError, AgentEvent, ToolEnd, ToolStart
-from dreadnode.agent.parsing import try_parse, try_parse_many
 from dreadnode.scorers import Scorer
+
+M = TypeVar("M", bound=OutputModel)
 
 AgentConditionT = t.TypeVar("AgentConditionT", bound="AgentEvent")
 Condition = t.Callable[[AgentConditionT], bool]
-
-ModelT = t.TypeVar("ModelT")
 
 
 class FieldConditionBuilder:
@@ -24,7 +27,7 @@ class FieldConditionBuilder:
         """Creates the final Condition function for an equality check."""
 
         def condition(event: AgentEvent) -> bool:
-            model = try_parse(event, self.model_type)
+            model = parse.try_parse(event, self.model_type)
             if model is None:
                 return False  # If the model wasn't found, the condition is false
 
@@ -34,17 +37,17 @@ class FieldConditionBuilder:
         return condition
 
 
-class ModelConditionBuilder(t.Generic[ModelT]):
+class ModelConditionBuilder:
     """Represents the start of a fluent condition chain for a model."""
 
-    def __init__(self, model_type: type[ModelT]):
+    def __init__(self, model_type: OutputModel):
         self.model_type = model_type
 
     def __getattr__(self, name: str) -> FieldConditionBuilder:
         # For simple checks: when(MyModel).field == value
         return FieldConditionBuilder(self.model_type, name)
 
-    def satisfies(self, scorer: Scorer[ModelT]) -> Condition:
+    def satisfies(self, scorer: Scorer[OutputModel]) -> Condition:
         """
         Creates a Condition that passes if the extracted model satisfies
         the logic of the given Scorer.
@@ -53,7 +56,7 @@ class ModelConditionBuilder(t.Generic[ModelT]):
         """
 
         def condition(event: AgentEvent) -> bool:
-            model = try_parse(event, self.model_type)
+            model = parse.try_parse(event, self.model_type)
             if model is None:
                 return False
 
@@ -68,8 +71,9 @@ class ModelConditionBuilder(t.Generic[ModelT]):
         contains the given substring.
         """
 
-        def condition(model: ModelT) -> bool:
-            model = try_parse(model, self.model_type)
+        def condition(model: OutputModel) -> bool:
+            text = model.messages[-1].content  # Debug statement
+            model = parse.try_parse(text, self.model_type)
             if model is None or not isinstance(model, str):
                 return False
 
@@ -80,18 +84,18 @@ class ModelConditionBuilder(t.Generic[ModelT]):
         return condition
 
 
-class ListConditionBuilder(t.Generic[ModelT]):
+class ListConditionBuilder:
     """Builds a condition by applying a check to a list of models."""
 
-    def __init__(self, model_type: type[ModelT], aggregator: t.Callable[[t.Iterable], bool]):
+    def __init__(self, model_type: OutputModel, aggregator: t.Callable[[t.Iterable], bool]):
         self.model_type = model_type
         self.aggregator = aggregator
 
-    def satisfies(self, scorer: Scorer[ModelT]) -> Condition:
+    def satisfies(self, scorer: Scorer[OutputModel]) -> Condition:
         """Applies a Scorer to each model and aggregates the boolean results."""
 
         def condition(event: AgentEvent) -> bool:
-            models = try_parse_many(event, self.model_type)
+            models = parse.try_parse_many(event, self.model_type)
             if not models:
                 return False
             results = (scorer.evaluate(model).value > 0.0 for model in models)
@@ -100,10 +104,10 @@ class ListConditionBuilder(t.Generic[ModelT]):
         return condition
 
 
-class ListFieldConditionBuilder(t.Generic[ModelT]):
+class ListFieldConditionBuilder:
     """Represents a specific field on a list of models, ready for comparison."""
 
-    def __init__(self, parent: ListConditionBuilder[ModelT], field_name: str):
+    def __init__(self, parent: ListConditionBuilder, field_name: str):
         self.parent = parent
         self.field_name = field_name
 
@@ -114,7 +118,7 @@ class ListFieldConditionBuilder(t.Generic[ModelT]):
         """Creates the final Condition for an equality check on a list of models."""
 
         def condition(event: AgentEvent) -> bool:
-            models = try_parse_many(event, self.parent.model_type)
+            models = parse.try_parse_many(event, self.parent.model_type)
             if not models:
                 return False
             results = (getattr(model, self.field_name, None) == value for model in models)
@@ -123,17 +127,17 @@ class ListFieldConditionBuilder(t.Generic[ModelT]):
         return condition
 
 
-def when(model_type: type[ModelT]) -> ModelConditionBuilder[ModelT]:
+def when(model_type: OutputModel) -> ModelConditionBuilder:
     """Entry point for conditions that operate on a single model instance."""
     return ModelConditionBuilder(model_type)
 
 
-def when_any(model_type: type[ModelT]) -> ListConditionBuilder[ModelT]:
+def when_any(model_type: OutputModel) -> ListConditionBuilder:
     """Entry point for conditions that are true if ANY model in a set matches."""
     return ListConditionBuilder(model_type, any)
 
 
-def when_all(model_type: type[ModelT]) -> ListConditionBuilder[ModelT]:
+def when_all(model_type: OutputModel) -> ListConditionBuilder:
     """Entry point for conditions that are true only if ALL models in a set match."""
     return ListConditionBuilder(model_type, all)
 
