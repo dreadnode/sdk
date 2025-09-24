@@ -93,19 +93,34 @@
       {
         "group": "SDK",
         "pages": [
-          "sdk/airt",
-          "sdk/api",
-          "sdk/artifact",
-          "sdk/data_types",
-          "sdk/eval",
-          "sdk/integrations",
-          "sdk/main",
-          "sdk/metric",
-          "sdk/optimization",
-          "sdk/scorers",
-          "sdk/serialization",
-          "sdk/task",
-          "sdk/transforms"
+          {
+            "group": "Core",
+            "pages": [
+              "strikes/sdk/main",
+              "strikes/sdk/task",
+              "strikes/sdk/api"
+            ]
+          },
+          {
+            "group": "Data and Processing",
+            "pages": [
+              "strikes/sdk/data_types",
+              "strikes/sdk/serialization",
+              "strikes/sdk/artifact",
+              "strikes/sdk/transforms",
+              "strikes/sdk/optimization"
+            ]
+          },
+          {
+            "group": "Evaluation and Integrations",
+            "pages": [
+              "strikes/sdk/eval",
+              "strikes/sdk/metrics",
+              "strikes/sdk/scorers",
+              "strikes/sdk/integrations",
+              "strikes/sdk/airt"
+            ]
+          }
         ]
       }
     ]
