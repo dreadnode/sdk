@@ -1,7 +1,7 @@
 import numpy as np
 
 from dreadnode.data_types import Image
-from dreadnode.scorers.image import DistanceMethod
+from dreadnode.scorers.image import Norm
 from dreadnode.transforms.base import Transform
 
 
@@ -60,7 +60,7 @@ def shift_pixel_values(max_delta: int = 5, *, seed: int | None = None) -> Transf
 
 
 def interpolate_images(
-    alpha: float, *, distance_method: DistanceMethod = "l2"
+    alpha: float, *, distance_method: Norm = "l2"
 ) -> Transform[tuple[Image, Image], Image]:
     """
     Creates a transform that performs linear interpolation between two images.
@@ -81,7 +81,7 @@ def interpolate_images(
         images: tuple[Image, Image],
         *,
         alpha: float = alpha,
-        method: DistanceMethod = distance_method,
+        method: Norm = distance_method,
     ) -> Image:
         start_image, end_image = images
 

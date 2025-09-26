@@ -343,14 +343,13 @@ class Eval(Model, t.Generic[In, Out]):
 
                             scenario_result.iterations.append(iteration_result)
                             eval_result.scenarios.append(scenario_result)
-
-                            yield EvalEnd(
-                                eval=self,
-                                result=eval_result,
-                                stop_reason="max_errors_reached"
+                            eval_result.stop_reason = (
+                                "max_errors_reached"
                                 if max_errors_reached
-                                else "max_consecutive_errors_reached",
+                                else "max_consecutive_errors_reached"
                             )
+
+                            yield EvalEnd(eval=self, result=eval_result)
                             return
 
                     yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
@@ -359,7 +358,8 @@ class Eval(Model, t.Generic[In, Out]):
                 yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
 
-        yield EvalEnd(eval=self, result=eval_result, stop_reason="finished")
+        eval_result.stop_reason = "finished"
+        yield EvalEnd(eval=self, result=eval_result)
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:

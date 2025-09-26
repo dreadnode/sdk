@@ -19,11 +19,13 @@ StudyStopReason = t.Literal[
 @dataclass
 class StudyResult(t.Generic[CandidateT]):
     """
-    The final result of an optimization study, containing all trials and summary statistics.
+    The final result of an optimization study, containing all trials, probes, and summary statistics.
     """
 
     trials: list[Trial[CandidateT]] = field(default_factory=list)
     """A complete list of all trials generated during the study."""
+    probes: list[Trial[CandidateT]] = field(default_factory=list)
+    """A complete list of all probing trials generated during the study."""
     stop_reason: StudyStopReason = "unknown"
     """The reason the study concluded."""
     stop_explanation: str | None = None
@@ -34,6 +36,18 @@ class StudyResult(t.Generic[CandidateT]):
     def __post_init__(self) -> None:
         if finished_trials := [t for t in self.trials if t.status == "finished"]:
             self._best_trial = max(finished_trials, key=lambda t: (t.score, t.step))
+
+    def __repr__(self) -> str:
+        parts = [
+            f"trials={len(self.trials)}",
+            f"probes={len(self.probes)}",
+            f"stop_reason='{self.stop_reason}'",
+        ]
+        if self.stop_explanation:
+            parts.append(f"stop_explanation='{self.stop_explanation}'")
+        if self.best_trial:
+            parts.append(f"best_trial={self.best_trial.id}")
+        return f"{self.__class__.__name__}({', '.join(parts)})"
 
     @property
     def best_trial(self) -> Trial[CandidateT] | None:
@@ -78,17 +92,13 @@ class StudyResult(t.Generic[CandidateT]):
         return records
 
     def to_dataframe(self) -> "pd.DataFrame":
-        """Converts the results into a pandas DataFrame for analysis."""
+        """Converts the trials into a pandas DataFrame for analysis."""
         import pandas as pd
 
         return pd.DataFrame(self.to_dicts())
 
     def to_jsonl(self, path: str | Path) -> None:
-        """Saves the results to a JSON Lines (JSONL) file."""
+        """Saves the trials to a JSON Lines (JSONL) file."""
         records = self.to_dicts()
         with Path(path).open("w", encoding="utf-8") as f:
             f.writelines(json.dumps(record) + "\n" for record in records)
-
-    def __repr__(self) -> str:
-        best_score_str = f", best_score={self.best_trial.score:.3f}" if self.best_trial else ""
-        return f"StudyResult(trials={len(self.trials)}, stop_reason='{self.stop_reason}'{best_score_str})"

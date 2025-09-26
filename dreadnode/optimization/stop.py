@@ -47,7 +47,7 @@ def score_value(
     lte: float | None = None,
 ) -> StudyStopCondition:
     """
-    Terminates if a score value meets a given threshold.
+    Terminates if a trial score value meets a given threshold.
 
     - If `metric_name` is provided, it checks that specific objective score from trial.scores.
     - If `metric_name` is None (the default), it checks the primary, average `trial.score`.
@@ -89,7 +89,7 @@ def score_plateau(
     patience: int, *, min_delta: float = 0, metric_name: str | None = None
 ) -> StudyStopCondition:
     """
-    Stops the study if the best score does not improve over time.
+    Stops the study if the best trial score does not improve over time.
 
     If you are using multi-objective optimization, it is recommended to specify a `metric_name` to avoid ambiguity.
 
@@ -124,20 +124,6 @@ def score_plateau(
         return improvement < min_delta if min_delta > 0 else improvement > 0
 
     return StudyStopCondition(stop, name=f"plateau({metric_name or 'score'}, p={patience})")
-
-
-def total_trials(max_trials: int) -> StudyStopCondition:
-    """
-    Stops the study after a total number of trials have been processed.
-
-    Args:
-        max_trials: The maximum number of trials to run.
-    """
-
-    def stop(trials: list[Trial], max_trials: int = max_trials) -> bool:
-        return len(trials) >= max_trials
-
-    return StudyStopCondition(stop, name=f"total_trials({max_trials})")
 
 
 def pruned_ratio(ratio: float, min_trials: int = 10) -> StudyStopCondition:

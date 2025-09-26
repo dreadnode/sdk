@@ -11,8 +11,6 @@ if t.TYPE_CHECKING:
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
 
-EvalStopReason = t.Literal["finished", "max_errors_reached", "max_consecutive_errors_reached"]
-
 
 @dataclass
 class EvalEvent(t.Generic[In, Out]):
@@ -80,4 +78,3 @@ class EvalEnd(EvalEvent[In, Out]):
     """Signals the end of the entire evaluation, containing the final result."""
 
     result: "EvalResult[In, Out]"
-    stop_reason: EvalStopReason

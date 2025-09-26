@@ -51,7 +51,7 @@ class Image(DataType):
         self._caption = caption
 
         self._source_metadata = self._extract_source_metadata(data, format)
-        self._format = self._source_metadata.get("format", "png")
+        self._format = self._source_metadata.get("format", "png").replace("jpg", "jpeg")
         self._canonical_array, self._mode = self._load_and_convert(data, mode)
 
         # Caches for conversions
@@ -290,6 +290,22 @@ class Image(DataType):
     def mode(self) -> str:
         """Get the image mode (L, RGB, RGBA, etc.)."""
         return self._mode
+
+    def resize(self, height: int, width: int, *, resample: int | None = None) -> "Image":
+        """
+        Resize the image to the specified size.
+
+        Args:
+            height: The desired height of the image.
+            width: The desired width of the image.
+            resample: Resampling filter to use (see PIL.Image for options).
+
+        Returns:
+            New Image object with resized image
+        """
+        pil_img = self.to_pil()
+        resized_pil = pil_img.resize((width, height), resample=resample)
+        return Image(resized_pil, mode=self._mode, caption=self._caption, format=self._format)
 
     def to_numpy(self, dtype: t.Any = np.float32) -> "np.ndarray[t.Any, t.Any]":
         """

@@ -178,8 +178,9 @@ The step value to attach to metrics produced by this Scorer.
 
 ```python
 adapt(
-    type: type[OuterT],
     adapt: Callable[[OuterT], T],
+    type: type[OuterT] = t.Any,
+    *,
     name: str | None = None,
 ) -> Scorer[OuterT]
 ```
@@ -192,12 +193,14 @@ Pydantic model containing that string).
 
 **Parameters:**
 
-* **`type`**
-  (`type[OuterT]`)
-  –The type to adapt the scorer to (used for type hinting - particularly with lambdas)
 * **`adapt`**
   (`Callable[[OuterT], T]`)
-  –A function to extract the `T` from the `OuterT`.
+  –A function to convert from some outer type to the scorer's expected type.
+* **`type`**
+  (`type[OuterT]`, default:
+  `Any`
+  )
+  –The outer type which is being adapted (used for type hinting - particularly with lambdas)
 * **`name`**
   (`str | None`, default:
   `None`
@@ -213,8 +216,9 @@ Pydantic model containing that string).
 ```python
 def adapt(
     self: "Scorer[T]",
-    type: type[OuterT],  # noqa: ARG002
     adapt: t.Callable[[OuterT], T],
+    type: type[OuterT] = t.Any,  # type: ignore[assignment] # noqa: ARG002
+    *,
     name: str | None = None,
 ) -> "Scorer[OuterT]":
     """
@@ -225,8 +229,8 @@ def adapt(
     Pydantic model containing that string).
 
     Args:
-        type: The type to adapt the scorer to (used for type hinting - particularly with lambdas)
-        adapt: A function to extract the `T` from the `OuterT`.
+        adapt: A function to convert from some outer type to the scorer's expected type.
+        type: The outer type which is being adapted (used for type hinting - particularly with lambdas)
         name: An optional new name for the adapted scorer.
 
     Returns:
@@ -2982,24 +2986,25 @@ image\_distance
 ```python
 image_distance(
     reference: Image,
-    method: DistanceMethod = "l2",
+    norm: Norm = "l2",
     *,
-    normalize: bool = True,
+    normalize: bool = False,
 ) -> Scorer[Image]
 ```
 
 Calculates the distance between a candidate image and a reference image
 using a specified metric.
 
-By default, the distance is normalized to a [0, 1] range.
+Optionally you can normalize the distance to a [0, 1] range based on
+the shape of the image (assumes the images are in [0, 1] range).
 
 **Parameters:**
 
 * **`reference`**
   (`Image`)
   –The reference image to compare against.
-* **`method`**
-  (`DistanceMethod`, default:
+* **`norm`**
+  (`Norm`, default:
   `'l2'`
   )
   –The distance metric to use. Options are:
@@ -3009,7 +3014,7 @@ By default, the distance is normalized to a [0, 1] range.
   - 'linf' or 'chebyshev': Maximum absolute difference (Chebyshev distance).
 * **`normalize`**
   (`bool`, default:
-  `True`
+  `False`
   )
   –If True, normalizes the distance to a [0, 1] range.
 
@@ -3017,19 +3022,20 @@ By default, the distance is normalized to a [0, 1] range.
 ```python
 def image_distance(
     reference: Image,
-    method: DistanceMethod = "l2",
+    norm: Norm = "l2",
     *,
-    normalize: bool = True,
+    normalize: bool = False,
 ) -> Scorer[Image]:
     """
     Calculates the distance between a candidate image and a reference image
     using a specified metric.
 
-    By default, the distance is normalized to a [0, 1] range.
+    Optionally you can normalize the distance to a [0, 1] range based on
+    the shape of the image (assumes the images are in [0, 1] range).
 
     Args:
         reference: The reference image to compare against.
-        method: The distance metric to use. Options are:
+        norm: The distance metric to use. Options are:
             - 'l0' or 'hamming': Counts the number of differing pixels.
             - 'l1' or 'manhattan': Sum of absolute differences (Manhattan distance).
             - 'l2' or 'euclidean': Euclidean distance.
@@ -3041,7 +3047,7 @@ def image_distance(
         data: Image,
         *,
         reference: Image = reference,
-        method: DistanceMethod = method,
+        method: Norm = norm,
         normalize: bool = normalize,
     ) -> Metric:
         if not isinstance(data, Image):
@@ -3089,7 +3095,7 @@ def image_distance(
 
         return Metric(value=distance, attributes={"method": method, "normalized": normalize})
 
-    return Scorer(evaluate, name=f"{method}_distance")
+    return Scorer(evaluate, name=f"{norm}_distance")
 ```
 
 
@@ -3099,7 +3105,10 @@ json\_path
 
 ```python
 json_path(
-    expression: str, *, default: float | None = None
+    expression: str,
+    *,
+    default: float | None = None,
+    name: str = "json_path",
 ) -> Scorer[t.Any]
 ```
 
@@ -3121,7 +3130,9 @@ See: https://jg-rp.github.io/python-jsonpath/syntax/
 
 <Accordion title="Source code in dreadnode/scorers/json.py" icon="code">
 ```python
-def json_path(expression: str, *, default: float | None = None) -> Scorer[t.Any]:
+def json_path(
+    expression: str, *, default: float | None = None, name: str = "json_path"
+) -> Scorer[t.Any]:
     """
     Extracts a numeric value from a JSON-like object (dict/list) using a JSONPath query.
 
@@ -3154,7 +3165,7 @@ def json_path(expression: str, *, default: float | None = None) -> Scorer[t.Any]
                 value=default, attributes={"path_found": True, "error": "Value not numeric"}
             )
 
-    return Scorer(evaluate, name="json_path")
+    return Scorer(evaluate, name=name)
 ```
 
 

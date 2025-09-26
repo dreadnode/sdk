@@ -28,7 +28,7 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     """
     The primary, single-value fitness score for this trial.
     This is an average of all objective scores for this trial adjusted
-    based on their directions (higher is better).
+    based on their objective directions (higher is better).
     """
     scores: dict[str, float] = {}
     """A dictionary of all named objective scores for this trial."""
@@ -37,20 +37,25 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     A dictionary of all named objective scores adjusted
     for their optimization direction (higher is better).
 
-    Typically this is used internally to sort trials for
-    sampling and selection.
+    Typically this is used by search strategies and
+    related components to sort trials for sampling and selection.
     """
 
     eval_result: EvalResult | None = None
-    """Complete evaluation result if the candidate was assessable by the evaluation engine."""
+    """Complete evaluation result of the trial and associated dataset."""
     pruning_reason: str | None = None
     """Reason for pruning this trial, if applicable."""
     error: str | None = None
     """Any error which occurred while processing this trial."""
-    step: int = Field(default=0, init=False)
+    step: int = Field(default=0)
     """The optimization step which produced this trial."""
     parent_id: ULID | None = None
-    """The id of the parent trial, used to reconstruct the search graph."""
+    """The id of the parent trial, as defined by the search strategy."""
+
+    is_probe: bool = False
+    """Whether this trial is a probe used for intermediate evaluation."""
+    dataset: list[t.Any] | None = None
+    """The specific dataset used for probing."""
 
     _future: "asyncio.Future[Trial[CandidateT]]" = PrivateAttr(
         default_factory=lambda: asyncio.get_running_loop().create_future()
@@ -60,10 +65,22 @@ class Trial(BaseModel, t.Generic[CandidateT]):
         parts = [
             f"id={self.id}",
             f"status='{self.status}'",
-            f"score={self.score:.3f}",
-            f"scores={{{', '.join(f'{k}={v:.3f}' for k, v in self.scores.items())}}}",
+            f"step={self.step}",
         ]
+        if self.is_probe:
+            parts.append("probe=True")
+        if self.dataset is not None:
+            parts.append(f"dataset_size={len(self.dataset)}")
+        parts.extend(
+            [
+                f"score={self.score:.5f}",
+                f"scores={{{', '.join(f'{k}={v:.5f}' for k, v in self.scores.items())}}}",
+            ]
+        )
         return f"{self.__class__.__name__}({', '.join(parts)})"
+
+    def __str__(self) -> str:
+        return self.__repr__()
 
     def __await__(self) -> t.Generator[t.Any, None, "Trial[CandidateT]"]:
         """
@@ -74,6 +91,25 @@ class Trial(BaseModel, t.Generic[CandidateT]):
     def done(self) -> bool:
         """A non-blocking check to see if the trial's evaluation is complete."""
         return self._future.done()
+
+    def as_probe(self, *, dataset: list[t.Any] | None = None) -> "Trial[CandidateT]":
+        """
+        Ensure this trial is marked as a probe for intermediate evaluation and optional dataset override.
+
+        Args:
+            dataset: An optional dataset to use specifically for this trial during probing.
+        """
+        self.is_probe = True
+        self.dataset = dataset
+        return self
+
+    def as_trial(self) -> "Trial[CandidateT]":
+        """
+        Ensure this trial is marked as a full trial, not a probe, triggering a full evaluation.
+        """
+        self.is_probe = False
+        self.dataset = None
+        return self
 
     @staticmethod
     async def wait_for(*trials: "Trial[CandidateT]") -> "list[Trial[CandidateT]]":
@@ -124,6 +160,28 @@ class Trial(BaseModel, t.Generic[CandidateT]):
             name: summary.get("mean", -float("inf"))
             for name, summary in self.eval_result.metrics_summary.items()
         }
+
+    @property
+    def score_breakdown(self) -> dict[str, list[float]]:
+        """
+        Returns a breakdown of all objective scores across all samples in the evaluation result.
+
+        Returns:
+            A dictionary where keys are objective names and values are lists of scores,
+            with each score corresponding to a sample from the evaluation dataset.
+        """
+        if not self.eval_result or not self.eval_result.samples:
+            return {}
+
+        return {k: v for k, v in self.eval_result.metrics.items() if k in self.scores}
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cost(self) -> int:
+        """Get the cost of the trial, defined as the number of samples evaluated."""
+        if self.eval_result:
+            return len(self.eval_result.samples)
+        return 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property

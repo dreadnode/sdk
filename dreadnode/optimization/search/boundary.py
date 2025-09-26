@@ -32,11 +32,18 @@ def boundary_search(
         decision_threshold: The threshold value for the decision objective.
     """
 
-    async def search(context: OptimizationContext) -> t.AsyncGenerator[Trial[CandidateT], None]:
+    async def search(
+        context: OptimizationContext,
+    ) -> t.AsyncGenerator[Trial[CandidateT], None]:
         def is_successful(trial: Trial) -> bool:
             return trial.get_directional_score(decision_objective) > decision_threshold
 
-        logger.info("Starting boundary search")
+        logger.info(
+            f"Starting boundary search: "
+            f"tolerance={tolerance:.5f}, "
+            f"decision_objective='{decision_objective}', "
+            f"decision_threshold={decision_threshold:.5f}"
+        )
 
         if decision_objective and decision_objective not in context.objective_names:
             raise ValueError(
@@ -45,6 +52,7 @@ def boundary_search(
 
         start_trial = Trial(candidate=start)
         end_trial = Trial(candidate=end)
+
         yield start_trial
         yield end_trial
 
@@ -60,33 +68,38 @@ def boundary_search(
                 f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
             )
 
-        # TODO(nick): When tolerance is met immediately, it can be confusing that
-        # the attack just returns as search_exhausted. Maybe we add some kind of log
-        # reason to be put in the Trial?
-
         lower_bound_alpha = 0.0
         upper_bound_alpha = 1.0
         interpolate_transform = Transform(interpolate)
 
         adversarial_candidate = end
+        iteration = 0
 
         while (upper_bound_alpha - lower_bound_alpha) > tolerance:
+            iteration += 1
             midpoint_alpha = (lower_bound_alpha + upper_bound_alpha) / 2.0
-            midpoint_candidate = await interpolate_transform((start, end, midpoint_alpha))
 
             logger.info(
-                f"Boundary search iteration: lower={lower_bound_alpha:.4f}, upper={upper_bound_alpha:.4f}, midpoint={midpoint_alpha:.4f}"
+                f"[{iteration}] Interpolate: "
+                f"lower={lower_bound_alpha:.5f}, "
+                f"upper={upper_bound_alpha:.5f}, "
+                f"midpoint={midpoint_alpha:.5f}"
             )
 
-            midpoint_trial = Trial(candidate=midpoint_candidate)
-            yield midpoint_trial
-            await midpoint_trial
+            candidate = await interpolate_transform((start, end, midpoint_alpha))
+            trial = Trial(candidate=candidate)
+            yield trial
+            await trial
 
-            if is_successful(midpoint_trial):
+            if is_successful(trial):
                 upper_bound_alpha = midpoint_alpha
-                adversarial_candidate = midpoint_trial.candidate
+                adversarial_candidate = trial.candidate
             else:
                 lower_bound_alpha = midpoint_alpha
+
+        logger.info(
+            f"Boundary found within {tolerance:.5f} after {iteration} iterations: alpha={upper_bound_alpha:.5f}"
+        )
 
         yield Trial(candidate=adversarial_candidate)
 

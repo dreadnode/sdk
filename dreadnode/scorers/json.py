@@ -6,7 +6,9 @@ from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 
 
-def json_path(expression: str, *, default: float | None = None) -> Scorer[t.Any]:
+def json_path(
+    expression: str, *, default: float | None = None, name: str = "json_path"
+) -> Scorer[t.Any]:
     """
     Extracts a numeric value from a JSON-like object (dict/list) using a JSONPath query.
 
@@ -39,4 +41,4 @@ def json_path(expression: str, *, default: float | None = None) -> Scorer[t.Any]
                 value=default, attributes={"path_found": True, "error": "Value not numeric"}
             )
 
-    return Scorer(evaluate, name="json_path")
+    return Scorer(evaluate, name=name)

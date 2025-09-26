@@ -15,7 +15,7 @@ from dreadnode.util import get_callable_name, warn_at_user_stacklevel
 T = t.TypeVar("T")
 T_contra = t.TypeVar("T_contra", contravariant=True)
 
-OuterT = t.TypeVar("OuterT")
+OuterT = te.TypeVar("OuterT", default=t.Any)
 UnusedP = te.ParamSpec("UnusedP", default=...)
 
 
@@ -238,8 +238,9 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
 
     def adapt(
         self: "Scorer[T]",
-        type: type[OuterT],  # noqa: ARG002
         adapt: t.Callable[[OuterT], T],
+        type: type[OuterT] = t.Any,  # type: ignore[assignment] # noqa: ARG002
+        *,
         name: str | None = None,
     ) -> "Scorer[OuterT]":
         """
@@ -250,8 +251,8 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
         Pydantic model containing that string).
 
         Args:
-            type: The type to adapt the scorer to (used for type hinting - particularly with lambdas)
-            adapt: A function to extract the `T` from the `OuterT`.
+            adapt: A function to convert from some outer type to the scorer's expected type.
+            type: The outer type which is being adapted (used for type hinting - particularly with lambdas)
             name: An optional new name for the adapted scorer.
 
         Returns:

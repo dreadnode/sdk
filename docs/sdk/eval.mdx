@@ -235,11 +235,7 @@ EvalEnd
 -------
 
 ```python
-EvalEnd(
-    eval: Eval[In, Out],
-    result: EvalResult[In, Out],
-    stop_reason: EvalStopReason,
-)
+EvalEnd(eval: Eval[In, Out], result: EvalResult[In, Out])
 ```
 
 Signals the end of the entire evaluation, containing the final result.
@@ -349,6 +345,7 @@ EvalResult
 ```python
 EvalResult(
     scenarios: list[ScenarioResult[In, Out]] = list(),
+    stop_reason: EvalStopReason | None = None,
 )
 ```
 
@@ -371,6 +368,14 @@ scenarios: list[ScenarioResult[In, Out]] = field(
 ```
 
 A list of results, one for each scenario in the evaluation.
+
+### stop\_reason
+
+```python
+stop_reason: EvalStopReason | None = None
+```
+
+The reason the evaluation stopped.
 
 EvalResultMixin
 ---------------
@@ -407,6 +412,23 @@ failed_samples: list[Sample[In, Out]]
 ```
 
 A list of all samples that failed at least one assertion.
+
+### metrics
+
+```python
+metrics: dict[str, list[float]]
+```
+
+Returns a breakdown of all metric values across all samples.
+
+**Returns:**
+
+* `dict[str, list[float]]`
+  –A dictionary where keys are metric names and values are lists of
+* `dict[str, list[float]]`
+  –metric values, with each value corresponding to a sample from the
+* `dict[str, list[float]]`
+  –evaluation dataset.
 
 ### metrics\_summary
 
