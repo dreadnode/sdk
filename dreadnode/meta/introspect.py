@@ -3,6 +3,7 @@ import inspect
 import typing as t
 
 import jsonref  # type: ignore[import-untyped]
+import yaml
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, Field, create_model
 from pydantic_core import PydanticUndefined
@@ -72,7 +73,7 @@ def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBa
             if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
                 continue
 
-            field_kwargs = {"description": "-", **param_info.field_kwargs, "default": default}
+            field_kwargs = {"description": "", **param_info.field_kwargs, "default": default}
             field_kwargs.pop("default_factory", None)
             fields[field_name] = (field_type, Field(**field_kwargs))
 
@@ -109,7 +110,7 @@ def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBa
             if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
                 continue
 
-            field_kwargs = {"description": "-", **param_info.field_kwargs, "default": default}
+            field_kwargs = {"description": "", **param_info.field_kwargs, "default": default}
             fields[param_name] = (field_type, Field(**field_kwargs))
 
         for attr_name, attr_info in blueprint.__dn_attr_config__.items():
@@ -121,6 +122,9 @@ def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBa
             obj = getattr(blueprint, attr_name)
             field_type, default = _resolve_type_and_default(obj, t.Any, name=attr_name)
             field_type = attr_info.expose_as or field_type
+
+            if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
+                continue
 
             field_kwargs = {**attr_info.field_kwargs, "default": default}
             field_kwargs.pop("default_factory", None)
@@ -310,3 +314,62 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
             obj_default = obj_type()
 
     return obj_type, obj_default
+
+
+# Config formatting
+
+
+def generate_config_yaml(blueprint: t.Any, *, comments: bool = True) -> str:
+    """
+    Generates a configuration file example from a blueprint object
+    by interpreting its JSON schema.
+
+    Args:
+        blueprint: The component, agent, eval, or task to generate a config for.
+        comments: Whether to include comments in the generated YAML.
+
+    Returns:
+        A string containing the configuration example.
+    """
+    schema = get_model_schema(get_config_model(blueprint))
+
+    properties = schema.get("properties")
+    if not properties:
+        return "# This object has no configurable parameters."
+
+    return _generate_config_yaml(properties, comments=comments)
+
+
+def _generate_config_yaml(properties: AnyDict, indent: int = 0, *, comments: bool = False) -> str:
+    output = []
+    indent_str = "  " * indent
+
+    for name, prop_schema in properties.items():
+        if comments:
+            comment_parts = []
+            if "description" in prop_schema:
+                comment_parts.append(prop_schema["description"])
+            if "enum" in prop_schema:
+                comment_parts.append(f"({', '.join(map(str, prop_schema['enum']))})")
+
+            comment = ", ".join(comment_parts) if comment_parts else ""
+            if comment:
+                output.append(f"{indent_str}# {comment}")
+
+        default_value = prop_schema.get("default")
+
+        if prop_schema.get("type") == "object" and "properties" in prop_schema:
+            output.append(f"{indent_str}{name}:")
+            output.append(
+                _generate_config_yaml(
+                    prop_schema["properties"], indent=indent + 1, comments=comments
+                )
+            )
+        else:
+            value_str = yaml.dump({name: default_value}, sort_keys=False).strip().split(": ", 1)[1]
+            output.append(f"{indent_str}{name}: {value_str}")
+
+        if indent == 0:
+            output.append("")
+
+    return "\n".join(output)

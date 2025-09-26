@@ -688,14 +688,15 @@ dependencies = [
     { name = "cyclopts" },
     { name = "fsspec", extra = ["s3"] },
     { name = "httpx" },
-    { name = "jsonpath" },
     { name = "logfire" },
     { name = "loguru" },
     { name = "numpy" },
     { name = "optuna" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "python-jsonpath" },
     { name = "python-ulid" },
+    { name = "pyyaml" },
     { name = "rigging" },
     { name = "universal-pathlib" },
 ]
@@ -770,7 +771,6 @@ requires-dist = [
     { name = "dreadnode", extras = ["training", "multimodal", "scoring"], marker = "extra == 'all'" },
     { name = "fsspec", extras = ["s3"], specifier = ">=2023.1.0,<=2025.3.0" },
     { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
-    { name = "jsonpath", specifier = ">=0.82.2" },
     { name = "logfire", specifier = ">=3.5.3,<=3.20.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "moviepy", marker = "extra == 'multimodal'", specifier = ">=2.1.2,<3.0.0" },
@@ -782,7 +782,9 @@ requires-dist = [
     { name = "presidio-analyzer", marker = "extra == 'scoring'", specifier = ">=2.2.359,<3.0.0" },
     { name = "pyarrow", marker = "extra == 'training'", specifier = ">=19.0.1,<20.0.0" },
     { name = "pydantic", specifier = ">=2.9.2,<3.0.0" },
+    { name = "python-jsonpath", specifier = ">=2.0.1" },
     { name = "python-ulid", specifier = ">=3.0.0,<4.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rapidfuzz", marker = "extra == 'scoring'", specifier = ">=3.14.1" },
     { name = "rigging", specifier = ">=3.2.1,<4.0.0" },
     { name = "scikit-learn", marker = "extra == 'scoring'", specifier = ">=1.7.1,<2.0.0" },
@@ -1409,12 +1411,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/e8/5d/447af5ea094b9e4c4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/e8/685f47e0d754320684db4425a0967f7d3fa70126bffd76110b7009a0090f/joblib-1.5.2-py3-none-any.whl", hash = "sha256:4e1f0bdbb987e6d843c70cf43714cb276623def372df3c22fe5266b2670bc241", size = 308396 },
 ]
-
-[[package]]
-name = "jsonpath"
-version = "0.82.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cf/a1/693351acd0a9edca4de9153372a65e75398898ea7f8a5c722ab00f464929/jsonpath-0.82.2.tar.gz", hash = "sha256:d87ef2bcbcded68ee96bc34c1809b69457ecec9b0c4dd471658a12bd391002d1", size = 10353 }
 
 [[package]]
 name = "jsonpath-ng"
@@ -3202,6 +3198,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f6/b0/4bc07ccd3572a2f9df7e6782f52b0c6c90dcbb803ac4a167702d7d0dfe1e/python_dotenv-1.1.1.tar.gz", hash = "sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab", size = 41978 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/ed/539768cf28c661b5b068d66d96a2f155c4971a5d55684a514c1a0e0dec2f/python_dotenv-1.1.1-py3-none-any.whl", hash = "sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc", size = 20556 },
+]
+
+[[package]]
+name = "python-jsonpath"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/db/f1f19205b0df6eb0195de154dc6c967448802dfb573487fa8a4206a243cd/python_jsonpath-2.0.1.tar.gz", hash = "sha256:32a84ebb2dc0ec1b42a6e165b0f9174aef8310bad29154ad9aee31ac37cca18f", size = 49659 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/d4/64d7cdc01269f5fed45e6a69f5395c30451958c299ca5cbc1442a4f3f9b9/python_jsonpath-2.0.1-py3-none-any.whl", hash = "sha256:ebd518b7c883acc5b976518d76b6c96288405edec7d9ef838641869c1e1a5eb7", size = 64060 },
 ]
 
 [[package]]

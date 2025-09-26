@@ -9,6 +9,7 @@ import rich
 
 from dreadnode.cli.shared import DreadnodeConfig
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
+from dreadnode.logging_ import console as logging_console
 from dreadnode.meta import get_config_model, hydrate
 from dreadnode.meta.introspect import flatten_model
 
@@ -35,7 +36,7 @@ def show(
     discovered = discover(Eval, file)
     if not discovered:
         path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
-        rich.print(f"No evals found in {path_hint}")
+        rich.print(f"No evals found in {path_hint}.")
         return
 
     grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
@@ -86,7 +87,7 @@ async def run(  # noqa: PLR0912, PLR0915
 
     discovered = discover(Eval, file_path)
     if not discovered:
-        rich.print(f":exclamation: No evals found in '{path_hint}'.")
+        rich.print(f":exclamation: No evals found in {path_hint}.")
         return
 
     evals_by_name = {d.obj.name: d.obj for d in discovered}
@@ -99,7 +100,7 @@ async def run(  # noqa: PLR0912, PLR0915
         eval_name = next(iter(evals_by_name.keys()))
 
     if eval_name.lower() not in evals_by_lower_name:
-        rich.print(f":exclamation: Eval '{eval_name}' not found in '{path_hint}'.")
+        rich.print(f":exclamation: Eval '{eval_name}' not found in {path_hint}.")
         rich.print(f"Available evals are: {', '.join(evals_by_name.keys())}")
         return
 
@@ -116,6 +117,7 @@ async def run(  # noqa: PLR0912, PLR0915
     async def eval_cli(
         *,
         config: t.Any = config_default,
+        dreadnode_config: DreadnodeConfig | None = dreadnode_config,
     ) -> None:
         (dreadnode_config or DreadnodeConfig()).apply()
 
@@ -137,6 +139,7 @@ async def run(  # noqa: PLR0912, PLR0915
         help_on_error=True,
         help_flags=("help"),
         version_flags=(),
+        console=logging_console,
     )
     eval_app.default(eval_cli)
 

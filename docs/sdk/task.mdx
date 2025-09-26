@@ -25,6 +25,7 @@ Task(
     log_execution_metrics: bool = False,
     tags: Sequence[str] | None = None,
     attributes: AnyDict | None = None,
+    entrypoint: bool = False,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
 )
@@ -50,6 +51,7 @@ def __init__(
     log_execution_metrics: bool = False,
     tags: t.Sequence[str] | None = None,
     attributes: AnyDict | None = None,
+    entrypoint: bool = False,
     config: dict[str, ConfigInfo] | None = None,
     context: dict[str, Context] | None = None,
 ) -> None:
@@ -74,7 +76,7 @@ def __init__(
             ),
         )
 
-    super().__init__(func, name=name, config=config, context=context)
+    super().__init__(func, name=name, config=config, context=context, convert_all=entrypoint)
 
     self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
 
@@ -101,6 +103,12 @@ def __init__(
     "Log the result of the function as an output."
     self.log_execution_metrics = log_execution_metrics
     "Track execution metrics such as success rate and run count."
+    self.entrypoint = entrypoint
+    """
+    Indicate this task should be considered an entrypoint. All compatible arguments
+    will be treated as configurable and a run will be created automatically when called if
+    one is not already active.
+    """
 
     for assertion in self.assert_scores or []:
         if assertion not in scorer_names:
@@ -131,6 +139,16 @@ attributes = attributes
 ```
 
 A dictionary of attributes to attach to the task span.
+
+### entrypoint
+
+```python
+entrypoint = entrypoint
+```
+
+Indicate this task should be considered an entrypoint. All compatible arguments
+will be treated as configurable and a run will be created automatically when called if
+one is not already active.
 
 ### label
 
@@ -560,7 +578,7 @@ Note, if the task fails, the span will still be returned with the exception set.
 
 <Accordion title="Source code in dreadnode/task.py" icon="code">
 ```python
-async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
+async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:  # noqa: PLR0912
     """
     Execute the task and return the result as a TaskSpan.
 
@@ -573,9 +591,25 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
     Returns:
         The span associated with task execution.
     """
+    from dreadnode import run as run_span
     from dreadnode import score
 
-    run = current_run_span.get()
+    current_run = current_run_span.get()
+    create_run = current_run is None and self.entrypoint
+    run = (
+        current_run or run_span(name_prefix=self.name, tags=self.tags, _tracer=self._tracer)
+        if self.entrypoint
+        else None
+    )
+    task = TaskSpan[R](
+        name=self.name,
+        label=self.label,
+        attributes=self.attributes,
+        tags=self.tags,
+        run_id=run.run_id if run else "",
+        tracer=self._tracer,
+        arguments=Arguments(args, kwargs),
+    )
 
     log_inputs = (
         (run.autolog if run else False)
@@ -590,103 +624,105 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:
 
     ctx_inputs_to_log = t.cast("AnyDict", kwargs.pop("__dn_ctx_inputs__", {}))
 
-    task_span = TaskSpan[R](
-        name=self.name,
-        label=self.label,
-        attributes=self.attributes,
-        tags=self.tags,
-        run_id=run.run_id if run else "",
-        tracer=self._tracer,
-        arguments=Arguments(args, kwargs),
-    )
+    with run if run and create_run else contextlib.nullcontext():
+        with contextlib.suppress(Exception), task:
+            bound_args = self._bind_args(*args, **kwargs)
+            bound_args_dict = dict(bound_args.arguments)
 
-    with contextlib.suppress(Exception), task_span as span:
-        bound_args = self._bind_args(*args, **kwargs)
-        bound_args_dict = dict(bound_args.arguments)
+            inputs_to_log = (
+                bound_args_dict
+                if log_inputs is True
+                else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
+                if log_inputs is not False
+                else {}
+            )
 
-        inputs_to_log = (
-            bound_args_dict
-            if log_inputs is True
-            else {k: v for k, v in bound_args_dict.items() if k in log_inputs}
-            if log_inputs is not False
-            else {}
-        )
+            # If log_inputs is inherited, filter out items that don't seem useful
+            # to serialize like `None` or repr fallbacks.
+            if isinstance(self.log_inputs, Inherited):
+                inputs_to_log = {
+                    k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)
+                }
 
-        # If log_inputs is inherited, filter out items that don't seem useful
-        # to serialize like `None` or repr fallbacks.
-        if isinstance(self.log_inputs, Inherited):
-            inputs_to_log = {
-                k: v for k, v in inputs_to_log.items() if seems_useful_to_serialize(v)
-            }
+            if run and self.log_execution_metrics:
+                run.log_metric(
+                    "count",
+                    1,
+                    prefix=f"{self.label}.exec",
+                    mode="count",
+                    attributes={"auto": True},
+                )
+
+            input_object_hashes: list[str] = []
+            for name, value in inputs_to_log.items():
+                input_object_hashes.append(
+                    task.log_input(name, value, attributes={"auto": True})
+                )
+
+                if run is None or not create_run:
+                    continue
+
+                if isinstance(value, int | float | str | bool | None):
+                    run.log_param(name, value)
+                else:
+                    run.log_input(name, value, attributes={"auto": True})
+
+            for name, value in ctx_inputs_to_log.items():
+                task.log_input(
+                    name,
+                    value,
+                    attributes={"auto": True, "ctx": True},
+                )
+
+            output = t.cast(
+                "R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs)
+            )
+            if inspect.isawaitable(output):
+                output = await output
+
+            task.output = output
+
+            # Log the output
+
+            if (
+                run
+                and log_output
+                and (
+                    not isinstance(self.log_inputs, Inherited)
+                    or seems_useful_to_serialize(output)
+                )
+            ):
+                output_object_hash = task.log_output(
+                    "output",
+                    output,
+                    attributes={"auto": True},
+                )
+
+                # Link the output to the inputs
+                for input_object_hash in input_object_hashes:
+                    run.link_objects(output_object_hash, input_object_hash)
+
+                if create_run:
+                    run.log_output("output", output, attributes={"auto": True})
+
+            # Score and check assertions
+
+            await score(output, self.scorers, assert_scores=self.assert_scores)
 
         if run and self.log_execution_metrics:
             run.log_metric(
-                "count",
-                1,
+                "success_rate",
+                0 if task.exception else 1,
                 prefix=f"{self.label}.exec",
-                mode="count",
+                mode="avg",
                 attributes={"auto": True},
             )
 
-        input_object_hashes: list[str] = [
-            span.log_input(
-                name,
-                value,
-                attributes={"auto": True},
-            )
-            for name, value in inputs_to_log.items()
-        ]
+        # Trigger a run update whenever a task completes
+        if run is not None and not create_run:
+            run.push_update()
 
-        for name, value in ctx_inputs_to_log.items():
-            span.log_input(
-                name,
-                value,
-                attributes={"auto": True, "ctx": True},
-            )
-
-        output = t.cast("R | t.Awaitable[R]", self.func(*bound_args.args, **bound_args.kwargs))
-        if inspect.isawaitable(output):
-            output = await output
-
-        span.output = output
-
-        # Log the output
-
-        if (
-            run
-            and log_output
-            and (
-                not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
-            )
-        ):
-            output_object_hash = span.log_output(
-                "output",
-                output,
-                attributes={"auto": True},
-            )
-
-            # Link the output to the inputs
-            for input_object_hash in input_object_hashes:
-                run.link_objects(output_object_hash, input_object_hash)
-
-        # Score and check assertions
-
-        await score(output, self.scorers, assert_scores=self.assert_scores)
-
-    if run and self.log_execution_metrics:
-        run.log_metric(
-            "success_rate",
-            0 if span.exception else 1,
-            prefix=f"{self.label}.exec",
-            mode="avg",
-            attributes={"auto": True},
-        )
-
-    # Trigger a run update whenever a task completes
-    if run is not None:
-        run.push_update()
-
-    return span
+    return task
 ```
 
 
@@ -1004,6 +1040,7 @@ with_(
     log_execution_metrics: bool | None = None,
     append: bool = False,
     attributes: AnyDict | None = None,
+    entrypoint: bool = False,
 ) -> Task[P, R]
 ```
 
@@ -1061,6 +1098,13 @@ Clone a task and modify its attributes.
   `None`
   )
   –Additional attributes to set or update in the task.
+* **`entrypoint`**
+  (`bool`, default:
+  `False`
+  )
+  –Indicate this task should be considered an entrypoint. All compatible arguments
+  will be treated as configurable and a run will be created automatically when called if
+  one is not already active.
 
 **Returns:**
 
@@ -1082,6 +1126,7 @@ def with_(
     log_execution_metrics: bool | None = None,
     append: bool = False,
     attributes: AnyDict | None = None,
+    entrypoint: bool = False,
 ) -> "Task[P, R]":
     """
     Clone a task and modify its attributes.
@@ -1097,6 +1142,9 @@ def with_(
         log_execution_metrics: Log execution metrics such as success rate and run count.
         append: If True, appends the new scorers and tags to the existing ones. If False, replaces them.
         attributes: Additional attributes to set or update in the task.
+        entrypoint: Indicate this task should be considered an entrypoint. All compatible arguments
+            will be treated as configurable and a run will be created automatically when called if
+            one is not already active.
 
     Returns:
         A new Task instance with the modified attributes.
@@ -1117,6 +1165,7 @@ def with_(
         if log_execution_metrics is not None
         else task.log_execution_metrics
     )
+    task.entrypoint = entrypoint
 
     new_scorers = Scorer.fit_many(scorers or [])
     new_tags = list(tags or [])
@@ -1134,6 +1183,8 @@ def with_(
         task.tags = new_tags
         task.assert_scores = new_assert_scores
         task.attributes = attributes or {}
+
+    task.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": task.scorers})
 
     return task
 ```

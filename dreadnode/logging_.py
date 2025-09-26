@@ -5,35 +5,30 @@ To just enable dreadnode logs to flow, call `logger.enable("dreadnode")` after i
 """
 
 import pathlib
-import sys
 import typing as t
 
 from loguru import logger
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.theme import Theme
 
-if t.TYPE_CHECKING:
-    from loguru import Record as LogRecord
-
-g_configured: bool = False
-
-LogLevelList = ["trace", "debug", "info", "success", "warning", "error", "critical"]
-LogLevelLiteral = t.Literal["trace", "debug", "info", "success", "warning", "error", "critical"]
+LogLevel = t.Literal["trace", "debug", "info", "success", "warning", "error", "critical"]
 """Valid logging levels."""
 
-
-def log_formatter(record: "LogRecord") -> str:
-    return "".join(
-        (
-            "<green>{time:HH:mm:ss.SSS}</green> | ",
-            "<dim>{extra[prefix]}</dim> " if record["extra"].get("prefix") else "",
-            "<level>{message}</level>\n",
-        )
-    )
+console = Console(
+    theme=Theme(  # rich doesn't include default colors for these
+        {
+            "logging.level.success": "green",
+            "logging.level.trace": "dim blue",
+        }
+    ),
+)
 
 
 def configure_logging(
-    log_level: LogLevelLiteral = "info",
+    log_level: LogLevel = "info",
     log_file: pathlib.Path | None = None,
-    log_file_level: LogLevelLiteral = "debug",
+    log_file_level: LogLevel = "debug",
 ) -> None:
     """
     Configures common loguru handlers.
@@ -44,26 +39,15 @@ def configure_logging(
             will only be done to the console.
         log_file_level: The log level for the log file.
     """
-    global g_configured  # noqa: PLW0603
-
-    if g_configured:
-        return
-
     logger.enable("dreadnode")
 
-    logger.level("TRACE", color="<magenta>", icon="[T]")
-    logger.level("DEBUG", color="<blue>", icon="[_]")
-    logger.level("INFO", color="<cyan>", icon="[=]")
-    logger.level("SUCCESS", color="<green>", icon="[+]")
-    logger.level("WARNING", color="<yellow>", icon="[-]")
-    logger.level("ERROR", color="<red>", icon="[!]")
-    logger.level("CRITICAL", color="<RED>", icon="[x]")
-
     logger.remove()
-    logger.add(sys.stderr, format=log_formatter, level=log_level.upper())
+    logger.add(
+        RichHandler(console=console, log_time_format="%X"),
+        format=lambda _: "{message}",
+        level=log_level.upper(),
+    )
 
     if log_file is not None:
-        logger.add(log_file, format=log_formatter, level=log_file_level.upper())
+        logger.add(log_file, level=log_file_level.upper())
         logger.info(f"Logging to {log_file}")
-
-    g_configured = True

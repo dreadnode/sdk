@@ -125,7 +125,7 @@ def clean_str(string: str, *, max_length: int | None = None, replace_with: str =
     Clean a string by replacing all non-alphanumeric characters (except `/`, '.', and `@`)
     with `replace_with` (`_` by default).
     """
-    result = re.sub(r"[^\w/@.]+", replace_with, string.lower()).strip(replace_with)
+    result = re.sub(r"[^a-z0-9/@.]+", replace_with, string.lower()).strip(replace_with)
     if max_length is not None:
         result = result[:max_length]
     return result
@@ -702,6 +702,8 @@ def handle_internal_errors() -> t.Iterator[None]:
 
 
 _HANDLE_INTERNAL_ERRORS_CODE = inspect.unwrap(handle_internal_errors).__code__
+
+# Endpoint and networking
 
 
 def is_docker_service_name(hostname: str) -> bool:

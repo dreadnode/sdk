@@ -35,7 +35,7 @@ def show(
     discovered = discover(Study, file)
     if not discovered:
         path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
-        rich.print(f"No studies found in {path_hint}")
+        rich.print(f"No studies found in {path_hint}.")
         return
 
     grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
@@ -86,7 +86,7 @@ async def run(  # noqa: PLR0912, PLR0915
 
     discovered = discover(Study, file_path)
     if not discovered:
-        rich.print(f":exclamation: No studies found in '{path_hint}'.")
+        rich.print(f":exclamation: No studies found in {path_hint}.")
         return
 
     studies_by_name = {d.obj.name: d.obj for d in discovered}
@@ -99,7 +99,7 @@ async def run(  # noqa: PLR0912, PLR0915
         study_name = next(iter(studies_by_name.keys()))
 
     if study_name.lower() not in studies_by_lower_name:
-        rich.print(f":exclamation: Study '{study_name}' not found in '{path_hint}'.")
+        rich.print(f":exclamation: Study '{study_name}' not found in {path_hint}.")
         rich.print(f"Available studies are: {', '.join(studies_by_name.keys())}")
         return
 

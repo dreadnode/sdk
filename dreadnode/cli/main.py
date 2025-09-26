@@ -24,14 +24,22 @@ from dreadnode.cli.github import (
 from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
 from dreadnode.cli.study import cli as study_cli
+from dreadnode.cli.task import cli as task_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
+from dreadnode.logging_ import console as logging_console
 from dreadnode.user_config import ServerConfig, UserConfig
 
-cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
+cli = cyclopts.App(
+    help="Interact with Dreadnode platforms",
+    version_flags=[],
+    help_on_error=True,
+    console=logging_console,
+)
 
 cli["--help"].group = "Meta"
 
 cli.command(agent_cli)
+cli.command(task_cli)
 cli.command(eval_cli)
 cli.command(study_cli)
 cli.command(platform_cli)
