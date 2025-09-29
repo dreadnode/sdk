@@ -646,9 +646,10 @@ class Agent(Model):
                 "user_input": user_input,
                 "messages": messages,
                 "instructions": self.instructions,
-                "tools": [t.name for t in self.all_tools],
                 "hooks": [get_callable_name(hook, short=True) for hook in self.hooks],
                 "stop_conditions": [s.name for s in self.stop_conditions],
+                "tools": [t.name for t in self.all_tools],
+                "tool_schemas": [t.api_definition for t in self.all_tools],
             }
         )
         trace_params.update(
@@ -669,13 +670,17 @@ class Agent(Model):
                         yield event
             finally:
                 if last_event is not None:
-                    log_outputs(messages=last_event.messages, token_usage=last_event.total_usage)
+                    # TODO(nick): Don't love having to inject here, but it's the most accurate in
+                    # in terms of ensuring we don't miss the system component of messages
+                    final_messages = inject_system_content(last_event.messages, self.get_prompt())
+                    log_outputs(messages=final_messages, token_usage=last_event.total_usage)
 
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
                         to="both",
                         steps_taken=min(0, last_event.result.steps - 1),
                         reason=last_event.stop_reason,
+                        failed=last_event.result.failed,
                     )
                     if last_event.result.error:
                         log_output("error", last_event.result.error, to="both")
