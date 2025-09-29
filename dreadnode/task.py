@@ -22,7 +22,6 @@ if t.TYPE_CHECKING:
     from dreadnode.airt.target.custom import CustomTarget
     from dreadnode.eval.eval import (
         Eval,
-        InputDataset,
         InputDatasetProcessor,
     )
 
@@ -191,8 +190,6 @@ class Task(Component[P, R], t.Generic[P, R]):
             )
 
         super().__init__(func, name=name, config=config, context=context, convert_all=entrypoint)
-
-        self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
 
         self._tracer = tracer
 
@@ -377,20 +374,20 @@ class Task(Component[P, R], t.Generic[P, R]):
             task.assert_scores = new_assert_scores
             task.attributes = attributes or {}
 
-        task.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": task.scorers})
-
         return task
 
     def as_eval(
         self,
-        dataset: "InputDataset[t.Any] | list[AnyDict] | Path | str",
         *,
+        dataset: t.Any | None = None,
+        dataset_file: Path | str | None = None,
         name: str | None = None,
         description: str = "",
         tags: list[str] | None = None,
         concurrency: int = 1,
         iterations: int = 1,
-        max_consecutive_failures: int = 10,
+        max_errors: int | None = None,
+        max_consecutive_errors: int = 10,
         dataset_input_mapping: list[str] | dict[str, str] | None = None,
         parameters: dict[str, list[t.Any]] | None = None,
         preprocessor: "InputDatasetProcessor | None" = None,
@@ -399,18 +396,17 @@ class Task(Component[P, R], t.Generic[P, R]):
     ) -> "Eval[t.Any, R]":
         from dreadnode.eval.eval import Eval
 
-        if isinstance(dataset, str):
-            dataset = Path(dataset)
-
         return Eval[t.Any, R](
             task=t.cast("Task[[t.Any], R]", self),
             dataset=dataset,
+            dataset_file=dataset_file,
             name=name,
             description=description,
             tags=tags or ["eval"],
             concurrency=concurrency,
             iterations=iterations,
-            max_consecutive_errors=max_consecutive_failures,
+            max_errors=max_errors,
+            max_consecutive_errors=max_consecutive_errors,
             dataset_input_mapping=dataset_input_mapping,
             parameters=parameters,
             preprocessor=preprocessor,
@@ -454,8 +450,8 @@ class Task(Component[P, R], t.Generic[P, R]):
 
         current_run = current_run_span.get()
         create_run = current_run is None and self.entrypoint
-        run = (
-            current_run or run_span(name_prefix=self.name, tags=self.tags, _tracer=self._tracer)
+        run = current_run or (
+            run_span(name_prefix=self.name, tags=self.tags, _tracer=self._tracer)
             if self.entrypoint
             else None
         )
@@ -542,20 +538,15 @@ class Task(Component[P, R], t.Generic[P, R]):
 
                 # Log the output
 
-                if (
-                    run
-                    and log_output
-                    and (
-                        not isinstance(self.log_inputs, Inherited)
-                        or seems_useful_to_serialize(output)
-                    )
+                if log_output and (
+                    not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
                 ):
                     output_object_hash = task.log_output(
                         "output",
                         output,
                         attributes={"auto": True},
                     )
-
+                elif run is not None:
                     # Link the output to the inputs
                     for input_object_hash in input_object_hashes:
                         run.link_objects(output_object_hash, input_object_hash)

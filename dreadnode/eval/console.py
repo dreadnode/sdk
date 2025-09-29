@@ -174,12 +174,12 @@ class EvalConsoleAdapter:
                 self._progress.update(self._scenario_task_id, advance=1)
         elif isinstance(event, EvalEnd):
             self._progress.stop()
-            self._log_event(f"[bold]Evaluation complete: {event.stop_reason}[/bold]")
+            self._log_event(f"[bold]Evaluation complete: {event.result.stop_reason}[/bold]")
             self.final_result = event.result
 
     async def run(self) -> EvalResult:
         """Runs the evaluation and renders the console interface."""
-        with Live(self._build_dashboard(), console=self.console) as live:
+        with Live(self._build_dashboard(), console=self.console, screen=True) as live:
             async with self.eval.stream() as stream:
                 async for event in stream:
                     self._handle_event(event)

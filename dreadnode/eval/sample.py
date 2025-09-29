@@ -5,7 +5,7 @@ import typing_extensions as te
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from ulid import ULID
 
-from dreadnode.common_types import ErrorField
+from dreadnode.common_types import UNSET, ErrorField
 from dreadnode.error import AssertionFailedError
 from dreadnode.metric import Metric
 from dreadnode.tracing.span import TaskSpan
@@ -111,9 +111,13 @@ class Sample(BaseModel, t.Generic[In, Out]):
             for name in span.exception.failures:
                 assertions[name] = False
 
+        output: Out | None = None
+        if span._output is not UNSET:  # noqa: SLF001
+            output = t.cast("Out", span._output)  # noqa: SLF001
+
         return cls(
             input=t.cast("In", input),
-            output=span.outputs.get("output"),
+            output=output,
             index=index,
             iteration=iteration,
             scenario_params=scenario_params or {},

@@ -27,6 +27,7 @@ def hop_skip_jump_attack(
     max_evaluations: int = 100,
     max_iterations: int = 1_000,
     name: str = "hop_skip_jump_attack",
+    description: str = "HopSkipJump adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a HopSkipJump attack for black-box image classifier settings.
@@ -68,6 +69,7 @@ def hop_skip_jump_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={

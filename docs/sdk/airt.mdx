@@ -215,6 +215,7 @@ hop_skip_jump_attack(
     max_evaluations: int = 100,
     max_iterations: int = 1000,
     name: str = "hop_skip_jump_attack",
+    description: str = "HopSkipJump adversarial image attack",
 ) -> Attack[Image, t.Any]
 ```
 
@@ -295,6 +296,7 @@ def hop_skip_jump_attack(
     max_evaluations: int = 100,
     max_iterations: int = 1_000,
     name: str = "hop_skip_jump_attack",
+    description: str = "HopSkipJump adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a HopSkipJump attack for black-box image classifier settings.
@@ -336,6 +338,7 @@ def hop_skip_jump_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={
@@ -374,6 +377,7 @@ nes_attack(
     sigma: float = 0.001,
     seed: int | None = None,
     name: str = "nes_attack",
+    description: str = "Natural Evolution Strategies adversarial image attack",
 ) -> Attack[Image, t.Any]
 ```
 
@@ -454,6 +458,7 @@ def nes_attack(
     sigma: float = 0.001,
     seed: int | None = None,
     name: str = "nes_attack",
+    description: str = "Natural Evolution Strategies adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a Natural Evolution Strategies (NES) attack for black-box image classifiers.
@@ -500,6 +505,7 @@ def nes_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={
@@ -710,6 +716,7 @@ simba_attack(
     num_masks: int = 1000,
     seed: int | None = None,
     name: str = "simba_attack",
+    description: str = "Simple Black-box adversarial image attack",
 ) -> Attack[Image, t.Any]
 ```
 
@@ -779,6 +786,7 @@ def simba_attack(
     num_masks: int = 1_000,
     seed: int | None = None,
     name: str = "simba_attack",
+    description: str = "Simple Black-box adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a SimBA (Simple Black-box Attack) for black-box image classifier settings.
@@ -817,6 +825,7 @@ def simba_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={
@@ -967,6 +976,7 @@ zoo_attack(
     importance_sampling_freq: int = 10,
     seed: int | None = None,
     name: str = "zoo_attack",
+    description: str = "Zeroth-Order adversarial image attack",
 ) -> Attack[Image, t.Any]
 ```
 
@@ -1051,6 +1061,7 @@ def zoo_attack(
     importance_sampling_freq: int = 10,
     seed: int | None = None,
     name: str = "zoo_attack",
+    description: str = "Zeroth-Order adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a Zeroth-Order Optimization (ZOO) attack for black-box image classifiers.
@@ -1095,6 +1106,7 @@ def zoo_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={"confidence": confidence_scorer},

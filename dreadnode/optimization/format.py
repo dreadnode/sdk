@@ -6,7 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from dreadnode.eval.format import format_dataset
+from dreadnode.eval.format import _format_dataset
 from dreadnode.scorers.base import Scorer
 from dreadnode.util import get_callable_name
 
@@ -30,7 +30,7 @@ def format_studies(studies: "list[Study]") -> RenderableType:
             study.name,
             study.description or "-",
             objective_names,
-            get_callable_name(study.search_strategy, short=True),
+            study.search_strategy.name,
         )
 
     return table
@@ -50,13 +50,11 @@ def format_study(study: "Study") -> RenderableType:
 
     details.add_row(Text("Description", justify="right"), study.description or "-")
     details.add_row(Text("Task Factory", justify="right"), get_callable_name(study.task_factory))
-    details.add_row(
-        Text("Search Strategy", justify="right"), get_callable_name(study.search_strategy)
-    )
+    details.add_row(Text("Search Strategy", justify="right"), study.search_strategy.name)
 
     if study.dataset is not None:
         details.add_row(
-            Text("Dataset", justify="right"), format_dataset(study.dataset, verbose=True)
+            Text("Dataset", justify="right"), _format_dataset(study.dataset, verbose=True)
         )
 
     if study.objectives:

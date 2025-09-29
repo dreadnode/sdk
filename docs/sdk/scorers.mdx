@@ -1068,7 +1068,9 @@ equals
 ------
 
 ```python
-equals(reference: T, *, name: str = 'equals') -> Scorer[T]
+equals(
+    reference: Any, *, name: str = "equals"
+) -> Scorer[t.Any]
 ```
 
 Create a scorer that checks for equality between the object and a reference value.
@@ -1078,7 +1080,7 @@ Returns a 1.0 if they are equal, and 0.0 otherwise.
 **Parameters:**
 
 * **`reference`**
-  (`T`)
+  (`Any`)
   –The value to compare against.
 * **`name`**
   (`str`, default:
@@ -1089,7 +1091,7 @@ Returns a 1.0 if they are equal, and 0.0 otherwise.
 
 <Accordion title="Source code in dreadnode/scorers/base.py" icon="code">
 ```python
-def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
+def equals(reference: t.Any, *, name: str = "equals") -> Scorer[t.Any]:
     """
     Create a scorer that checks for equality between the object and a reference value.
 
@@ -1101,10 +1103,10 @@ def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
             from the reference value.
     """
 
-    async def evaluate(data: T, *, reference: T = reference) -> Metric:
+    async def evaluate(data: t.Any, *, reference: t.Any = reference) -> Metric:
         return Metric(1.0 if data == reference else 0.0)
 
-    return Scorer[T](evaluate, name=name)
+    return Scorer[t.Any](evaluate, name=name)
 ```
 
 
@@ -4447,7 +4449,7 @@ similarity
 
 ```python
 similarity(
-    reference: str,
+    reference: Any,
     *,
     method: Literal[
         "ratio", "quick_ratio", "real_quick_ratio"
@@ -4465,7 +4467,7 @@ based on `difflib.SequenceMatcher`.
 **Parameters:**
 
 * **`reference`**
-  (`str`)
+  (`Any`)
   –The reference text (static string).
 * **`method`**
   (`Literal['ratio', 'quick_ratio', 'real_quick_ratio']`, default:
@@ -4486,7 +4488,7 @@ based on `difflib.SequenceMatcher`.
 <Accordion title="Source code in dreadnode/scorers/similarity.py" icon="code">
 ```python
 def similarity(
-    reference: str,
+    reference: t.Any,
     *,
     method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = "ratio",
     case_sensitive: bool = False,
@@ -4508,7 +4510,7 @@ def similarity(
     def evaluate(
         data: t.Any,
         *,
-        reference: str = reference,
+        reference: t.Any = reference,
         method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = method,
         case_sensitive: bool = case_sensitive,
     ) -> Metric:

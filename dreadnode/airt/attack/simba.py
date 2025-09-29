@@ -22,6 +22,7 @@ def simba_attack(
     num_masks: int = 1_000,
     seed: int | None = None,
     name: str = "simba_attack",
+    description: str = "Simple Black-box adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a SimBA (Simple Black-box Attack) for black-box image classifier settings.
@@ -60,6 +61,7 @@ def simba_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={

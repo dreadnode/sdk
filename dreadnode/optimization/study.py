@@ -36,7 +36,6 @@ from dreadnode.task import Task
 from dreadnode.util import (
     clean_str,
     stream_map_and_merge,
-    warn_at_user_stacklevel,
 )
 
 OutputT = te.TypeVar("OutputT", default=t.Any)
@@ -67,7 +66,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
     """
     An optional function that accepts a probe candidate and returns a Task.
 
-    Otherwise the main task_factory will be used for both Trials and Probes.
+    Otherwise the main task_factory will be used for both full evaluation Trials and probe Trials.
     """
     objectives: t.Annotated[ObjectivesLike[OutputT], Config(expose_as=None)]
     """
@@ -243,8 +242,12 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         This worker function is designed to be run concurrently. It mutates the
         input trial object with the results of the evaluation.
         """
+        from dreadnode import log_inputs, log_metrics, log_outputs, task_span
         from dreadnode import score as dn_score
-        from dreadnode import task_span
+
+        logger.debug(
+            f"Processing trial: id={trial.id}, step={trial.step}, is_probe={trial.is_probe}"
+        )
 
         task_factory = (
             self.probe_task_factory
@@ -257,17 +260,66 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
         token = current_trial.set(trial)
 
-        try:
-            trial.status = "running"
-            yield TrialStart(study=self, trials=[], probes=[], trial=trial)
+        with task_span(
+            name=f"{probe_or_trial} - {task.name}",
+            tags=[probe_or_trial],
+        ) as span:
+            try:
+                trial.status = "running"
+                yield TrialStart(study=self, trials=[], probes=[], trial=trial)
 
-            with task_span(
-                name=f"{probe_or_trial} - {task.name}",
-                tags=[probe_or_trial],
-            ):
+                # model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
+
+                # id: ULID = Field(default_factory=ULID)
+                # """Unique identifier for the trial."""
+                # candidate: CandidateT
+                # """The candidate configuration being assessed."""
+                # status: TrialStatus = "pending"
+                # """Current status of the trial."""
+
+                # score: float = -float("inf")
+                # """
+                # The primary, single-value fitness score for this trial.
+                # This is an average of all objective scores for this trial adjusted
+                # based on their objective directions (higher is better).
+                # """
+                # scores: dict[str, float] = {}
+                # """A dictionary of all named objective scores for this trial."""
+                # directional_scores: dict[str, float] = {}
+                # """
+                # A dictionary of all named objective scores adjusted
+                # for their optimization direction (higher is better).
+
+                # Typically this is used by search strategies and
+                # related components to sort trials for sampling and selection.
+                # """
+
+                # eval_result: EvalResult | None = None
+                # """Complete evaluation result of the trial and associated dataset."""
+                # pruning_reason: str | None = None
+                # """Reason for pruning this trial, if applicable."""
+                # error: str | None = None
+                # """Any error which occurred while processing this trial."""
+                # step: int = Field(default=0)
+                # """The optimization step which produced this trial."""
+                # parent_id: ULID | None = None
+                # """The id of the parent trial, as defined by the search strategy."""
+
+                # is_probe: bool = False
+                # """Whether this trial is a probe used for intermediate evaluation."""
+                # dataset: list[t.Any] | None = None
+                # """The specific dataset used for probing."""
+
+                log_inputs(
+                    candidate=trial.candidate,
+                    dataset=dataset,
+                    step=trial.step,
+                )
+
                 # Check constraints
 
                 if not trial.is_probe:
+                    logger.debug(f"[{trial.id}] Checking {len(self.constraints)} constraints...")
                     await dn_score(
                         trial.candidate,
                         Scorer.fit_many(self.constraints),
@@ -282,6 +334,8 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     for scorer in fit_objectives(self.objectives)
                     if isinstance(scorer, Scorer)
                 ]
+
+                logger.info(f"[{trial.id}] Evaluating candidate with {len(dataset)} inputs.")
 
                 # TODO(nick): Add max_errors* settings to study so
                 # then can be passed down the to eval.
@@ -298,23 +352,20 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
                 trial.eval_result = await evaluator.run()
 
-                if trial.eval_result.stop_reason in (
-                    "max_errors_reached",
-                    "max_consecutive_errors_reached",
-                ):
-                    raise ValueError(f"Evaluation stopped early: {trial.eval_result.stop_reason}")
-
                 # If our entire evaluation failed, reflect that in the trial
                 # status so it can be handled appropriately upstream.
                 #
                 # TODO(nick): Certainly some different options here depending
                 # on how the study behaves, ideally we would have it reflect
                 # this issue in the trial_result?
-                if all(sample.failed for sample in trial.eval_result.samples):
+                if trial.eval_result.stop_reason in (
+                    "max_errors_reached",
+                    "max_consecutive_errors_reached",
+                ) or all(sample.failed for sample in trial.eval_result.samples):
                     first_error = next(
                         sample.error for sample in trial.eval_result.samples if sample.failed
                     )
-                    raise ValueError(f"All samples failed during evaluation: {first_error}")  # noqa: TRY301
+                    raise RuntimeError(first_error)  # noqa: TRY301
 
                 for i, name in enumerate(self.objective_names):
                     direction = self.directions[i]
@@ -330,20 +381,30 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 )
 
                 trial.status = "finished"
+                logger.debug(
+                    f"Completed trial: id={trial.id}, status='{trial.status}', score={score}"
+                )
 
-        except AssertionFailedError as e:
-            trial.status = "pruned"
-            trial.pruning_reason = f"Constraint not satisfied: {e}"
+            except AssertionFailedError as e:
+                span.add_tags(["pruned"])
+                span.set_exception(e)
+                trial.status = "pruned"
+                trial.pruning_reason = f"Constraint not satisfied: {e}"
+                logger.warning(f"Pruned trial: id={trial.id}, reason='{trial.pruning_reason}'")
 
-        except Exception as e:  # noqa: BLE001
-            trial.status = "failed"
-            trial.error = str(e)
-            warn_at_user_stacklevel(str(e), UserWarning)
+            except Exception as e:  # noqa: BLE001
+                span.set_exception(e)
+                trial.status = "failed"
+                trial.error = str(e)
+                logger.warning(f"Failed trial: id={trial.id}, error='{trial.error}'", exc_info=True)
 
-        finally:
-            current_trial.reset(token)
-
-        logger.debug(f"Processed: {trial}")
+            finally:
+                current_trial.reset(token)
+                log_outputs(
+                    status=trial.status,
+                    eval_result=trial.eval_result,
+                )
+                log_metrics(trial.eval_result.metrics)
 
         if trial.status == "pruned":
             yield TrialPruned(study=self, trials=[], probes=[], trial=trial)
@@ -380,6 +441,17 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         semaphore = asyncio.Semaphore(self.concurrency)  # we'll use this to
         probe_semaphore = (
             asyncio.Semaphore(self.probe_concurrency) if self.probe_concurrency else semaphore
+        )
+
+        logger.info(
+            f"Starting study '{self.name}': "
+            f"max_evals={self.max_evals}, "
+            f"concurrency={self.concurrency}, "
+            f"probe_concurrency={self.probe_concurrency or self.concurrency}, "
+            f"objectives={self.objective_names}, "
+            f"directions={self.directions}, "
+            f"constraints={len(self.constraints) if self.constraints else 0}, "
+            f"stop_conditions={len(self.stop_conditions)}"
         )
 
         yield StudyStart(
@@ -427,12 +499,22 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                         and (best_trial is None or event.trial.score > best_trial.score)
                     ):
                         best_trial = event.trial
+                        logger.success(
+                            f"New best trial: "
+                            f"id={best_trial.id}, "
+                            f"step={best_trial.step}, "
+                            f"scores={best_trial.scores}, "
+                            f"score={best_trial.score:.5f}"
+                        )
                         yield NewBestTrialFound(
                             study=self, trials=all_trials, probes=all_probes, trial=best_trial
                         )
 
                     for stop_condition in self.stop_conditions:
                         if stop_condition(all_trials):
+                            logger.info(
+                                f"Stop condition '{stop_condition.name}' met. Terminating study."
+                            )
                             stop_explanation = stop_condition.name
                             stop_condition_met = True
                             break
@@ -446,6 +528,15 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             else "max_trials_reached"
             if len(all_trials) >= self.max_evals
             else "search_exhausted"
+        )
+
+        logger.info(
+            f"Study '{self.name}' finished: "
+            f"stop_reason={stop_reason}, "
+            f"total_trials={len(all_trials)}, "
+            f"total_probes={len(all_probes)}, "
+            f"best_score={best_trial.score if best_trial else '-'}, "
+            f"best_trial_id={best_trial.id if best_trial else '-'}"
         )
 
         yield StudyEnd(

@@ -1,4 +1,6 @@
 import typing as t
+from functools import reduce
+from operator import mul
 from pathlib import Path
 
 from rich import box
@@ -23,6 +25,8 @@ def format_evals(evals: "list[Eval]") -> RenderableType:
     table.add_column("Task", style="cyan", no_wrap=True)
     table.add_column("Dataset", style="cyan")
     table.add_column("Scorers", style="cyan")
+    table.add_column("Iterations", style="magenta")
+    table.add_column("Parameters", style="magenta")
 
     for evaluation in evals:
         scorer_names = (
@@ -30,12 +34,22 @@ def format_evals(evals: "list[Eval]") -> RenderableType:
             if evaluation.scorers
             else "-"
         )
+
+        param_info = "-"
+        if evaluation.parameters:
+            num_keys = len(evaluation.parameters)
+            # Calculate the total number of combinations
+            total_combinations = reduce(mul, (len(v) for v in evaluation.parameters.values()), 1)
+            param_info = f"{total_combinations} combinations ({num_keys} keys)"
+
         table.add_row(
             evaluation.name,
             evaluation.description or "-",
             evaluation.task_name,
-            format_dataset(evaluation.dataset, verbose=False),
+            _format_dataset(evaluation.dataset, evaluation.dataset_file, verbose=False),
             scorer_names,
+            str(evaluation.iterations),
+            param_info,
         )
 
     return table
@@ -56,12 +70,44 @@ def format_eval(evaluation: "Eval") -> RenderableType:
     details.add_row(Text("Description", justify="right"), evaluation.description or "-")
     details.add_row(Text("Task", justify="right"), str(evaluation.task))
     details.add_row(
-        Text("Dataset", justify="right"), format_dataset(evaluation.dataset, verbose=True)
+        Text("Dataset", justify="right"),
+        _format_dataset(evaluation.dataset, evaluation.dataset_file, verbose=True),
     )
 
+    if evaluation.label:
+        details.add_row(Text("Label", justify="right"), evaluation.label)
+
+    if evaluation.tags:
+        details.add_row(Text("Tags", justify="right"), ", ".join(evaluation.tags))
+
+    details.add_row(Text("Iterations", justify="right"), str(evaluation.iterations))
+    details.add_row(Text("Concurrency", justify="right"), str(evaluation.concurrency))
+
+    if evaluation.max_errors is not None:
+        details.add_row(Text("Max Errors", justify="right"), str(evaluation.max_errors))
+
+    if evaluation.max_consecutive_errors is not None:
+        details.add_row(
+            Text("Max Consecutive Errors", justify="right"),
+            str(evaluation.max_consecutive_errors),
+        )
+
+    if evaluation.preprocessor:
+        details.add_row(
+            Text("Preprocessor", justify="right"),
+            f"[cyan]{evaluation.preprocessor.__name__}[/]",
+        )
+
     if evaluation.parameters:
-        param_keys = ", ".join(f"[cyan]{key}[/]" for key in evaluation.parameters)
-        details.add_row(Text("Parameters", justify="right"), param_keys)
+        details.add_row(
+            Text("Parameters", justify="right"), _format_parameters(evaluation.parameters)
+        )
+
+    if evaluation.dataset_input_mapping:
+        details.add_row(
+            Text("Input Mapping", justify="right"),
+            str(evaluation.dataset_input_mapping),
+        )
 
     if evaluation.scorers:
         scorer_names = ", ".join(
@@ -85,8 +131,15 @@ def format_eval(evaluation: "Eval") -> RenderableType:
     )
 
 
-def format_dataset(dataset: t.Any, *, verbose: bool = False) -> RenderableType:
-    """Formats a dataset into a rich renderable, handling large lists gracefully."""
+def _format_dataset(  # noqa: PLR0911
+    dataset: t.Any, dataset_file: t.Any = None, *, verbose: bool = False
+) -> RenderableType:
+    """
+    Formats a dataset into a rich renderable, handling large lists gracefully.
+    """
+    if dataset_file:
+        return Text(str(dataset_file), style="green")
+
     if isinstance(dataset, (str, Path)):
         return Text(str(dataset), style="green")
 
@@ -103,9 +156,8 @@ def format_dataset(dataset: t.Any, *, verbose: bool = False) -> RenderableType:
         details.add_column(style="white")
         details.add_row("Total Items", str(count))
 
-        first_item = dataset[0]
-        if isinstance(first_item, dict):
-            keys = ", ".join(f"[cyan]{key}[/]" for key in first_item)
+        if count > 0 and isinstance(dataset[0], dict):
+            keys = ", ".join(f"[cyan]{key}[/]" for key in dataset[0])
             details.add_row("Item Keys", keys)
 
         return Panel(
@@ -115,4 +167,34 @@ def format_dataset(dataset: t.Any, *, verbose: bool = False) -> RenderableType:
             title_align="left",
         )
 
+    if callable(dataset):
+        return Text(f"Callable: {dataset.__name__}", style="cyan")
+
     return Text(str(dataset))
+
+
+def _format_parameters(
+    parameters: dict[str, list[t.Any]], *, max_display: int = 5
+) -> RenderableType:
+    """
+    Formats the parameters of an Eval into a rich Table.
+    """
+    if not parameters:
+        return Text("-", style="dim")
+
+    param_table = Table(show_header=False, expand=True)
+    param_table.add_column("Parameter", style="cyan", no_wrap=True)
+    param_table.add_column("Values")
+
+    for key, values in parameters.items():
+        num_values = len(values)
+
+        display_values = [f"[bright_white]{v!s}[/]" for v in values[:max_display]]
+        value_str = ", ".join(display_values)
+
+        if num_values > max_display:
+            value_str += f", ... ([yellow]{num_values} total[/])"
+
+        param_table.add_row(key, value_str)
+
+    return param_table

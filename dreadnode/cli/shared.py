@@ -1,5 +1,6 @@
 import typing as t
 from dataclasses import dataclass
+from pathlib import Path
 
 import cyclopts
 
@@ -21,11 +22,13 @@ class DreadnodeConfig:
     """Show spans in the console"""
     log_level: LogLevel | None = None
     """Console log level"""
+    log_file: Path | None = None
+    """File to log to"""
 
     def apply(self) -> None:
         from dreadnode import configure
 
         if self.log_level:
-            configure_logging(self.log_level)
+            configure_logging(self.log_level, self.log_file)
 
         configure(server=self.server, token=self.token, project=self.project, console=self.console)

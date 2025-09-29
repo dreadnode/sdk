@@ -22,6 +22,7 @@ def nes_attack(
     sigma: float = 0.001,
     seed: int | None = None,
     name: str = "nes_attack",
+    description: str = "Natural Evolution Strategies adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a Natural Evolution Strategies (NES) attack for black-box image classifiers.
@@ -68,6 +69,7 @@ def nes_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={

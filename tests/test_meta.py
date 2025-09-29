@@ -409,6 +409,34 @@ def test_get_model_handles_heterogeneous_list(blueprint: Thing) -> None:
     assert component_fields["model"].default == "gpt-4"
 
 
+def test_get_model_handles_primitive_list() -> None:
+    class PrimitiveList(Model):
+        items: list[str] = Config(default_factory=list)
+
+    blueprint = PrimitiveList(items=["a", "b", "c"])
+    ConfigModel = get_config_model(blueprint)
+
+    fields = ConfigModel.model_fields
+    assert "items" in fields
+
+    assert fields["items"].annotation == list[str]
+    assert fields["items"].default == ["a", "b", "c"]
+
+
+def test_get_model_handles_primitive_dict() -> None:
+    class PrimitiveDict(Model):
+        mapping: dict[str, int] = Config(default_factory=dict)
+
+    blueprint = PrimitiveDict(mapping={"one": 1, "two": 2})
+    ConfigModel = get_config_model(blueprint)
+
+    fields = ConfigModel.model_fields
+    assert "mapping" in fields
+
+    assert fields["mapping"].annotation == dict[str, int]
+    assert fields["mapping"].default == {"one": 1, "two": 2}
+
+
 def test_get_model_handles_dictionary_group(blueprint: Thing) -> None:
     """Verify that a dictionary of components creates a nested model with correct keys."""
     ConfigModel = get_config_model(blueprint, "AgentConfig")
@@ -450,7 +478,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                         "properties": {
                             "model": {
                                 "default": "gpt-4",
-                                "description": "-",
+                                "description": "",
                                 "title": "Model",
                                 "type": "string",
                             }
@@ -474,7 +502,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                 "properties": {
                     "component": {
                         "properties": {
-                            "name": {"description": "-", "title": "Name", "type": "string"}
+                            "name": {"description": "", "title": "Name", "type": "string"}
                         },
                         "required": ["name"],
                         "title": "mapping_component",
@@ -490,7 +518,7 @@ def test_get_config_schema(blueprint: Thing, empty_blueprint: Thing) -> None:
                 "properties": {
                     "model": {
                         "default": "gpt-4o-mini",
-                        "description": "-",
+                        "description": "",
                         "title": "Model",
                         "type": "string",
                     }

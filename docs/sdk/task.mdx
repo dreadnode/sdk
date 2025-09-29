@@ -78,8 +78,6 @@ def __init__(
 
     super().__init__(func, name=name, config=config, context=context, convert_all=entrypoint)
 
-    self.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": scorers})
-
     self._tracer = tracer
 
     self.name = name
@@ -596,8 +594,8 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:  #
 
     current_run = current_run_span.get()
     create_run = current_run is None and self.entrypoint
-    run = (
-        current_run or run_span(name_prefix=self.name, tags=self.tags, _tracer=self._tracer)
+    run = current_run or (
+        run_span(name_prefix=self.name, tags=self.tags, _tracer=self._tracer)
         if self.entrypoint
         else None
     )
@@ -684,20 +682,15 @@ async def run_always(self, *args: P.args, **kwargs: P.kwargs) -> TaskSpan[R]:  #
 
             # Log the output
 
-            if (
-                run
-                and log_output
-                and (
-                    not isinstance(self.log_inputs, Inherited)
-                    or seems_useful_to_serialize(output)
-                )
+            if log_output and (
+                not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
             ):
                 output_object_hash = task.log_output(
                     "output",
                     output,
                     attributes={"auto": True},
                 )
-
+            elif run is not None:
                 # Link the output to the inputs
                 for input_object_hash in input_object_hashes:
                     run.link_objects(output_object_hash, input_object_hash)
@@ -1183,8 +1176,6 @@ def with_(
         task.tags = new_tags
         task.assert_scores = new_assert_scores
         task.attributes = attributes or {}
-
-    task.__dn_attr_config__["scorers"] = ConfigInfo(field_kwargs={"default": task.scorers})
 
     return task
 ```

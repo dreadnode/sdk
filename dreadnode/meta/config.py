@@ -402,7 +402,6 @@ class Component(t.Generic[P, R]):
                 convert_all=convert_all,
             )
         )
-        self.__dn_attr_config__: dict[str, ConfigInfo] = {}
         self.__dn_context__: dict[str, Context] = context or (
             wraps.__dn_context__
             if isinstance(wraps, Component)

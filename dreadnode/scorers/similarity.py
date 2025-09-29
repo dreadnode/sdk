@@ -14,7 +14,7 @@ if t.TYPE_CHECKING:
 
 
 def similarity(
-    reference: str,
+    reference: t.Any,
     *,
     method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = "ratio",
     case_sensitive: bool = False,
@@ -36,7 +36,7 @@ def similarity(
     def evaluate(
         data: t.Any,
         *,
-        reference: str = reference,
+        reference: t.Any = reference,
         method: t.Literal["ratio", "quick_ratio", "real_quick_ratio"] = method,
         case_sensitive: bool = case_sensitive,
     ) -> Metric:

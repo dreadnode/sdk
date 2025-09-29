@@ -927,7 +927,7 @@ def clip(
 # like to come back and do a full pass on these.
 
 
-def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
+def equals(reference: t.Any, *, name: str = "equals") -> Scorer[t.Any]:
     """
     Create a scorer that checks for equality between the object and a reference value.
 
@@ -939,10 +939,10 @@ def equals(reference: T, *, name: str = "equals") -> Scorer[T]:
             from the reference value.
     """
 
-    async def evaluate(data: T, *, reference: T = reference) -> Metric:
+    async def evaluate(data: t.Any, *, reference: t.Any = reference) -> Metric:
         return Metric(1.0 if data == reference else 0.0)
 
-    return Scorer[T](evaluate, name=name)
+    return Scorer[t.Any](evaluate, name=name)
 
 
 def forward(value: t.Any, *, name: str = "forward") -> Scorer[t.Any]:

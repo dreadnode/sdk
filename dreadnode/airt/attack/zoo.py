@@ -24,6 +24,7 @@ def zoo_attack(
     importance_sampling_freq: int = 10,
     seed: int | None = None,
     name: str = "zoo_attack",
+    description: str = "Zeroth-Order adversarial image attack",
 ) -> Attack[Image, t.Any]:
     """
     Creates a Zeroth-Order Optimization (ZOO) attack for black-box image classifiers.
@@ -68,6 +69,7 @@ def zoo_attack(
 
     attack = Attack[Image, t.Any](
         name=name,
+        description=description,
         target=target,
         search_strategy=search_strategy,
         objectives={"confidence": confidence_scorer},

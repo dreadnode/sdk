@@ -18,7 +18,7 @@ Prepared evaluation of a task with an associated dataset and configuration.
 ### assert\_scores
 
 ```python
-assert_scores: list[str] | Literal[True] = Config(
+assert_scores: list[str] | Literal[True] = Field(
     default_factory=list
 )
 ```
@@ -36,13 +36,23 @@ Maximum number of tasks to run in parallel.
 ### dataset
 
 ```python
-dataset: Annotated[
-    InputDataset[In] | list[AnyDict] | FilePath,
-    Config(expose_as=Any),
-]
+dataset: Any | None = None
 ```
 
-The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from.
+The dataset to use for the evaluation. Can be any of:
+
+* A list of objects matching the eval In type.
+* A list of dictionaries representing the dataset.
+* A callable that returns either of the above (can be async).
+
+### dataset\_file
+
+```python
+dataset_file: FilePath | str | None = Config(default=None)
+```
+
+The file path of a JSONL, CSV, JSON, or YAML dataset.
+Takes precedence over code-defined `dataset` if provided.
 
 ### dataset\_input\_mapping
 
@@ -59,7 +69,7 @@ If None, will attempt to map keys that match parameter names.
 ### description
 
 ```python
-description: str = ''
+description: str = Config(default='')
 ```
 
 A brief description of the eval's purpose.
@@ -75,10 +85,10 @@ Number of times to run each scenario.
 ### label
 
 ```python
-label: str | None = None
+label: str | None = Config(default=None)
 ```
 
-Specific label to use for tasks created by this eval.
+Specific label for tracing, otherwise derived from the name.
 
 ### max\_consecutive\_errors
 
@@ -95,13 +105,13 @@ before terminating the evaluation run. Set to None to disable.
 max_errors: int | None = Config(default=None)
 ```
 
-Maximum number of errors (not caused by score assertions)
+Maximum number of sample errors (not caused by score assertions)
 to tolerate before stopping the evaluation.
 
 ### name\_
 
 ```python
-name_: str | None = Field(
+name_: str | None = Config(
     default=None, alias="name", repr=False, exclude=True
 )
 ```
@@ -117,9 +127,8 @@ parameters: dict[str, list[Any]] | None = Config(
 ```
 
 A dictionary defining a parameter space to run experiments against.
-For each item in the dataset, a scenario will be run for every combination
-of the parameters defined here. Key names should align with
-arguments on the task assigned with a `Config` context.
+A scenario will be created for every combination of the parameters defined here.
+Key names should align with arguments on the task assigned with a `Config` context.
 
 ### preprocessor
 
@@ -132,7 +141,7 @@ Optional preprocessor function to transform the dataset before evaluation.
 ### scorers
 
 ```python
-scorers: ScorersLike[Out] = Config(default_factory=list)
+scorers: ScorersLike[Out] = Field(default_factory=list)
 ```
 
 Scorers to evaluate the task's output (appended to existing task scorers).
@@ -143,14 +152,12 @@ Scorers to evaluate the task's output (appended to existing task scorers).
 tags: list[str] = Config(default_factory=lambda: ['eval'])
 ```
 
-A list of tags associated with the evaluation.
+A list of tags to associate during tracing.
 
 ### task
 
 ```python
-task: Annotated[
-    Task[[In], Out] | str, Config(expose_as=Any)
-]
+task: Task[[In], Out] | str
 ```
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.
@@ -396,6 +403,22 @@ Calculates and returns a summary for each assertion across all samples.
   –A dictionary where each key is an assertion name and the value is
 * `dict[str, dict[str, float | int]]`
   –another dictionary containing 'passed\_count', 'failed\_count', and 'pass\_rate'.
+
+### error\_count
+
+```python
+error_count: int
+```
+
+The number of samples that encountered an error during processing.
+
+### error\_samples
+
+```python
+error_samples: list[Sample[In, Out]]
+```
+
+A list of all samples that encountered an error during processing.
 
 ### failed\_count
 
@@ -802,7 +825,9 @@ load\_dataset
 
 ```python
 load_dataset(
-    path: Path, *, file_format: FileFormat | None = None
+    path: Path | str,
+    *,
+    file_format: FileFormat | None = None,
 ) -> list[AnyDict]
 ```
 
@@ -811,7 +836,7 @@ Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and
 **Parameters:**
 
 * **`path`**
-  (`Path`)
+  (`Path | str`)
   –The path to the file to load.
 * **`file_format`**
   (`FileFormat | None`, default:
@@ -826,7 +851,7 @@ Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and
 
 <Accordion title="Source code in dreadnode/eval/dataset.py" icon="code">
 ```python
-def load_dataset(path: Path, *, file_format: FileFormat | None = None) -> list[AnyDict]:
+def load_dataset(path: Path | str, *, file_format: FileFormat | None = None) -> list[AnyDict]:
     """
     Loads a list of objects from a file path, with support for JSONL, CSV, JSON, and YAML formats.
 

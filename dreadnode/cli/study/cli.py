@@ -29,10 +29,11 @@ def show(
 
     If no file is specified, searches in standard paths.
     """
+    from dreadnode.airt import Attack
     from dreadnode.optimization import Study
     from dreadnode.optimization.format import format_studies, format_study
 
-    discovered = discover(Study, file)
+    discovered = discover(Study, file, exclude_types={Attack})
     if not discovered:
         path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
         rich.print(f"No studies found in {path_hint}.")
@@ -54,7 +55,8 @@ async def run(  # noqa: PLR0912, PLR0915
     study_identifier: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
-    dreadnode_config: DreadnodeConfig | None = None,
+    raw: t.Annotated[bool, cyclopts.Parameter(["-r", "--raw"], negative=False)] = False,
+    dn_config: DreadnodeConfig | None = None,
 ) -> None:
     """
     Run a study by name, file, or module.
@@ -69,7 +71,9 @@ async def run(  # noqa: PLR0912, PLR0915
     Args:
         study: The study to run, e.g., 'my_studies.py:hyperparam' or 'hyperparam'.
         config: Optional path to a TOML/YAML/JSON configuration file for the study.
+        raw: If set, only display raw logging output without additional formatting.
     """
+    from dreadnode.airt import Attack
     from dreadnode.optimization import Study
 
     file_path: Path | None = None
@@ -84,7 +88,7 @@ async def run(  # noqa: PLR0912, PLR0915
 
     path_hint = file_path or ", ".join(DEFAULT_SEARCH_PATHS)
 
-    discovered = discover(Study, file_path)
+    discovered = discover(Study, file_path, exclude_types={Attack})
     if not discovered:
         rich.print(f":exclamation: No studies found in {path_hint}.")
         return
@@ -116,18 +120,24 @@ async def run(  # noqa: PLR0912, PLR0915
     async def study_cli(
         *,
         config: t.Any = config_default,
+        dn_config: DreadnodeConfig | None = dn_config,
     ) -> None:
-        (dreadnode_config or DreadnodeConfig()).apply()
+        dn_config = dn_config or DreadnodeConfig()
+        if raw and dn_config.log_level is None:
+            dn_config.log_level = "info"
+        dn_config.apply()
 
         study_obj = hydrate(study_blueprint, config)
         flat_config = flatten_model(config)
 
-        rich.print(f"Running study: [bold]{study_obj.name}[/bold] with config:")
-        for key, value in flat_config.items():
-            rich.print(f" |- {key}: {value}")
-        rich.print()
-
-        await study_obj.console()
+        if raw:
+            await study_obj.run()
+        else:
+            rich.print(f"Running study: [bold]{study_obj.name}[/bold] with config:")
+            for key, value in flat_config.items():
+                rich.print(f" |- {key}: {value}")
+            rich.print()
+            await study_obj.console()
 
     study_cli.__annotations__["config"] = config_parameter
 

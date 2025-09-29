@@ -42,6 +42,16 @@ class EvalResultMixin:
         return [s for s in self.samples if s.passed]
 
     @property
+    def error_samples(self: "HasSamples") -> list["Sample[In, Out]"]:
+        """A list of all samples that encountered an error during processing."""
+        return [s for s in self.samples if s.error is not None]
+
+    @property
+    def error_count(self: "HasSamples") -> int:
+        """The number of samples that encountered an error during processing."""
+        return sum(1 for s in self.samples if s.error is not None)
+
+    @property
     def failed_samples(self: "HasSamples") -> list["Sample[In, Out]"]:
         """A list of all samples that failed at least one assertion."""
         return [s for s in self.samples if not s.passed]
