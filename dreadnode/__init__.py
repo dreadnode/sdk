@@ -37,6 +37,7 @@ from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     from dreadnode import agent, airt, eval, optimization, scorers, transforms  # noqa: A004
+    from dreadnode.agent import Agent, tool, tool_method
     from dreadnode.data_types import Audio, Image, Table, Video
 
 logger.disable("dreadnode")
@@ -75,6 +76,7 @@ __version__ = VERSION
 
 __all__ = [
     "DEFAULT_INSTANCE",
+    "Agent",
     "Audio",
     "Code",
     "Config",
@@ -138,6 +140,8 @@ __all__ = [
     "task",
     "task_and_run",
     "task_span",
+    "tool",
+    "tool_method",
     "transforms",
 ]
 
@@ -147,6 +151,9 @@ __lazy_components__: dict[str, str] = {
     "Image": "dreadnode.data_types",
     "Table": "dreadnode.data_types",
     "Video": "dreadnode.data_types",
+    "Agent": "dreadnode.agent",
+    "tool": "dreadnode.agent",
+    "tool_method": "dreadnode.agent",
 }
 
 

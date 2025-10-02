@@ -8,6 +8,10 @@ from dreadnode.meta import Component, Config, Model
 
 Tool = tools.Tool
 ToolMode = tools.ToolMode
+ToolCall = tools.ToolCall
+FunctionCall = tools.FunctionCall
+ToolDefinition = tools.ToolDefinition
+FunctionDefinition = tools.FunctionDefinition
 
 AnyTool = Tool[t.Any, t.Any]
 
