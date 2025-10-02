@@ -35,6 +35,6 @@ def tag_to_semver(tag: str) -> Version:
         tag: The tag string that may contain an architecture suffix.
 
     Returns:
-        str: The tag with any supported architecture suffix removed.
+        A packaging Version object representing the semantic version.
     """
     return Version(tag.split("-")[0].removeprefix("v"))

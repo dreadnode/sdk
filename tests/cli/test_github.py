@@ -182,8 +182,6 @@ def test_github_repo_comparisons() -> None:
     assert repo1 == repo2
     assert repo1 != repo3
     assert repo1 == "owner/repo@main"
-    assert repo1 == "owner/repo@main"
-    assert repo1 in ["owner/repo@main", "other/repo@main"]
 
 
 def test_github_repo_self_format() -> None:
