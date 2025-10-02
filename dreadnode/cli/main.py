@@ -8,13 +8,12 @@ import typing as t
 import webbrowser
 
 import cyclopts
-import rich
 from rich.panel import Panel
-from rich.prompt import Prompt
 
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.agent import cli as agent_cli
 from dreadnode.cli.api import create_api_client
+from dreadnode.cli.docker import DockerImage, docker_login, docker_pull, docker_tag, get_registry
 from dreadnode.cli.eval import cli as eval_cli
 from dreadnode.cli.github import (
     GithubRepo,
@@ -25,6 +24,7 @@ from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
 from dreadnode.cli.study import cli as study_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
+from dreadnode.logging_ import confirm, console, print_info, print_success
 from dreadnode.user_config import ServerConfig, UserConfig
 
 cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
@@ -43,30 +43,29 @@ def meta(
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
 ) -> None:
     try:
-        rich.print()
+        console.print()
         cli(tokens)
     except Exception as e:
         if DEBUG:
             raise
-
-        rich.print()
-        rich.print(Panel(str(e), title="Error", title_align="left", border_style="red"))
+        console.print()
+        console.print(Panel(str(e), title="Error", title_align="left", border_style="red"))
         sys.exit(1)
 
 
 @cli.command(group="Auth")
 def login(
     *,
-    server: t.Annotated[
-        str | None,
-        cyclopts.Parameter(name=["--server", "-s"], help="URL of the server"),
-    ] = None,
-    profile: t.Annotated[
-        str | None,
-        cyclopts.Parameter(name=["--profile", "-p"], help="Profile alias to assign / update"),
-    ] = None,
+    server: t.Annotated[str | None, cyclopts.Parameter(name=["--server", "-s"])] = None,
+    profile: t.Annotated[str | None, cyclopts.Parameter(name=["--profile", "-p"])] = None,
 ) -> None:
-    """Authenticate to a Dreadnode platform server and save the profile."""
+    """
+    Authenticate to a Dreadnode platform server and save the profile.
+
+    Args:
+        server: The server URL to authenticate against.
+        profile: The profile name to save the server configuration under.
+    """
     if not server:
         server = PLATFORM_BASE_URL
         with contextlib.suppress(Exception):
@@ -76,7 +75,7 @@ def login(
     # create client with no auth data
     client = ApiClient(base_url=server)
 
-    rich.print(":laptop_computer: Requesting device code ...")
+    print_info("Requesting device code ...")
 
     # request user and device codes
     codes = client.get_device_codes()
@@ -85,16 +84,15 @@ def login(
     verification_url = client.url_for_user_code(codes.user_code)
     verification_url_base = verification_url.split("?")[0]
 
-    rich.print()
-    rich.print(
-        f"""\
-Attempting to automatically open the authorization page in your default browser.
-If the browser does not open or you wish to use a different device, open the following URL:
+    print_info(
+        f"""
+        Attempting to automatically open the authorization page in your default browser.
+        If the browser does not open or you wish to use a different device, open the following URL:
 
-:link: [bold]{verification_url_base}[/]
+        [bold]{verification_url_base}[/]
 
-Then enter the code: [bold]{codes.user_code}[/]
-"""
+        Then enter the code: [bold]{codes.user_code}[/]
+        """
     )
 
     webbrowser.open(verification_url)
@@ -111,7 +109,8 @@ Then enter the code: [bold]{codes.user_code}[/]
     )
     user = client.get_user()
 
-    UserConfig.read().set_server_config(
+    user_config = UserConfig.read()
+    user_config.set_server_config(
         ServerConfig(
             url=server,
             access_token=tokens.access_token,
@@ -121,9 +120,11 @@ Then enter the code: [bold]{codes.user_code}[/]
             api_key=user.api_key.key,
         ),
         profile,
-    ).write()
+    )
+    user_config.active = profile
+    user_config.write()
 
-    rich.print(f":white_check_mark: Authenticated as {user.email_address} ({user.username})")
+    print_success(f"Authenticated as {user.email_address} ({user.username})")
 
 
 @cli.command(group="Auth")
@@ -142,32 +143,64 @@ def refresh() -> None:
 
     user_config.set_server_config(server_config).write()
 
-    rich.print(
-        f":white_check_mark: Refreshed '[bold]{user_config.active}[/bold]' ([magenta]{user.email_address}[/] / [cyan]{user.username}[/])"
+    print_success(
+        f"Refreshed '[bold]{user_config.active}[/bold]' ([magenta]{user.email_address}[/] / [cyan]{user.username}[/])"
     )
 
 
 @cli.command()
-def clone(
-    repo: t.Annotated[str, cyclopts.Parameter(help="Repository name or URL")],
-    target: t.Annotated[
-        pathlib.Path | None,
-        cyclopts.Parameter(help="The target directory"),
-    ] = None,
-) -> None:
-    """Clone a GitHub repository to a local directory"""
+def pull(image: str) -> None:
+    """
+    Pull a capability image from the dreadnode registry.
 
+    Args:
+        image: The name of the image to pull (e.g. dreadnode/agent:latest).
+    """
+    user_config = UserConfig.read()
+    if not user_config.active_profile_name:
+        raise RuntimeError("No server profile is set, use [bold]dreadnode login[/] to authenticate")
+
+    server_config = user_config.get_server_config()
+
+    docker_image = DockerImage(image)
+    tag_as: str | None = None
+    if docker_image.repository.startswith("dreadnode/") and not docker_image.registry:
+        docker_image = docker_image.with_(
+            registry=get_registry(user_config.get_server_config()),
+        )
+        tag_as = image
+
+    if docker_image.registry and docker_image.registry != "docker.io":
+        print_info(f"Authenticating to [bold]{docker_image.registry}[/] ...")
+        docker_login(docker_image.registry, server_config.username, server_config.api_key)
+
+    print_info(f"Pulling image [bold]{docker_image}[/] ...")
+    docker_pull(docker_image)
+
+    if tag_as:
+        docker_tag(docker_image, tag_as)
+
+
+@cli.command()
+def clone(
+    repo: str,
+    target: pathlib.Path | None = None,
+) -> None:
+    """
+    Clone a GitHub repository to a local directory
+
+    Args:
+        repo: Repository name or URL.
+        target: The target directory.
+    """
     github_repo = GithubRepo(repo)
 
     # Check if the target directory exists
     target = target or pathlib.Path(github_repo.repo)
     if target.exists():
-        if (
-            Prompt.ask(f":axe: Overwrite {target.absolute()}?", choices=["y", "n"], default="n")
-            == "n"
-        ):
+        if not confirm(f"{target.absolute()} exists, overwrite?"):
             return
-        rich.print()
+        console.print()
         shutil.rmtree(target)
 
     # Check if the repo is accessible
@@ -187,7 +220,7 @@ def clone(
         github_access_token = create_api_client(profile=profile_to_use).get_github_access_token(
             [github_repo.repo]
         )
-        rich.print(":key: Accessed private repository")
+        print_info("Accessed private repository")
         temp_dir = download_and_unzip_archive(
             github_repo.api_zip_url,
             headers={"Authorization": f"Bearer {github_access_token.token}"},
@@ -204,8 +237,7 @@ def clone(
 
     shutil.move(temp_dir, target)
 
-    rich.print()
-    rich.print(f":tada: Cloned [b]{repo}[/] to [b]{target.absolute()}[/]")
+    print_success(f"Cloned [b]{repo}[/] to [b]{target.absolute()}[/]")
 
 
 @cli.command(help="Show versions and exit.", group="Meta")
@@ -215,6 +247,6 @@ def version() -> None:
 
     os_name = platform.system()
     arch = platform.machine()
-    rich.print(f"Platform:   {os_name} ({arch})")
-    rich.print(f"Python:     {python_version}")
-    rich.print(f"Dreadnode:  {version}")
+    print_info(f"Platform:   {os_name} ({arch})")
+    print_info(f"Python:     {python_version}")
+    print_info(f"Dreadnode:  {version}")
