@@ -4,6 +4,7 @@ from dreadnode.agent import error, events, hooks, reactions, result, stop, tools
 from dreadnode.agent.agent import Agent
 from dreadnode.agent.result import AgentResult
 from dreadnode.agent.thread import Thread
+from dreadnode.agent.tools import tool, tool_method
 
 Agent.model_rebuild()
 Thread.model_rebuild()
@@ -20,5 +21,7 @@ __all__ = [
     "reactions",
     "result",
     "stop",
+    "tool",
+    "tool_method",
     "tools",
 ]

@@ -4,7 +4,7 @@ from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
 
 import rigging as rg
-from pydantic import ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
 from rigging.message import inject_system_content  # can't access via rg
 
 from dreadnode.agent.error import MaxStepsError
@@ -83,7 +83,7 @@ class Agent(Model):
     caching: rg.caching.CacheMode | None = Config(default=None, repr=False)
     """How to handle cache_control entries on inference messages."""
 
-    tools: list[AnyTool | Toolset] = Config(default_factory=list)
+    tools: t.Annotated[list[AnyTool | Toolset], SkipValidation] = Config(default_factory=list)
     """Tools the agent can use."""
     tool_mode: ToolMode = Config(default="auto", repr=False)
     """The tool calling mode to use."""
