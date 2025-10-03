@@ -109,7 +109,7 @@ def backoff_on_ratelimit(
     """
     A convenient default backoff hook for common, ephemeral LLM errors.
 
-    This hook retries on `litellm.exceptions.RateLimitError` and `litellem.exceptions.APIError`
+    This hook retries on `litellm.exceptions.RateLimitError` and `litellm.exceptions.APIError`
     with an exponential backoff strategy for up to 5 minutes.
 
     See `backoff_on_error` for more details.
