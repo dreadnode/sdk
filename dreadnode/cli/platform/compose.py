@@ -66,7 +66,9 @@ def get_required_services(version: LocalVersion) -> list[str]:
     contents: dict[str, object] = yaml.safe_load(version.compose_file.read_text())
     services = t.cast("dict[str, object]", contents.get("services", {}) or {})
     return [
-        name for name, cfg in services.items() if isinstance(cfg, dict) and cfg.get("x-required")
+        cfg.get("container_name")
+        for name, cfg in services.items()
+        if isinstance(cfg, dict) and cfg.get("x-required")
     ]
 
 
@@ -166,7 +168,7 @@ def platform_is_running(version: LocalVersion) -> bool:
         return False
 
     for service in get_required_services(version):
-        if service not in [c.name for c in containers if c.status == "running"]:
+        if service not in [c.name for c in containers if c.state == "running"]:
             return False
 
     return True
