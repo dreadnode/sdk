@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
+from ulid import ULID
 
 from dreadnode.agent.format import format_message
 from dreadnode.agent.reactions import (
@@ -39,6 +40,8 @@ class AgentEvent:
     )
     """The timestamp of when the event occurred (UTC)."""
 
+    session_id: ULID = field(repr=False)
+    """The unique identifier for the agent run session."""
     agent: "Agent" = field(repr=False)
     """The agent associated with this event."""
     thread: "Thread" = field(repr=False)
