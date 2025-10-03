@@ -50,6 +50,7 @@ span = DEFAULT_INSTANCE.span
 task = DEFAULT_INSTANCE.task
 task_span = DEFAULT_INSTANCE.task_span
 run = DEFAULT_INSTANCE.run
+using_api_key = DEFAULT_INSTANCE.using_api_key
 task_and_run = DEFAULT_INSTANCE.task_and_run
 scorer = DEFAULT_INSTANCE.scorer
 score = DEFAULT_INSTANCE.score

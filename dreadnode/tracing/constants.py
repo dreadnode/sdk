@@ -33,3 +33,6 @@ EVENT_ATTRIBUTE_LINK_HASH = f"{SPAN_NAMESPACE}.link.hash"
 EVENT_ATTRIBUTE_ORIGIN_SPAN_ID = f"{SPAN_NAMESPACE}.origin.span_id"
 
 METRIC_ATTRIBUTE_SOURCE_HASH = f"{SPAN_NAMESPACE}.origin.hash"
+
+# Internal use only - used to support multi-user export flows
+SPAN_RESOURCE_ATTRIBUTE_TOKEN = "_dreadnode_token"  # noqa: S105 # nosec

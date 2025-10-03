@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -14,10 +14,6 @@ import rich
 from fsspec.implementations.local import (  # type: ignore [import-untyped]
     LocalFileSystem,
 )
-from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
-from opentelemetry import propagate
-from opentelemetry.exporter.otlp.proto.http import Compression
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
@@ -56,11 +52,13 @@ from dreadnode.tracing.exporters import (
     FileMetricReader,
     FileSpanExporter,
 )
+from dreadnode.tracing.processors import RoutingSpanProcessor
 from dreadnode.tracing.span import (
     RunContext,
     RunSpan,
     Span,
     TaskSpan,
+    current_export_auth_token_context,
     current_run_span,
     current_task_span,
 )
@@ -337,30 +335,8 @@ class Dreadnode:
                     f"Failed to connect to the Dreadnode server: {e}",
                 ) from e
 
-            headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
-            span_processors.append(
-                BatchSpanProcessor(
-                    RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
-                        OTLPSpanExporter(
-                            endpoint=urljoin(self.server, "/api/otel/traces"),
-                            headers=headers,
-                            compression=Compression.Gzip,
-                        ),
-                    ),
-                ),
-            )
-            # TODO(nick): Metrics
-            # https://linear.app/dreadnode/issue/ENG-1310/sdk-add-metrics-exports
-            # metric_readers.append(
-            #     PeriodicExportingMetricReader(
-            #         OTLPMetricExporter(
-            #             endpoint=urljoin(self.server, "/v1/metrics"),
-            #             headers=headers,
-            #             compression=Compression.Gzip,
-            #             # preferred_temporality
-            #         )
-            #     )
-            # )
+            span_processors.append(RoutingSpanProcessor(self.server, self.token))
+
             if self._api is not None:
                 api = self._api
                 self._credential_manager = CredentialManager(
@@ -777,6 +753,7 @@ class Dreadnode:
         project: str | None = None,
         autolog: bool = True,
         name_prefix: str | None = None,
+        api_key: str | None = None,
         attributes: AnyDict | None = None,
     ) -> RunSpan:
         """
@@ -803,6 +780,8 @@ class Dreadnode:
                 the project passed to `configure()` will be used, or the
                 run will be associated with a default project.
             autolog: Automatically log task inputs, outputs, and execution metrics if otherwise unspecified.
+            name_prefix: A prefix to use when generating a random name for the run.
+            api_key: An optional API key to use for tracing this run instead of the configured one.
             attributes: Additional attributes to attach to the run span.
 
         Returns:
@@ -824,7 +803,33 @@ class Dreadnode:
             tags=tags,
             credential_manager=self._credential_manager,  # type: ignore[arg-type]
             autolog=autolog,
+            export_auth_token=api_key,
         )
+
+    @contextlib.contextmanager
+    def using_api_key(self, api_key: str) -> t.Iterator[None]:
+        """
+        Context manager to temporarily override the API key used for exporting spans.
+
+        This is useful for multi-user scenarios where you want to log data
+        on behalf of another user.
+
+        Example:
+            ```
+            with dreadnode.with_api_key("other_user_api_key"):
+                with dreadnode.run("my_run"):
+                    # do some work here
+                    pass
+            ```
+
+        Args:
+            api_key: The API key to use for exporting spans within the context.
+        """
+        token_token = current_export_auth_token_context.set(api_key)
+        try:
+            yield
+        finally:
+            current_export_auth_token_context.reset(token_token)
 
     @contextlib.contextmanager
     def task_and_run(
@@ -877,17 +882,7 @@ class Dreadnode:
         """
         if (run := current_run_span.get()) is None:
             raise RuntimeError("get_run_context() must be called within a run")
-
-        # Capture OpenTelemetry trace context
-        trace_context: dict[str, str] = {}
-        propagate.inject(trace_context)
-
-        return {
-            "run_id": run.run_id,
-            "run_name": run.name,
-            "project": run.project,
-            "trace_context": trace_context,
-        }
+        return run.get_context()
 
     def continue_run(self, run_context: RunContext) -> RunSpan:
         """
