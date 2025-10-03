@@ -5,7 +5,8 @@ from copy import deepcopy
 
 import rigging as rg
 from pydantic import ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
-from rigging.message import inject_system_content  # can't access via rg
+from rigging.message import inject_system_content
+from ulid import ULID  # can't access via rg
 
 from dreadnode.agent.error import MaxStepsError
 from dreadnode.agent.events import (
@@ -275,6 +276,7 @@ class Agent(Model):
     ) -> t.AsyncGenerator[AgentEvent, None]:
         events: list[AgentEvent] = []
         stop_conditions = self.stop_conditions
+        session_id = ULID()
 
         # Event dispatcher
 
@@ -368,6 +370,7 @@ class Agent(Model):
                 "unknown",
             )
             reacted_event = Reacted(
+                session_id=session_id,
                 agent=self,
                 thread=thread,
                 messages=messages,
@@ -395,6 +398,7 @@ class Agent(Model):
         ) -> t.AsyncGenerator[AgentEvent, None]:
             async for event in _dispatch(
                 ToolStart(
+                    session_id=session_id,
                     agent=self,
                     thread=thread,
                     messages=messages,
@@ -416,6 +420,7 @@ class Agent(Model):
                 except Exception as e:
                     async for event in _dispatch(
                         AgentError(
+                            session_id=session_id,
                             agent=self,
                             thread=thread,
                             messages=messages,
@@ -432,6 +437,7 @@ class Agent(Model):
 
             async for event in _dispatch(
                 ToolEnd(
+                    session_id=session_id,
                     agent=self,
                     thread=thread,
                     messages=messages,
@@ -447,6 +453,7 @@ class Agent(Model):
 
         async for event in _dispatch(
             AgentStart(
+                session_id=session_id,
                 agent=self,
                 thread=thread,
                 messages=messages,
@@ -464,6 +471,7 @@ class Agent(Model):
             try:
                 async for event in _dispatch(
                     StepStart(
+                        session_id=session_id,
                         agent=self,
                         thread=thread,
                         messages=messages,
@@ -479,6 +487,7 @@ class Agent(Model):
                 if step_chat.failed and step_chat.error:
                     async for event in _dispatch(
                         AgentError(
+                            session_id=session_id,
                             agent=self,
                             thread=thread,
                             messages=messages,
@@ -493,6 +502,7 @@ class Agent(Model):
 
                 async for event in _dispatch(
                     GenerationEnd(
+                        session_id=session_id,
                         agent=self,
                         thread=thread,
                         messages=messages,
@@ -516,6 +526,7 @@ class Agent(Model):
 
                     async for event in _dispatch(
                         AgentStalled(
+                            session_id=session_id,
                             agent=self,
                             thread=thread,
                             messages=messages,
@@ -579,6 +590,7 @@ class Agent(Model):
             thread.events.extend(events)
 
         yield AgentEnd(
+            session_id=session_id,
             agent=self,
             thread=thread,
             messages=messages,
