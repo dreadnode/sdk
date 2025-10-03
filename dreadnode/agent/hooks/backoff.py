@@ -18,12 +18,12 @@ if t.TYPE_CHECKING:
 @dataclass
 class BackoffState:
     tries: int = 0
-    start_time: float = time.monotonic()
+    start_time: float | None = None
     last_step_seen: int = -1
 
     def reset(self, step: int = -1) -> None:
         self.tries = 0
-        self.start_time = time.monotonic()
+        self.start_time = None
         self.last_step_seen = step
 
 
@@ -68,7 +68,7 @@ def backoff_on_error(
         if not isinstance(event, AgentError) or not isinstance(event.error, exceptions):
             return None
 
-        if state.start_time == 0.0:
+        if state.start_time is None:
             state.start_time = time.monotonic()
 
         if state.tries >= max_tries:
