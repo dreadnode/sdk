@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import cyclopts
 
-from dreadnode.logging_ import LogLevelLiteral, configure_logging
+from dreadnode.logging_ import LogLevel, configure_logging
 
 
 @cyclopts.Parameter(name="dn", group="Dreadnode")
@@ -19,7 +19,7 @@ class DreadnodeConfig:
     """Profile name"""
     console: t.Annotated[bool, cyclopts.Parameter(negative=False)] = False
     """Show spans in the console"""
-    log_level: LogLevelLiteral | None = None
+    log_level: LogLevel | None = None
     """Console log level"""
 
     def apply(self) -> None:

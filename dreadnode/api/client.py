@@ -726,7 +726,7 @@ class ApiClient:
 
     # Container registry access
 
-    def get_container_registry_credentials(self) -> ContainerRegistryCredentials:
+    def get_platform_registry_credentials(self) -> ContainerRegistryCredentials:
         """
         Retrieves container registry credentials for Docker image access.
 
@@ -736,35 +736,17 @@ class ApiClient:
         response = self.request("POST", "/platform/registry-token")
         return ContainerRegistryCredentials(**response.json())
 
-    def get_platform_releases(
-        self, tag: str, services: list[str], cli_version: str | None
-    ) -> RegistryImageDetails:
+    def get_platform_releases(self, tag: str, services: list[str]) -> RegistryImageDetails:
         """
         Resolves the platform releases for the current project.
 
         Returns:
             The resolved platform releases as a ResolveReleasesResponse object.
         """
-        payload = {
-            "tag": tag,
-            "services": services,
-            "cli_version": cli_version,
-        }
-        try:
-            response = self.request("POST", "/platform/get-releases", json_data=payload)
+        from dreadnode.version import VERSION
 
-        except RuntimeError as e:
-            if "403" in str(e):
-                raise RuntimeError("You do not have access to platform releases.") from e
-
-            if "404" in str(e):
-                if "Image not found" in str(e):
-                    raise RuntimeError("Image not found") from e
-
-                raise RuntimeError(
-                    f"Failed to get platform releases: {e}. The feature is likely disabled on this server"
-                ) from e
-            raise
+        payload = {"tag": tag, "services": services, "cli_version": VERSION}
+        response = self.request("POST", "/platform/get-releases", json_data=payload)
         return RegistryImageDetails(**response.json())
 
     def get_platform_templates(self, tag: str) -> bytes:
