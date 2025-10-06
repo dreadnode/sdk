@@ -19,7 +19,7 @@ class Continue(Reaction):
 
 @dataclass
 class Retry(Reaction):
-    messages: list[rg.Message] | None = Field(None, repr=False)
+    messages: list[rg.Message] | None = Field(default=None, repr=False)
 
 
 @dataclass
