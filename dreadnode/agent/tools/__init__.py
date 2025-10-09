@@ -3,7 +3,12 @@ import typing as t
 
 from dreadnode.agent.tools.base import (
     AnyTool,
+    FunctionCall,
+    FunctionDefinition,
     Tool,
+    ToolCall,
+    ToolDefinition,
+    ToolMode,
     Toolset,
     discover_tools_on_obj,
     tool,
@@ -15,7 +20,12 @@ if t.TYPE_CHECKING:
 
 __all__ = [
     "AnyTool",
+    "FunctionCall",
+    "FunctionDefinition",
     "Tool",
+    "ToolCall",
+    "ToolDefinition",
+    "ToolMode",
     "Toolset",
     "discover_tools_on_obj",
     "fs",

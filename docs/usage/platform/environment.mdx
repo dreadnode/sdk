@@ -1,0 +1,46 @@
+---
+title: 'Environment & Files'
+description: 'Where files live and how envs are generated/merged'
+public: true
+---
+
+## Local cache & manifest
+
+- Base directory: `~/.dreadnode/platform`
+- Manifest: `versions.json`
+  - Tracks all downloaded versions and which one is **current**
+- Per-version directory: `~/.dreadnode/platform/<tag>`
+  - `docker-compose.yaml`
+  - `.dreadnode-api.env`, `.api.example.env`
+  - `.dreadnode-ui.env`, `.ui.example.env`
+  - `.env` (generated on start, concatenation of `.dreadnode-api.env` + `.dreadnode-ui.env`)
+
+## Services
+
+Two primary services:
+
+- `api` — the Dreadnode backend API
+- `ui` — the Dreadnode frontend
+
+## Composite `.env`
+
+On `start`, the CLI concatenates:
+
+1. `.<API>.env`
+2. `.<UI>.env`
+
+into a **generated** `.env` consumed by Docker Compose.
+
+<Warning>
+Don't edit the generated `.env` directly—your changes will be overwritten on next start. Edit `.dreadnode-api.env` and `.dreadnode-ui.env` instead.
+</Warning>
+
+## Upgrade-time env merge
+
+If you opt-in during `upgrade`:
+
+- **Local changes win** over remote defaults.
+- **Removed keys** upstream are dropped only when your local value wasn't changed from the original.
+- **New remote keys** are added.
+- **New local keys** are preserved.
+- The merge attempts to keep **section context and formatting** where possible.

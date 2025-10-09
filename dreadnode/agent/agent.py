@@ -4,8 +4,9 @@ from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
 
 import rigging as rg
-from pydantic import ConfigDict, Field, PrivateAttr, field_validator
-from rigging.message import inject_system_content  # can't access via rg
+from pydantic import ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
+from rigging.message import inject_system_content
+from ulid import ULID  # can't access via rg
 
 from dreadnode.agent.error import MaxStepsError
 from dreadnode.agent.events import (
@@ -83,7 +84,7 @@ class Agent(Model):
     caching: rg.caching.CacheMode | None = Config(default=None, repr=False)
     """How to handle cache_control entries on inference messages."""
 
-    tools: list[AnyTool | Toolset] = Config(default_factory=list)
+    tools: t.Annotated[list[AnyTool | Toolset], SkipValidation] = Config(default_factory=list)
     """Tools the agent can use."""
     tool_mode: ToolMode = Config(default="auto", repr=False)
     """The tool calling mode to use."""
@@ -275,6 +276,7 @@ class Agent(Model):
     ) -> t.AsyncGenerator[AgentEvent, None]:
         events: list[AgentEvent] = []
         stop_conditions = self.stop_conditions
+        session_id = ULID()
 
         # Event dispatcher
 
@@ -368,6 +370,7 @@ class Agent(Model):
                 "unknown",
             )
             reacted_event = Reacted(
+                session_id=session_id,
                 agent=self,
                 thread=thread,
                 messages=messages,
@@ -395,6 +398,7 @@ class Agent(Model):
         ) -> t.AsyncGenerator[AgentEvent, None]:
             async for event in _dispatch(
                 ToolStart(
+                    session_id=session_id,
                     agent=self,
                     thread=thread,
                     messages=messages,
@@ -416,6 +420,7 @@ class Agent(Model):
                 except Exception as e:
                     async for event in _dispatch(
                         AgentError(
+                            session_id=session_id,
                             agent=self,
                             thread=thread,
                             messages=messages,
@@ -432,6 +437,7 @@ class Agent(Model):
 
             async for event in _dispatch(
                 ToolEnd(
+                    session_id=session_id,
                     agent=self,
                     thread=thread,
                     messages=messages,
@@ -447,6 +453,7 @@ class Agent(Model):
 
         async for event in _dispatch(
             AgentStart(
+                session_id=session_id,
                 agent=self,
                 thread=thread,
                 messages=messages,
@@ -464,6 +471,7 @@ class Agent(Model):
             try:
                 async for event in _dispatch(
                     StepStart(
+                        session_id=session_id,
                         agent=self,
                         thread=thread,
                         messages=messages,
@@ -479,6 +487,7 @@ class Agent(Model):
                 if step_chat.failed and step_chat.error:
                     async for event in _dispatch(
                         AgentError(
+                            session_id=session_id,
                             agent=self,
                             thread=thread,
                             messages=messages,
@@ -493,6 +502,7 @@ class Agent(Model):
 
                 async for event in _dispatch(
                     GenerationEnd(
+                        session_id=session_id,
                         agent=self,
                         thread=thread,
                         messages=messages,
@@ -516,6 +526,7 @@ class Agent(Model):
 
                     async for event in _dispatch(
                         AgentStalled(
+                            session_id=session_id,
                             agent=self,
                             thread=thread,
                             messages=messages,
@@ -579,6 +590,7 @@ class Agent(Model):
             thread.events.extend(events)
 
         yield AgentEnd(
+            session_id=session_id,
             agent=self,
             thread=thread,
             messages=messages,
@@ -646,9 +658,10 @@ class Agent(Model):
                 "user_input": user_input,
                 "messages": messages,
                 "instructions": self.instructions,
-                "tools": [t.name for t in self.all_tools],
                 "hooks": [get_callable_name(hook, short=True) for hook in self.hooks],
                 "stop_conditions": [s.name for s in self.stop_conditions],
+                "tools": [t.name for t in self.all_tools],
+                "tool_schemas": [t.api_definition for t in self.all_tools],
             }
         )
         trace_params.update(
@@ -669,13 +682,17 @@ class Agent(Model):
                         yield event
             finally:
                 if last_event is not None:
-                    log_outputs(messages=last_event.messages, token_usage=last_event.total_usage)
+                    # TODO(nick): Don't love having to inject here, but it's the most accurate in
+                    # in terms of ensuring we don't miss the system component of messages
+                    final_messages = inject_system_content(last_event.messages, self.get_prompt())
+                    log_outputs(messages=final_messages, token_usage=last_event.total_usage)
 
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
                         to="both",
                         steps_taken=min(0, last_event.result.steps - 1),
                         reason=last_event.stop_reason,
+                        failed=last_event.result.failed,
                     )
                     if last_event.result.error:
                         log_output("error", last_event.result.error, to="both")

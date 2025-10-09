@@ -1,0 +1,58 @@
+---
+title: 'Troubleshooting'
+description: 'Common issues and how to fix them'
+public: true
+---
+
+#### Docker / Compose not found
+
+- Ensure Docker Desktop or Docker Engine + Compose V2 is installed.
+- Verify:
+
+  ```bash
+  docker --version
+  docker compose --version
+  ```
+
+#### 403 Forbidden Error
+
+- Ensure you've completed `dreadnode login` to the Dreadnode server.
+- Ensure you've gotten a Platform License from [Dreadnode](https://dreadnode.com/contact-us).
+
+#### Failing to log into container registry
+
+* Ensure your API client is configured and can retrieve registry credentials.
+* Re-run:
+
+  ```bash
+  dreadnode platform refresh_registry_auth
+  ```
+* If credentials look stale, delete `~/.docker/config.json` entries for the registry and try again.
+
+#### UI URL not printed
+
+* The CLI tries to read `ORIGIN` from the `dreadnode-ui` container:
+
+  ```bash
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' dreadnode-ui | grep ORIGIN
+  ```
+* If it's not set, check container logs and env configuration in `.dreadnode-ui.env`.
+
+#### Start succeeds but services are unhealthy
+
+* Inspect containers:
+
+  ```bash
+  docker compose -f ~/.dreadnode/platform/<tag>/docker-compose.yaml ps
+  docker compose -f ~/.dreadnode/platform/<tag>/docker-compose.yaml logs -f
+  ```
+* Verify required env vars are populated in `.dreadnode-api.env` and `.dreadnode-ui.env`.
+
+#### Upgrade didn't apply my custom env changes
+
+* If you **skipped** the merge step, your new version uses stock envs.
+* Re-run `upgrade` again (or manually port your changes), then `start`.
+
+<Note>
+You can always edit `.<service>.env` and restart to apply configuration changes.
+</Note>

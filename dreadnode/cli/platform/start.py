@@ -1,7 +1,9 @@
 from dreadnode.cli.platform.docker_ import (
+    DockerError,
     docker_login,
     docker_requirements_met,
     docker_run,
+    docker_stop,
     get_available_local_images,
     get_env_var_from_container,
     get_required_images,
@@ -60,12 +62,18 @@ def start_platform(tag: str | None = None, **env_overrides: str) -> None:
         write_overrides_env(selected_version.arg_overrides_env_file, **env_overrides)
 
     print_info(f"Starting platform: {selected_version.tag}")
-    docker_run(selected_version)
-    print_success(f"Platform {selected_version.tag} started successfully.")
-    origin = get_env_var_from_container("dreadnode-ui", "ORIGIN")
-    if origin:
-        print_info("You can access the app at the following URLs:")
-        print_info(f" - {origin}")
-    else:
-        print_info(" - Unable to determine the app URL.")
-        print_info("Please check the container logs for more information.")
+    try:
+        docker_run(selected_version)
+        print_success(f"Platform {selected_version.tag} started successfully.")
+        origin = get_env_var_from_container("dreadnode-ui", "ORIGIN")
+        if origin:
+            print_info("You can access the app at the following URLs:")
+            print_info(f" - {origin}")
+        else:
+            print_info(" - Unable to determine the app URL.")
+            print_info("Please check the container logs for more information.")
+    except DockerError as e:
+        print_error(f"Failed to start platform {selected_version.tag}: {e}")
+        print_info("Stopping any partially started containers...")
+        docker_stop(selected_version)
+        print_info("You can check the logs for more details.")

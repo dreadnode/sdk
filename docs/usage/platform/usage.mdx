@@ -1,0 +1,90 @@
+---
+title: 'Usage'
+description: 'Start, stop, download, and upgrade the platform'
+public: true
+---
+
+Once installed, use the `platform` namespace:
+
+```bash
+dreadnode platform --help
+````
+
+### Start the platform
+
+```bash
+# Start current version, or download the latest for your architecture if none exists
+dreadnode platform start
+
+# Start a specific tag
+dreadnode platform start --tag v1.2.3-amd64
+```
+
+What happens:
+
+1. Logs in to the remote container registries.
+1. Downloads any necessary definition and configuration files.
+1. Pulls the latest images.
+1. Runs the containers.
+
+### Stop the platform
+
+```bash
+dreadnode platform stop
+# alias:
+dreadnode platform down
+```
+
+Stops and removes all running application containers.
+
+**Note:** This will NOT remove any data or delete images. You can restart the containers again.
+
+### Download a specific version (without starting)
+
+```bash
+dreadnode platform download --tag v1.2.3-amd64
+dreadnode platform download --tag latest-amd64
+```
+
+This fetches templates and writes them under the [versioned environment](/platform/cli/environment)
+
+### Upgrade to the latest
+
+```bash
+dreadnode platform upgrade
+```
+
+Flow:
+
+1. Resolves `latest-<arch>` and downloads it.
+2. If the remote is **newer** than your current semver, prompts to continue.
+3. Optionally **merges env files** from your current version into the new version
+   (local changes win; removed keys are dropped if unchanged; new remote keys are added).
+4. Stops the current version and starts the upgraded one.
+
+<Note>
+If you skip the merge, your new version will carry the stock `.<service>.env` files from its templates.
+</Note>
+
+### Refresh registry auth (out-of-band)
+
+```bash
+dreadnode platform refresh-registry-auth
+```
+
+If you are modifying or restarting the platform out of band (using Docker Compose), you may need to refresh credentials to the private image registries.
+
+### Connect the SDK
+Once you've started the platform, you can connect the SDK by running:
+
+```bash
+dreadnode login --server http://localhost --profile local
+```
+
+<Info>
+Make sure to replace `http://localhost` with the appropriate URL if you are accessing the platform remotely.
+</Info>
+
+You can now start shipping data to your local Dreadnode instance!
+
+or, if you are using the Python SDK, see [the Python SDK docs](/strikes/usage/config#self-hosted-platforms).

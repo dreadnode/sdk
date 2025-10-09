@@ -4,17 +4,24 @@ import typing as t
 from dataclasses import dataclass
 from enum import Enum
 
+import yaml
 from pydantic import BaseModel, Field
 from yaml import safe_dump
 
 from dreadnode.cli.api import create_api_client
 from dreadnode.cli.platform.constants import DEFAULT_DOCKER_PROJECT_NAME, PlatformService
 from dreadnode.cli.platform.schemas import LocalVersionSchema
+from dreadnode.cli.platform.utils.env_mgmt import read_env_file
 from dreadnode.cli.platform.utils.printing import print_error, print_info, print_success
 
 DockerContainerState = t.Literal[
     "running", "exited", "paused", "restarting", "removing", "created", "dead"
 ]
+
+
+# create a DockerError exception that I can catch
+class DockerError(Exception):
+    pass
 
 
 class CaptureOutput(str, Enum):
@@ -66,22 +73,33 @@ class DockerImage:
         return result
 
     def __eq__(self, other: object) -> bool:
-        """Check if two DockerImage instances are equal."""
+        """Check if two DockerImage instances are equal.
+
+        If they both have digests, compare digests.
+        If they both have tags, compare tags.
+
+        """
         if not isinstance(other, DockerImage):
             return False
-        return (
-            self.repository == other.repository
-            and self.tag == other.tag
-            and self.digest == other.digest
-        )
+        if self.repository != other.repository:
+            return False
+        if self.digest and other.digest:
+            return self.digest == other.digest
+        if self.tag and other.tag:
+            return self.tag == other.tag
+        return False
 
     def __ne__(self, other: object) -> bool:
         """Check if two DockerImage instances are not equal."""
         return not self.__eq__(other)
 
     def __hash__(self) -> int:
-        """Make DockerImage hashable so it can be used in sets/dicts."""
-        return hash((self.repository, self.tag, self.digest))
+        """Generate a hash for the DockerImage instance."""
+        if self.tag:
+            return hash((self.repository, self.tag))
+        if self.digest:
+            return hash((self.repository, self.digest))
+        return hash((self.repository,))
 
 
 class DockerPSResult(BaseModel):
@@ -95,9 +113,135 @@ class DockerPSResult(BaseModel):
         return self.state == "running"
 
 
+def _build_docker_compose_base_command(
+    selected_version: LocalVersionSchema,
+) -> list[str]:
+    cmds = []
+    compose_files = [selected_version.compose_file]
+    env_files = [
+        selected_version.api_env_file,
+        selected_version.ui_env_file,
+    ]
+
+    if (
+        selected_version.configure_overrides_compose_file.exists()
+        and selected_version.configure_overrides_env_file.exists()
+    ):
+        compose_files.append(selected_version.configure_overrides_compose_file)
+        env_files.append(selected_version.configure_overrides_env_file)
+
+    for compose_file in compose_files:
+        cmds.extend(["-f", compose_file.as_posix()])
+
+    for profile in _get_profiles_to_enable(selected_version):
+        cmds.extend(["--profile", profile])
+
+    if selected_version.arg_overrides_env_file.exists():
+        env_files.append(selected_version.arg_overrides_env_file)
+
+    for env_file in env_files:
+        cmds.extend(["--env-file", env_file.as_posix()])
+    return cmds
+
+
+def _check_docker_installed() -> bool:
+    """Check if Docker is installed on the system."""
+    try:
+        cmd = ["docker", "--version"]
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    except subprocess.CalledProcessError:
+        print_error("Docker is not installed. Please install Docker and try again.")
+        return False
+
+    return True
+
+
+def _check_docker_compose_installed() -> bool:
+    """Check if Docker Compose is installed on the system."""
+    try:
+        cmd = ["docker", "compose", "--version"]
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        print_error("Docker Compose is not installed. Please install Docker Compose and try again.")
+        return False
+    return True
+
+
+def get_required_service_names(selected_version: LocalVersionSchema) -> list[str]:
+    """Get the list of require service names from the docker-compose file."""
+    contents: dict[str, t.Any] = yaml.safe_load(selected_version.compose_file.read_text())
+    services = contents.get("services", {}) or {}
+    return [name for name, cfg in services.items() if isinstance(cfg, dict) and "x-required" in cfg]
+
+
+def _get_profiles_to_enable(selected_version: LocalVersionSchema) -> list[str]:
+    """Get the list of profiles to enable based on environment variables.
+
+    If any of the `x-profile-disabled-vars` are set in the environment,
+    the profile will be disabled.
+
+    E.g.
+
+        services:
+          myservice:
+            image: myimage:latest
+            profiles:
+              - myprofile
+            x-profile-override-vars:
+              - MY_SERVICE_HOST
+
+    If MY_SERVICE_HOST is set in the environment, the `myprofile` profile
+    will NOT be excluded from the docker compose --profile <profile> cmd.
+
+    Args:
+        selected_version: The selected version of the platform.
+
+    Returns:
+        List of profile names to enable.
+    """
+
+    contents: dict[str, t.Any] = yaml.safe_load(selected_version.compose_file.read_text())
+    services = contents.get("services", {}) or {}
+    profiles_to_enable: set[str] = set()
+    for service in services.values():
+        if not isinstance(service, dict):
+            continue
+        profiles = service.get("profiles", [])
+        if not profiles or not isinstance(profiles, list):
+            continue
+        x_override_vars = service.get("x-profile-override-vars", [])
+        if not x_override_vars or not isinstance(x_override_vars, list):
+            profiles_to_enable.update(profiles)
+            continue
+
+        configuration_file = selected_version.configure_overrides_env_file
+        overrides_file = selected_version.arg_overrides_env_file
+        env_vars = {}
+        if configuration_file.exists():
+            env_vars.update(read_env_file(configuration_file))
+        if overrides_file.exists():
+            env_vars.update(read_env_file(overrides_file))
+        # check if any of the override vars are set in the env
+        if any(var in env_vars for var in x_override_vars):
+            continue  # skip enabling this profile
+        profiles_to_enable.update(profiles)
+
+    return list(profiles_to_enable)
+
+
 def _run_docker_compose_command(
     args: list[str],
-    # compose_file: Path,
     timeout: int = 300,
     stdin_input: str | None = None,
     capture_output: CaptureOutput | None = None,
@@ -144,76 +288,17 @@ def _run_docker_compose_command(
 
     except subprocess.CalledProcessError as e:
         print_error(f"{cmd_str} failed with exit code {e.returncode}")
-        raise
+        raise DockerError(f"Docker command failed: {e}") from e
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         print_error(f"{cmd_str} timed out after {timeout} seconds")
-        raise
+        raise DockerError(f"Docker command timed out after {timeout} seconds") from e
 
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         print_error("Docker or docker compose not found. Please ensure Docker is installed.")
-        raise
+        raise DockerError(f"Docker compose file not found: {e}") from e
 
     return result
-
-
-def _check_docker_installed() -> bool:
-    """Check if Docker is installed on the system."""
-    try:
-        cmd = ["docker", "--version"]
-        subprocess.run(  # noqa: S603
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-    except subprocess.CalledProcessError:
-        print_error("Docker is not installed. Please install Docker and try again.")
-        return False
-
-    return True
-
-
-def _check_docker_compose_installed() -> bool:
-    """Check if Docker Compose is installed on the system."""
-    try:
-        cmd = ["docker", "compose", "--version"]
-        subprocess.run(  # noqa: S603
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except subprocess.CalledProcessError:
-        print_error("Docker Compose is not installed. Please install Docker Compose and try again.")
-        return False
-    return True
-
-
-def _build_docker_compose_base_command(
-    selected_version: LocalVersionSchema,
-) -> list[str]:
-    cmds = []
-    compose_files = [selected_version.compose_file]
-    env_files = [selected_version.api_env_file, selected_version.ui_env_file]
-
-    if (
-        selected_version.configure_overrides_compose_file.exists()
-        and selected_version.configure_overrides_env_file.exists()
-    ):
-        compose_files.append(selected_version.configure_overrides_compose_file)
-        env_files.append(selected_version.configure_overrides_env_file)
-
-    for compose_file in compose_files:
-        cmds.extend(["-f", compose_file.as_posix()])
-
-    if selected_version.arg_overrides_env_file.exists():
-        env_files.append(selected_version.arg_overrides_env_file)
-
-    for env_file in env_files:
-        cmds.extend(["--env-file", env_file.as_posix()])
-    return cmds
 
 
 def build_docker_compose_override_file(
@@ -225,9 +310,7 @@ def build_docker_compose_override_file(
     # and has an `env_file` attribute for the service
     override = {
         "services": {
-            f"platform-{service}": {
-                "env_file": [selected_version.configure_overrides_env_file.as_posix()]
-            }
+            f"{service}": {"env_file": [selected_version.configure_overrides_env_file.as_posix()]}
             for service in services
         },
     }
@@ -242,7 +325,7 @@ def get_available_local_images() -> list[DockerImage]:
     Returns:
         list[str]: List of available Docker image names.
     """
-    cmd = ["docker", "images", "--format", ""]
+    cmd = ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}@{{.Digest}}"]
     cp = subprocess.run(  # noqa: S603
         cmd,
         check=True,

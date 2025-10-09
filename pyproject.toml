@@ -1,6 +1,6 @@
 [project]
 name = "dreadnode"
-version = "1.14.0"
+version = "1.14.1"
 description = "Dreadnode SDK"
 authors = [{ name = "Nick Landers", email = "monoxgas@gmail.com" }]
 readme = "README.md"
@@ -99,7 +99,7 @@ build-backend = "hatchling.build"
 packages = ["dreadnode"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/dreadnode", "/tests", "/README.md", "/LICENSE"]
+include = ["/dreadnode", "/tests", "/examples", "/README.md", "/LICENSE"]
 
 # Dev
 
