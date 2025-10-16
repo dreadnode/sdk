@@ -1,5 +1,7 @@
 import typing as t
 
+from loguru import logger
+
 from dreadnode.meta import Config
 from dreadnode.optimization.collectors import lineage, local_neighborhood
 from dreadnode.optimization.sampling import interleave_by_parent, top_k
@@ -45,6 +47,13 @@ def graph_search(
         leaves: list[Trial[CandidateT]] = []
         transform = Transform.fit(transform)
 
+        logger.info(
+            "Starting graph search: "
+            f"branching_factor={branching_factor}, "
+            f"context_collector={context_collector}, "
+            f"pruning_sampler={pruning_sampler}"
+        )
+
         initial_trial = Trial(candidate=initial_candidate)
         yield initial_trial
         await initial_trial
@@ -84,11 +93,12 @@ def iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]:
     """
     Creates a GraphSearch configured for single-path iterative refinement.
 
-    This strategy maintains a single path of reasoning by always expanding from the
+    This strategy maintains a single path of improvement by always expanding from the
     single best trial of the previous step. The context for refinement is the
     direct lineage of that best trial.
 
@@ -99,6 +109,7 @@ def iterative_search(
         initial_candidate: The starting point for the refinement chain.
         branching_factor: How many new candidates to generate from the best trial at each step.
                           The best of these will be chosen for the next step.
+        parent_depth: The number of direct ancestors to include in the context for refinement.
 
     Returns:
         A pre-configured graph search instance.
@@ -107,7 +118,7 @@ def iterative_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,
+        context_collector=lineage.configure(depth=parent_depth),
         pruning_sampler=top_k.configure(k=1),
         name="iterative",
     )
@@ -119,7 +130,7 @@ def beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-    context_depth: int = 5,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]:
     """
     Creates a graph search configured for classic beam search.
@@ -133,6 +144,7 @@ def beam_search(
         initial_candidate: The starting point for the refinement chain.
         beam_width: The number of top candidates to keep at each step (the 'k').
         branching_factor: How many new candidates to generate from each trial in the beam.
+        parent_depth: The number of direct ancestors to include in the context for refinement.
 
     Returns:
         A pre-configured GraphSearch instance.
@@ -141,7 +153,7 @@ def beam_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage.configure(depth=context_depth),
+        context_collector=lineage.configure(depth=parent_depth),
         pruning_sampler=top_k.configure(k=beam_width),
         name="beam",
     )

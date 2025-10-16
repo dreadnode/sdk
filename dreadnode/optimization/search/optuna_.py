@@ -1,6 +1,7 @@
 import typing as t
 
 import optuna
+from loguru import logger
 
 from dreadnode.common_types import AnyDict
 from dreadnode.optimization.search.base import (
@@ -62,6 +63,13 @@ def optuna_search(
         optuna_study = optuna.create_study(directions=context.directions, sampler=sampler)
         optuna_search_space = _convert_search_space(search_space)
         objective_names = context.objective_names
+
+        logger.info(
+            "Starting Optuna search: "
+            f"sampler={optuna_study.sampler.__class__.__name__}, "
+            f"objectives={objective_names}, "
+            f"search_space={search_space}"
+        )
 
         while True:
             optuna_trial = optuna_study.ask(optuna_search_space)

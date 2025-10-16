@@ -8,13 +8,15 @@ from rich.text import Text
 
 from dreadnode.eval.format import _format_dataset
 from dreadnode.scorers.base import Scorer
-from dreadnode.util import get_callable_name
+from dreadnode.util import get_callable_name, shorten_string
 
 if t.TYPE_CHECKING:
     from dreadnode.optimization import Study
+    from dreadnode.optimization.result import StudyResult
+    from dreadnode.optimization.trial import Trial
 
 
-def format_studies(studies: "list[Study]") -> RenderableType:
+def format_studies(studies: "t.Sequence[Study]") -> RenderableType:
     """
     Takes a list of Study objects and formats them into a concise rich Table.
     """
@@ -38,7 +40,7 @@ def format_studies(studies: "list[Study]") -> RenderableType:
 
 def format_study(study: "Study") -> RenderableType:
     """
-    Takes a single Study and formats its full details into a rich Panel.
+    Format a single Study object into a detailed rich Panel.
     """
     details = Table(
         box=box.MINIMAL,
@@ -79,3 +81,64 @@ def format_study(study: "Study") -> RenderableType:
         title_align="left",
         border_style="orange_red1",
     )
+
+
+def format_study_result(result: "StudyResult") -> RenderableType:
+    """
+    Format a StudyResult into a rich Table.
+    """
+    table = Table.grid(padding=(0, 2))
+    table.add_column("Metric", style="dim")
+    table.add_column("Value")
+    table.add_row("Stop Reason:", f"[bold]{result.stop_reason}[/bold]")
+    table.add_row("Explanation:", result.stop_explanation or "-")
+    if (num_failed_trials := len(result.failed_trials)) > 0:
+        table.add_row("Failed Trials:", f"[red]{num_failed_trials}[/red]")
+    if (num_pruned_trials := len(result.pruned_trials)) > 0:
+        table.add_row("Pruned Trials:", f"[yellow]{num_pruned_trials}[/yellow]")
+    if (num_pending_trials := len(result.pending_trials)) > 0:
+        table.add_row("Pending Trials:", f"[dim]{num_pending_trials}[/dim]")
+    table.add_row("Total Trials:", str(len(result.trials)))
+
+    return table
+
+
+def format_trial(trial: "Trial[t.Any]") -> RenderableType:
+    """
+    Format a Trial object into a rich Table.
+    """
+    table = Table.grid(padding=(0, 2))
+    table.add_column("Name")
+    table.add_column("Score", justify="right", min_width=10)
+    for name, value in trial.scores.items():
+        table.add_row(
+            name,
+            f"[bold magenta]{value:.6f}[/bold magenta]",
+        )
+
+    for name, value in trial.all_scores.items():
+        if name not in trial.scores:
+            table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.6f}[/dim]")
+
+    # Main content grid
+    candidate_str = shorten_string(str(trial.candidate), max_length=500, separator="\n\n[...]\n\n")
+    output_str = (
+        shorten_string(str(trial.output), max_length=500, separator="\n\n[...]\n\n")
+        if trial.output
+        else ""
+    )
+
+    grid = Table.grid(expand=True)
+    grid.add_column()
+    grid.add_row(Panel(table, title="Scores", title_align="left"))
+    grid.add_row(
+        Panel(
+            Text(candidate_str, style="dim"),
+            title="Candidate",
+            title_align="left",
+        )
+    )
+    if trial.output:
+        grid.add_row(Panel(Text(output_str, style="dim"), title="Output", title_align="left"))
+
+    return grid

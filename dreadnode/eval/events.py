@@ -42,6 +42,7 @@ class ScenarioStart(EvalEventInRun[In, Out]):
 
     scenario_params: dict[str, t.Any]
     iteration_count: int
+    sample_count: int
 
 
 @dataclass

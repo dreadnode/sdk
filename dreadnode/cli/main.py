@@ -9,12 +9,14 @@ import webbrowser
 
 import cyclopts
 import rich
+from loguru import logger
 from rich.panel import Panel
 from rich.prompt import Prompt
 
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.agent import cli as agent_cli
 from dreadnode.cli.api import create_api_client
+from dreadnode.cli.attack import cli as attack_cli
 from dreadnode.cli.eval import cli as eval_cli
 from dreadnode.cli.github import (
     GithubRepo,
@@ -42,6 +44,7 @@ cli.command(agent_cli)
 cli.command(task_cli)
 cli.command(eval_cli)
 cli.command(study_cli)
+cli.command(attack_cli)
 cli.command(platform_cli)
 cli.command(profile_cli)
 
@@ -57,8 +60,12 @@ def meta(
         if DEBUG:
             raise
 
+        logger.exception("Unhandled exception")
+
         rich.print()
-        rich.print(Panel(str(e), title="Error", title_align="left", border_style="red"))
+        rich.print(
+            Panel(str(e), title=e.__class__.__name__, title_align="left", border_style="red")
+        )
         sys.exit(1)
 
 

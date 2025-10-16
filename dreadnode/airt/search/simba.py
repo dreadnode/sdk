@@ -41,9 +41,6 @@ def simba_search(
     """
 
     random_generator = np.random.default_rng(seed)  # nosec
-    logger.info(
-        f"Starting SimBA search: theta={theta}, num_masks={num_masks}, objective={objective}, distance_method={norm}, seed={seed}"
-    )
 
     async def search(
         _: OptimizationContext,

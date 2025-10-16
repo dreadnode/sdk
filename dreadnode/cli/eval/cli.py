@@ -2,7 +2,6 @@ import contextlib
 import inspect
 import itertools
 import typing as t
-from inspect import isawaitable
 from pathlib import Path
 
 import cyclopts
@@ -125,11 +124,7 @@ async def run(  # noqa: PLR0912, PLR0915
         dn_config.apply()
 
         eval_obj = hydrate(eval_blueprint, config)
-
-        if raw:
-            await eval_obj.run()
-        else:
-            await eval_obj.console()
+        await (eval_obj.run() if raw else eval_obj.console())
 
     eval_cli.__annotations__["config"] = config_annotation
 
@@ -167,5 +162,5 @@ async def run(  # noqa: PLR0912, PLR0915
     command, bound, _ = eval_app.parse_args(tokens)
 
     result = command(*bound.args, **bound.kwargs)
-    if isawaitable(result):
+    if inspect.isawaitable(result):
         await result

@@ -88,7 +88,13 @@ def random_search(
         max_iterations: int = max_iterations,
         seed: float | None = seed,
     ) -> t.AsyncGenerator[Trial[AnyDict], None]:
-        logger.info(f"Starting random search (seed={seed}).")
+        logger.info(
+            "Starting random search: "
+            f"search_space={search_space}, "
+            f"max_iterations={max_iterations}, "
+            f"seed={seed}"
+        )
+
         _random = random.Random(seed)  # noqa: S311 # nosec
         for _ in range(max_iterations):
             yield Trial(candidate=_sample_from_space(search_space, _random))

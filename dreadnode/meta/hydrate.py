@@ -2,6 +2,7 @@ import contextlib
 import copy
 import typing as t
 
+from loguru import logger
 from pydantic import BaseModel as PydanticBaseModel
 
 from dreadnode.common_types import AnyDict
@@ -30,6 +31,7 @@ def hydrate(blueprint: T, config: PydanticBaseModel | AnyDict) -> T:
         warn_at_user_stacklevel(
             f"Failed to hydrate {blueprint!r} with config {config!r}: {e}", HydrationWarning
         )
+        logger.exception("Failed to hydrate object")
         return blueprint
 
 
@@ -46,7 +48,7 @@ def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:  # noqa: PLR0911, 
 
         for name, config in obj.__dn_param_config__.items():
             original_default = config.field_kwargs.get("default")
-            hydrated_default = _hydrate_recursive(original_default, override.pop(name))
+            hydrated_default = _hydrate_recursive(original_default, override.pop(name, None))
             new_field_kwargs = config.field_kwargs.copy()
             new_field_kwargs["default"] = hydrated_default
             hydrated_config[name] = ConfigInfo(field_kwargs=new_field_kwargs)

@@ -331,11 +331,13 @@ class Eval(Model, t.Generic[In, Out]):
 
         logger.info(
             f"Starting Eval '{self.name}': "
-            f"task='{base_task.name}', dataset_size={len(dataset)}, "
-            f"scenarios={len(param_combinations)}, iterations={self.iterations}"
+            f"task='{base_task.name}', "
+            f"dataset_size={len(dataset)}, "
+            f"scenarios={len(param_combinations)}, "
+            f"total_samples={total_samples}, "
+            f"concurrency={self.concurrency}, "
+            f"iterations={self.iterations}"
         )
-        for name, value in {**trace_inputs, **trace_params}.items():
-            logger.info(f" |- {name}: {value}")
 
         yield EvalStart(
             eval=self,
@@ -383,9 +385,9 @@ class Eval(Model, t.Generic[In, Out]):
                 )
 
             with trace_context as task, contextlib.ExitStack() as stack:
-                stack.callback(log_data)
+                stack.callback(log_data, scenario_result)
 
-                logger.info(f"Starting scenario: params={scenario_params}")
+                logger.debug(f"Starting scenario: params={scenario_params}")
 
                 run_id = task.run_id if task else ""
                 yield ScenarioStart(
@@ -393,6 +395,7 @@ class Eval(Model, t.Generic[In, Out]):
                     run_id=run_id,
                     scenario_params=scenario_params,
                     iteration_count=self.iterations,
+                    sample_count=self.iterations * len(dataset),
                 )
 
                 configured_task = base_task.with_(
@@ -402,7 +405,7 @@ class Eval(Model, t.Generic[In, Out]):
                 ).configure(**scenario_params)
 
                 for iteration in range(1, self.iterations + 1):
-                    logger.info(f"Starting iteration: {iteration}/{self.iterations}")
+                    logger.debug(f"Starting iteration: {iteration}/{self.iterations}")
 
                     yield IterationStart(
                         eval=self,

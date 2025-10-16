@@ -79,7 +79,7 @@ class EvalResultMixin:
 
         for sample in self.samples:
             for name, metric_list in sample.metrics.items():
-                # TODO(nick): Originally we were including internal
+                # NOTE(nick): Originally we were including internal
                 # values (metrics reported multiple times within the same sample),
                 # but I think it's safer to just take the last metric here.
 
@@ -110,6 +110,17 @@ class EvalResultMixin:
             }
 
         return summary
+
+    @property
+    def metrics_aggregated(self) -> dict[str, float]:
+        """
+        Aggregates metrics across all samples by calculating the mean for each metric.
+
+        Returns:
+            A dictionary where keys are metric names and values are the mean
+            of that metric across all samples.
+        """
+        return {name: stats["mean"] for name, stats in self.metrics_summary.items()}
 
     @property
     def assertions_summary(self: "HasSamples") -> dict[str, dict[str, float | int]]:

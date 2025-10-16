@@ -141,7 +141,7 @@ def zoo_search(  # noqa: PLR0915
 
         original_array = original.to_numpy()
         scaling_plan = _create_scaling_plan(scaling_schedule, original.shape, max_iterations)
-        logger.info(f"Resolved Scaling Plan: {scaling_plan}")
+        logger.debug(f"Resolved Scaling Plan: {scaling_plan}")
 
         start_trial = Trial(candidate=original)
         yield start_trial

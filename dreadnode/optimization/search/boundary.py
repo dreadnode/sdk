@@ -22,11 +22,15 @@ def boundary_search(
     Performs a boundary search between two candidates to find a new candidate
     which lies on the decision boundary defined by the objective and threshold.
 
+    This requires an `interpolate` transform that can produce a new candidate
+    given two candidates and an alpha value between 0 and 1. Typically, this
+    would apply to continuous candidate spaces such as images or embeddings.
+
     Args:
         start: A candidate on the left side of the decision boundary (`score <= [decision_threshold]`).
         end: A candidate on the right side of the decision boundary (`score > [decision_threshold]`).
-        interpolate: A transform that takes two candidates and an alpha value between and returns a candidate
-                     that is between them.
+        interpolate: A transform that takes two candidates and an alpha value between 0 and 1 and returns a candidate
+                     that is constructed by interpolating between the two inputs.
         tolerance: The maximum acceptable difference between the upper and lower alpha values.
         decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
         decision_threshold: The threshold value for the decision objective.
@@ -60,12 +64,12 @@ def boundary_search(
 
         if is_successful(start_trial):
             raise ValueError(
-                f"start_candidate was considered successful ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
+                f"start_candidate met the decision criteria ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
             )
 
         if not is_successful(end_trial):
             raise ValueError(
-                f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
+                f"end_candidate did not meet the decision criteria ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
             )
 
         lower_bound_alpha = 0.0

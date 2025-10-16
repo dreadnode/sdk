@@ -30,8 +30,8 @@ from dreadnode.optimization.events import (
     TrialPruned,
     TrialStart,
 )
+from dreadnode.optimization.format import format_study_result, format_trial
 from dreadnode.optimization.result import StudyResult
-from dreadnode.util import shorten_string
 
 if t.TYPE_CHECKING:
     from dreadnode.optimization.study import Study
@@ -142,46 +142,10 @@ class StudyConsoleAdapter:
                 border_style="dim",
             )
 
-        trial = self._best_trial
-
-        scores_table = Table.grid(padding=(0, 2))
-        scores_table.add_column("Name")
-        scores_table.add_column("Score", justify="right", min_width=10)
-        for name in self.study.objective_names:
-            scores_table.add_row(
-                name,
-                f"[bold magenta]{trial.scores.get(name, -float('inf')):.6f}[/bold magenta]",
-            )
-
-        for name, value in trial.all_scores.items():
-            if name not in self.study.objective_names:
-                scores_table.add_row(f"[dim]{name}[/dim]", f"[dim]{value:.6f}[/dim]")
-
-        # Main content grid
-        candidate_str = shorten_string(
-            str(trial.candidate), max_length=500, separator="\n\n[...]\n\n"
-        )
-        output_str = (
-            shorten_string(str(trial.output), max_length=500, separator="\n\n[...]\n\n")
-            if trial.output
-            else ""
-        )
-
-        grid = Table.grid(expand=True)
-        grid.add_column()
-        grid.add_row(Panel(scores_table, title="Scores", title_align="left"))
-        grid.add_row(
-            Panel(
-                Text(candidate_str, style="dim"),
-                title="Candidate",
-                title_align="left",
-            )
-        )
-        if trial.output:
-            grid.add_row(Panel(Text(output_str, style="dim"), title="Output", title_align="left"))
-
         return Panel(
-            grid, title="[bold magenta]Current Best[/bold magenta]", border_style="magenta"
+            format_trial(self._best_trial),
+            title="[bold magenta]Current Best[/bold magenta]",
+            border_style="magenta",
         )
 
     def _build_trials_panel(self) -> RenderableType:
@@ -324,26 +288,18 @@ class StudyConsoleAdapter:
         self.console.print(
             Rule(f"[bold] {self.study.name}: Optimization Complete [/bold]", style="cyan")
         )
-        summary_table = Table.grid(padding=(0, 2))
-        summary_table.add_column("Metric", style="dim")
-        summary_table.add_column("Value")
-        summary_table.add_row("Stop Reason:", f"[bold]{result.stop_reason}[/bold]")
-        summary_table.add_row("Explanation:", result.stop_explanation or "-")
-        if (num_failed_trials := len(result.failed_trials)) > 0:
-            summary_table.add_row("Failed Trials:", f"[red]{num_failed_trials}[/red]")
-        if (num_pruned_trials := len(result.pruned_trials)) > 0:
-            summary_table.add_row("Pruned Trials:", f"[yellow]{num_pruned_trials}[/yellow]")
-        if (num_pending_trials := len(result.pending_trials)) > 0:
-            summary_table.add_row("Pending Trials:", f"[dim]{num_pending_trials}[/dim]")
-        summary_table.add_row("Total Trials:", str(len(result.trials)))
-
-        panel = Panel(summary_table, border_style="dim", title="Study Summary")
-        self.console.print(panel)
-
-        if result.best_trial:
-            self.console.print(self._build_best_trial_panel())
-        else:
-            self.console.print(Panel("[yellow]No successful trials were completed.[/yellow]"))
+        self.console.print(
+            Panel(format_study_result(result), border_style="dim", title="Study Summary")
+        )
+        self.console.print(
+            Panel(
+                format_trial(result.best_trial),
+                title="[bold magenta]Best Trial[/bold magenta]",
+                border_style="magenta",
+            )
+            if result.best_trial
+            else Panel("[yellow]No successful trials were completed.[/yellow]")
+        )
 
     async def run(self) -> StudyResult:
         with Live(self._build_dashboard(), console=self.console, screen=True) as live:

@@ -43,7 +43,7 @@ def configure_logging(
 
     logger.remove()
     logger.add(
-        RichHandler(console=console, log_time_format="%X"),
+        RichHandler(console=console, log_time_format="%X", rich_tracebacks=True),
         format=lambda _: "{message}",
         level=log_level.upper(),
     )

@@ -4,8 +4,10 @@ from operator import mul
 from pathlib import Path
 
 from rich import box
-from rich.console import RenderableType
+from rich.console import Group, RenderableType
+from rich.padding import Padding
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
@@ -13,6 +15,7 @@ from dreadnode.scorers.base import Scorer
 
 if t.TYPE_CHECKING:
     from dreadnode.eval import Eval
+    from dreadnode.eval.result import EvalResult, ScenarioResult
 
 
 def format_evals(evals: "list[Eval]") -> RenderableType:
@@ -129,6 +132,141 @@ def format_eval(evaluation: "Eval") -> RenderableType:
         title_align="left",
         border_style="orange_red1",
     )
+
+
+def format_eval_result(result: "EvalResult") -> RenderableType:
+    """
+    Formats an EvalResult into a rich, detailed Panel containing an overall
+    summary and a breakdown for each scenario.
+    """
+    summary_table = Table(show_header=False, box=box.MINIMAL)
+    summary_table.add_column(style="dim")
+    summary_table.add_column(style="white")
+
+    stop_reason_style = "green" if result.stop_reason == "finished" else "yellow"
+    failed_style = "yellow" if result.failed_count > 0 else "dim"
+    error_style = "red" if result.error_count > 0 else "dim"
+
+    summary_table.add_row("Stop Reason", f"[{stop_reason_style}]{result.stop_reason}[/]")
+    summary_table.add_row("Scenarios", str(len(result.scenarios)))
+    summary_table.add_row("Pass Rate", f"[bold]{result.pass_rate:.2%}[/]")
+    summary_table.add_row("Samples", str(len(result.samples)))
+    summary_table.add_row("Passed", f"[green]{result.passed_count}[/]")
+    summary_table.add_row("Failed", f"[{failed_style}]{result.failed_count}[/]")
+    summary_table.add_row("Errors", f"[{error_style}]{result.error_count}[/]")
+
+    content: list[RenderableType] = [summary_table]
+    for i, scenario in enumerate(result.scenarios):
+        content.append(Padding(Rule(title=f"Scenario {i + 1}", style="cyan"), 1))
+        content.append(_format_scenario_result(scenario))
+
+    return Panel(
+        Group(*content),
+        title="Evaluation Result",
+        border_style="magenta",
+        title_align="left",
+    )
+
+
+def _format_scenario_result(result: "ScenarioResult") -> RenderableType:
+    """
+    Formats a ScenarioResult into a rich Panel, including parameters,
+    stats, and breakdowns for assertions and metrics.
+    """
+
+    param_table = Table(show_header=False, box=box.MINIMAL)
+    param_table.add_column("Parameter", style="cyan")
+    param_table.add_column("Value", overflow="fold")
+    for key, value in result.params.items():
+        param_table.add_row(key, str(value))
+
+    summary_table = Table(show_header=False, box=box.MINIMAL)
+    summary_table.add_column(style="dim")
+    summary_table.add_column()
+    failed_style = "yellow" if result.failed_count > 0 else "dim"
+    error_style = "red" if result.error_count > 0 else "dim"
+    summary_table.add_row("Pass Rate", f"{result.pass_rate:.2%}")
+    summary_table.add_row("Passed", f"[green]{result.passed_count}[/]")
+    summary_table.add_row("Failed", f"[{failed_style}]{result.failed_count}[/]")
+    summary_table.add_row("Errors", f"[{error_style}]{result.error_count}[/]")
+
+    summary = Panel(
+        summary_table, title="[bold dim]Summary[/]", border_style="dim", title_align="left"
+    )
+    params = Panel(
+        param_table, title="[bold dim]Parameters[/]", border_style="dim", title_align="left"
+    )
+    assertions = Panel(
+        _format_assertions(result.assertions_summary),
+        title="[bold dim]Assertions[/]",
+        border_style="dim",
+        title_align="left",
+    )
+    metrics = Panel(
+        _format_metrics_summary(result.metrics_summary),
+        title="[bold dim]Metrics[/]",
+        border_style="dim",
+        title_align="left",
+    )
+
+    grid = Table.grid("left", "right", expand=True)
+    grid.add_column()
+    grid.add_row(summary, params)
+    grid.add_row(assertions, metrics)
+
+    return grid
+
+
+def _format_assertions(assertions: dict[str, dict[str, float | int]]) -> RenderableType:
+    """
+    Formats the assertions summary into a rich Table.
+    """
+    table = Table(box=box.MINIMAL)
+    table.add_column("Assertion", style="cyan", overflow="fold")
+    table.add_column("Passed", justify="right")
+    table.add_column("Failed", justify="right")
+    table.add_column("Pass Rate", justify="right")
+
+    for name, stats in assertions.items():
+        failed_count = stats["failed_count"]
+        passed_count = stats["passed_count"]
+        total = passed_count + failed_count
+        pass_rate = (passed_count / total) if total > 0 else 0.0
+        failed_style = "yellow" if failed_count > 0 else "dim"
+
+        table.add_row(
+            name,
+            f"[green]{passed_count}[/]",
+            f"[{failed_style}]{failed_count}[/]",
+            f"{pass_rate:.2%}",
+        )
+
+    return table
+
+
+def _format_metrics_summary(metrics_summary: dict[str, dict[str, float]]) -> RenderableType:
+    """
+    Formats the metrics summary into a rich Table.
+    """
+    table = Table(box=box.MINIMAL)
+    table.add_column("Metric", style="cyan", overflow="fold")
+    table.add_column("Mean", justify="right")
+    table.add_column("Std Dev", justify="right")
+    table.add_column("Min", justify="right")
+    table.add_column("Max", justify="right")
+    table.add_column("Count", justify="right")
+
+    for name, stats in metrics_summary.items():
+        table.add_row(
+            name,
+            f"{stats['mean']:.5f}",
+            f"{stats['stdev']:.5f}",
+            f"{stats['min']:.5f}",
+            f"{stats['max']:.5f}",
+            str(stats["count"]),
+        )
+
+    return table
 
 
 def _format_dataset(  # noqa: PLR0911

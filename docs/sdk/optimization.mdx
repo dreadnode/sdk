@@ -55,7 +55,7 @@ The maximum number of trials to evaluate in parallel.
 ### constraints
 
 ```python
-constraints: ScorersLike[CandidateT] | None = Config(
+constraints: ScorersLike[CandidateT] | None = Field(
     default=None
 )
 ```
@@ -155,9 +155,9 @@ The maximum number of probes to evaluate in parallel. If not supplied, probes sh
 ### probe\_task\_factory
 
 ```python
-probe_task_factory: (
+probe_task_factory: SkipValidation[
     Callable[[CandidateT], Task[..., OutputT]] | None
-) = None
+] = None
 ```
 
 An optional function that accepts a probe candidate and returns a Task.
@@ -176,7 +176,7 @@ The search strategy to use for suggesting new trials.
 
 ```python
 stop_conditions: list[StudyStopCondition[CandidateT]] = (
-    Config(default_factory=list)
+    Field(default_factory=list)
 )
 ```
 
@@ -193,7 +193,9 @@ A list of tags associated with the study for logging.
 ### task\_factory
 
 ```python
-task_factory: Callable[[CandidateT], Task[..., OutputT]]
+task_factory: SkipValidation[
+    Callable[[CandidateT], Task[..., OutputT]]
+]
 ```
 
 A function that accepts a trial candidate and returns a configured Task ready for evaluation.
@@ -303,7 +305,7 @@ Create an async context manager for the optimization event stream.
 
 This provides a safe way to access the optimization event stream with proper
 resource cleanup. The context manager ensures the async generator is properly
-closed even if an exception occurs during iteration.
+closed to prevent tracing issues.
 
 Usage
 
@@ -328,7 +330,7 @@ async def stream(
 
     This provides a safe way to access the optimization event stream with proper
     resource cleanup. The context manager ensures the async generator is properly
-    closed even if an exception occurs during iteration.
+    closed to prevent tracing issues.
 
     Usage:
         async with study.stream() as event_stream:
@@ -821,7 +823,7 @@ beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-    context_depth: int = 5,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]
 ```
 
@@ -849,6 +851,11 @@ using its own lineage for context.
   `3`
   )
   –How many new candidates to generate from each trial in the beam.
+* **`parent_depth`**
+  (`int`, default:
+  `10`
+  )
+  –The number of direct ancestors to include in the context for refinement.
 
 **Returns:**
 
@@ -863,7 +870,7 @@ def beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-    context_depth: int = 5,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]:
     """
     Creates a graph search configured for classic beam search.
@@ -877,6 +884,7 @@ def beam_search(
         initial_candidate: The starting point for the refinement chain.
         beam_width: The number of top candidates to keep at each step (the 'k').
         branching_factor: How many new candidates to generate from each trial in the beam.
+        parent_depth: The number of direct ancestors to include in the context for refinement.
 
     Returns:
         A pre-configured GraphSearch instance.
@@ -885,7 +893,7 @@ def beam_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage.configure(depth=context_depth),
+        context_collector=lineage.configure(depth=parent_depth),
         pruning_sampler=top_k.configure(k=beam_width),
         name="beam",
     )
@@ -997,6 +1005,10 @@ boundary_search(
 Performs a boundary search between two candidates to find a new candidate
 which lies on the decision boundary defined by the objective and threshold.
 
+This requires an `interpolate` transform that can produce a new candidate
+given two candidates and an alpha value between 0 and 1. Typically, this
+would apply to continuous candidate spaces such as images or embeddings.
+
 **Parameters:**
 
 * **`start`**
@@ -1007,8 +1019,8 @@ which lies on the decision boundary defined by the objective and threshold.
   –A candidate on the right side of the decision boundary (`score > [decision_threshold]`).
 * **`interpolate`**
   (`TransformLike[tuple[CandidateT, CandidateT, float], CandidateT]`)
-  –A transform that takes two candidates and an alpha value between and returns a candidate
-  that is between them.
+  –A transform that takes two candidates and an alpha value between 0 and 1 and returns a candidate
+  that is constructed by interpolating between the two inputs.
 * **`tolerance`**
   (`float`, default:
   `0.01`
@@ -1041,11 +1053,15 @@ def boundary_search(
     Performs a boundary search between two candidates to find a new candidate
     which lies on the decision boundary defined by the objective and threshold.
 
+    This requires an `interpolate` transform that can produce a new candidate
+    given two candidates and an alpha value between 0 and 1. Typically, this
+    would apply to continuous candidate spaces such as images or embeddings.
+
     Args:
         start: A candidate on the left side of the decision boundary (`score <= [decision_threshold]`).
         end: A candidate on the right side of the decision boundary (`score > [decision_threshold]`).
-        interpolate: A transform that takes two candidates and an alpha value between and returns a candidate
-                     that is between them.
+        interpolate: A transform that takes two candidates and an alpha value between 0 and 1 and returns a candidate
+                     that is constructed by interpolating between the two inputs.
         tolerance: The maximum acceptable difference between the upper and lower alpha values.
         decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
         decision_threshold: The threshold value for the decision objective.
@@ -1079,12 +1095,12 @@ def boundary_search(
 
         if is_successful(start_trial):
             raise ValueError(
-                f"start_candidate was considered successful ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
+                f"start_candidate met the decision criteria ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
             )
 
         if not is_successful(end_trial):
             raise ValueError(
-                f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
+                f"end_candidate did not meet the decision criteria ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
             )
 
         lower_bound_alpha = 0.0
@@ -1294,6 +1310,13 @@ def graph_search(
         leaves: list[Trial[CandidateT]] = []
         transform = Transform.fit(transform)
 
+        logger.info(
+            "Starting graph search: "
+            f"branching_factor={branching_factor}, "
+            f"context_collector={context_collector}, "
+            f"pruning_sampler={pruning_sampler}"
+        )
+
         initial_trial = Trial(candidate=initial_candidate)
         yield initial_trial
         await initial_trial
@@ -1342,12 +1365,13 @@ iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]
 ```
 
 Creates a GraphSearch configured for single-path iterative refinement.
 
-This strategy maintains a single path of reasoning by always expanding from the
+This strategy maintains a single path of improvement by always expanding from the
 single best trial of the previous step. The context for refinement is the
 direct lineage of that best trial.
 
@@ -1367,6 +1391,11 @@ Set `branching_factor` > 1 to explore multiple candidates at each step.
   )
   –How many new candidates to generate from the best trial at each step.
   The best of these will be chosen for the next step.
+* **`parent_depth`**
+  (`int`, default:
+  `10`
+  )
+  –The number of direct ancestors to include in the context for refinement.
 
 **Returns:**
 
@@ -1380,11 +1409,12 @@ def iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]:
     """
     Creates a GraphSearch configured for single-path iterative refinement.
 
-    This strategy maintains a single path of reasoning by always expanding from the
+    This strategy maintains a single path of improvement by always expanding from the
     single best trial of the previous step. The context for refinement is the
     direct lineage of that best trial.
 
@@ -1395,6 +1425,7 @@ def iterative_search(
         initial_candidate: The starting point for the refinement chain.
         branching_factor: How many new candidates to generate from the best trial at each step.
                           The best of these will be chosen for the next step.
+        parent_depth: The number of direct ancestors to include in the context for refinement.
 
     Returns:
         A pre-configured graph search instance.
@@ -1403,7 +1434,7 @@ def iterative_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,
+        context_collector=lineage.configure(depth=parent_depth),
         pruning_sampler=top_k.configure(k=1),
         name="iterative",
     )
@@ -1468,6 +1499,13 @@ def optuna_search(
         optuna_study = optuna.create_study(directions=context.directions, sampler=sampler)
         optuna_search_space = _convert_search_space(search_space)
         objective_names = context.objective_names
+
+        logger.info(
+            "Starting Optuna search: "
+            f"sampler={optuna_study.sampler.__class__.__name__}, "
+            f"objectives={objective_names}, "
+            f"search_space={search_space}"
+        )
 
         while True:
             optuna_trial = optuna_study.ask(optuna_search_space)
@@ -1620,7 +1658,13 @@ def random_search(
         max_iterations: int = max_iterations,
         seed: float | None = seed,
     ) -> t.AsyncGenerator[Trial[AnyDict], None]:
-        logger.info(f"Starting random search (seed={seed}).")
+        logger.info(
+            "Starting random search: "
+            f"search_space={search_space}, "
+            f"max_iterations={max_iterations}, "
+            f"seed={seed}"
+        )
+
         _random = random.Random(seed)  # noqa: S311 # nosec
         for _ in range(max_iterations):
             yield Trial(candidate=_sample_from_space(search_space, _random))

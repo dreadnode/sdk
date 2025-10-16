@@ -342,6 +342,7 @@ ScenarioStart(
     run_id: str,
     scenario_params: dict[str, Any],
     iteration_count: int,
+    sample_count: int,
 )
 ```
 
@@ -452,6 +453,21 @@ Returns a breakdown of all metric values across all samples.
   –metric values, with each value corresponding to a sample from the
 * `dict[str, list[float]]`
   –evaluation dataset.
+
+### metrics\_aggregated
+
+```python
+metrics_aggregated: dict[str, float]
+```
+
+Aggregates metrics across all samples by calculating the mean for each metric.
+
+**Returns:**
+
+* `dict[str, float]`
+  –A dictionary where keys are metric names and values are the mean
+* `dict[str, float]`
+  –of that metric across all samples.
 
 ### metrics\_summary
 

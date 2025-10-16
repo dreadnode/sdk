@@ -44,6 +44,7 @@ Direction = t.Literal["maximize", "minimize"]
 """The direction of optimization for the objective score."""
 ObjectivesLike = t.Sequence[ScorerLike[OutputT] | str] | t.Mapping[str, ScorerLike[OutputT]]
 """The objectives to optimize for."""
+
 current_trial = contextvars.ContextVar[Trial | None]("current_trial", default=None)
 """The currently running trial, if any."""
 
@@ -60,9 +61,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
     search_strategy: SkipValidation[Search[CandidateT]]
     """The search strategy to use for suggesting new trials."""
-    task_factory: t.Callable[[CandidateT], Task[..., OutputT]]
+    task_factory: SkipValidation[t.Callable[[CandidateT], Task[..., OutputT]]]
     """A function that accepts a trial candidate and returns a configured Task ready for evaluation."""
-    probe_task_factory: t.Callable[[CandidateT], Task[..., OutputT]] | None = None
+    probe_task_factory: SkipValidation[t.Callable[[CandidateT], Task[..., OutputT]] | None] = None
     """
     An optional function that accepts a probe candidate and returns a Task.
 
@@ -98,8 +99,6 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
     """The maximum number of trials to evaluate in parallel."""
     probe_concurrency: int | None = Config(default=None)
     """The maximum number of probes to evaluate in parallel. If not supplied, probes share concurrency with trials."""
-    constraints: ScorersLike[CandidateT] | None = Config(default=None)
-    """A list of Scorer-like constraints to apply to trial candidates. If any constraint scores to a falsy value, the candidate is pruned."""
     max_evals: int = Config(default=100, ge=1)
     """The maximum number of total evaluations to perform across all trials and probes."""
     max_errors: int | None = Config(default=None)
@@ -109,7 +108,10 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
     The number of consecutive trial evaluation errors to tolerate
     before terminating the evaluation run. Set to None to disable.
     """
-    stop_conditions: list[StudyStopCondition[CandidateT]] = Config(default_factory=list)
+
+    constraints: ScorersLike[CandidateT] | None = Field(default=None)
+    """A list of Scorer-like constraints to apply to trial candidates. If any constraint scores to a falsy value, the candidate is pruned."""
+    stop_conditions: list[StudyStopCondition[CandidateT]] = Field(default_factory=list)
     """A list of conditions that, if any are met, will stop the study."""
 
     def model_post_init(self, context: t.Any) -> None:
@@ -233,7 +235,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         self.stop_conditions.append(condition)
         return self
 
-    async def _process_trial(
+    async def _process_trial(  # noqa: PLR0915
         self, trial: Trial[CandidateT]
     ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
         """
@@ -260,66 +262,51 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
         token = current_trial.set(trial)
 
-        with task_span(
-            name=f"{probe_or_trial} - {task.name}",
-            tags=[probe_or_trial],
-        ) as span:
+        def log_trial(trial: Trial[CandidateT]) -> None:
+            log_outputs(
+                status=trial.status,
+                eval_result=trial.eval_result,
+            )
+            if trial.eval_result:
+                log_metrics(
+                    {
+                        "total_samples": len(trial.eval_result.samples),
+                        "pass_rate": trial.eval_result.pass_rate,
+                        "passed_count": trial.eval_result.passed_count,
+                        "failed_count": trial.eval_result.failed_count,
+                        "error_count": trial.eval_result.error_count,
+                        **trial.eval_result.metrics_aggregated,
+                    },
+                    step=trial.step,
+                )
+
+        with (
+            task_span(
+                name=f"{probe_or_trial} - {task.name}",
+                tags=[probe_or_trial],
+            ) as span,
+            contextlib.ExitStack() as stack,
+        ):
+            stack.callback(log_trial, trial)
+            stack.callback(current_trial.reset, token)
+
+            log_inputs(
+                candidate=trial.candidate,
+                dataset=dataset,
+            )
+
             try:
                 trial.status = "running"
                 yield TrialStart(study=self, trials=[], probes=[], trial=trial)
 
-                # model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
-
-                # id: ULID = Field(default_factory=ULID)
-                # """Unique identifier for the trial."""
-                # candidate: CandidateT
-                # """The candidate configuration being assessed."""
-                # status: TrialStatus = "pending"
-                # """Current status of the trial."""
-
-                # score: float = -float("inf")
-                # """
-                # The primary, single-value fitness score for this trial.
-                # This is an average of all objective scores for this trial adjusted
-                # based on their objective directions (higher is better).
-                # """
-                # scores: dict[str, float] = {}
-                # """A dictionary of all named objective scores for this trial."""
-                # directional_scores: dict[str, float] = {}
-                # """
-                # A dictionary of all named objective scores adjusted
-                # for their optimization direction (higher is better).
-
-                # Typically this is used by search strategies and
-                # related components to sort trials for sampling and selection.
-                # """
-
-                # eval_result: EvalResult | None = None
-                # """Complete evaluation result of the trial and associated dataset."""
-                # pruning_reason: str | None = None
-                # """Reason for pruning this trial, if applicable."""
-                # error: str | None = None
-                # """Any error which occurred while processing this trial."""
-                # step: int = Field(default=0)
-                # """The optimization step which produced this trial."""
-                # parent_id: ULID | None = None
-                # """The id of the parent trial, as defined by the search strategy."""
-
-                # is_probe: bool = False
-                # """Whether this trial is a probe used for intermediate evaluation."""
-                # dataset: list[t.Any] | None = None
-                # """The specific dataset used for probing."""
-
-                log_inputs(
-                    candidate=trial.candidate,
-                    dataset=dataset,
-                    step=trial.step,
-                )
-
                 # Check constraints
 
-                if not trial.is_probe:
-                    logger.debug(f"[{trial.id}] Checking {len(self.constraints)} constraints...")
+                if not trial.is_probe and self.constraints:
+                    logger.debug(
+                        "Checking constraints: "
+                        f"trial_id={trial.id}, "
+                        f"num_constraints={len(self.constraints)}"
+                    )
                     await dn_score(
                         trial.candidate,
                         Scorer.fit_many(self.constraints),
@@ -335,10 +322,15 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     if isinstance(scorer, Scorer)
                 ]
 
-                logger.info(f"[{trial.id}] Evaluating candidate with {len(dataset)} inputs.")
+                logger.debug(
+                    "Evaluating trial: "
+                    f"trial_id={trial.id}, "
+                    f"step={trial.step}, "
+                    f"dataset_size={len(dataset) if isinstance(dataset, t.Sized) else '<unknown>'}, "
+                    f"task={task.name}"
+                )
+                logger.trace(f"Candidate: {trial.candidate!r}")
 
-                # TODO(nick): Add max_errors* settings to study so
-                # then can be passed down the to eval.
                 evaluator = Eval(
                     task=task,
                     dataset=dataset,
@@ -382,8 +374,11 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
                 trial.status = "finished"
                 logger.debug(
-                    f"Completed trial: id={trial.id}, status='{trial.status}', score={score}"
+                    f"Completed trial: id={trial.id}, status='{trial.status}', score={trial.score}"
                 )
+                logger.trace(f"Output: {trial.output}")
+                logger.trace(f"Scores: {trial.scores}")
+                logger.trace(f"Eval Result: {trial.eval_result}")
 
             except AssertionFailedError as e:
                 span.add_tags(["pruned"])
@@ -397,14 +392,6 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 trial.status = "failed"
                 trial.error = str(e)
                 logger.warning(f"Failed trial: id={trial.id}, error='{trial.error}'", exc_info=True)
-
-            finally:
-                current_trial.reset(token)
-                log_outputs(
-                    status=trial.status,
-                    eval_result=trial.eval_result,
-                )
-                log_metrics(trial.eval_result.metrics)
 
         if trial.status == "pruned":
             yield TrialPruned(study=self, trials=[], probes=[], trial=trial)
@@ -503,8 +490,8 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                             f"New best trial: "
                             f"id={best_trial.id}, "
                             f"step={best_trial.step}, "
-                            f"scores={best_trial.scores}, "
-                            f"score={best_trial.score:.5f}"
+                            f"score={best_trial.score:.5f}, "
+                            f"scores={best_trial.scores}"
                         )
                         yield NewBestTrialFound(
                             study=self, trials=all_trials, probes=all_probes, trial=best_trial
@@ -572,26 +559,31 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         )
 
         last_event: StudyEvent[CandidateT] | None = None
-        with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
-            try:
-                async with contextlib.aclosing(self._stream()) as stream:
-                    async for event in stream:
-                        last_event = event
-                        self._log_event_metrics(event)
-                        yield event
-            finally:
-                if isinstance(last_event, StudyEnd):
-                    result = last_event.result
-                    outputs: AnyDict = {"stop_reason": result.stop_reason}
-                    if result.best_trial:
-                        outputs["best_score"] = result.best_trial.score
-                        for name in self.objective_names:
-                            outputs[f"best_{name}"] = result.best_trial.scores.get(
-                                name, -float("inf")
-                            )
-                        outputs["best_candidate"] = result.best_trial.candidate
-                        outputs["best_output"] = result.best_trial.output
-                    log_outputs(to=log_to, **outputs)
+
+        def log_study(event: StudyEvent[CandidateT] | None) -> None:
+            if not isinstance(event, StudyEnd):
+                return
+
+            result = event.result
+            outputs: AnyDict = {"stop_reason": result.stop_reason}
+            if result.best_trial:
+                outputs["best_score"] = result.best_trial.score
+                for name in self.objective_names:
+                    outputs[f"best_{name}"] = result.best_trial.scores.get(name, -float("inf"))
+                outputs["best_candidate"] = result.best_trial.candidate
+                outputs["best_output"] = result.best_trial.output
+            log_outputs(to=log_to, **outputs)
+
+        with (
+            task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params),
+            contextlib.ExitStack() as stack,
+        ):
+            stack.callback(log_study, last_event)
+            async with contextlib.aclosing(self._stream()) as stream:
+                async for event in stream:
+                    last_event = event
+                    self._log_event_metrics(event)
+                    yield event
 
     @contextlib.asynccontextmanager
     async def stream(
@@ -602,7 +594,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
         This provides a safe way to access the optimization event stream with proper
         resource cleanup. The context manager ensures the async generator is properly
-        closed even if an exception occurs during iteration.
+        closed to prevent tracing issues.
 
         Usage:
             async with study.stream() as event_stream:
