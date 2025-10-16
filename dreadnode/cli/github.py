@@ -6,9 +6,9 @@ import typing as t
 import zipfile
 
 import httpx
-import rich
 from rich.prompt import Prompt
 
+from dreadnode.logging_ import confirm, console, print_info, print_warning
 from dreadnode.user_config import UserConfig, find_dreadnode_saas_profiles, is_dreadnode_saas_server
 
 
@@ -174,7 +174,7 @@ def download_and_unzip_archive(url: str, *, headers: dict[str, str] | None = Non
     temp_dir = pathlib.Path(tempfile.mkdtemp())
     local_zip_path = temp_dir / "archive.zip"
 
-    rich.print(f":arrow_double_down: Downloading {url} ...")
+    print_info(f"Downloading {url} ...")
 
     # download to temporary file
     with httpx.stream("GET", url, follow_redirects=True, verify=True, headers=headers) as response:
@@ -216,58 +216,50 @@ def validate_server_for_clone(user_config: UserConfig, current_profile: str | No
         return current_profile or user_config.active_profile_name
 
     # Current server is not a Dreadnode SaaS server - warn user
-    rich.print()
-    rich.print(":warning: [yellow]Warning: Current server is not a Dreadnode SaaS server[/]")
-    rich.print(f"   Current server: [cyan]{current_server}[/]")
-    rich.print(f"   Current profile: [cyan]{current_profile or user_config.active_profile_name}[/]")
-    rich.print()
-    rich.print("Git clone for private dreadnode repositories requires a Dreadnode SaaS server")
-    rich.print("(ending with '.dreadnode.io') for authentication to work properly.")
-    rich.print()
+    print_warning(
+        f"Current server is not a Dreadnode SaaS server\n"
+        f"  Current server:  [cyan]{current_server}[/]\n"
+        f"  Current profile: [cyan]{current_profile or user_config.active_profile_name}[/]\n\n"
+        "Git clone for private dreadnode repositories requires a Dreadnode SaaS server\n"
+        "(ending with '.dreadnode.io') for authentication to work properly.\n"
+    )
 
     # Check if there are any SaaS profiles available
     saas_profiles = find_dreadnode_saas_profiles(user_config)
 
     if saas_profiles:
-        rich.print("Available Dreadnode SaaS profiles:")
+        print_info("Available Dreadnode SaaS profiles:")
         for profile in saas_profiles:
             server_url = user_config.servers[profile].url
-            rich.print(f"  - [green]{profile}[/] ({server_url})")
-        rich.print()
+            console.print(f"  - [bold]{profile}[/] ({server_url})")
 
         choices = ["continue", "switch", "cancel"]
         choice = Prompt.ask(
-            "Choose an option", choices=choices, default="cancel", show_choices=True
+            "\nChoose an option", choices=choices, default="cancel", show_choices=True
         )
 
         if choice == "continue":
-            rich.print(
-                ":warning: [yellow]Continuing with current server - private repository access may fail[/]"
-            )
+            print_warning("Continuing with current server - private repository access may fail")
             return current_profile or user_config.active_profile_name
         if choice == "cancel":
-            rich.print("Cancelled.")
             return None
         if choice == "switch":
             # Let user pick a profile
             profile_choice = Prompt.ask(
-                "Select profile to use", choices=saas_profiles, default=saas_profiles[0]
+                "\nSelect profile to use",
+                choices=saas_profiles,
+                default=saas_profiles[0],
+                console=console,
             )
-            rich.print(
-                f":arrows_counterclockwise: Using profile '[green]{profile_choice}[/]' for this operation"
-            )
+            print_info(f"Using profile '[cyan]{profile_choice}[/]' for this operation")
             return profile_choice
     else:
         # No SaaS profiles available
-        choice = Prompt.ask("Continue anyway?", choices=["y", "n"], default="n")
-
-        if choice == "y":
-            rich.print(
-                ":warning: [yellow]Continuing with current server - private repository access may fail[/]"
+        if not confirm("Continue anyway?"):
+            print_info(
+                "Cancelled. Use [bold]dreadnode login --server https://platform.dreadnode.io[/] to add a SaaS profile."
             )
-            return current_profile or user_config.active_profile_name
-        rich.print(
-            "Cancelled. Use [bold]dreadnode login --server https://platform.dreadnode.io[/] to add a SaaS profile."
-        )
+        print_warning("Continuing with current server - private repository access may fail")
+        return current_profile or user_config.active_profile_name
 
     return None
