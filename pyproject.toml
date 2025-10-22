@@ -15,7 +15,7 @@ dependencies = [
     "coolname>=2.2.0,<3.0.0",
     "pandas>=2.2.3,<3.0.0",
     "fsspec[s3]>=2023.1.0,<=2025.3.0",
-    "cyclopts>=3.22.2,<4.0.0",
+    "cyclopts>=4.0.0,<4.1.0",
     "rigging>=3.2.1,<4.0.0",
     "optuna>=4.5.0,<5.0.0",
     "numpy<=2.2.6", # 3.10 support was dropped in 2.3.0
