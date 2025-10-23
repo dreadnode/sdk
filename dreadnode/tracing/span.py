@@ -64,6 +64,7 @@ from dreadnode.tracing.constants import (
     SPAN_ATTRIBUTE_TAGS_,
     SPAN_ATTRIBUTE_TYPE,
     SPAN_ATTRIBUTE_VERSION,
+    SPAN_RESOURCE_ATTRIBUTE_TOKEN,
     SpanType,
 )
 from dreadnode.util import clean_str
@@ -84,6 +85,12 @@ current_task_span: ContextVar["TaskSpan[t.Any] | None"] = ContextVar(
 )
 current_run_span: ContextVar["RunSpan | None"] = ContextVar(
     "current_run_span",
+    default=None,
+)
+
+# Used to override the export api-key for multi-user scenarios
+current_export_auth_token_context: ContextVar[str | None] = ContextVar(
+    "_current_token_context",
     default=None,
 )
 
@@ -141,6 +148,10 @@ class Span(ReadableSpan):
                 name=self._span_name,
                 attributes=prepare_otlp_attributes(self._pre_attributes),
             )
+
+            if token := current_export_auth_token_context.get():
+                # We use the resource here to prevent it from being lost during conversions
+                setattr(self._span._resource, SPAN_RESOURCE_ATTRIBUTE_TOKEN, token)  # type: ignore[attr-defined]  # noqa: SLF001
 
         self._span.__enter__()
 
@@ -312,13 +323,14 @@ class Span(ReadableSpan):
         return f"{self._span_name} ({self._label})" if self._label else self._span_name
 
 
-class RunContext(te.TypedDict):
+class RunContext(te.TypedDict, total=False):
     """Context for transferring and continuing runs in other places."""
 
     run_id: str
     run_name: str
     project: str
     trace_context: dict[str, str]
+    export_auth_token: str | None
 
 
 class RunUpdateSpan(Span):
@@ -383,6 +395,7 @@ class RunSpan(Span):
         autolog: bool = True,
         update_frequency: int = 5,
         run_id: str | ULID | None = None,
+        export_auth_token: str | None = None,
         type: SpanType = "run",
     ) -> None:
         self.autolog = autolog
@@ -394,6 +407,10 @@ class RunSpan(Span):
         self._object_schemas: dict[str, JsonDict] = {}
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
+
+        # Export auth token for span export router
+        self._export_auth_token = export_auth_token
+        self._export_auth_token_token: Token[str | None] | None = None  # For managing context
 
         # Credential manager for S3 operations
         self._credential_manager = credential_manager
@@ -444,6 +461,7 @@ class RunSpan(Span):
             type="run_fragment",
             run_id=context["run_id"],
             credential_manager=credential_manager,
+            export_auth_token=context["export_auth_token"],
         )
 
         self._remote_context = context["trace_context"]
@@ -452,6 +470,11 @@ class RunSpan(Span):
     def __enter__(self) -> te.Self:
         if current_run_span.get() is not None:
             raise RuntimeError("You cannot start a run span within another run")
+
+        if self._export_auth_token:
+            self._export_auth_token_token = current_export_auth_token_context.set(
+                self._export_auth_token
+            )
 
         if self._remote_context is not None:
             # If the global propagator is a NoExtract instance, we can't continue
@@ -517,6 +540,27 @@ class RunSpan(Span):
 
         if self._context_token is not None:
             current_run_span.reset(self._context_token)
+
+        if self._export_auth_token_token:
+            current_export_auth_token_context.reset(self._export_auth_token_token)
+
+    def get_context(self) -> RunContext:
+        """
+        Capture the current run context for transfer to another host, thread, or process.
+        """
+        # Capture OpenTelemetry trace context
+        trace_context: dict[str, str] = {}
+        propagate.inject(trace_context)
+
+        context: RunContext = {
+            "run_id": self.run_id,
+            "run_name": self.name,
+            "project": self.project,
+            "trace_context": trace_context,
+            "export_auth_token": current_export_auth_token_context.get(),
+        }
+
+        return context
 
     def push_update(self, *, force: bool = False) -> None:
         if self._span is None:
