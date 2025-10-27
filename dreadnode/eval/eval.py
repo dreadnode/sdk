@@ -1,13 +1,14 @@
 import contextlib
 import contextvars
+import inspect
 import itertools
 import typing as t
 from contextlib import asynccontextmanager
 from functools import cached_property
-from pathlib import Path
 
 import typing_extensions as te
-from pydantic import ConfigDict, Field, FilePath, TypeAdapter, computed_field
+from loguru import logger
+from pydantic import ConfigDict, Field, FilePath, TypeAdapter, computed_field, model_validator
 
 from dreadnode.common_types import AnyDict, Unset
 from dreadnode.discovery import find
@@ -40,6 +41,14 @@ Out = te.TypeVar("Out", default=t.Any)
 
 InputDataset = list[In]
 InputDatasetProcessor = t.Callable[[InputDataset], InputDataset]
+DatasetLike = InputDataset[In] | list[AnyDict]
+
+
+class DatasetProducer(t.Protocol[In]):
+    def __call__(self) -> t.Awaitable[DatasetLike[In]] | DatasetLike[In]: ...
+
+
+DatasetOrProducer = DatasetLike | DatasetProducer
 
 current_dataset_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
     "current_dataset_row", default=None
@@ -57,26 +66,40 @@ class Eval(Model, t.Generic[In, Out]):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    task: t.Annotated[Task[[In], Out] | str, Config(expose_as=t.Any)]
+    task: Task[[In], Out] | str
     """The task to evaluate. Can be a Task object or a string representing qualified task name."""
-    dataset: t.Annotated[InputDataset[In] | list[AnyDict] | FilePath, Config(expose_as=t.Any)]
-    """The dataset to use for the evaluation. Can be a list of inputs or a file path to load inputs from."""
 
-    name_: str | None = Field(default=None, alias="name", repr=False, exclude=True)
+    # It's easiest to split these up as we want our config system to support
+    # dataset paths easily, but deconflicting types in the same field is tricky.
+    dataset: t.Any | None = None
+    """
+    The dataset to use for the evaluation. Can be any of:
+
+    - A list of objects matching the eval In type.
+    - A list of dictionaries representing the dataset.
+    - A callable that returns either of the above (can be async).
+    """
+    dataset_file: FilePath | str | None = Config(default=None)
+    """
+    The file path of a JSONL, CSV, JSON, or YAML dataset.
+    Takes precedence over code-defined `dataset` if provided.
+    """
+
+    name_: str | None = Config(default=None, alias="name", repr=False, exclude=True)
     """The name of the evaluation."""
-    description: str = ""
+    description: str = Config(default="")
     """A brief description of the eval's purpose."""
-    label: str | None = None
-    """Specific label to use for tasks created by this eval."""
+    label: str | None = Config(default=None)
+    """Specific label for tracing, otherwise derived from the name."""
     tags: list[str] = Config(default_factory=lambda: ["eval"])
-    """A list of tags associated with the evaluation."""
+    """A list of tags to associate during tracing."""
     concurrency: int = Config(default=1)
     """Maximum number of tasks to run in parallel."""
     iterations: int = Config(default=1, ge=1)
     """Number of times to run each scenario."""
     max_errors: int | None = Config(default=None)
     """
-    Maximum number of errors (not caused by score assertions)
+    Maximum number of sample errors (not caused by score assertions)
     to tolerate before stopping the evaluation.
     """
     max_consecutive_errors: int | None = Config(default=10)
@@ -94,20 +117,25 @@ class Eval(Model, t.Generic[In, Out]):
     parameters: dict[str, list[t.Any]] | None = Config(default=None)
     """
     A dictionary defining a parameter space to run experiments against.
-    For each item in the dataset, a scenario will be run for every combination
-    of the parameters defined here. Key names should align with
-    arguments on the task assigned with a `Config` context.
+    A scenario will be created for every combination of the parameters defined here.
+    Key names should align with arguments on the task assigned with a `Config` context.
     """
 
     preprocessor: InputDatasetProcessor | None = None
     """Optional preprocessor function to transform the dataset before evaluation."""
-    scorers: ScorersLike[Out] = Config(default_factory=list)
+    scorers: ScorersLike[Out] = Field(default_factory=list)
     """Scorers to evaluate the task's output (appended to existing task scorers)."""
-    assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
+    assert_scores: list[str] | t.Literal[True] = Field(default_factory=list)
     """Scores to ensure are truthy, otherwise the task is marked as failed (appended to existing task assertions)."""
 
     trace: bool = True
     """Whether to produce trace contexts like runs/tasks for this study."""
+
+    @model_validator(mode="after")
+    def _check_dataset(self) -> te.Self:
+        if self.dataset is None and self.dataset_file is None:
+            raise ValueError("One of 'dataset' or 'dataset_file' must be provided.")
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @cached_property
@@ -157,8 +185,13 @@ class Eval(Model, t.Generic[In, Out]):
         task = find(Task, self.task) if isinstance(self.task, str) else self.task
 
         dataset = self.dataset
-        if isinstance(self.dataset, str | Path):
-            dataset = load_dataset(self.dataset)
+        if self.dataset_file is not None:
+            dataset = load_dataset(self.dataset_file)
+
+        if inspect.isfunction(dataset):
+            dataset = dataset()
+            if inspect.isawaitable(dataset):
+                dataset = await dataset
 
         input_type, _ = self._generic_types()
         dataset = TypeAdapter(list[input_type]).validate_python(dataset)  # type: ignore[valid-type]
@@ -166,7 +199,7 @@ class Eval(Model, t.Generic[In, Out]):
         if self.preprocessor:
             dataset = self.preprocessor(dataset)
 
-        return task, dataset  # type: ignore[return-value]
+        return task, dataset
 
     def _get_param_combinations(self) -> list[dict[str, t.Any]]:
         if self.parameters:
@@ -227,15 +260,16 @@ class Eval(Model, t.Generic[In, Out]):
                     task_kwargs = {k: v for k, v in row.items() if k in task_params}
 
                 context = {f"dataset_{k}": v for k, v in row.items() if k not in task_params}
+                first_kwarg = next(iter(task_kwargs.values()), None)
+                task_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg
+
+                logger.trace(f"Processing sample: index={index}, input={task_input}")
 
                 span = await configured_task.run_always(  # type: ignore[call-arg]
                     **{**task_kwargs, "__dn_ctx_inputs__": context}
                 )
 
-                first_kwarg = next(iter(task_kwargs.values()), None)
-                task_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg
-
-                return Sample.from_task(
+                sample = Sample.from_task(
                     configured_task,
                     span,
                     task_input,
@@ -244,6 +278,13 @@ class Eval(Model, t.Generic[In, Out]):
                     index=index,
                     context=context,
                 )
+
+                logger.trace(
+                    f"Completed sample: index={index}, passed={sample.passed}, error='{sample.error}'"
+                )
+
+                return sample
+
             finally:
                 current_dataset_row.reset(token)
 
@@ -251,8 +292,8 @@ class Eval(Model, t.Generic[In, Out]):
         async with concurrent_gen(coroutines, self.concurrency) as sample_stream:
             yield sample_stream
 
-    async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
-        from dreadnode import task_and_run
+    async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:  # noqa: PLR0915
+        from dreadnode import get_current_run, log_metrics, log_output, task_and_run
 
         base_task, dataset = await self._prepare_task_and_dataset()
         param_combinations = self._get_param_combinations()
@@ -264,6 +305,40 @@ class Eval(Model, t.Generic[In, Out]):
         total_iterations = len(param_combinations) * self.iterations
         total_samples = total_iterations * len(dataset)
 
+        # If we are going to create runs per scenario, we'll ensure all
+        # manual output goes to both the task and the run.
+
+        inside_run = get_current_run() is not None
+        log_to: t.Literal["task-or-run", "both"] = "task-or-run" if inside_run else "both"
+
+        configuration = get_config_model(self)()
+        trace_inputs, trace_params = get_inputs_and_params_from_config_model(
+            configuration, exclude={"name", "tags"}
+        )
+
+        trace_inputs.update(
+            {
+                "scorers": [s.name for s in scorers],
+                "assert_scores": self.assert_scores,
+                "dataset_input_mapping": self.dataset_input_mapping,
+            }
+        )
+        trace_params.update(
+            {
+                "dataset_size": len(dataset),
+            }
+        )
+
+        logger.info(
+            f"Starting Eval '{self.name}': "
+            f"task='{base_task.name}', "
+            f"dataset_size={len(dataset)}, "
+            f"scenarios={len(param_combinations)}, "
+            f"total_samples={total_samples}, "
+            f"concurrency={self.concurrency}, "
+            f"iterations={self.iterations}"
+        )
+
         yield EvalStart(
             eval=self,
             dataset_size=len(dataset),
@@ -272,12 +347,12 @@ class Eval(Model, t.Generic[In, Out]):
             total_samples=total_samples,
         )
 
-        configuration = get_config_model(self)()
-        trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
-        trace_params.pop("parameters", None)
-
         eval_result = EvalResult[In, Out](scenarios=[])
         for scenario_params in param_combinations:
+            scenario_result = ScenarioResult[In, Out](params=scenario_params)
+            consecutive_errors = 0
+            total_errors = 0
+
             trace_context = (
                 task_and_run(
                     name=self.name,
@@ -289,13 +364,38 @@ class Eval(Model, t.Generic[In, Out]):
                 else contextlib.nullcontext()
             )
 
-            with trace_context as task:
+            # TODO(nick): I've used a mixture of patterns to achieve this kind of
+            # final logging for task spans. Seems like the ExitStack approach
+            # is pretty nice as opposed to try/catch. Just need to go make this
+            # more consistent over Study, Trial, and Agent.
+
+            def log_data(result: ScenarioResult[In, Out] = scenario_result) -> None:
+                if task is None:
+                    return
+
+                log_output("stop_reason", eval_result.stop_reason or "finished", to=log_to)
+                log_metrics(
+                    {
+                        "total_samples": len(result.samples),
+                        "pass_rate": result.pass_rate,
+                        "passed_count": result.passed_count,
+                        "failed_count": result.failed_count,
+                        "error_count": result.error_count,
+                    }
+                )
+
+            with trace_context as task, contextlib.ExitStack() as stack:
+                stack.callback(log_data, scenario_result)
+
+                logger.debug(f"Starting scenario: params={scenario_params}")
+
                 run_id = task.run_id if task else ""
                 yield ScenarioStart(
                     eval=self,
                     run_id=run_id,
                     scenario_params=scenario_params,
                     iteration_count=self.iterations,
+                    sample_count=self.iterations * len(dataset),
                 )
 
                 configured_task = base_task.with_(
@@ -304,12 +404,9 @@ class Eval(Model, t.Generic[In, Out]):
                     append=True,
                 ).configure(**scenario_params)
 
-                scenario_result = ScenarioResult[In, Out](params=scenario_params)
-                consecutive_errors = 0
-                total_errors = 0
+                for iteration in range(1, self.iterations + 1):
+                    logger.debug(f"Starting iteration: {iteration}/{self.iterations}")
 
-                for i in range(self.iterations):
-                    iteration = i + 1
                     yield IterationStart(
                         eval=self,
                         run_id=run_id,
@@ -343,23 +440,40 @@ class Eval(Model, t.Generic[In, Out]):
 
                             scenario_result.iterations.append(iteration_result)
                             eval_result.scenarios.append(scenario_result)
-
-                            yield EvalEnd(
-                                eval=self,
-                                result=eval_result,
-                                stop_reason="max_errors_reached"
+                            eval_result.stop_reason = (
+                                "max_errors_reached"
                                 if max_errors_reached
-                                else "max_consecutive_errors_reached",
+                                else "max_consecutive_errors_reached"
                             )
+
+                            logger.warning(
+                                f"Stopping evaluation: reason='{eval_result.stop_reason}', "
+                                f"consecutive_errors={consecutive_errors}, total_errors={total_errors}"
+                            )
+
+                            yield EvalEnd(eval=self, result=eval_result)
                             return
 
                     yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
                     scenario_result.iterations.append(iteration_result)
 
+                logger.info(
+                    f"Finished scenario: pass_rate={scenario_result.pass_rate:.2%}, "
+                    f"passed={scenario_result.passed_count}, failed={scenario_result.failed_count}, "
+                    f"params={scenario_params}"
+                )
+
                 yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
 
-        yield EvalEnd(eval=self, result=eval_result, stop_reason="finished")
+        eval_result.stop_reason = "finished"
+
+        logger.success(
+            f"Finished Eval '{self.name}': reason='{eval_result.stop_reason}', "
+            f"passed={eval_result.passed_count}, failed={eval_result.failed_count}"
+        )
+
+        yield EvalEnd(eval=self, result=eval_result)
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:

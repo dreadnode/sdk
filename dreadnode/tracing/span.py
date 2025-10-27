@@ -166,6 +166,11 @@ class Span(ReadableSpan):
         )
         self._span.set_attribute(SPAN_ATTRIBUTE_TAGS_, self.tags)
 
+        # Avoid recording control-flow exceptions (BaseException) as errors
+        if not isinstance(exc_value, Exception):
+            exc_value = None
+            traceback = None
+
         if exc_value is not None:
             self.set_exception(exc_value, traceback=traceback)
 
@@ -486,7 +491,7 @@ class RunSpan(Span):
         traceback: types.TracebackType | None,
     ) -> None:
         if self._remote_context is not None:
-            super().__enter__()  # Now we can open our actually span
+            super().__enter__()  # Now we can open our actual span
 
         # When we finally close out the final span, include all the
         # full data attributes, so we can skip the update spans during

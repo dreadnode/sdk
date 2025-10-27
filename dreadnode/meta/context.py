@@ -2,7 +2,7 @@ import os
 import typing as t
 from abc import ABC, abstractmethod
 
-from dreadnode.common_types import UNSET, Unset
+from dreadnode.common_types import UNSET, AnyDict, Unset
 from dreadnode.tracing.span import RunSpan, current_run_span, current_task_span
 from dreadnode.util import warn_at_user_stacklevel
 
@@ -132,7 +132,7 @@ class SpanContext(Context):
 
     def __init__(
         self,
-        name: str,
+        name: str | None,
         source: SpanContextSource,
         *,
         scope: SpanContextScope = "task",
@@ -158,7 +158,7 @@ class SpanContext(Context):
 
     def __repr__(self) -> str:
         parts = [
-            f"name='{self.ref_name}'",
+            f"name='{self.ref_name or '<first>'}'",
             f"source='{self.source}'",
             f"scope='{self.scope}'",
             f"required={self.required!r}",
@@ -174,7 +174,7 @@ class SpanContext(Context):
         if (target_span := task if self.scope == "task" else run) is None:
             raise RuntimeError(f"No active '{self.scope}' span in context.")
 
-        value_container: t.Any = None
+        value_container: AnyDict = {}
         if self.source == "input":
             value_container = target_span.inputs
         elif self.source == "output":
@@ -185,8 +185,13 @@ class SpanContext(Context):
             value_container = target_span.params
 
         value: t.Any = None
+        container_key = self.ref_name or next(iter(value_container.keys()), None)
+
+        if container_key is None:
+            raise RuntimeError(f"Could not select first key from empty '{self.source}' container.")  # noqa: S608 # nosec (no idea)
+
         try:
-            value = value_container[self.ref_name]
+            value = value_container[container_key]
         except (KeyError, AttributeError) as e:
             available = list(value_container.keys()) if value_container else []
             raise RuntimeError(
@@ -198,13 +203,13 @@ class SpanContext(Context):
 
 
 def TaskInput(  # noqa: N802
-    name: str, *, default: t.Any | Unset = UNSET, required: bool = True
+    name: str | None = None, *, default: t.Any | Unset = UNSET, required: bool = True
 ) -> SpanContext:
     """
     Reference an input from the nearest task.
 
     Args:
-        name: The name of the input to reference.
+        name: The name of the input to reference. If None, uses the first input logged.
         default: A default value if the named input is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """
@@ -240,13 +245,13 @@ def RunParam(  # noqa: N802
 
 
 def RunInput(  # noqa: N802
-    name: str, *, default: t.Any | Unset = UNSET, required: bool = True
+    name: str | None = None, *, default: t.Any | Unset = UNSET, required: bool = True
 ) -> SpanContext:
     """
     Reference an input from the current run.
 
     Args:
-        name: The name of the input to reference.
+        name: The name of the input to reference. If None, uses the first input logged.
         default: A default value if the named input is not found.
         required: Whether the context is required or not (otherwise use `default` or `None`).
     """

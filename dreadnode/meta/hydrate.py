@@ -2,6 +2,7 @@ import contextlib
 import copy
 import typing as t
 
+from loguru import logger
 from pydantic import BaseModel as PydanticBaseModel
 
 from dreadnode.common_types import AnyDict
@@ -30,6 +31,7 @@ def hydrate(blueprint: T, config: PydanticBaseModel | AnyDict) -> T:
         warn_at_user_stacklevel(
             f"Failed to hydrate {blueprint!r} with config {config!r}: {e}", HydrationWarning
         )
+        logger.exception("Failed to hydrate object")
         return blueprint
 
 
@@ -46,32 +48,36 @@ def _hydrate_recursive(obj: t.Any, override: t.Any) -> t.Any:  # noqa: PLR0911, 
 
         for name, config in obj.__dn_param_config__.items():
             original_default = config.field_kwargs.get("default")
-            hydrated_default = _hydrate_recursive(original_default, override.get(name))
+            hydrated_default = _hydrate_recursive(original_default, override.pop(name, None))
             new_field_kwargs = config.field_kwargs.copy()
             new_field_kwargs["default"] = hydrated_default
             hydrated_config[name] = ConfigInfo(field_kwargs=new_field_kwargs)
 
         hydrated_component.__dn_param_config__ = hydrated_config
 
-        for name, attr_info in obj.__dn_attr_config__.items():
-            original_default = attr_info.field_kwargs.get("default")
-            hydrated_default = _hydrate_recursive(original_default, override.get(name))
-            setattr(hydrated_component, name, hydrated_default)
+        # Assume anything left is an attribute override
+        for name, override_value in override.items():
+            with contextlib.suppress(Exception):
+                if not hasattr(obj, name):
+                    continue
+                hydrated_attr = _hydrate_recursive(getattr(obj, name), override_value)
+                setattr(hydrated_component, name, hydrated_attr)
 
         return hydrated_component
 
     if isinstance(obj, Model) and override_is_dict:
         # First, recursively hydrate nested objects in the current model
         current_data = {}
-        for field_name in obj.__class__.model_fields:
+        for field_name, field_info in obj.__class__.model_fields.items():
+            real_field_name = field_info.alias or field_name
             if hasattr(obj, field_name):
                 current_val = getattr(obj, field_name)
                 # Only hydrate if there's an override for this field
                 if field_name in override:
                     hydrated_val = _hydrate_recursive(current_val, override[field_name])
-                    current_data[field_name] = hydrated_val
+                    current_data[real_field_name] = hydrated_val
                 else:
-                    current_data[field_name] = current_val
+                    current_data[real_field_name] = current_val
 
         # Add any override values that aren't currently in the model
         for key, override_val in override.items():

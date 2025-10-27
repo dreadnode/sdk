@@ -16,6 +16,7 @@ CandidateT = te.TypeVar("CandidateT", default=t.Any)
 class StudyEvent(t.Generic[CandidateT]):
     study: "Study[CandidateT]" = field(repr=False)
     trials: list["Trial[CandidateT]"] = field(repr=False)
+    probes: list["Trial[CandidateT]"] = field(repr=False)
 
 
 @dataclass
@@ -35,11 +36,6 @@ class TrialStart(StudyEvent[CandidateT]):
 
 @dataclass
 class TrialPruned(StudyEvent[CandidateT]):
-    trial: "Trial[CandidateT]"
-
-
-@dataclass
-class EvaluationStart(StudyEvent[CandidateT]):
     trial: "Trial[CandidateT]"
 
 

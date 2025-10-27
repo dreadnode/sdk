@@ -27,6 +27,7 @@ from dreadnode.eval.events import (
     ScenarioEnd,
     ScenarioStart,
 )
+from dreadnode.eval.format import format_eval_result
 from dreadnode.eval.result import EvalResult
 from dreadnode.util import format_dict
 
@@ -136,9 +137,8 @@ class EvalConsoleAdapter:
         """Mutates the adapter's state based on an incoming event."""
         if isinstance(event, EvalStart):
             self._log_event("Evaluation started.")
-            total_samples = event.total_iterations * len(self.eval.dataset)  # type: ignore[arg-type]
             self._total_task_id = self._progress.add_task(
-                "[bold]Total Progress", total=total_samples
+                "[bold]Total Progress", total=event.total_samples
             )
             self._scenario_task_id = self._progress.add_task(
                 "Scenarios", total=event.scenario_count, visible=False
@@ -146,9 +146,8 @@ class EvalConsoleAdapter:
         elif isinstance(event, ScenarioStart):
             params_str = format_dict(event.scenario_params)
             self._log_event(f"Running scenario: [bold cyan]{params_str}[/bold cyan]")
-            total_samples_in_scenario = event.iteration_count * len(self.eval.dataset)  # type: ignore[arg-type]
             self._iteration_task_id = self._progress.add_task(
-                f"  Scenario ({params_str})", total=total_samples_in_scenario
+                f"  Scenario ({params_str})", total=event.sample_count
             )
         elif isinstance(event, SampleComplete):
             self._total_samples_processed += 1
@@ -174,19 +173,19 @@ class EvalConsoleAdapter:
                 self._progress.update(self._scenario_task_id, advance=1)
         elif isinstance(event, EvalEnd):
             self._progress.stop()
-            self._log_event(f"[bold]Evaluation complete: {event.stop_reason}[/bold]")
+            self._log_event(f"[bold]Evaluation complete: {event.result.stop_reason}[/bold]")
             self.final_result = event.result
 
     async def run(self) -> EvalResult:
         """Runs the evaluation and renders the console interface."""
-        with Live(self._build_dashboard(), console=self.console) as live:
+        with Live(self._build_dashboard(), console=self.console, screen=True) as live:
             async with self.eval.stream() as stream:
                 async for event in stream:
                     self._handle_event(event)
                     live.update(self._build_dashboard(), refresh=True)
 
         if self.final_result:
-            self.console.print(self.final_result)
+            self.console.print(format_eval_result(self.final_result))
             return self.final_result
 
         raise RuntimeError("Evaluation did not produce a final result.")

@@ -278,7 +278,7 @@ class Dreadnode:
         if self.server or self.token or self.local_dir:
             destination = self.server or DEFAULT_SERVER_URL or "local storage"
             logging_console.print(
-                f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source})"
+                f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source}, project: {self.project or 'default'})"
             )
 
         # Warn the user if the profile didn't resolve
@@ -506,6 +506,7 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        entrypoint: bool = False,
     ) -> TaskDecorator: ...
 
     @t.overload
@@ -523,6 +524,7 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        entrypoint: bool = False,
     ) -> ScoredTaskDecorator[R]: ...
 
     def task(
@@ -539,6 +541,7 @@ class Dreadnode:
         log_execution_metrics: bool = False,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        entrypoint: bool = False,
     ) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]:
         """
         Create a new task from a function.
@@ -563,10 +566,17 @@ class Dreadnode:
             log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
             tags: A list of tags to attach to the task span.
             attributes: A dictionary of attributes to attach to the task span.
+            entrypoint: Indicate this task should be considered an entrypoint. All compatible arguments
+                will be treated as configurable and a run will be created automatically when called if
+                one is not already active.
 
         Returns:
             A new Task object.
         """
+
+        # NOTE(nick): It would probably be cleaner to alias a `dn.entrypoint` decorator
+        # that just wraps `dn.task(..., entrypoint=True)`, but the overloads create quite
+        # a bit of duplicate code, so I'm leaving it like this for now.
 
         if isinstance(func, Task):
             return func
@@ -585,6 +595,7 @@ class Dreadnode:
                     log_execution_metrics=log_execution_metrics,
                     tags=tags,
                     attributes=attributes,
+                    entrypoint=entrypoint,
                     append=True,
                 )
 
@@ -600,6 +611,7 @@ class Dreadnode:
                 log_execution_metrics=log_execution_metrics,
                 tags=tags,
                 attributes=attributes,
+                entrypoint=entrypoint,
             )
 
         return (
@@ -615,6 +627,7 @@ class Dreadnode:
         label: str | None = None,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
+        _tracer: "Tracer | None" = None,
     ) -> TaskSpan[t.Any]:
         """
         Create a task span without an explicit associated function.
@@ -646,7 +659,7 @@ class Dreadnode:
             attributes=attributes,
             tags=tags,
             run_id=run.run_id if run else "",
-            tracer=self._get_tracer(),
+            tracer=_tracer or self._get_tracer(),
         )
 
     @t.overload
@@ -780,6 +793,7 @@ class Dreadnode:
         autolog: bool = True,
         name_prefix: str | None = None,
         attributes: AnyDict | None = None,
+        _tracer: "Tracer | None" = None,
     ) -> RunSpan:
         """
         Create a new run.
@@ -821,7 +835,7 @@ class Dreadnode:
             name=name,
             project=project or self.project or "default",
             attributes=attributes,
-            tracer=self._get_tracer(),
+            tracer=_tracer or self._get_tracer(),
             params=params,
             tags=tags,
             credential_manager=self._credential_manager,  # type: ignore[arg-type]
@@ -839,6 +853,7 @@ class Dreadnode:
         autolog: bool = True,
         inputs: AnyDict | None = None,
         label: str | None = None,
+        _tracer: "Tracer | None" = None,
     ) -> t.Iterator[TaskSpan[t.Any]]:
         """
         Create a task span within a new run if one is not already active.
@@ -854,11 +869,14 @@ class Dreadnode:
                         tags=tags,
                         params=params,
                         autolog=autolog,
+                        _tracer=_tracer,
                     )
                 )
                 self.log_inputs(**(inputs or {}))
 
-            task_span = stack.enter_context(self.task_span(name, label=label, tags=tags))
+            task_span = stack.enter_context(
+                self.task_span(name, label=label, tags=tags, _tracer=_tracer)
+            )
             self.log_inputs(**(inputs or {}))
             if not create_run:
                 self.log_inputs(**(params or {}))

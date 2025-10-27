@@ -1,7 +1,7 @@
 import contextlib
+import inspect
 import itertools
 import typing as t
-from inspect import isawaitable
 from pathlib import Path
 
 import cyclopts
@@ -10,7 +10,6 @@ import rich
 from dreadnode.cli.shared import DreadnodeConfig
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
 from dreadnode.meta import get_config_model, hydrate
-from dreadnode.meta.introspect import flatten_model
 
 cli = cyclopts.App("study", help="Discover and run evaluations.")
 
@@ -29,13 +28,14 @@ def show(
 
     If no file is specified, searches in standard paths.
     """
+    from dreadnode.airt import Attack
     from dreadnode.optimization import Study
     from dreadnode.optimization.format import format_studies, format_study
 
-    discovered = discover(Study, file)
+    discovered = discover(Study, file, exclude_types={Attack})
     if not discovered:
         path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
-        rich.print(f"No studies found in {path_hint}")
+        rich.print(f"No studies found in {path_hint}.")
         return
 
     grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
@@ -51,10 +51,11 @@ def show(
 
 @cli.command()
 async def run(  # noqa: PLR0912, PLR0915
-    study_identifier: str,
+    study: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
-    dreadnode_config: DreadnodeConfig | None = None,
+    raw: t.Annotated[bool, cyclopts.Parameter(["-r", "--raw"], negative=False)] = False,
+    dn_config: DreadnodeConfig | None = None,
 ) -> None:
     """
     Run a study by name, file, or module.
@@ -69,24 +70,26 @@ async def run(  # noqa: PLR0912, PLR0915
     Args:
         study: The study to run, e.g., 'my_studies.py:hyperparam' or 'hyperparam'.
         config: Optional path to a TOML/YAML/JSON configuration file for the study.
+        raw: If set, only display raw logging output without additional formatting.
     """
+    from dreadnode.airt import Attack
     from dreadnode.optimization import Study
 
     file_path: Path | None = None
     study_name: str | None = None
 
-    if study_identifier is not None:
-        study_name = study_identifier
-        study_as_path = Path(study_identifier.split(":")[0]).with_suffix(".py")
+    if study is not None:
+        study_name = study
+        study_as_path = Path(study.split(":")[0]).with_suffix(".py")
         if study_as_path.exists():
             file_path = study_as_path
-            study_name = study_identifier.split(":", 1)[-1] if ":" in study_identifier else None
+            study_name = study.split(":", 1)[-1] if ":" in study else None
 
     path_hint = file_path or ", ".join(DEFAULT_SEARCH_PATHS)
 
-    discovered = discover(Study, file_path)
+    discovered = discover(Study, file_path, exclude_types={Attack})
     if not discovered:
-        rich.print(f":exclamation: No studies found in '{path_hint}'.")
+        rich.print(f":exclamation: No studies found in {path_hint}.")
         return
 
     studies_by_name = {d.obj.name: d.obj for d in discovered}
@@ -99,41 +102,42 @@ async def run(  # noqa: PLR0912, PLR0915
         study_name = next(iter(studies_by_name.keys()))
 
     if study_name.lower() not in studies_by_lower_name:
-        rich.print(f":exclamation: Study '{study_name}' not found in '{path_hint}'.")
+        rich.print(f":exclamation: Study '{study_name}' not found in {path_hint}.")
         rich.print(f"Available studies are: {', '.join(studies_by_name.keys())}")
         return
 
     study_blueprint = studies_by_lower_name[study_name.lower()]
 
     config_model = get_config_model(study_blueprint)
-    config_parameter = cyclopts.Parameter(name="*", group="Study Config")(config_model)
-
-    config_default = None
+    config_annotation = cyclopts.Parameter(name="*", group="Study Config")(config_model)
+    config_default: t.Any = inspect.Parameter.empty
     with contextlib.suppress(Exception):
         config_default = config_model()
-        config_parameter = config_parameter | None  # type: ignore [assignment]
 
     async def study_cli(
         *,
         config: t.Any = config_default,
+        dn_config: DreadnodeConfig | None = dn_config,
     ) -> None:
-        (dreadnode_config or DreadnodeConfig()).apply()
+        dn_config = dn_config or DreadnodeConfig()
+        if raw and dn_config.log_level is None:
+            dn_config.log_level = "info"
+        dn_config.apply()
 
         study_obj = hydrate(study_blueprint, config)
-        flat_config = flatten_model(config)
+        await (study_obj.run() if raw else study_obj.console())
 
-        rich.print(f"Running study: [bold]{study_obj.name}[/bold] with config:")
-        for key, value in flat_config.items():
-            rich.print(f" |- {key}: {value}")
-        rich.print()
+    study_cli.__annotations__["config"] = config_annotation
 
-        await study_obj.console()
-
-    study_cli.__annotations__["config"] = config_parameter
+    help_text = f"Run the '{study_name}' study."
+    if study_blueprint.__doc__:
+        help_text += "\n\n" + study_blueprint.__doc__
+    if study_blueprint.description:
+        help_text += "\n\n" + study_blueprint.description
 
     study_app = cyclopts.App(
         name=study_name,
-        help=f"Run the '{study_name}' study.",
+        help=help_text,
         help_on_error=True,
         help_flags=("help"),
         version_flags=(),
@@ -158,5 +162,5 @@ async def run(  # noqa: PLR0912, PLR0915
     command, bound, _ = study_app.parse_args(tokens)
 
     result = command(*bound.args, **bound.kwargs)
-    if isawaitable(result):
+    if inspect.isawaitable(result):
         await result

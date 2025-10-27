@@ -1,7 +1,7 @@
 import contextlib
+import inspect
 import itertools
 import typing as t
-from inspect import isawaitable
 from pathlib import Path
 
 import cyclopts
@@ -9,8 +9,8 @@ import rich
 
 from dreadnode.cli.shared import DreadnodeConfig
 from dreadnode.discovery import DEFAULT_SEARCH_PATHS, discover
+from dreadnode.logging_ import console as logging_console
 from dreadnode.meta import get_config_model, hydrate
-from dreadnode.meta.introspect import flatten_model
 
 cli = cyclopts.App("eval", help="Discover and run evaluations.")
 
@@ -35,7 +35,7 @@ def show(
     discovered = discover(Eval, file)
     if not discovered:
         path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
-        rich.print(f"No evals found in {path_hint}")
+        rich.print(f"No evals found in {path_hint}.")
         return
 
     grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
@@ -54,7 +54,8 @@ async def run(  # noqa: PLR0912, PLR0915
     evaluation: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
-    dreadnode_config: DreadnodeConfig | None = None,
+    raw: t.Annotated[bool, cyclopts.Parameter(["-r", "--raw"], negative=False)] = False,
+    dn_config: DreadnodeConfig | None = None,
 ) -> None:
     """
     Run an eval by name, file, or module.
@@ -69,6 +70,7 @@ async def run(  # noqa: PLR0912, PLR0915
     Args:
         eval: The eval to run, e.g., 'my_evals.py:accuracy' or 'accuracy'.
         config: Optional path to a TOML/YAML/JSON configuration file for the eval.
+        raw: If set, only display raw logging output without additional formatting.
     """
     from dreadnode.eval import Eval
 
@@ -86,7 +88,7 @@ async def run(  # noqa: PLR0912, PLR0915
 
     discovered = discover(Eval, file_path)
     if not discovered:
-        rich.print(f":exclamation: No evals found in '{path_hint}'.")
+        rich.print(f":exclamation: No evals found in {path_hint}.")
         return
 
     evals_by_name = {d.obj.name: d.obj for d in discovered}
@@ -99,44 +101,46 @@ async def run(  # noqa: PLR0912, PLR0915
         eval_name = next(iter(evals_by_name.keys()))
 
     if eval_name.lower() not in evals_by_lower_name:
-        rich.print(f":exclamation: Eval '{eval_name}' not found in '{path_hint}'.")
+        rich.print(f":exclamation: Eval '{eval_name}' not found in {path_hint}.")
         rich.print(f"Available evals are: {', '.join(evals_by_name.keys())}")
         return
 
     eval_blueprint = evals_by_lower_name[eval_name.lower()]
 
     config_model = get_config_model(eval_blueprint)
-    config_parameter = cyclopts.Parameter(name="*", group="Eval Config")(config_model)
-
-    config_default = None
+    config_annotation = cyclopts.Parameter(name="*", group="Eval Config")(config_model)
+    config_default: t.Any = inspect.Parameter.empty
     with contextlib.suppress(Exception):
         config_default = config_model()
-        config_parameter = config_parameter | None  # type: ignore[assignment]
 
     async def eval_cli(
         *,
         config: t.Any = config_default,
+        dn_config: DreadnodeConfig | None = dn_config,
     ) -> None:
-        (dreadnode_config or DreadnodeConfig()).apply()
+        dn_config = dn_config or DreadnodeConfig()
+        if raw and dn_config.log_level is None:
+            dn_config.log_level = "info"
+        dn_config.apply()
 
         eval_obj = hydrate(eval_blueprint, config)
-        flat_config = flatten_model(config)
+        await (eval_obj.run() if raw else eval_obj.console())
 
-        rich.print(f"Running eval: [bold]{eval_obj.name}[/bold] with config:")
-        for key, value in flat_config.items():
-            rich.print(f" |- {key}: {value}")
-        rich.print()
+    eval_cli.__annotations__["config"] = config_annotation
 
-        await eval_obj.console()
-
-    eval_cli.__annotations__["config"] = config_parameter
+    help_text = f"Run the '{eval_name}' eval."
+    if eval_blueprint.__doc__:
+        help_text += "\n\n" + eval_blueprint.__doc__
+    if eval_blueprint.description:
+        help_text += "\n\n" + eval_blueprint.description
 
     eval_app = cyclopts.App(
         name=eval_name,
-        help=f"Run the '{eval_name}' eval.",
+        help=help_text,
         help_on_error=True,
         help_flags=("help"),
         version_flags=(),
+        console=logging_console,
     )
     eval_app.default(eval_cli)
 
@@ -158,5 +162,5 @@ async def run(  # noqa: PLR0912, PLR0915
     command, bound, _ = eval_app.parse_args(tokens)
 
     result = command(*bound.args, **bound.kwargs)
-    if isawaitable(result):
+    if inspect.isawaitable(result):
         await result

@@ -1,3 +1,4 @@
+import contextlib
 import inspect
 import types
 import typing as t
@@ -10,13 +11,14 @@ from annotated_types import SupportsGt
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 from pydantic import PrivateAttr as PydanticPrivateAttr
+from pydantic import PydanticInvalidForJsonSchema, PydanticSchemaGenerationError, TypeAdapter
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import PydanticUndefined
 from typing_extensions import ParamSpec
 
 from dreadnode.common_types import UNSET, AnyDict, Unset
 from dreadnode.meta.context import Context
-from dreadnode.util import clean_str, get_callable_name, warn_at_user_stacklevel
+from dreadnode.util import clean_str, get_callable_name, safe_issubclass, warn_at_user_stacklevel
 
 P = ParamSpec("P")
 R = t.TypeVar("R")
@@ -48,19 +50,41 @@ class ConfigInfo:
         return None
 
     @staticmethod
-    def from_defaults_and_annotations(
-        defaults: AnyDict, annotations: AnyDict
+    def from_defaults_and_annotations(  # noqa: PLR0912
+        defaults: AnyDict, annotations: AnyDict, *, convert_all: bool = False
     ) -> dict[str, "ConfigInfo"]:
-        """Extract ConfigInfo from default values and associated annotations."""
+        """
+        Extract ConfigInfo from default values and associated annotations.
+
+        Args:
+            defaults: A mapping of parameter names to their default values.
+            annotations: A mapping of parameter names to their type annotations.
+            convert_all: If True, treat all parameters as potentially configurable,
+                even if they lack explicit ConfigInfo.
+        """
         configs: dict[str, ConfigInfo] = {}
-        configs_from_defaults = {
-            name: value for name, value in defaults.items() if isinstance(value, ConfigInfo)
-        }
-        configs_from_annotations = {
-            name: config
-            for name, annotation in annotations.items()
-            if (config := ConfigInfo.from_annotation(annotation))
-        }
+
+        configs_from_defaults: dict[str, ConfigInfo] = {}
+        for name, value in defaults.items():
+            if name == "return":
+                continue
+            if isinstance(value, ConfigInfo):
+                configs_from_defaults[name] = value
+
+            # TODO(nick): Maybe add a logging statement or warning if we can't
+            # deal with a particular type during auto conversion (most typically
+            # an entrypoint task with complex args)
+            elif convert_all and is_type_usable_for_configuration(type(value)):
+                configs_from_defaults[name] = ConfigInfo(field_kwargs={"default": value})
+
+        configs_from_annotations: dict[str, ConfigInfo] = {}
+        for name, annotation in annotations.items():
+            if name == "return":
+                continue
+            if config := ConfigInfo.from_annotation(annotation):
+                configs_from_annotations[name] = config
+            elif convert_all and is_type_usable_for_configuration(annotation):
+                configs_from_annotations[name] = ConfigInfo()
 
         for name in set(configs_from_defaults) | set(configs_from_annotations):
             config_from_default = configs_from_defaults.get(name)
@@ -351,6 +375,7 @@ class Component(t.Generic[P, R]):
         *,
         name: str | None = None,
         config: dict[str, ConfigInfo] | None = None,
+        convert_all: bool = False,
         context: dict[str, Context] | None = None,
         wraps: t.Callable[..., t.Any] | None = None,
     ) -> None:
@@ -374,9 +399,9 @@ class Component(t.Generic[P, R]):
                     if p.default is not inspect.Parameter.empty
                 },
                 func.__annotations__,
+                convert_all=convert_all,
             )
         )
-        self.__dn_attr_config__: dict[str, ConfigInfo] = {}
         self.__dn_context__: dict[str, Context] = context or (
             wraps.__dn_context__
             if isinstance(wraps, Component)
@@ -546,3 +571,28 @@ class Component(t.Generic[P, R]):
 
 def component(func: t.Callable[P, R]) -> Component[P, R]:
     return Component(func)
+
+
+# Utils
+
+
+def is_type_usable_for_configuration(obj_type: type[t.Any]) -> bool:
+    """
+    Determines if an type appears valid to be used as part of a config model.
+
+    Args:
+        type: The type to check.
+    """
+    if safe_issubclass(obj_type, (Model, Component)):
+        return True
+
+    # This might create some overhead, but it's the safest way
+    # to see if we'll run into issues later in our model
+    # construction. This could also maybe be inlined into
+    # our introspection code, but I'd prefer to avoid creating
+    # any ConfigInfo objects that later turn out to be invalid.
+
+    with contextlib.suppress(PydanticInvalidForJsonSchema, PydanticSchemaGenerationError):
+        TypeAdapter(obj_type).json_schema()
+        return True
+    return True

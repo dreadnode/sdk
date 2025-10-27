@@ -51,7 +51,7 @@ class LLMTarget(Target[t.Any, str]):
             else rg.GenerateParams()
         )
 
-        @task(name="target - {self.name}", tags=["target"])
+        @task(name=f"target - {self.name}", tags=["target"])
         async def generate(
             messages: list[rg.Message] = messages,
             params: rg.GenerateParams = params,

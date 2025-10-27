@@ -125,7 +125,7 @@ def clean_str(string: str, *, max_length: int | None = None, replace_with: str =
     Clean a string by replacing all non-alphanumeric characters (except `/`, '.', and `@`)
     with `replace_with` (`_` by default).
     """
-    result = re.sub(r"[^\w/@.]+", replace_with, string.lower()).strip(replace_with)
+    result = re.sub(r"[^a-z0-9/@.]+", replace_with, string.lower()).strip(replace_with)
     if max_length is not None:
         result = result[:max_length]
     return result
@@ -466,92 +466,144 @@ async def stream_map_and_merge(  # noqa: PLR0915
     processor: t.Callable[[T_in], t.AsyncGenerator[T_out, None]],
     *,
     limit: int | None = None,
+    concurrency: int | None = None,
+    source_queue_size: int = 1,
+    out_queue_size: int = 1,
 ) -> t.AsyncIterator[t.AsyncGenerator[T_out, None]]:
     """
     The "one-to-many-to-one" abstraction helpful for concurrently processing
     items from a stream using workers which themselves yield items.
 
-    It consumes items from a source stream and processes them concurrently
-    yielding results as a single, interleaved stream.
+    It consumes items from a source stream and creates processing workers
+    which concurrently yield items, then merges them into a single interleaved stream.
+
+    Note: As an oddity for supporting better syntax in our most common Study/Search
+    use case, the values yielded from the source generator will be sent back into
+    the source generator as the value of the next `asend()` call. This is a syntax
+    convenience to allow code like `item = await (yield Item(...))`.
 
     Args:
         source: The source stream of items to process.
         processor: A function that processes each item from the source and
             returns an asynchronous generator of results.
         limit: Maximum number of items to consume from the source before early stopping.
+        concurrency: The maximum number of items to process concurrently.
+            If None, there will be no limit on workers.
+        in_queue_size: The maximum number of items to buffer from the source.
+            This limits how far ahead the source can get before backpressure is applied.
+        out_queue_size: The maximum number of processed items to buffer for output.
+            This limits how far ahead the workers can get before backpressure is applied.
 
     Yields:
         An asynchronous generator which yields the processed items from the processor streams.
     """
-    FINISHED = (  # noqa: N806
-        object()
-    )  # sentinel object to indicate a generator has finished
-    queue = asyncio.Queue[T_out | object | Exception]()
 
-    # Define a producer to start worker tasks for every
-    # item yielded from source, and have those workers
-    # stream their results to a queue
+    # In general, this function is quite complex, mainly because we
+    # need to properly manage downstream and upstream backpressure,
+    # as well as error handling, cancellation, and lifecycle management.
+    #
+    # In short, it looks a mess, but not for lack of trying
 
-    async def producer() -> None:
-        pending_workers: set[asyncio.Task[None]] = set()
-        source_count: int = 0
+    in_queue = asyncio.Queue[T_in](maxsize=source_queue_size)
+    out_queue = asyncio.Queue[T_out](maxsize=out_queue_size)
+    error_queue = asyncio.Queue[Exception]()
+
+    feeding_done = asyncio.Event()
+    workers_done = asyncio.Event()
+
+    # Workers create the processor stream for a source item
+    # and push results to the out_queue
+
+    async def worker(inner_item: T_in) -> None:
         try:
-            async for item in source:
-                source_count += 1
-                if limit is not None and source_count > limit:
-                    break
+            async with aclosing(processor(inner_item)) as results:
+                async for result in results:
+                    while True:
+                        with contextlib.suppress(asyncio.QueueFull):
+                            out_queue.put_nowait(result)
+                            break
+                        await asyncio.sleep(0)
+        except Exception as e:  # noqa: BLE001
+            error_queue.put_nowait(e)
 
-                async def worker(inner_item: T_in) -> None:
-                    results = processor(inner_item)
-                    try:
-                        async for result in results:
-                            await queue.put(result)
-                    except asyncio.CancelledError:
-                        pass  # Make sure we don't try to use the queue if we are cancelled
-                    except Exception as e:  # noqa: BLE001
-                        queue.put_nowait(e)
-                    finally:
-                        with contextlib.suppress(Exception, asyncio.CancelledError):
-                            await results.aclose()
+    # The feeder pulls from the source generator
+    # limited by the in_queue size
 
-                task = asyncio.create_task(worker(item))
-                pending_workers.add(task)
-                task.add_done_callback(pending_workers.discard)
+    async def feeder() -> None:
+        try:
+            async with aclosing(source) as stream:
+                source_count = 0
+                async for item in stream:
+                    source_count += 1
 
+                    if limit is not None and source_count > limit:
+                        break
+
+                    while True:
+                        with contextlib.suppress(asyncio.QueueFull):
+                            in_queue.put_nowait(item)
+                            break
+                        await asyncio.sleep(0)
+
+        except Exception as e:  # noqa: BLE001
+            error_queue.put_nowait(e)
         finally:
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await source.aclose()
-            if pending_workers:
-                for task in pending_workers:
-                    task.cancel()
-                await asyncio.gather(*pending_workers, return_exceptions=True)
-            queue.put_nowait(FINISHED)
+            feeding_done.set()
+
+    # The worker_pool starts the feed, watches the in_queue,
+    # and starts worker tasks for every item yielded from source,
+    # respecting the concurrency limit.
+
+    async def worker_pool() -> None:
+        workers: set[asyncio.Task[None]] = set()
+        feed_task = asyncio.create_task(feeder())
+
+        try:
+            while not (feeding_done.is_set() and in_queue.empty()):
+                try:
+                    item = await asyncio.wait_for(in_queue.get(), timeout=0.01)
+                except asyncio.TimeoutError:
+                    continue
+
+                # Manage concurrency
+                while concurrency and len(workers) >= concurrency:
+                    with contextlib.suppress(asyncio.TimeoutError):
+                        await asyncio.wait(
+                            workers, timeout=0.01, return_when=asyncio.FIRST_COMPLETED
+                        )
+
+                # Start new worker
+                worker_task = asyncio.create_task(worker(item))
+                workers.add(worker_task)
+                worker_task.add_done_callback(workers.discard)
+
+            if workers:
+                await asyncio.gather(*workers)
+        except Exception as e:  # noqa: BLE001
+            error_queue.put_nowait(e)
+        finally:
+            feed_task.cancel()
+            for task in workers:
+                task.cancel()
+            await asyncio.gather(feed_task, *workers, return_exceptions=True)
+            workers_done.set()
 
     async def generator() -> t.AsyncGenerator[T_out, None]:
-        # Run the producer asynchronously so we can
-        # begin yielding from the queue
-
-        producer_task = asyncio.create_task(producer())
-
-        # Consume the queue waiting for either the FINISHED
-        # sentinel to break, or an exception to shut down processing
+        worker_pool_task = asyncio.create_task(worker_pool())
 
         try:
-            while True:
-                item = await queue.get()
-                if item is FINISHED:
-                    break
-                if isinstance(item, Exception):
-                    producer_task.cancel()
-                    await asyncio.gather(producer_task, return_exceptions=True)
-                    raise item
-                yield item  # type: ignore[misc] # confusion with sentinel
-        finally:
-            if not producer_task.done():
-                producer_task.cancel()
-                await asyncio.gather(producer_task, return_exceptions=True)
+            while not (feeding_done.is_set() and workers_done.is_set() and out_queue.empty()):
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    error = error_queue.get_nowait()
+                    raise error
 
-        await producer_task
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    yield out_queue.get_nowait()
+
+                await asyncio.sleep(0)
+        finally:
+            worker_pool_task.cancel()
+            await asyncio.gather(worker_pool_task, return_exceptions=True)
 
     async with aclosing(generator()) as gen:
         yield gen
@@ -702,6 +754,8 @@ def handle_internal_errors() -> t.Iterator[None]:
 
 
 _HANDLE_INTERNAL_ERRORS_CODE = inspect.unwrap(handle_internal_errors).__code__
+
+# Endpoint and networking
 
 
 def is_docker_service_name(hostname: str) -> bool:

@@ -6,24 +6,25 @@ from dreadnode.data_types import Image
 from dreadnode.metric import Metric
 from dreadnode.scorers.base import Scorer
 
-DistanceMethod = t.Literal["l0", "l1", "l2", "linf"]
+Norm = t.Literal["l0", "l1", "l2", "linf"]
 
 
 def image_distance(
     reference: Image,
-    method: DistanceMethod = "l2",
+    norm: Norm = "l2",
     *,
-    normalize: bool = True,
+    normalize: bool = False,
 ) -> Scorer[Image]:
     """
     Calculates the distance between a candidate image and a reference image
     using a specified metric.
 
-    By default, the distance is normalized to a [0, 1] range.
+    Optionally you can normalize the distance to a [0, 1] range based on
+    the shape of the image (assumes the images are in [0, 1] range).
 
     Args:
         reference: The reference image to compare against.
-        method: The distance metric to use. Options are:
+        norm: The distance metric to use. Options are:
             - 'l0' or 'hamming': Counts the number of differing pixels.
             - 'l1' or 'manhattan': Sum of absolute differences (Manhattan distance).
             - 'l2' or 'euclidean': Euclidean distance.
@@ -35,7 +36,7 @@ def image_distance(
         data: Image,
         *,
         reference: Image = reference,
-        method: DistanceMethod = method,
+        method: Norm = norm,
         normalize: bool = normalize,
     ) -> Metric:
         if not isinstance(data, Image):
@@ -83,4 +84,4 @@ def image_distance(
 
         return Metric(value=distance, attributes={"method": method, "normalized": normalize})
 
-    return Scorer(evaluate, name=f"{method}_distance")
+    return Scorer(evaluate, name=f"{norm}_distance")

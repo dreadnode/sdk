@@ -132,6 +132,134 @@ def proportional(
     return winners
 
 
+@component
+def gepa(  # noqa: PLR0912, PLR0915
+    trials: list[Trial[CandidateT]],
+    *,
+    k: int = Config(5, help="Number of trials to select from the pareto frontier."),
+) -> list[Trial[CandidateT]]:
+    """
+    Selects k trials using GEPA's weighted Pareto optimization algorithm.
+
+    This sampler identifies the Pareto frontier of non-dominated trials and then
+    performs weighted random sampling without replacement. A candidate's weight is
+    determined by the number of dataset samples for which it is a top performer.
+
+    Note: This method assumes that each trial was evaluated on multiple dataset samples
+
+    See: GEPA - https://arxiv.org/abs/2507.19457
+
+    Args:
+        trials: The pool of trials to select from.
+        k: The number of unique trials to select from the frontier.
+
+    Returns:
+        A list of selected trials from the weighted Pareto frontier.
+    """
+    if not trials:
+        return []
+
+    scored_trials = [t for t in trials if t.score_breakdown]
+    if not scored_trials:
+        return sorted(trials, key=lambda t: t.score, reverse=True)[:k]
+
+    # 1 - Pre-computation - Find the champions for each task/sample
+
+    champions_by_task: defaultdict[str, set[Trial[CandidateT]]] = defaultdict(set)
+    best_score_by_task: defaultdict[str, float] = defaultdict(lambda: -float("inf"))
+
+    all_objectives = {
+        f"{objective_name}_{i}"
+        for trial in scored_trials
+        for objective_name, scores in trial.score_breakdown.items()
+        for i in range(len(scores))
+    }
+
+    for objective in all_objectives:
+        obj_name, task_idx_str = objective.rsplit("_", 1)
+        task_idx = int(task_idx_str)
+
+        for trial in scored_trials:
+            breakdown = trial.score_breakdown
+            if obj_name in breakdown and len(breakdown[obj_name]) > task_idx:
+                score = breakdown[obj_name][task_idx]
+                if score > best_score_by_task[objective]:
+                    best_score_by_task[objective] = score
+                    champions_by_task[objective] = {trial}
+                elif score == best_score_by_task[objective]:
+                    champions_by_task[objective].add(trial)
+
+    per_task_champions = list(champions_by_task.values())
+
+    # 2 - Iteratively remove dominated trials to find the frontier
+
+    candidates = sorted(scored_trials, key=lambda t: t.score)
+    dominated_set: set[Trial[CandidateT]] = set()
+
+    while True:
+        found_one_to_remove = False
+        non_dominated_candidates = {c for c in candidates if c not in dominated_set}
+
+        for candidate_a in candidates:
+            if candidate_a in dominated_set:
+                continue
+
+            tasks_where_a_is_champion = [
+                champions for champions in per_task_champions if candidate_a in champions
+            ]
+
+            if not tasks_where_a_is_champion:
+                dominated_set.add(candidate_a)
+                found_one_to_remove = True
+                break
+
+            is_dominated = True
+            other_candidates = non_dominated_candidates - {candidate_a}
+            for champions in tasks_where_a_is_champion:
+                if not any(other in champions for other in other_candidates):
+                    is_dominated = False
+                    break
+
+            if is_dominated:
+                dominated_set.add(candidate_a)
+                found_one_to_remove = True
+                break
+
+        if not found_one_to_remove:
+            break
+
+    pareto_frontier = list(non_dominated_candidates)
+    if not pareto_frontier:
+        return random.sample(scored_trials, min(k, len(scored_trials)))  # nosec
+
+    # 3 - Perform weighted sampling from the frontier.
+
+    weights = [
+        sum(1 for champions in per_task_champions if trial in champions)
+        for trial in pareto_frontier
+    ]
+
+    population = list(pareto_frontier)
+    selected_trials: list[Trial[CandidateT]] = []
+
+    num_to_select = min(k, len(population))
+
+    for _ in range(num_to_select):
+        if not population:
+            break
+
+        # Select one trial based on current weights
+        chosen = random.choices(population, weights=weights, k=1)[0]  # noqa: S311  # nosec
+        selected_trials.append(chosen)
+
+        # Remove the chosen trial and its weight for the next iteration
+        chosen_idx = population.index(chosen)
+        population.pop(chosen_idx)
+        weights.pop(chosen_idx)
+
+    return selected_trials
+
+
 # Utils
 
 

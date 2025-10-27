@@ -49,7 +49,9 @@ def _get_module_data_from_path(path: Path) -> ModuleData:
     )
 
 
-def _discover_in_module(module_data: ModuleData, discovery_type: type[T]) -> dict[str, T]:
+def _discover_in_module(
+    module_data: ModuleData, discovery_type: type[T], *, exclude_types: set[type] | None = None
+) -> dict[str, T]:
     """
     Imports a module and finds all instances of the specified discoverable type.
     """
@@ -60,15 +62,18 @@ def _discover_in_module(module_data: ModuleData, discovery_type: type[T]) -> dic
     finally:
         sys.path.pop(0)
 
+    exclude_types = exclude_types or set()
     for obj_name in dir(mod):
         obj = getattr(mod, obj_name)
-        if isinstance(obj, discovery_type):
+        if isinstance(obj, discovery_type) and not any(isinstance(obj, et) for et in exclude_types):
             objects[obj_name] = obj
 
     return objects
 
 
-def _discover_from_path(discovery_type: type[T], path: Path | None) -> list[Discovered[T]]:
+def _discover_from_path(
+    discovery_type: type[T], path: Path | None, *, exclude_types: set[type] | None = None
+) -> list[Discovered[T]]:
     if path is not None and not path.is_file():
         raise FileNotFoundError(f"Path does not exist or is not a file: {path}")
 
@@ -76,7 +81,9 @@ def _discover_from_path(discovery_type: type[T], path: Path | None) -> list[Disc
 
     if path is not None:
         module_data = _get_module_data_from_path(path)
-        for name, obj in _discover_in_module(module_data, discovery_type).items():
+        for name, obj in _discover_in_module(
+            module_data, discovery_type, exclude_types=exclude_types
+        ).items():
             objects.append(Discovered(name=name, path=path, obj=obj))
         return objects
 
@@ -86,7 +93,9 @@ def _discover_from_path(discovery_type: type[T], path: Path | None) -> list[Disc
             continue
 
         module_data = _get_module_data_from_path(path)
-        for name, obj in _discover_in_module(module_data, discovery_type).items():
+        for name, obj in _discover_in_module(
+            module_data, discovery_type, exclude_types=exclude_types
+        ).items():
             objects.append(Discovered(name=name, path=path, obj=obj))
 
     return objects
@@ -106,7 +115,12 @@ def _discover_from_qualified_name(discovery_type: type[T], qualified_name: str) 
     return Discovered(name=obj_name, path=file_path, obj=obj)
 
 
-def discover(discovery_type: type[T], identifier: str | Path | None = None) -> list[Discovered[T]]:
+def discover(
+    discovery_type: type[T],
+    identifier: str | Path | None = None,
+    *,
+    exclude_types: set[type] | None = None,
+) -> list[Discovered[T]]:
     """
     Discovers all objects of a specific type from a file path or FQDN.
 
@@ -126,7 +140,7 @@ def discover(discovery_type: type[T], identifier: str | Path | None = None) -> l
 
     if identifier is None or is_path_like:
         path = Path(identifier) if identifier is not None else None
-        return _discover_from_path(discovery_type, path)
+        return _discover_from_path(discovery_type, path, exclude_types=exclude_types)
 
     try:
         return [_discover_from_qualified_name(discovery_type, str(identifier))]

@@ -30,6 +30,17 @@ ObjectivesLike = (
 
 The objectives to optimize for.
 
+current\_trial
+--------------
+
+```python
+current_trial = ContextVar[Trial | None](
+    "current_trial", default=None
+)
+```
+
+The currently running trial, if any.
+
 Study
 -----
 
@@ -44,12 +55,12 @@ The maximum number of trials to evaluate in parallel.
 ### constraints
 
 ```python
-constraints: ScorersLike[CandidateT] | None = Config(
+constraints: ScorersLike[CandidateT] | None = Field(
     default=None
 )
 ```
 
-A list of Scorer-like constraints to apply to candidates. If any constraint scores to a falsy value, the candidate is pruned.
+A list of Scorer-like constraints to apply to trial candidates. If any constraint scores to a falsy value, the candidate is pruned.
 
 ### dataset
 
@@ -86,13 +97,30 @@ The directions of optimization for the objective score.
 
 The length must match the number of objectives.
 
-### max\_trials
+### max\_consecutive\_errors
 
 ```python
-max_trials: int = Config(default=100, ge=1)
+max_consecutive_errors: int | None = Config(default=10)
 ```
 
-The maximum number of trials to evaluate.
+The number of consecutive trial evaluation errors to tolerate
+before terminating the evaluation run. Set to None to disable.
+
+### max\_errors
+
+```python
+max_errors: int | None = Config(default=None)
+```
+
+Maximum number of trial evaluation errors to tolerate before stopping the evaluation.
+
+### max\_evals
+
+```python
+max_evals: int = Config(default=100, ge=1)
+```
+
+The maximum number of total evaluations to perform across all trials and probes.
 
 ### name\_
 
@@ -116,6 +144,26 @@ The objectives to optimize for.
 
 Can be a list/dict of scorer-like callables or string names of scorers already on the task.
 
+### probe\_concurrency
+
+```python
+probe_concurrency: int | None = Config(default=None)
+```
+
+The maximum number of probes to evaluate in parallel. If not supplied, probes share concurrency with trials.
+
+### probe\_task\_factory
+
+```python
+probe_task_factory: SkipValidation[
+    Callable[[CandidateT], Task[..., OutputT]] | None
+] = None
+```
+
+An optional function that accepts a probe candidate and returns a Task.
+
+Otherwise the main task\_factory will be used for both full evaluation Trials and probe Trials.
+
 ### search\_strategy
 
 ```python
@@ -128,7 +176,7 @@ The search strategy to use for suggesting new trials.
 
 ```python
 stop_conditions: list[StudyStopCondition[CandidateT]] = (
-    Config(default_factory=list)
+    Field(default_factory=list)
 )
 ```
 
@@ -145,10 +193,12 @@ A list of tags associated with the study for logging.
 ### task\_factory
 
 ```python
-task_factory: Callable[[CandidateT], Task[..., OutputT]]
+task_factory: SkipValidation[
+    Callable[[CandidateT], Task[..., OutputT]]
+]
 ```
 
-A function that accepts a candidate and returns a configured Task ready for evaluation.
+A function that accepts a trial candidate and returns a configured Task ready for evaluation.
 
 ### clone
 
@@ -255,7 +305,7 @@ Create an async context manager for the optimization event stream.
 
 This provides a safe way to access the optimization event stream with proper
 resource cleanup. The context manager ensures the async generator is properly
-closed even if an exception occurs during iteration.
+closed to prevent tracing issues.
 
 Usage
 
@@ -280,7 +330,7 @@ async def stream(
 
     This provides a safe way to access the optimization event stream with proper
     resource cleanup. The context manager ensures the async generator is properly
-    closed even if an exception occurs during iteration.
+    closed to prevent tracing issues.
 
     Usage:
         async with study.stream() as event_stream:
@@ -364,7 +414,7 @@ def with_(
     new.task_factory = task_factory or new.task_factory
     new.dataset = dataset if dataset is not None else new.dataset
     new.concurrency = concurrency or new.concurrency
-    new.max_trials = max_trials or new.max_trials
+    new.max_evals = max_trials or new.max_evals
 
     new_tags = tags or []
     new_objectives = fit_objectives(objectives) if objectives is not None else []
@@ -419,6 +469,14 @@ candidate: CandidateT
 
 The candidate configuration being assessed.
 
+### cost
+
+```python
+cost: int
+```
+
+Get the cost of the trial, defined as the number of samples evaluated.
+
 ### created\_at
 
 ```python
@@ -426,6 +484,14 @@ created_at: datetime
 ```
 
 The creation timestamp of the trial, extracted from its ULID.
+
+### dataset
+
+```python
+dataset: list[Any] | None = None
+```
+
+The specific dataset used for probing.
 
 ### directional\_scores
 
@@ -436,8 +502,8 @@ directional_scores: dict[str, float] = {}
 A dictionary of all named objective scores adjusted
 for their optimization direction (higher is better).
 
-Typically this is used internally to sort trials for
-sampling and selection.
+Typically this is used by search strategies and
+related components to sort trials for sampling and selection.
 
 ### error
 
@@ -453,7 +519,7 @@ Any error which occurred while processing this trial.
 eval_result: EvalResult | None = None
 ```
 
-Complete evaluation result if the candidate was assessable by the evaluation engine.
+Complete evaluation result of the trial and associated dataset.
 
 ### id
 
@@ -462,6 +528,14 @@ id: ULID = Field(default_factory=ULID)
 ```
 
 Unique identifier for the trial.
+
+### is\_probe
+
+```python
+is_probe: bool = False
+```
+
+Whether this trial is a probe used for intermediate evaluation.
 
 ### output
 
@@ -477,7 +551,7 @@ Get the output of the trial.
 parent_id: ULID | None = None
 ```
 
-The id of the parent trial, used to reconstruct the search graph.
+The id of the parent trial, as defined by the search strategy.
 
 ### pruning\_reason
 
@@ -495,7 +569,22 @@ score: float = -float('inf')
 
 The primary, single-value fitness score for this trial.
 This is an average of all objective scores for this trial adjusted
-based on their directions (higher is better).
+based on their objective directions (higher is better).
+
+### score\_breakdown
+
+```python
+score_breakdown: dict[str, list[float]]
+```
+
+Returns a breakdown of all objective scores across all samples in the evaluation result.
+
+**Returns:**
+
+* `dict[str, list[float]]`
+  –A dictionary where keys are objective names and values are lists of scores,
+* `dict[str, list[float]]`
+  –with each score corresponding to a sample from the evaluation dataset.
 
 ### scores
 
@@ -516,7 +605,7 @@ Current status of the trial.
 ### step
 
 ```python
-step: int = Field(default=0, init=False)
+step: int = Field(default=0)
 ```
 
 The optimization step which produced this trial.
@@ -536,6 +625,63 @@ def __await__(self) -> t.Generator[t.Any, None, "Trial[CandidateT]"]:
     Await the completion of the trial.
     """
     return self._future.__await__()
+```
+
+
+</Accordion>
+
+### as\_probe
+
+```python
+as_probe(
+    *, dataset: list[Any] | None = None
+) -> Trial[CandidateT]
+```
+
+Ensure this trial is marked as a probe for intermediate evaluation and optional dataset override.
+
+**Parameters:**
+
+* **`dataset`**
+  (`list[Any] | None`, default:
+  `None`
+  )
+  –An optional dataset to use specifically for this trial during probing.
+
+<Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
+```python
+def as_probe(self, *, dataset: list[t.Any] | None = None) -> "Trial[CandidateT]":
+    """
+    Ensure this trial is marked as a probe for intermediate evaluation and optional dataset override.
+
+    Args:
+        dataset: An optional dataset to use specifically for this trial during probing.
+    """
+    self.is_probe = True
+    self.dataset = dataset
+    return self
+```
+
+
+</Accordion>
+
+### as\_trial
+
+```python
+as_trial() -> Trial[CandidateT]
+```
+
+Ensure this trial is marked as a full trial, not a probe, triggering a full evaluation.
+
+<Accordion title="Source code in dreadnode/optimization/trial.py" icon="code">
+```python
+def as_trial(self) -> "Trial[CandidateT]":
+    """
+    Ensure this trial is marked as a full trial, not a probe, triggering a full evaluation.
+    """
+    self.is_probe = False
+    self.dataset = None
+    return self
 ```
 
 
@@ -677,7 +823,7 @@ beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-    context_depth: int = 5,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]
 ```
 
@@ -705,6 +851,11 @@ using its own lineage for context.
   `3`
   )
   –How many new candidates to generate from each trial in the beam.
+* **`parent_depth`**
+  (`int`, default:
+  `10`
+  )
+  –The number of direct ancestors to include in the context for refinement.
 
 **Returns:**
 
@@ -719,7 +870,7 @@ def beam_search(
     *,
     beam_width: int = 3,
     branching_factor: int = 3,
-    context_depth: int = 5,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]:
     """
     Creates a graph search configured for classic beam search.
@@ -733,6 +884,7 @@ def beam_search(
         initial_candidate: The starting point for the refinement chain.
         beam_width: The number of top candidates to keep at each step (the 'k').
         branching_factor: How many new candidates to generate from each trial in the beam.
+        parent_depth: The number of direct ancestors to include in the context for refinement.
 
     Returns:
         A pre-configured GraphSearch instance.
@@ -741,7 +893,7 @@ def beam_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage.configure(depth=context_depth),
+        context_collector=lineage.configure(depth=parent_depth),
         pruning_sampler=top_k.configure(k=beam_width),
         name="beam",
     )
@@ -853,6 +1005,10 @@ boundary_search(
 Performs a boundary search between two candidates to find a new candidate
 which lies on the decision boundary defined by the objective and threshold.
 
+This requires an `interpolate` transform that can produce a new candidate
+given two candidates and an alpha value between 0 and 1. Typically, this
+would apply to continuous candidate spaces such as images or embeddings.
+
 **Parameters:**
 
 * **`start`**
@@ -863,8 +1019,8 @@ which lies on the decision boundary defined by the objective and threshold.
   –A candidate on the right side of the decision boundary (`score > [decision_threshold]`).
 * **`interpolate`**
   (`TransformLike[tuple[CandidateT, CandidateT, float], CandidateT]`)
-  –A transform that takes two candidates and an alpha value between and returns a candidate
-  that is between them.
+  –A transform that takes two candidates and an alpha value between 0 and 1 and returns a candidate
+  that is constructed by interpolating between the two inputs.
 * **`tolerance`**
   (`float`, default:
   `0.01`
@@ -897,21 +1053,32 @@ def boundary_search(
     Performs a boundary search between two candidates to find a new candidate
     which lies on the decision boundary defined by the objective and threshold.
 
+    This requires an `interpolate` transform that can produce a new candidate
+    given two candidates and an alpha value between 0 and 1. Typically, this
+    would apply to continuous candidate spaces such as images or embeddings.
+
     Args:
         start: A candidate on the left side of the decision boundary (`score <= [decision_threshold]`).
         end: A candidate on the right side of the decision boundary (`score > [decision_threshold]`).
-        interpolate: A transform that takes two candidates and an alpha value between and returns a candidate
-                     that is between them.
+        interpolate: A transform that takes two candidates and an alpha value between 0 and 1 and returns a candidate
+                     that is constructed by interpolating between the two inputs.
         tolerance: The maximum acceptable difference between the upper and lower alpha values.
         decision_objective: The name of the objective to use for the decision. If None, uses the overall trial score.
         decision_threshold: The threshold value for the decision objective.
     """
 
-    async def search(context: OptimizationContext) -> t.AsyncGenerator[Trial[CandidateT], None]:
+    async def search(
+        context: OptimizationContext,
+    ) -> t.AsyncGenerator[Trial[CandidateT], None]:
         def is_successful(trial: Trial) -> bool:
             return trial.get_directional_score(decision_objective) > decision_threshold
 
-        logger.info("Starting boundary search")
+        logger.info(
+            f"Starting boundary search: "
+            f"tolerance={tolerance:.5f}, "
+            f"decision_objective='{decision_objective}', "
+            f"decision_threshold={decision_threshold:.5f}"
+        )
 
         if decision_objective and decision_objective not in context.objective_names:
             raise ValueError(
@@ -920,6 +1087,7 @@ def boundary_search(
 
         start_trial = Trial(candidate=start)
         end_trial = Trial(candidate=end)
+
         yield start_trial
         yield end_trial
 
@@ -927,41 +1095,46 @@ def boundary_search(
 
         if is_successful(start_trial):
             raise ValueError(
-                f"start_candidate was considered successful ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
+                f"start_candidate met the decision criteria ({decision_objective or 'score'} > {decision_threshold}): {start_trial.scores}."
             )
 
         if not is_successful(end_trial):
             raise ValueError(
-                f"end_candidate was not considered successful ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
+                f"end_candidate did not meet the decision criteria ({decision_objective or 'score'} <= {decision_threshold}): {end_trial.scores}."
             )
-
-        # TODO(nick): When tolerance is met immediately, it can be confusing that
-        # the attack just returns as search_exhausted. Maybe we add some kind of log
-        # reason to be put in the Trial?
 
         lower_bound_alpha = 0.0
         upper_bound_alpha = 1.0
         interpolate_transform = Transform(interpolate)
 
         adversarial_candidate = end
+        iteration = 0
 
         while (upper_bound_alpha - lower_bound_alpha) > tolerance:
+            iteration += 1
             midpoint_alpha = (lower_bound_alpha + upper_bound_alpha) / 2.0
-            midpoint_candidate = await interpolate_transform((start, end, midpoint_alpha))
 
             logger.info(
-                f"Boundary search iteration: lower={lower_bound_alpha:.4f}, upper={upper_bound_alpha:.4f}, midpoint={midpoint_alpha:.4f}"
+                f"[{iteration}] Interpolate: "
+                f"lower={lower_bound_alpha:.5f}, "
+                f"upper={upper_bound_alpha:.5f}, "
+                f"midpoint={midpoint_alpha:.5f}"
             )
 
-            midpoint_trial = Trial(candidate=midpoint_candidate)
-            yield midpoint_trial
-            await midpoint_trial
+            candidate = await interpolate_transform((start, end, midpoint_alpha))
+            trial = Trial(candidate=candidate)
+            yield trial
+            await trial
 
-            if is_successful(midpoint_trial):
+            if is_successful(trial):
                 upper_bound_alpha = midpoint_alpha
-                adversarial_candidate = midpoint_trial.candidate
+                adversarial_candidate = trial.candidate
             else:
                 lower_bound_alpha = midpoint_alpha
+
+        logger.info(
+            f"Boundary found within {tolerance:.5f} after {iteration} iterations: alpha={upper_bound_alpha:.5f}"
+        )
 
         yield Trial(candidate=adversarial_candidate)
 
@@ -1137,6 +1310,13 @@ def graph_search(
         leaves: list[Trial[CandidateT]] = []
         transform = Transform.fit(transform)
 
+        logger.info(
+            "Starting graph search: "
+            f"branching_factor={branching_factor}, "
+            f"context_collector={context_collector}, "
+            f"pruning_sampler={pruning_sampler}"
+        )
+
         initial_trial = Trial(candidate=initial_candidate)
         yield initial_trial
         await initial_trial
@@ -1185,12 +1365,13 @@ iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]
 ```
 
 Creates a GraphSearch configured for single-path iterative refinement.
 
-This strategy maintains a single path of reasoning by always expanding from the
+This strategy maintains a single path of improvement by always expanding from the
 single best trial of the previous step. The context for refinement is the
 direct lineage of that best trial.
 
@@ -1210,6 +1391,11 @@ Set `branching_factor` > 1 to explore multiple candidates at each step.
   )
   –How many new candidates to generate from the best trial at each step.
   The best of these will be chosen for the next step.
+* **`parent_depth`**
+  (`int`, default:
+  `10`
+  )
+  –The number of direct ancestors to include in the context for refinement.
 
 **Returns:**
 
@@ -1223,11 +1409,12 @@ def iterative_search(
     initial_candidate: CandidateT,
     *,
     branching_factor: int = 1,
+    parent_depth: int = 10,
 ) -> Search[CandidateT]:
     """
     Creates a GraphSearch configured for single-path iterative refinement.
 
-    This strategy maintains a single path of reasoning by always expanding from the
+    This strategy maintains a single path of improvement by always expanding from the
     single best trial of the previous step. The context for refinement is the
     direct lineage of that best trial.
 
@@ -1238,6 +1425,7 @@ def iterative_search(
         initial_candidate: The starting point for the refinement chain.
         branching_factor: How many new candidates to generate from the best trial at each step.
                           The best of these will be chosen for the next step.
+        parent_depth: The number of direct ancestors to include in the context for refinement.
 
     Returns:
         A pre-configured graph search instance.
@@ -1246,7 +1434,7 @@ def iterative_search(
         transform=transform,
         initial_candidate=initial_candidate,
         branching_factor=branching_factor,
-        context_collector=lineage,
+        context_collector=lineage.configure(depth=parent_depth),
         pruning_sampler=top_k.configure(k=1),
         name="iterative",
     )
@@ -1312,6 +1500,13 @@ def optuna_search(
         optuna_search_space = _convert_search_space(search_space)
         objective_names = context.objective_names
 
+        logger.info(
+            "Starting Optuna search: "
+            f"sampler={optuna_study.sampler.__class__.__name__}, "
+            f"objectives={objective_names}, "
+            f"search_space={search_space}"
+        )
+
         while True:
             optuna_trial = optuna_study.ask(optuna_search_space)
 
@@ -1342,34 +1537,59 @@ random\_image\_search
 
 ```python
 random_image_search(
-    shape: tuple[int, ...], *, seed: int | None = None
+    shape: tuple[int, ...],
+    *,
+    max_iterations: int = 10000,
+    seed: int | None = None,
 ) -> Search[Image]
 ```
 
-A simple search strategy that generates a fixed number of random noise images.
+A simple search strategy that generates random noise images.
 
 **Parameters:**
 
 * **`shape`**
   (`tuple[int, ...]`)
   –The shape of the images to generate (e.g., (224, 224, 3)).
+* **`max_iterations`**
+  (`int`, default:
+  `10000`
+  )
+  –The maximum number of images to generate before stopping.
+* **`seed`**
+  (`int | None`, default:
+  `None`
+  )
+  –An optional random seed for reproducibility.
 
 <Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
 ```python
-def random_image_search(shape: tuple[int, ...], *, seed: int | None = None) -> Search[Image]:
+def random_image_search(
+    shape: tuple[int, ...], *, max_iterations: int = 10_000, seed: int | None = None
+) -> Search[Image]:
     """
-    A simple search strategy that generates a fixed number of random noise images.
+    A simple search strategy that generates random noise images.
 
     Args:
         shape: The shape of the images to generate (e.g., (224, 224, 3)).
+        max_iterations: The maximum number of images to generate before stopping.
+        seed: An optional random seed for reproducibility.
     """
 
-    np_random = np.random.default_rng(seed)
-
-    async def search(_: OptimizationContext) -> t.AsyncGenerator[Trial[Image], None]:
-        while True:
-            random_array = np_random.integers(0, 256, size=shape, dtype=np.uint8)
-            yield Trial(candidate=Image(random_array))
+    async def search(
+        context: OptimizationContext,  # noqa: ARG001
+        *,
+        shape: tuple[int, ...] = shape,
+        max_iterations: int = max_iterations,
+        seed: int | None = seed,
+    ) -> t.AsyncGenerator[Trial[Image], None]:
+        logger.info(
+            f"Starting random image search (shape={shape}, max_iterations={max_iterations}, seed={seed})."
+        )
+        np_random = np.random.default_rng(seed)
+        for _ in range(max_iterations):
+            yield Trial(candidate=Image(np_random.uniform(size=shape)))
+        logger.info(f"Reached max iterations: {max_iterations}")
 
     return Search(search, name="random_image")
 ```
@@ -1382,7 +1602,10 @@ random\_search
 
 ```python
 random_search(
-    search_space: SearchSpace, *, seed: float | None = None
+    search_space: SearchSpace,
+    *,
+    max_iterations: int = 10000,
+    seed: float | None = None,
 ) -> Search[AnyDict]
 ```
 
@@ -1398,6 +1621,11 @@ the performance of more sophisticated optimization algorithms.
 * **`search_space`**
   (`SearchSpace`)
   –The search space to explore.
+* **`max_iterations`**
+  (`int`, default:
+  `10000`
+  )
+  –The maximum number of candidates to generate before stopping.
 * **`seed`**
   (`float | None`, default:
   `None`
@@ -1406,7 +1634,9 @@ the performance of more sophisticated optimization algorithms.
 
 <Accordion title="Source code in dreadnode/optimization/search/random.py" icon="code">
 ```python
-def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Search[AnyDict]:
+def random_search(
+    search_space: SearchSpace, *, max_iterations: int = 10_000, seed: float | None = None
+) -> Search[AnyDict]:
     """
     Create a search strategy that suggests candidates by sampling uniformly and
     independently from the search space at each step.
@@ -1417,15 +1647,28 @@ def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Se
 
     Args:
         search_space: The search space to explore.
+        max_iterations: The maximum number of candidates to generate before stopping.
         seed: The random seed to use for reproducibility.
     """
 
     async def search(
-        _: OptimizationContext, *, seed: float | None = seed
+        context: OptimizationContext,  # noqa: ARG001
+        *,
+        search_space: SearchSpace = search_space,
+        max_iterations: int = max_iterations,
+        seed: float | None = seed,
     ) -> t.AsyncGenerator[Trial[AnyDict], None]:
+        logger.info(
+            "Starting random search: "
+            f"search_space={search_space}, "
+            f"max_iterations={max_iterations}, "
+            f"seed={seed}"
+        )
+
         _random = random.Random(seed)  # noqa: S311 # nosec
-        while True:
+        for _ in range(max_iterations):
             yield Trial(candidate=_sample_from_space(search_space, _random))
+        logger.info(f"Reached max iterations: {max_iterations}")
 
     return Search(search, name="random")
 ```

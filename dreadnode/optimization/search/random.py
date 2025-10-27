@@ -3,6 +3,7 @@ import random
 import typing as t
 
 import numpy as np
+from loguru import logger
 
 from dreadnode.common_types import AnyDict
 from dreadnode.data_types import Image
@@ -63,7 +64,9 @@ def _sample_from_space(search_space: SearchSpace, random: random.Random) -> AnyD
     return candidate
 
 
-def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Search[AnyDict]:
+def random_search(
+    search_space: SearchSpace, *, max_iterations: int = 10_000, seed: float | None = None
+) -> Search[AnyDict]:
     """
     Create a search strategy that suggests candidates by sampling uniformly and
     independently from the search space at each step.
@@ -74,32 +77,57 @@ def random_search(search_space: SearchSpace, *, seed: float | None = None) -> Se
 
     Args:
         search_space: The search space to explore.
+        max_iterations: The maximum number of candidates to generate before stopping.
         seed: The random seed to use for reproducibility.
     """
 
     async def search(
-        _: OptimizationContext, *, seed: float | None = seed
+        context: OptimizationContext,  # noqa: ARG001
+        *,
+        search_space: SearchSpace = search_space,
+        max_iterations: int = max_iterations,
+        seed: float | None = seed,
     ) -> t.AsyncGenerator[Trial[AnyDict], None]:
+        logger.info(
+            "Starting random search: "
+            f"search_space={search_space}, "
+            f"max_iterations={max_iterations}, "
+            f"seed={seed}"
+        )
+
         _random = random.Random(seed)  # noqa: S311 # nosec
-        while True:
+        for _ in range(max_iterations):
             yield Trial(candidate=_sample_from_space(search_space, _random))
+        logger.info(f"Reached max iterations: {max_iterations}")
 
     return Search(search, name="random")
 
 
-def random_image_search(shape: tuple[int, ...], *, seed: int | None = None) -> Search[Image]:
+def random_image_search(
+    shape: tuple[int, ...], *, max_iterations: int = 10_000, seed: int | None = None
+) -> Search[Image]:
     """
-    A simple search strategy that generates a fixed number of random noise images.
+    A simple search strategy that generates random noise images.
 
     Args:
         shape: The shape of the images to generate (e.g., (224, 224, 3)).
+        max_iterations: The maximum number of images to generate before stopping.
+        seed: An optional random seed for reproducibility.
     """
 
-    np_random = np.random.default_rng(seed)
-
-    async def search(_: OptimizationContext) -> t.AsyncGenerator[Trial[Image], None]:
-        while True:
-            random_array = np_random.integers(0, 256, size=shape, dtype=np.uint8)
-            yield Trial(candidate=Image(random_array))
+    async def search(
+        context: OptimizationContext,  # noqa: ARG001
+        *,
+        shape: tuple[int, ...] = shape,
+        max_iterations: int = max_iterations,
+        seed: int | None = seed,
+    ) -> t.AsyncGenerator[Trial[Image], None]:
+        logger.info(
+            f"Starting random image search (shape={shape}, max_iterations={max_iterations}, seed={seed})."
+        )
+        np_random = np.random.default_rng(seed)
+        for _ in range(max_iterations):
+            yield Trial(candidate=Image(np_random.uniform(size=shape)))
+        logger.info(f"Reached max iterations: {max_iterations}")
 
     return Search(search, name="random_image")

@@ -8,11 +8,14 @@ import typing as t
 import webbrowser
 
 import cyclopts
+import rich
+from loguru import logger
 from rich.panel import Panel
 
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.agent import cli as agent_cli
 from dreadnode.cli.api import create_api_client
+from dreadnode.cli.attack import cli as attack_cli
 from dreadnode.cli.docker import DockerImage, docker_login, docker_pull, docker_tag, get_registry
 from dreadnode.cli.eval import cli as eval_cli
 from dreadnode.cli.github import (
@@ -23,17 +26,26 @@ from dreadnode.cli.github import (
 from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
 from dreadnode.cli.study import cli as study_cli
+from dreadnode.cli.task import cli as task_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
 from dreadnode.logging_ import confirm, console, print_info, print_success
+from dreadnode.logging_ import console as logging_console
 from dreadnode.user_config import ServerConfig, UserConfig
 
-cli = cyclopts.App(help="Interact with Dreadnode platforms", version_flags=[], help_on_error=True)
+cli = cyclopts.App(
+    help="Interact with Dreadnode platforms",
+    version_flags=[],
+    help_on_error=True,
+    console=logging_console,
+)
 
 cli["--help"].group = "Meta"
 
 cli.command(agent_cli)
+cli.command(task_cli)
 cli.command(eval_cli)
 cli.command(study_cli)
+cli.command(attack_cli)
 cli.command(platform_cli)
 cli.command(profile_cli)
 
@@ -48,8 +60,13 @@ def meta(
     except Exception as e:
         if DEBUG:
             raise
-        console.print()
-        console.print(Panel(str(e), title="Error", title_align="left", border_style="red"))
+
+        logger.exception("Unhandled exception")
+
+        rich.print()
+        rich.print(
+            Panel(str(e), title=e.__class__.__name__, title_align="left", border_style="red")
+        )
         sys.exit(1)
 
 

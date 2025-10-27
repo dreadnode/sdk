@@ -3,6 +3,8 @@ import inspect
 import typing as t
 
 import jsonref  # type: ignore[import-untyped]
+import typing_extensions as te
+import yaml
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, Field, create_model
 from pydantic_core import PydanticUndefined
@@ -39,6 +41,20 @@ def get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBas
         return create_model(name)  # empty model
 
 
+def _is_configurable(obj: t.Any) -> bool:
+    """Check if the object is a Model or Component, or contains one inside a list/dict."""
+    if isinstance(obj, Model | Component):
+        return True
+
+    if isinstance(obj, list | tuple) and any(isinstance(i, Model | Component) for i in obj):
+        return True
+
+    if isinstance(obj, dict) and any(isinstance(v, Model | Component) for v in obj.values()):  # noqa: SIM103
+        return True
+
+    return False
+
+
 def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBaseModel]:
     """
     Generates a Pydantic BaseModel type from a blueprint instance (Model or Component).
@@ -56,23 +72,27 @@ def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBa
     fields: AnyDict = {}
 
     if isinstance(blueprint, Model):
-        model_params = getattr(blueprint, "__dn_config__", {})
-        for field_name, param_info in model_params.items():
-            if not isinstance(param_info, ConfigInfo):
-                raise TypeError(
-                    f"Expected ConfigInfo for field '{field_name}', got {type(param_info)}"
-                )
-
+        model_config: dict[str, ConfigInfo] = getattr(blueprint, "__dn_config__", {})
+        for field_name in blueprint.__class__.model_fields:
             obj = getattr(blueprint, field_name)
             annotation = blueprint.__annotations__.get(field_name, t.Any)
+            param_info = model_config.get(field_name)
+
+            if not _is_configurable(obj) and not param_info:
+                continue
 
             field_type, default = _resolve_type_and_default(obj, annotation, name=field_name)
-            field_type = param_info.expose_as or field_type
+            if param_info and param_info.expose_as:
+                field_type = param_info.expose_as
 
             if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
                 continue
 
-            field_kwargs = {"description": "-", **param_info.field_kwargs, "default": default}
+            field_kwargs = {
+                "description": "",
+                **(param_info.field_kwargs if param_info else {}),
+                "default": default,
+            }
             field_kwargs.pop("default_factory", None)
             fields[field_name] = (field_type, Field(**field_kwargs))
 
@@ -103,28 +123,22 @@ def _get_config_model(blueprint: t.Any, name: str = "config") -> type[PydanticBa
             ):
                 continue
 
-            field_type, default = _resolve_type_and_default(obj, annotation, name=param_name)
-            field_type = param_info.expose_as or field_type
+            param_type, default = _resolve_type_and_default(obj, annotation, name=param_name)
+            param_type = param_info.expose_as or param_type
 
-            if safe_issubclass(field_type, PydanticBaseModel) and not field_type.model_fields:
+            if safe_issubclass(param_type, PydanticBaseModel) and not param_type.model_fields:
                 continue
 
-            field_kwargs = {"description": "-", **param_info.field_kwargs, "default": default}
-            fields[param_name] = (field_type, Field(**field_kwargs))
+            field_kwargs = {"description": "", **param_info.field_kwargs, "default": default}
+            fields[param_name] = (param_type, Field(**field_kwargs))
 
-        for attr_name, attr_info in blueprint.__dn_attr_config__.items():
-            if not isinstance(attr_info, ConfigInfo):
-                raise TypeError(
-                    f"Expected ConfigInfo for attribute '{attr_name}', got {type(attr_info)}"
-                )
+        for attr_name, obj in _find_nested_configurables(blueprint).items():
+            attr_type, default = _resolve_type_and_default(obj, t.Any, name=attr_name)
 
-            obj = getattr(blueprint, attr_name)
-            field_type, default = _resolve_type_and_default(obj, t.Any, name=attr_name)
-            field_type = attr_info.expose_as or field_type
+            if safe_issubclass(attr_type, PydanticBaseModel) and not attr_type.model_fields:
+                continue
 
-            field_kwargs = {**attr_info.field_kwargs, "default": default}
-            field_kwargs.pop("default_factory", None)
-            fields[attr_name] = (field_type, Field(**field_kwargs))
+            fields[attr_name] = (attr_type, Field(default=default))
 
     return create_model(name, **fields, __config__=ConfigDict(arbitrary_types_allowed=True))
 
@@ -185,12 +199,20 @@ def flatten_model(
 
 
 def get_inputs_and_params_from_config_model(
-    model: PydanticBaseModel, prefix: str = "", *, skip_none: bool = True
+    model: PydanticBaseModel,
+    prefix: str = "",
+    *,
+    skip_none: bool = True,
+    exclude: set[str] | None = None,
 ) -> tuple[AnyDict, JsonDict]:
+    exclude = exclude or set()
     inputs: AnyDict = {}
     params: JsonDict = {}
 
     for field_name in model.__class__.model_fields:
+        if field_name in exclude:
+            continue
+
         value = getattr(model, field_name)
         field_name_or_alias = model.__class__.model_fields[field_name].alias or field_name
         new_key = f"{prefix}.{field_name_or_alias}" if prefix else field_name_or_alias
@@ -214,27 +236,35 @@ def get_inputs_and_params_from_config_model(
     return inputs, params
 
 
-def _find_nested_configurable(obj: t.Any) -> t.Any | None:
-    if isinstance(obj, Component | Model):
-        return obj
-
+def _find_nested_configurables(obj: t.Any) -> dict[str, t.Any]:
     if isinstance(obj, str | int | float | bool | type(None) | type) or not hasattr(
         obj, "__dict__"
     ):
-        return None
+        return {}
 
+    discovered: dict[str, t.Any] = {}
     with contextlib.suppress(Exception):
         for attr_name, attr_value in obj.__dict__.items():
             if attr_name.startswith("__"):
                 continue
 
-            if isinstance(attr_value, Component | Model):
-                return attr_value
+            if _is_configurable(attr_value):
+                discovered[attr_name] = attr_value
+
+    return discovered
+
+
+def _find_nested_configurable(obj: t.Any) -> t.Any | None:
+    if isinstance(obj, Component | Model):
+        return obj
+
+    if nested_configurables := _find_nested_configurables(obj):
+        return next(iter(nested_configurables.values()))
 
     return None
 
 
-def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple[type, t.Any]:
+def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple[type, t.Any]:  # noqa: PLR0912, PLR0915
     """
     Resolve an arbitrary object into it's type and default value.
 
@@ -242,7 +272,8 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
 
     Args:
         obj: The object to resolve.
-        name_prefix: An optional prefix for naming nested models.
+        annotation: The type annotation associated with the object.
+        name: The name of the field (for error messages).
 
     Returns:
         A tuple containing the resolved type and default value.
@@ -251,6 +282,7 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
     obj_default = obj
     nested_fields: AnyDict = {}
     nested_default: t.Any
+    contains_configurable = False
 
     if isinstance(obj, list | tuple):
         used_names = set()
@@ -261,6 +293,7 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
             ):
                 continue
 
+            contains_configurable = True
             item_name = get_obj_name(item, short=True, clean=True)
 
             suffix = 1
@@ -270,19 +303,22 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
             used_names.add(item_name)
 
             nested_model = get_config_model(item, f"{name}_{item_name}")
-            if nested_model.model_fields:
-                nested_default = Ellipsis
-                with contextlib.suppress(Exception):
-                    nested_default = nested_model()
-                nested_fields[item_name] = (
-                    nested_model,
-                    Field(default=nested_default, description=" "),
-                )
+            if not nested_model.model_fields:
+                continue
 
-        obj_type = create_model(name, **nested_fields)
-        obj_default = Ellipsis
-        with contextlib.suppress(Exception):
-            obj_default = obj_type()
+            nested_default = Ellipsis
+            with contextlib.suppress(Exception):
+                nested_default = nested_model()
+            nested_fields[item_name] = (
+                nested_model,
+                Field(default=nested_default, description=""),
+            )
+
+        if contains_configurable or nested_fields:
+            obj_type = create_model(name, **nested_fields)
+            obj_default = Ellipsis
+            with contextlib.suppress(Exception):
+                obj_default = obj_type()
 
     elif isinstance(obj, dict):
         for key, value in obj.items():
@@ -291,6 +327,7 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
             ):
                 continue
 
+            contains_configurable = True
             nested_model = get_config_model(value, f"{name}_{key}")
             if nested_model.model_fields:
                 nested_default = Ellipsis
@@ -298,10 +335,11 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
                     nested_default = nested_model()
                 nested_fields[key] = (nested_model, Field(default=nested_default))
 
-        obj_type = create_model(name, **nested_fields)
-        obj_default = Ellipsis
-        with contextlib.suppress(Exception):
-            obj_default = obj_type()
+        if contains_configurable or nested_fields:
+            obj_type = create_model(name, **nested_fields)
+            obj_default = Ellipsis
+            with contextlib.suppress(Exception):
+                obj_default = obj_type()
 
     elif isinstance(obj, Model | Component):
         obj_type = get_config_model(obj, name)
@@ -309,4 +347,68 @@ def _resolve_type_and_default(obj: t.Any, annotation: t.Any, name: str) -> tuple
         with contextlib.suppress(Exception):
             obj_default = obj_type()
 
+    # If our annotation is a TypeVar, override as Any
+    # to prevent Pydantic from freaking out
+    if isinstance(obj_type, t.TypeVar | te.TypeVar):
+        obj_type = t.Any
+
     return obj_type, obj_default
+
+
+# Config formatting
+
+
+def generate_config_yaml(blueprint: t.Any, *, comments: bool = True) -> str:
+    """
+    Generates a configuration file example from a blueprint object
+    by interpreting its JSON schema.
+
+    Args:
+        blueprint: The component, agent, eval, or task to generate a config for.
+        comments: Whether to include comments in the generated YAML.
+
+    Returns:
+        A string containing the configuration example.
+    """
+    schema = get_model_schema(get_config_model(blueprint))
+
+    properties = schema.get("properties")
+    if not properties:
+        return "# This object has no configurable parameters."
+
+    return _generate_config_yaml(properties, comments=comments)
+
+
+def _generate_config_yaml(properties: AnyDict, indent: int = 0, *, comments: bool = False) -> str:
+    output = []
+    indent_str = "  " * indent
+
+    for name, prop_schema in properties.items():
+        if comments:
+            comment_parts = []
+            if "description" in prop_schema:
+                comment_parts.append(prop_schema["description"])
+            if "enum" in prop_schema:
+                comment_parts.append(f"({', '.join(map(str, prop_schema['enum']))})")
+
+            comment = ", ".join(comment_parts) if comment_parts else ""
+            if comment:
+                output.append(f"{indent_str}# {comment}")
+
+        default_value = prop_schema.get("default")
+
+        if prop_schema.get("type") == "object" and "properties" in prop_schema:
+            output.append(f"{indent_str}{name}:")
+            output.append(
+                _generate_config_yaml(
+                    prop_schema["properties"], indent=indent + 1, comments=comments
+                )
+            )
+        else:
+            value_str = yaml.dump({name: default_value}, sort_keys=False).strip().split(": ", 1)[1]
+            output.append(f"{indent_str}{name}: {value_str}")
+
+        if indent == 0:
+            output.append("")
+
+    return "\n".join(output)

@@ -1,12 +1,14 @@
+import typing as t
+
 import numpy as np
+from loguru import logger
 from numpy.typing import NDArray
 
-from dreadnode.scorers.image import DistanceMethod
+from dreadnode.scorers.image import Norm
+from dreadnode.util import catch_import_error
 
 
-def normalize_for_shape(
-    value: float, shape: tuple[int, ...], distance_method: DistanceMethod
-) -> float:
+def normalize_for_shape(value: float, shape: tuple[int, ...], distance_method: Norm) -> float:
     dim_product = np.prod(shape)
 
     # L0 - no great option here - just return the raw value
@@ -25,7 +27,7 @@ def normalize_for_shape(
 
 
 def get_random(
-    shape: tuple[int, ...], distance_method: DistanceMethod, *, seed: int | None = None
+    shape: tuple[int, ...], distance_method: Norm, *, seed: int | None = None
 ) -> NDArray[np.float64]:
     generator = np.random.default_rng(seed)  # nosec
 
@@ -44,3 +46,51 @@ def get_random(
     raise NotImplementedError(
         f"Cannot generate random noise for '{distance_method}' distance method."
     )
+
+
+def clip(array: NDArray[t.Any], min_val: float, max_val: float) -> NDArray[t.Any]:
+    original = array.copy()
+    clipped = np.clip(array, min_val, max_val)
+
+    total_elements = array.size
+    clipped_low = np.sum(original < min_val)
+    clipped_high = np.sum(original > max_val)
+    clipped_total = clipped_low + clipped_high
+
+    low_violation = np.sum(np.maximum(0, min_val - original))
+    high_violation = np.sum(np.maximum(0, original - max_val))
+    total_violation = low_violation + high_violation
+
+    actual_change = np.linalg.norm((clipped - original).flatten())
+
+    if clipped_total > 0:
+        clip_pct = 100.0 * clipped_total / total_elements
+        avg_violation = total_violation / clipped_total if clipped_total > 0 else 0
+
+        logger.debug(
+            f"Clipped {clipped_total}/{total_elements} elements "
+            f"({clip_pct:.1f}%) | Low: {clipped_low}, High: {clipped_high} | "
+            f"Avg violation: {avg_violation:.4f} | L2 change: {actual_change:.4f}"
+        )
+
+    return clipped
+
+
+def create_resizer(
+    source_shape: tuple[int, ...], target_shape: tuple[int, ...]
+) -> t.Callable[[NDArray[t.Any]], NDArray[t.Any]]:
+    """Creates a function to resize an array using bilinear interpolation."""
+    with catch_import_error("scipy"):
+        from scipy.ndimage import (  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            zoom,
+        )
+
+    ndims = len(target_shape)
+    factors = [t / s for s, t in zip(source_shape[-ndims:], target_shape[-ndims:], strict=False)]
+
+    def resizer(array: NDArray[t.Any]) -> NDArray[t.Any]:
+        array_ndims = len(array.shape)
+        full_factors = [1.0] * (array_ndims - ndims) + factors
+        return zoom(array, full_factors, order=1, mode="nearest")  # type: ignore[no-any-return]
+
+    return resizer

@@ -14,6 +14,8 @@ from dreadnode.util import format_dict
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
 
+EvalStopReason = t.Literal["finished", "max_errors_reached", "max_consecutive_errors_reached"]
+
 
 @te.runtime_checkable
 class HasSamples(te.Protocol[In, Out]):
@@ -40,6 +42,16 @@ class EvalResultMixin:
         return [s for s in self.samples if s.passed]
 
     @property
+    def error_samples(self: "HasSamples") -> list["Sample[In, Out]"]:
+        """A list of all samples that encountered an error during processing."""
+        return [s for s in self.samples if s.error is not None]
+
+    @property
+    def error_count(self: "HasSamples") -> int:
+        """The number of samples that encountered an error during processing."""
+        return sum(1 for s in self.samples if s.error is not None)
+
+    @property
     def failed_samples(self: "HasSamples") -> list["Sample[In, Out]"]:
         """A list of all samples that failed at least one assertion."""
         return [s for s in self.samples if not s.passed]
@@ -54,37 +66,61 @@ class EvalResultMixin:
         return passed_count / len(_samples)
 
     @property
-    def metrics_summary(self: "HasSamples") -> dict[str, dict[str, float]]:
+    def metrics(self: "HasSamples") -> dict[str, list[float]]:
         """
-        Calculates and returns a summary of statistics for each metric across all samples.
+        Returns a breakdown of all metric values across all samples.
+
+        Returns:
+            A dictionary where keys are metric names and values are lists of
+            metric values, with each value corresponding to a sample from the
+            evaluation dataset.
         """
-        metrics_by_name: dict[str, list[float]] = defaultdict(list)
+        breakdown: defaultdict[str, list[float]] = defaultdict(list)
+
         for sample in self.samples:
             for name, metric_list in sample.metrics.items():
-                # TODO(nick): Originally we were including internal
+                # NOTE(nick): Originally we were including internal
                 # values (metrics reported multiple times within the same sample),
                 # but I think it's safer to just take the last metric here.
 
                 # for metric in metric_list:
-                #     metrics_by_name[name].append(metric.value)
+                #     breakdown[name].append(metric.value)
 
                 if metric_list:
-                    metrics_by_name[name].append(metric_list[-1].value)
+                    breakdown[name].append(metric_list[-1].value)
 
+        return dict(breakdown)
+
+    @property
+    def metrics_summary(self) -> dict[str, dict[str, float]]:
+        """
+        Calculates and returns a summary of statistics for each metric across all samples.
+        """
         summary: dict[str, dict[str, float]] = {}
-        for name, values in metrics_by_name.items():
+        for name, values in self.metrics.items():  # type: ignore[misc]
             if not values:
                 continue
-            mean = statistics.mean(values)
-            stdev = statistics.stdev(values) if len(values) > 1 else 0.0
+
             summary[name] = {
-                "mean": mean,
-                "stdev": stdev,
+                "mean": statistics.mean(values),
+                "stdev": statistics.stdev(values) if len(values) > 1 else 0.0,
                 "min": min(values),
                 "max": max(values),
                 "count": len(values),
             }
+
         return summary
+
+    @property
+    def metrics_aggregated(self) -> dict[str, float]:
+        """
+        Aggregates metrics across all samples by calculating the mean for each metric.
+
+        Returns:
+            A dictionary where keys are metric names and values are the mean
+            of that metric across all samples.
+        """
+        return {name: stats["mean"] for name, stats in self.metrics_summary.items()}
 
     @property
     def assertions_summary(self: "HasSamples") -> dict[str, dict[str, float | int]]:
@@ -206,6 +242,8 @@ class EvalResult(EvalResultMixin, t.Generic[In, Out]):
 
     scenarios: list[ScenarioResult[In, Out]] = field(default_factory=list)
     """A list of results, one for each scenario in the evaluation."""
+    stop_reason: EvalStopReason | None = None
+    """The reason the evaluation stopped."""
 
     @property
     def samples(self) -> list[Sample[In, Out]]:

@@ -844,7 +844,7 @@ interpolate\_images
 
 ```python
 interpolate_images(
-    alpha: float, *, distance_method: DistanceMethod = "l2"
+    alpha: float, *, distance_method: Norm = "l2"
 ) -> Transform[tuple[Image, Image], Image]
 ```
 
@@ -859,7 +859,7 @@ The returned image is calculated as: `(1 - alpha) * start + alpha * end`.
   –The interpolation factor. 0.0 returns the start image,
   1.0 returns the end image. 0.5 is the midpoint.
 * **`distance_method`**
-  (`DistanceMethod`, default:
+  (`Norm`, default:
   `'l2'`
   )
   –The distance method being used - for optimizing interpolation.
@@ -874,7 +874,7 @@ The returned image is calculated as: `(1 - alpha) * start + alpha * end`.
 <Accordion title="Source code in dreadnode/transforms/image.py" icon="code">
 ```python
 def interpolate_images(
-    alpha: float, *, distance_method: DistanceMethod = "l2"
+    alpha: float, *, distance_method: Norm = "l2"
 ) -> Transform[tuple[Image, Image], Image]:
     """
     Creates a transform that performs linear interpolation between two images.
@@ -895,7 +895,7 @@ def interpolate_images(
         images: tuple[Image, Image],
         *,
         alpha: float = alpha,
-        method: DistanceMethod = distance_method,
+        method: Norm = distance_method,
     ) -> Image:
         start_image, end_image = images
 
