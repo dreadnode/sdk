@@ -1,13 +1,13 @@
-import subprocess
+import subprocess  # nosec
 import sys
 import typing as t
 from pathlib import Path
 
 from dreadnode.cli.platform.constants import (
-    SERVICES,
+    PLATFORM_SERVICES,
 )
-from dreadnode.cli.platform.schemas import LocalVersionSchema
-from dreadnode.cli.platform.utils.printing import print_error, print_info
+from dreadnode.cli.platform.version import LocalVersion
+from dreadnode.logging_ import print_error, print_info
 
 LineTypes = t.Literal["variable", "comment", "empty"]
 
@@ -54,7 +54,8 @@ def _parse_env_lines(content: str) -> list[_EnvLine]:
 
 
 def _extract_variables(lines: list[_EnvLine]) -> dict[str, str]:
-    """Extract just the variables from parsed lines.
+    """
+    Extract just the variables from parsed lines.
 
     Args:
         lines: List of parsed environment file lines.
@@ -72,7 +73,8 @@ def _extract_variables(lines: list[_EnvLine]) -> dict[str, str]:
 def _find_insertion_points(
     base_lines: list[_EnvLine], remote_lines: list[_EnvLine], new_vars: dict[str, str]
 ) -> dict[str, int]:
-    """Find the best insertion points for new variables based on remote file structure.
+    """
+    Find the best insertion points for new variables based on remote file structure.
 
     Args:
         base_lines: Lines from local file.
@@ -148,7 +150,8 @@ def _find_insertion_points(
 def _reconstruct_env_content(  # noqa: PLR0912
     base_lines: list[_EnvLine], merged_vars: dict[str, str], updated_remote_lines: list[_EnvLine]
 ) -> str:
-    """Reconstruct .env content preserving structure from base while applying merged variables.
+    """
+    Reconstruct .env content preserving structure from base while applying merged variables.
 
     Args:
         base_lines: Parsed lines from the local file (for structure).
@@ -246,7 +249,7 @@ def _reconstruct_env_content(  # noqa: PLR0912
     return "\n".join(result_lines)
 
 
-def create_default_env_files(current_version: LocalVersionSchema) -> None:
+def create_default_env_files(current_version: LocalVersion) -> None:
     """Create default environment files for all services in the current version.
 
     Copies sample environment files to actual environment files if they don't exist,
@@ -258,7 +261,7 @@ def create_default_env_files(current_version: LocalVersionSchema) -> None:
     Raises:
         RuntimeError: If sample environment files are not found or .env file creation fails.
     """
-    for service in SERVICES:
+    for service in PLATFORM_SERVICES:
         for image in current_version.images:
             if image.service == service:
                 env_file_path = current_version.get_env_path_by_service(service)
@@ -287,7 +290,7 @@ def open_env_file(filename: Path) -> None:
     else:
         cmd = ["xdg-open", filename.as_posix()]
     try:
-        subprocess.run(cmd, check=False)  # noqa: S603
+        subprocess.run(cmd, check=False)  # noqa: S603 # nosec
         print_info("Opened environment file.")
     except subprocess.CalledProcessError as e:
         print_error(f"Failed to open environment file: {e}")

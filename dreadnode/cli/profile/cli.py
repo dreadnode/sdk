@@ -1,12 +1,12 @@
 import typing as t
 
 import cyclopts
-import rich
 from rich import box
 from rich.prompt import Prompt
 from rich.table import Table
 
 from dreadnode.cli.api import Token
+from dreadnode.logging_ import console, print_error, print_info, print_success
 from dreadnode.user_config import UserConfig
 from dreadnode.util import time_to
 
@@ -19,7 +19,7 @@ def show() -> None:
 
     config = UserConfig.read()
     if not config.servers:
-        rich.print(":exclamation: No server profiles are configured")
+        print_error("No server profiles are configured")
         return
 
     table = Table(box=box.ROUNDED)
@@ -44,7 +44,7 @@ def show() -> None:
             style="bold" if active else None,
         )
 
-    rich.print(table)
+    console.print(table)
 
 
 @cli.command()
@@ -55,37 +55,39 @@ def switch(
     config = UserConfig.read()
 
     if not config.servers:
-        rich.print(":exclamation: No server profiles are configured")
+        print_error("No server profiles are configured")
         return
 
     # If no profile provided, prompt user to choose
     if profile is None:
         profiles = list(config.servers.keys())
-        rich.print("\nAvailable profiles:")
+        print_info("Available profiles:")
         for i, p in enumerate(profiles, 1):
             active_marker = " (current)" if p == config.active else ""
-            rich.print(f"  {i}. [bold orange_red1]{p}[/]{active_marker}")
+            print_info(f"  {i}. [bold orange_red1]{p}[/]{active_marker}")
 
         choice = Prompt.ask(
             "\nSelect a profile",
             choices=[str(i) for i in range(1, len(profiles) + 1)] + profiles,
             show_choices=False,
+            console=console,
         )
 
         profile = profiles[int(choice) - 1] if choice.isdigit() else choice
 
     if profile not in config.servers:
-        rich.print(f":exclamation: Profile [bold]{profile}[/] does not exist")
+        print_error(f"Profile [bold]{profile}[/] does not exist")
         return
 
     config.active = profile
     config.write()
 
-    rich.print(f":laptop_computer: Switched to [bold orange_red1]{profile}[/]")
-    rich.print(f"|- email:    [bold]{config.servers[profile].email}[/]")
-    rich.print(f"|- username: {config.servers[profile].username}")
-    rich.print(f"|- url:      {config.servers[profile].url}")
-    rich.print()
+    print_success(
+        f"Switched to [bold orange_red1]{profile}[/]\n"
+        f"|- email:    [bold]{config.servers[profile].email}[/]\n"
+        f"|- username: {config.servers[profile].username}\n"
+        f"|- url:      {config.servers[profile].url}\n"
+    )
 
 
 @cli.command()
@@ -95,10 +97,10 @@ def forget(
     """Remove a server profile from the configuration."""
     config = UserConfig.read()
     if profile not in config.servers:
-        rich.print(f":exclamation: Profile [bold]{profile}[/] does not exist")
+        print_error(f"Profile [bold]{profile}[/] does not exist")
         return
 
     del config.servers[profile]
     config.write()
 
-    rich.print(f":axe: Forgot about [bold]{profile}[/]")
+    print_success(f"Forgot about [bold]{profile}[/]")

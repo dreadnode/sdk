@@ -10,7 +10,6 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import coolname  # type: ignore [import-untyped]
 import logfire
-import rich
 from fsspec.implementations.local import (  # type: ignore [import-untyped]
     LocalFileSystem,
 )
@@ -41,6 +40,7 @@ from dreadnode.constants import (
     ENV_SERVER_URL,
 )
 from dreadnode.error import AssertionFailedError
+from dreadnode.logging_ import console as logging_console
 from dreadnode.metric import (
     Metric,
     MetricAggMode,
@@ -277,13 +277,13 @@ class Dreadnode:
         # Log config information for clarity
         if self.server or self.token or self.local_dir:
             destination = self.server or DEFAULT_SERVER_URL or "local storage"
-            rich.print(
+            logging_console.print(
                 f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source}, project: {self.project or 'default'})"
             )
 
         # Warn the user if the profile didn't resolve
         elif active_profile and not (self.server or self.token):
-            rich.print(
+            logging_console.print(
                 f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
             )
 

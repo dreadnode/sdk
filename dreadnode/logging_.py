@@ -6,10 +6,12 @@ To just enable dreadnode logs to flow, call `logger.enable("dreadnode")` after i
 
 import pathlib
 import typing as t
+from textwrap import dedent
 
 from loguru import logger
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.prompt import Confirm
 from rich.theme import Theme
 
 LogLevel = t.Literal["trace", "debug", "info", "success", "warning", "error", "critical"]
@@ -51,3 +53,28 @@ def configure_logging(
     if log_file is not None:
         logger.add(log_file, level=log_file_level.upper())
         logger.info(f"Logging to {log_file}")
+
+
+def print_success(message: str) -> None:
+    console.print(f"[bold green]:heavy_check_mark:[/] {dedent(message)}")
+
+
+def print_error(message: str) -> None:
+    console.print(f"[bold red]:heavy_multiplication_x:[/] {dedent(message)}")
+
+
+def print_warning(message: str) -> None:
+    console.print(f"[bold yellow]:warning:[/] {dedent(message)}")
+
+
+def print_info(message: str) -> None:
+    console.print(dedent(message))
+
+
+def confirm(action: str) -> bool:
+    return Confirm.ask(
+        f"[bold magenta]:left-right_arrow:[/] {action}",
+        default=False,
+        case_sensitive=False,
+        console=console,
+    )
