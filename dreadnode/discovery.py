@@ -5,10 +5,16 @@ import typing as t
 from dataclasses import dataclass
 from pathlib import Path
 
+from dreadnode.util import warn_at_user_stacklevel
+
 T = t.TypeVar("T")
 
 
 DEFAULT_SEARCH_PATHS = ("main.py", "agent.py", "app.py", "eval.py", "attack.py", "study.py")
+
+
+class DiscoveryWarning(UserWarning):
+    """Warning related to object discovery."""
 
 
 @dataclass
@@ -50,7 +56,11 @@ def _get_module_data_from_path(path: Path) -> ModuleData:
 
 
 def _discover_in_module(
-    module_data: ModuleData, discovery_type: type[T], *, exclude_types: set[type] | None = None
+    module_data: ModuleData,
+    discovery_type: type[T],
+    *,
+    exclude_types: set[type] | None = None,
+    ignore_errors: bool = True,
 ) -> dict[str, T]:
     """
     Imports a module and finds all instances of the specified discoverable type.
@@ -59,6 +69,12 @@ def _discover_in_module(
     try:
         sys.path.insert(0, str(module_data.extra_sys_path))
         mod = importlib.import_module(module_data.module_import_str)
+    except Exception as e:
+        error_str = f"Failed to import '{module_data.module_import_str}.py': {e}"
+        if not ignore_errors:
+            raise ModuleNotFoundError(error_str) from e
+        warn_at_user_stacklevel(error_str, DiscoveryWarning)
+        return objects
     finally:
         sys.path.pop(0)
 
@@ -82,7 +98,7 @@ def _discover_from_path(
     if path is not None:
         module_data = _get_module_data_from_path(path)
         for name, obj in _discover_in_module(
-            module_data, discovery_type, exclude_types=exclude_types
+            module_data, discovery_type, exclude_types=exclude_types, ignore_errors=False
         ).items():
             objects.append(Discovered(name=name, path=path, obj=obj))
         return objects

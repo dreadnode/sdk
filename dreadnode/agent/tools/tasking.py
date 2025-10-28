@@ -7,44 +7,52 @@ from dreadnode.agent.tools.base import tool
 @tool
 async def finish_task(success: bool, summary: str) -> None:  # noqa: ARG001, FBT001
     """
-    Mark your task as complete with a success/failure status and markdown summary of actions taken.
+    Concludes the task by reporting a final status and a comprehensive summary.
 
-    ## When to Use This Tool
-    This tool should be called under the following circumstances:
-    1.  **All TODOs are complete**: If you are managing todos, every task in your TODO list has been marked as 'completed'.
-    2.  **No more actions**: You have no further actions to take and have addressed all aspects of the user's request.
-    3.  **Irrecoverable failure**: You have encountered an error that you cannot resolve, and there are no further steps you can take.
-    4.  **Final Summary**: You are ready to provide a comprehensive summary of all actions taken.
-
-    ## When NOT to Use This Tool
-    Do not use this tool if:
-    2.  **You are in the middle of a multi-step process**: The overall task is not yet finished.
-    3.  **A recoverable error has occurred**: You should first attempt to fix the error through all available means.
-    4.  **You are waiting for user feedback**: The task is paused, not finished.
+    This is the **final tool** to call when your planned sequence of actions is complete, \
+    regardless of whether the outcome was successful. Use it when you have no more \
+    steps to take and are ready to present a final report.
 
     ## Best Practices
-    *   **Final Step**: This should be the absolute last tool you call. Once invoked, your task is considered finished.
-    *   **Honest Status**: Accurately report the success or failure of the overall task. If any part of the task failed or was not completed, `success` should be `False`.
-    *   **Comprehensive Summary**: The `summary` should be a complete and detailed markdown-formatted report of everything you did, including steps taken, tools used, and the final outcome. This is your final report to the user.
+    - Honest Status: The `success` flag must accurately reflect the final outcome. \
+    If any part of the task failed or objectives were not met, it must be `False`.
+    - Comprehensive Summary: The `summary` is your final report. It must be a complete, \
+    markdown-formatted document detailing all actions taken, tools used, and the results.
+
+    Args:
+        success: True if the task's objectives were fully met, False otherwise.
+        summary: A complete markdown-formatted report of all actions and outcomes.
     """
     from dreadnode import log_metric
 
     log_func = logger.success if success else logger.warning
     log_func(f"Agent finished the task (success={success})")
-
     log_metric("task_success", success)
 
     raise Finish if success else Fail("Agent marked the task as failed.")
 
 
 @tool
-async def give_up_on_task(reason: str) -> None:  # noqa: ARG001
+async def give_up_on_task(reason: str) -> None:
     """
-    Give up on your task.
+    Aborts the task when you are irrecoverably stuck and cannot make progress.
+
+    This tool is a last resort and should only be used when you have exhausted all \
+    possible strategies and alternative approaches. It signals that you were unable \
+    to complete your assigned process.
+
+    ## Best Practices
+    - Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures. \
+    This tool is strictly for when you cannot *finish* your work.
+    - Provide a Clear Justification**: The `reason` must clearly explain why you are stuck. \
+    Detail the final obstacle you could not overcome and the approaches you already tried.
+
+    Args:
+        reason: A concise explanation of why you are unable to continue the task.
     """
     from dreadnode import log_metric
 
-    logger.info("Agent gave up on the task")
+    logger.warning(f"Agent gave up on the task: {reason}")
     log_metric("task_give_up", 1)
 
     raise Fail("Agent gave up on the task.")

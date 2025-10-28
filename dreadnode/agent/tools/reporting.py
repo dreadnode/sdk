@@ -4,21 +4,21 @@ from dreadnode.agent.tools.base import tool
 from dreadnode.data_types import Markdown
 
 
-@tool
+@tool(catch=True)
 async def highlight_for_review(title: str, interest_level: str, justification: str) -> str:
     """
-    Flags a potential area of interest for a human operator to review.
+    Flag a finding for human review. Use this to surface leads that warrant further investigation.
 
-    This is your primary tool for surfacing leads. Use it when you discover something
-    anomalous, high-value, or potentially vulnerable that warrants human attention.
+    This tool is essential for escalating findings that appear anomalous, valuable, or potentially
+    vulnerable. It creates a "lead" for a human operator to pick up.
 
-    `interest_level` should be one of:
-    - "high": Urgent. Potential for immediate impact (e.g., exposed login, sensitive keywords).
-    - "medium": Interesting. Warrants follow-up (e.g., dev subdomain, unusual tech stack).
-    - "low": Informational. Good context but not an immediate priority (e.g., interesting directory found).
-
-    `justification` should be a structured technical markdown explanation of *why* this is
-    interesting and what the potential next steps for a human could be.
+    Args:
+        title: A brief, descriptive summary of the finding.
+        interest_level: The priority of the finding. Must be one of:
+            - "high": Urgent. Potential for immediate impact or exploitation. (exposed credentials, pre-authentication vulnerability).
+            - "medium": Noteworthy. Suggests a potential weakness or area for deeper investigation. (debug endpoint, verbose error messages, PII exposure).
+            - "low": Informational. Provides useful context but is not an immediate risk. (software version disclosure, interesting file path).
+        justification: A technical, markdown-formatted explanation. Detail *why* the finding is interesting, what its potential impact is, and suggest next steps for a human analyst.
     """
     from dreadnode import log_metric, log_output, tag
 
@@ -32,4 +32,4 @@ async def highlight_for_review(title: str, interest_level: str, justification: s
     log_output("markdown", Markdown(f"# {title} ({interest_level})\n\n{justification}"))
     log_metric("count", 1, mode="count")
 
-    return "Area of interest has been highlighted for human review."
+    return "Highlighted."

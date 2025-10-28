@@ -22,7 +22,7 @@ class TodoItem(BaseModel):
     )
 
 
-@tool
+@tool(catch=True)
 def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of todo items."]) -> str:
     """
     Use this tool to create and manage a structured task list for your current session.
@@ -30,7 +30,6 @@ def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of to
     It also helps the user understand the progress of the task and overall progress of their requests.
 
     ## When to Use This Tool
-    Use this tool proactively in these scenarios:
 
     1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
     2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
@@ -42,7 +41,6 @@ def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of to
 
     ## When NOT to Use This Tool
 
-    Skip using this tool when:
     1. There is only a single, straightforward task
     2. The task is trivial and tracking it provides no organizational benefit
     3. The task can be completed in less than 3 trivial steps
@@ -111,3 +109,28 @@ def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of to
         f"{status_counts['in_progress']} in progress, "
         f"{status_counts['pending']} pending."
     )
+
+
+@tool
+def think(thought: str) -> None:
+    """
+    Records a thought, reflection, or plan to document your reasoning process.
+
+    This tool acts as your internal monologue, allowing you to articulate your strategy. Use it to:
+    - Break down a complex problem into smaller steps.
+    - Formulate a multi-step plan before you act.
+    - Interpret the results of another tool's output.
+    - Document a change in strategy (self-correction).
+
+    A clear chain of thought is essential for explaining your actions.
+
+    ## Best Practices
+    - Do Not Substitute for Action**: After thinking, you must call the appropriate \
+    tool to execute your plan. This tool performs no action on its own.
+    - Do Not Repeat Information**: Never use this to repeat the output of other tools. \
+    Use it to state your *conclusion* or *next step* based on that output.
+
+    Args:
+        thought: A clear, concise statement of your thought process or plan.
+    """
+    logger.info(f"Agent thought: {thought}")
