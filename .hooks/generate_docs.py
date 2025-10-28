@@ -27,7 +27,15 @@ class CustomMarkdownConverter(MarkdownConverter):  # type: ignore[misc]
     def convert_div(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:
         if "doc-md-description" in el.get("class", []):
             return text.strip()
+
         return super().convert_div(el, text, parent_tags)
+
+    # Replace any header tags inside docstrings with bolded text
+    def convert_hN(self, n: int, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:  # noqa: N802
+        if "doc-contents" in el.parent.get("class", []):
+            return f"**{text.strip()}**"
+
+        return super().convert_hN(n, el, text, parent_tags)
 
     # Map mkdocstrings details classes to Mintlify callouts
     def convert_details(self, el: t.Any, text: str, parent_tags: t.Any) -> t.Any:  # noqa: ARG002
@@ -119,6 +127,10 @@ class AutoDocGenerator:
 
         module_data = self.handler.collect(module_path, options)
         html = self.handler.render(module_data, options)
+
+        if "When to Use This Tool" in html:
+            with open("debug.html", "w", encoding="utf-8") as f:
+                f.write(html)
 
         return str(
             CustomMarkdownConverter(

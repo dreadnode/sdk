@@ -139,8 +139,6 @@ async def run(  # noqa: PLR0912, PLR0915
     agent_cli.__annotations__["config"] = config_annotation
 
     help_text = f"Run the '{agent_name}' agent."
-    if agent_blueprint.__doc__:
-        help_text += "\n\n" + agent_blueprint.__doc__
     if agent_blueprint.description:
         help_text += "\n\n" + agent_blueprint.description
 

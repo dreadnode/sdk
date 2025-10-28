@@ -1,0 +1,1605 @@
+---
+title: dreadnode.agent.tools
+---
+
+{/*
+::: dreadnode.agent.tools
+::: dreadnode.agent.tools.execute
+::: dreadnode.agent.tools.fs
+::: dreadnode.agent.tools.memory
+::: dreadnode.agent.tools.planning
+::: dreadnode.agent.tools.reporting
+::: dreadnode.agent.tools.tasking
+*/}
+
+Toolset
+-------
+
+A Pydantic-based class for creating a collection of related, stateful tools.
+
+Inheriting from this class provides:
+- Pydantic's declarative syntax for defining state (fields).
+- Automatic application of the `@configurable` decorator.
+- A `get_tools` method for discovering methods decorated with `@dreadnode.tool_method`.
+
+### name
+
+```python
+name: str
+```
+
+The name of the toolset, derived from the class name.
+
+### variant
+
+```python
+variant: str | None = None
+```
+
+The variant for filtering tools available in this toolset.
+
+tool
+----
+
+```python
+tool(
+    func: None = None,
+    /,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    catch: bool | Iterable[type[Exception]] | None = None,
+    truncate: int | None = None,
+) -> t.Callable[[t.Callable[P, R]], Tool[P, R]]
+```
+
+```python
+tool(func: Callable[P, R]) -> Tool[P, R]
+```
+
+```python
+tool(
+    func: Callable[P, R] | None = None,
+    /,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    catch: bool | Iterable[type[Exception]] | None = None,
+    truncate: int | None = None,
+) -> (
+    t.Callable[[t.Callable[P, R]], Tool[P, R]] | Tool[P, R]
+)
+```
+
+Decorator for creating a Tool, useful for overriding a name or description.
+
+<Note>
+If the func contains Config or Context arguments, they will not be exposed
+as part of the tool schema, and you ensure they have default values or
+are correctly passed values.
+</Note>
+
+**Parameters:**
+
+* **`func`**
+  (`Callable[P, R] | None`, default:
+  `None`
+  )
+  –The function to wrap.
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –The name of the tool.
+* **`description`**
+  (`str | None`, default:
+  `None`
+  )
+  –The description of the tool.
+* **`catch`**
+  (`bool | Iterable[type[Exception]] | None`, default:
+  `None`
+  )
+  –Whether to catch exceptions and return them as messages.
+  - `False`: Do not catch exceptions.
+  - `True`: Catch all exceptions.
+  - `list[type[Exception]]`: Catch only the specified exceptions.
+  - `None`: By default, catches `json.JSONDecodeError` and `ValidationError`.
+* **`truncate`**
+  (`int | None`, default:
+  `None`
+  )
+  –If set, the maximum number of characters to truncate any tool output to.
+
+**Returns:**
+
+* `Callable[[Callable[P, R]], Tool[P, R]] | Tool[P, R]`
+  –The decorated Tool object.
+
+Example
+
+```python
+@tool(name="add_numbers", description="This is my tool")
+def add(x: int, y: int) -> int:
+    return x + y
+```
+
+
+<Accordion title="Source code in dreadnode/agent/tools/base.py" icon="code">
+```python
+def tool(
+    func: t.Callable[P, R] | None = None,
+    /,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    catch: bool | t.Iterable[type[Exception]] | None = None,
+    truncate: int | None = None,
+) -> t.Callable[[t.Callable[P, R]], Tool[P, R]] | Tool[P, R]:
+    """
+    Decorator for creating a Tool, useful for overriding a name or description.
+
+    Note:
+        If the func contains Config or Context arguments, they will not be exposed
+        as part of the tool schema, and you ensure they have default values or
+        are correctly passed values.
+
+    Args:
+        func: The function to wrap.
+        name: The name of the tool.
+        description: The description of the tool.
+        catch: Whether to catch exceptions and return them as messages.
+            - `False`: Do not catch exceptions.
+            - `True`: Catch all exceptions.
+            - `list[type[Exception]]`: Catch only the specified exceptions.
+            - `None`: By default, catches `json.JSONDecodeError` and `ValidationError`.
+        truncate: If set, the maximum number of characters to truncate any tool output to.
+
+    Returns:
+        The decorated Tool object.
+
+    Example:
+        ~~~
+        @tool(name="add_numbers", description="This is my tool")
+        def add(x: int, y: int) -> int:
+            return x + y
+        ~~~
+    """
+
+    def make_tool(func: t.Callable[P, R]) -> Tool[P, R]:
+        # This is purely here to inject component logic into a tool
+        component = func if isinstance(func, Component) else Component(func)
+        return Tool[P, R].from_callable(
+            component,
+            name=name,
+            description=description,
+            catch=catch,
+            truncate=truncate,
+        )
+
+    return make_tool(func) if func is not None else make_tool
+```
+
+
+</Accordion>
+
+tool\_method
+------------
+
+```python
+tool_method(
+    func: None = None,
+    /,
+    *,
+    variants: list[str] | None = None,
+    name: str | None = None,
+    description: str | None = None,
+    catch: bool | Iterable[type[Exception]] | None = None,
+    truncate: int | None = None,
+) -> t.Callable[
+    [t.Callable[t.Concatenate[t.Any, P], R]],
+    RiggingToolMethod[P, R],
+]
+```
+
+```python
+tool_method(
+    func: Callable[Concatenate[Any, P], R],
+) -> RiggingToolMethod[P, R]
+```
+
+```python
+tool_method(
+    func: Callable[Concatenate[Any, P], R] | None = None,
+    /,
+    *,
+    variants: list[str] | None = None,
+    name: str | None = None,
+    description: str | None = None,
+    catch: bool | Iterable[type[Exception]] | None = None,
+    truncate: int | None = None,
+) -> (
+    t.Callable[
+        [t.Callable[t.Concatenate[t.Any, P], R]],
+        RiggingToolMethod[P, R],
+    ]
+    | RiggingToolMethod[P, R]
+)
+```
+
+Marks a method on a Toolset as a tool, adding it to specified variants.
+
+This is a transparent, signature-preserving wrapper around `rigging.tool_method`.
+Use this for any method inside a class that inherits from `dreadnode.Toolset`
+to ensure it's discoverable.
+
+**Parameters:**
+
+* **`variants`**
+  (`list[str] | None`, default:
+  `None`
+  )
+  –A list of variants this tool should be a part of.
+  If None, it's added to a "all" variant.
+* **`name`**
+  (`str | None`, default:
+  `None`
+  )
+  –Override the tool's name. Defaults to the function name.
+* **`description`**
+  (`str | None`, default:
+  `None`
+  )
+  –Override the tool's description. Defaults to the docstring.
+* **`catch`**
+  (`bool | Iterable[type[Exception]] | None`, default:
+  `None`
+  )
+  –Whether to catch exceptions and return them as messages.
+  - `False`: Do not catch exceptions.
+  - `True`: Catch all exceptions.
+  - `list[type[Exception]]`: Catch only the specified exceptions.
+  - `None`: By default, catches `json.JSONDecodeError` and `ValidationError`.
+* **`truncate`**
+  (`int | None`, default:
+  `None`
+  )
+  –The maximum number of characters for the tool's output.
+
+<Accordion title="Source code in dreadnode/agent/tools/base.py" icon="code">
+```python
+def tool_method(
+    func: t.Callable[t.Concatenate[t.Any, P], R] | None = None,
+    /,
+    *,
+    variants: list[str] | None = None,
+    name: str | None = None,
+    description: str | None = None,
+    catch: bool | t.Iterable[type[Exception]] | None = None,
+    truncate: int | None = None,
+) -> (
+    t.Callable[[t.Callable[t.Concatenate[t.Any, P], R]], RiggingToolMethod[P, R]]
+    | RiggingToolMethod[P, R]
+):
+    """
+    Marks a method on a Toolset as a tool, adding it to specified variants.
+
+    This is a transparent, signature-preserving wrapper around `rigging.tool_method`.
+    Use this for any method inside a class that inherits from `dreadnode.Toolset`
+    to ensure it's discoverable.
+
+    Args:
+        variants: A list of variants this tool should be a part of.
+                  If None, it's added to a "all" variant.
+        name: Override the tool's name. Defaults to the function name.
+        description: Override the tool's description. Defaults to the docstring.
+        catch: Whether to catch exceptions and return them as messages.
+            - `False`: Do not catch exceptions.
+            - `True`: Catch all exceptions.
+            - `list[type[Exception]]`: Catch only the specified exceptions.
+            - `None`: By default, catches `json.JSONDecodeError` and `ValidationError`.
+        truncate: The maximum number of characters for the tool's output.
+    """
+
+    def make_tool_method(
+        func: t.Callable[t.Concatenate[t.Any, P], R],
+    ) -> RiggingToolMethod[P, R]:
+        tool_method_descriptor: RiggingToolMethod[P, R] = tools.tool_method(
+            name=name,
+            description=description,
+            catch=catch,
+            truncate=truncate,
+        )(func)
+
+        setattr(tool_method_descriptor, TOOL_VARIANTS_ATTR, variants or ["all"])
+
+        return tool_method_descriptor
+
+    return make_tool_method(func) if func is not None else make_tool_method
+```
+
+
+</Accordion>
+command
+-------
+
+```python
+command(
+    cmd: list[str],
+    *,
+    timeout: int = 120,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> str
+```
+
+Execute a shell command.
+
+Use this tool to run system utilities and command-line programs (e.g., `ls`, `cat`, `grep`). It is designed for straightforward, single-shot operations and returns the combined output and error streams.
+
+**Best Practices**
+
+* Argument Format: The command and its arguments *must* be provided as a list of strings (e.g., `["ls", "-la", "/tmp"]`), not as a single string.
+* No Shell Syntax: Does not use a shell. Features like pipes (`|`), redirection (`>`), and variable expansion (`$VAR`) are not supported.
+* Error on Failure: The tool will raise a `RuntimeError` if the command returns a non-zero exit code.
+
+**Parameters:**
+
+* **`cmd`**
+  (`list[str]`)
+  –The command to execute, provided as a list of strings.
+* **`timeout`**
+  (`int`, default:
+  `120`
+  )
+  –Maximum time in seconds to allow for command execution.
+* **`cwd`**
+  (`str | None`, default:
+  `None`
+  )
+  –The working directory in which to execute the command.
+* **`env`**
+  (`dict[str, str] | None`, default:
+  `None`
+  )
+  –Optional environment variables to set for the command.
+
+<Accordion title="Source code in dreadnode/agent/tools/execute.py" icon="code">
+```python
+@tool(catch=True)
+async def command(
+    cmd: list[str],
+    *,
+    timeout: int = 120,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
+    """
+    Execute a shell command.
+
+    Use this tool to run system utilities and command-line programs (e.g., `ls`, `cat`, `grep`). \
+    It is designed for straightforward, single-shot operations and returns the combined output and error streams.
+
+    ## Best Practices
+    - Argument Format: The command and its arguments *must* be provided as a \
+    list of strings (e.g., `["ls", "-la", "/tmp"]`), not as a single string.
+    - No Shell Syntax: Does not use a shell. Features like pipes (`|`), \
+    redirection (`>`), and variable expansion (`$VAR`) are not supported.
+    - Error on Failure: The tool will raise a `RuntimeError` if the command returns a non-zero exit code.
+
+    Args:
+        cmd: The command to execute, provided as a list of strings.
+        timeout: Maximum time in seconds to allow for command execution.
+        cwd: The working directory in which to execute the command.
+        env: Optional environment variables to set for the command.
+    """
+    try:
+        command_str = " ".join(cmd)
+        logger.debug(f"Executing '{command_str}'")
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            cwd=cwd,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        output = stdout.decode() + stderr.decode()
+    except asyncio.TimeoutError as e:
+        logger.warning(f"Command '{command_str}' timed out after {timeout} seconds.")
+        with contextlib.suppress(OSError):
+            proc.kill()
+        raise TimeoutError(f"Command timed out after {timeout} seconds") from e
+    except Exception as e:
+        logger.error(f"Error executing '{command_str}': {e}")
+        raise
+
+    if proc.returncode != 0:
+        logger.error(f"Command '{command_str}' failed with return code {proc.returncode}: {output}")
+        raise RuntimeError(f"Command failed ({proc.returncode}): {output}")
+
+    logger.debug(f"Command '{command_str}':\n{output}")
+    return output
+```
+
+
+</Accordion>
+
+python
+------
+
+```python
+python(code: str, *, timeout: int = 120) -> str
+```
+
+Execute Python code.
+
+This tool is ideal for tasks that require custom logic like loops and conditionals, or for parsing and transforming the output from other tools. Use it to implement a sequence of actions, perform file I/O, or create functionality not covered by other available tools.
+
+**Best Practices**
+
+* Capture Output: Your script *must* print results to standard output (`print(...)`) to be captured.
+* Self-Contained: Import all required standard libraries (e.g., `os`, `json`) within the script.
+* Handle Errors: Write robust code. Unhandled exceptions in your script will cause the tool to fail.
+* String-Based I/O: Ensure all printed output can be represented as a string. Use formats like JSON (`json.dumps`) for complex data.
+
+**Parameters:**
+
+* **`code`**
+  (`str`)
+  –The Python code to execute as a string.
+* **`timeout`**
+  (`int`, default:
+  `120`
+  )
+  –Maximum time in seconds to allow for code execution.
+
+<Accordion title="Source code in dreadnode/agent/tools/execute.py" icon="code">
+```python
+@tool(catch=True)
+async def python(code: str, *, timeout: int = 120) -> str:
+    """
+    Execute Python code.
+
+    This tool is ideal for tasks that require custom logic like loops and conditionals, \
+    or for parsing and transforming the output from other tools. Use it to implement a \
+    sequence of actions, perform file I/O, or create functionality not covered by other \
+    available tools.
+
+    ## Best Practices
+    - Capture Output: Your script *must* print results to standard output (`print(...)`) to be captured.
+    - Self-Contained: Import all required standard libraries (e.g., `os`, `json`) within the script.
+    - Handle Errors: Write robust code. Unhandled exceptions in your script will cause the tool to fail.
+    - String-Based I/O: Ensure all printed output can be represented as a string. Use formats like JSON (`json.dumps`) for complex data.
+
+    Args:
+        code: The Python code to execute as a string.
+        timeout: Maximum time in seconds to allow for code execution.
+    """
+    try:
+        logger.debug(f"Executing python:\n{code}")
+        proc = await asyncio.create_subprocess_exec(
+            *[sys.executable, "-"],
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=code.encode("utf-8")), timeout=timeout
+        )
+        output = stdout.decode(errors="ignore") + stderr.decode(errors="ignore")
+    except asyncio.TimeoutError as e:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        raise TimeoutError(f"Execution timed out after {timeout} seconds") from e
+    except Exception as e:
+        logger.error(f"Error executing code in Python: {e}")
+        raise
+
+    if proc.returncode != 0:
+        logger.error(f"Execution failed with return code {proc.returncode}:\n{output}")
+        raise RuntimeError(f"Execution failed ({proc.returncode}):\n{output}")
+
+    logger.debug(f"Execution successful. Output:\n{output}")
+    return output
+```
+
+
+</Accordion>
+Filesystem
+----------
+
+### fs\_options
+
+```python
+fs_options: AnyDict | None = Config(default=None)
+```
+
+Extra options for the universal filesystem.
+
+### multi\_modal
+
+```python
+multi_modal: bool = Config(default=False)
+```
+
+Enable returning non-text context like images.
+
+### path
+
+```python
+path: str | Path | UPath = Config(
+    default=cwd(), expose_as=str | Path
+)
+```
+
+Base path to work from.
+
+### cp
+
+```python
+cp(
+    src: Annotated[str, "Source file"],
+    dest: Annotated[str, "Destination path"],
+) -> FilesystemItem
+```
+
+Copy a file to a new location.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["write"], catch=True)
+def cp(
+    self,
+    src: t.Annotated[str, "Source file"],
+    dest: t.Annotated[str, "Destination path"],
+) -> FilesystemItem:
+    """Copy a file to a new location."""
+    src_path = self._resolve(src)
+    dest_path = self._resolve(dest)
+
+    if not src_path.exists():
+        raise ValueError(f"'{src}' not found")
+
+    if not src_path.is_file():
+        raise ValueError(f"'{src}' is not a file")
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with src_path.open("rb") as src_file, dest_path.open("wb") as dest_file:
+        dest_file.write(src_file.read())
+
+    return FilesystemItem.from_path(dest_path, self._upath)
+```
+
+
+</Accordion>
+
+### delete
+
+```python
+delete(path: Annotated[str, File or directory]) -> bool
+```
+
+Delete a file or directory.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["write"], catch=True)
+def delete(
+    self,
+    path: t.Annotated[str, "File or directory"],
+) -> bool:
+    """Delete a file or directory."""
+    _path = self._resolve(path)
+    if not _path.exists():
+        raise ValueError(f"'{path}' not found")
+
+    if _path.is_dir():
+        _path.rmdir()
+    else:
+        _path.unlink()
+
+    return True
+```
+
+
+</Accordion>
+
+### glob
+
+```python
+glob(
+    pattern: Annotated[
+        str, "Glob pattern for file matching"
+    ],
+) -> list[FilesystemItem]
+```
+
+Returns a list of paths matching a valid glob pattern. The pattern can
+include \*\* for recursive matching, such as '/path/\**/dir/*.py'.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(catch=True)
+def glob(
+    self,
+    pattern: t.Annotated[str, "Glob pattern for file matching"],
+) -> list[FilesystemItem]:
+    """
+    Returns a list of paths matching a valid glob pattern. The pattern can
+    include ** for recursive matching, such as '/path/**/dir/*.py'.
+    """
+    matches = list(self._upath.glob(pattern))
+
+    # Check to make sure all matches are within the base path
+    for match in matches:
+        if not str(match).startswith(str(self._upath)):
+            raise ValueError(f"'{pattern}' is not valid.")
+
+    return [FilesystemItem.from_path(match, self._upath) for match in matches]
+```
+
+
+</Accordion>
+
+### grep
+
+```python
+grep(
+    pattern: Annotated[
+        str, "Regular expression pattern to search for"
+    ],
+    path: Annotated[
+        str, "File or directory path to search in"
+    ],
+    *,
+    max_results: Annotated[
+        int, "Maximum number of results to return"
+    ] = 100,
+    recursive: Annotated[
+        bool, "Search recursively in directories"
+    ] = False,
+) -> list[GrepMatch]
+```
+
+Search for pattern in files and return matches with line numbers and context.
+
+For directories, all text files will be searched.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["read", "write"], catch=True)
+def grep(
+    self,
+    pattern: t.Annotated[str, "Regular expression pattern to search for"],
+    path: t.Annotated[str, "File or directory path to search in"],
+    *,
+    max_results: t.Annotated[int, "Maximum number of results to return"] = 100,
+    recursive: t.Annotated[bool, "Search recursively in directories"] = False,
+) -> list[GrepMatch]:
+    """
+    Search for pattern in files and return matches with line numbers and context.
+
+    For directories, all text files will be searched.
+    """
+    regex = re.compile(pattern, re.IGNORECASE)
+
+    target_path = self._resolve(path)
+    if not target_path.exists():
+        raise ValueError(f"'{path}' not found.")
+
+    # Determine files to search
+    files_to_search: list[UPath] = []
+    if target_path.is_file():
+        files_to_search.append(target_path)
+    elif target_path.is_dir():
+        files_to_search.extend(
+            list(target_path.rglob("*") if recursive else target_path.glob("*")),
+        )
+
+    matches: list[GrepMatch] = []
+    for file_path in [f for f in files_to_search if f.is_file()]:
+        if len(matches) >= max_results:
+            break
+
+        if file_path.stat().st_size > MAX_GREP_FILE_SIZE:
+            continue
+
+        with contextlib.suppress(Exception):
+            with file_path.open("r") as f:
+                lines = f.readlines()
+
+            for i, line in enumerate(lines):
+                if len(matches) >= max_results:
+                    break
+
+                if regex.search(line):
+                    line_num = i + 1
+                    context_start = max(0, i - 1)
+                    context_end = min(len(lines), i + 2)
+                    context = []
+
+                    for j in range(context_start, context_end):
+                        prefix = ">" if j == i else " "
+                        line_text = lines[j].rstrip("\r\n")
+                        context.append(f"{prefix} {j + 1}: {shorten_string(line_text, 80)}")
+
+                    rel_path = self._relative(file_path)
+                    matches.append(
+                        GrepMatch(
+                            path=rel_path,
+                            line_number=line_num,
+                            line=shorten_string(line.rstrip("\r\n"), 80),
+                            context=context,
+                        ),
+                    )
+
+    return matches
+```
+
+
+</Accordion>
+
+### ls
+
+```python
+ls(
+    path: Annotated[str, "Directory path to list"] = "",
+) -> list[FilesystemItem]
+```
+
+List the contents of a directory.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["read", "write"], catch=True)
+def ls(
+    self,
+    path: t.Annotated[str, "Directory path to list"] = "",
+) -> list[FilesystemItem]:
+    """List the contents of a directory."""
+    _path = self._resolve(path)
+
+    if not _path.exists():
+        raise ValueError(f"'{path}' not found.")
+
+    if not _path.is_dir():
+        raise ValueError(f"'{path}' is not a directory.")
+
+    items = list(_path.iterdir())
+    return [FilesystemItem.from_path(item, self._upath) for item in items]
+```
+
+
+</Accordion>
+
+### mkdir
+
+```python
+mkdir(
+    path: Annotated[str, "Directory path to create"],
+) -> FilesystemItem
+```
+
+Create a directory and any necessary parent directories.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["write"], catch=True)
+def mkdir(
+    self,
+    path: t.Annotated[str, "Directory path to create"],
+) -> FilesystemItem:
+    """Create a directory and any necessary parent directories."""
+    dir_path = self._resolve(path)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    return FilesystemItem.from_path(dir_path, self._upath)
+```
+
+
+</Accordion>
+
+### mv
+
+```python
+mv(
+    src: Annotated[str, "Source path"],
+    dest: Annotated[str, "Destination path"],
+) -> FilesystemItem
+```
+
+Move a file or directory to a new location.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["write"], catch=True)
+def mv(
+    self,
+    src: t.Annotated[str, "Source path"],
+    dest: t.Annotated[str, "Destination path"],
+) -> FilesystemItem:
+    """Move a file or directory to a new location."""
+    src_path = self._resolve(src)
+    dest_path = self._resolve(dest)
+
+    if not src_path.exists():
+        raise ValueError(f"'{src}' not found")
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    src_path.rename(dest_path)
+
+    return FilesystemItem.from_path(dest_path, self._upath)
+```
+
+
+</Accordion>
+
+### read\_file
+
+```python
+read_file(
+    path: Annotated[str, "Path to the file to read"],
+) -> rg.ContentImageUrl | str
+```
+
+Read a file and return its contents.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["read", "write"], catch=True)
+def read_file(
+    self,
+    path: t.Annotated[str, "Path to the file to read"],
+) -> rg.ContentImageUrl | str:
+    """Read a file and return its contents."""
+    _path = self._resolve(path)
+    content = _path.read_bytes()
+
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError as e:
+        if self.multi_modal:
+            return rg.ContentImageUrl.from_file(path)
+        raise ValueError("File is not a valid text file.") from e
+```
+
+
+</Accordion>
+
+### read\_lines
+
+```python
+read_lines(
+    path: Annotated[str, "Path to the file to read"],
+    start_line: Annotated[
+        int, "Start line number (0-indexed)"
+    ] = 0,
+    end_line: Annotated[int, "End line number"] = -1,
+) -> str
+```
+
+Read a partial file and return the contents with optional line numbers.
+Negative line numbers count from the end.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["read", "write"], catch=True)
+def read_lines(
+    self,
+    path: t.Annotated[str, "Path to the file to read"],
+    start_line: t.Annotated[int, "Start line number (0-indexed)"] = 0,
+    end_line: t.Annotated[int, "End line number"] = -1,
+) -> str:
+    """
+    Read a partial file and return the contents with optional line numbers.
+    Negative line numbers count from the end.
+    """
+    _path = self._resolve(path)
+
+    if not _path.exists():
+        raise ValueError(f"'{path}' not found.")
+
+    if not _path.is_file():
+        raise ValueError(f"'{path}' is not a file.")
+
+    with _path.open("r") as f:
+        lines = f.readlines()
+
+        if start_line < 0:
+            start_line = len(lines) + start_line
+
+        if end_line < 0:
+            end_line = len(lines) + end_line + 1
+
+        start_line = max(0, min(start_line, len(lines)))
+        end_line = max(start_line, min(end_line, len(lines)))
+
+        return "\n".join(lines[start_line:end_line])
+```
+
+
+</Accordion>
+
+### write\_file
+
+```python
+write_file(
+    path: Annotated[str, "Path to write the file to"],
+    contents: Annotated[
+        str, "Content to write to the file"
+    ],
+) -> FilesystemItem
+```
+
+Create or overwrite a file with the given contents.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["write"], catch=True)
+def write_file(
+    self,
+    path: t.Annotated[str, "Path to write the file to"],
+    contents: t.Annotated[str, "Content to write to the file"],
+) -> FilesystemItem:
+    """Create or overwrite a file with the given contents."""
+    _path = self._safe_create_file(path)
+    with _path.open("w") as f:
+        f.write(contents)
+
+    return FilesystemItem.from_path(_path, self._upath)
+```
+
+
+</Accordion>
+
+### write\_lines
+
+```python
+write_lines(
+    path: Annotated[str, "Path to write to"],
+    contents: Annotated[str, "Content to write"],
+    insert_line: Annotated[
+        int,
+        "Line number to insert at (negative counts from end)",
+    ] = -1,
+    mode: Annotated[
+        str, "insert" or "overwrite"
+    ] = "insert",
+) -> FilesystemItem
+```
+
+Write content to a specific line in the file.
+Mode can be 'insert' to add lines or 'overwrite' to replace lines.
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@tool_method(variants=["write"], catch=True)
+def write_lines(
+    self,
+    path: t.Annotated[str, "Path to write to"],
+    contents: t.Annotated[str, "Content to write"],
+    insert_line: t.Annotated[int, "Line number to insert at (negative counts from end)"] = -1,
+    mode: t.Annotated[str, "'insert' or 'overwrite'"] = "insert",
+) -> FilesystemItem:
+    """
+    Write content to a specific line in the file.
+    Mode can be 'insert' to add lines or 'overwrite' to replace lines.
+    """
+    if mode not in ["insert", "overwrite"]:
+        raise ValueError("Invalid mode. Use 'insert' or 'overwrite'")
+
+    _path = self._safe_create_file(path)
+
+    lines: list[str] = []
+    with _path.open("r") as f:
+        lines = f.readlines()
+
+    # Normalize line endings in content
+    content_lines = [
+        line + "\n" if not line.endswith("\n") else line
+        for line in contents.splitlines(keepends=False)
+    ]
+
+    # Calculate insert position and ensure it's within bounds
+    if insert_line < 0:
+        insert_line = len(lines) + insert_line + 1
+
+    insert_line = max(0, min(insert_line, len(lines)))
+
+    # Apply the update
+    if mode == "insert":
+        lines[insert_line:insert_line] = content_lines
+    elif mode == "overwrite":
+        lines[insert_line : insert_line + len(content_lines)] = content_lines
+
+    with _path.open("w") as f:
+        f.writelines(lines)
+
+    return FilesystemItem.from_path(_path, self._upath)
+```
+
+
+</Accordion>
+
+FilesystemItem
+--------------
+
+```python
+FilesystemItem(
+    type: Literal["file", "dir"],
+    name: str,
+    size: int | None = None,
+    modified: str | None = None,
+)
+```
+
+Item in the filesystem
+
+### from\_path
+
+```python
+from_path(
+    path: UPath, relative_base: UPath
+) -> FilesystemItem
+```
+
+Create an Item from a UPath
+
+<Accordion title="Source code in dreadnode/agent/tools/fs.py" icon="code">
+```python
+@classmethod
+def from_path(cls, path: "UPath", relative_base: "UPath") -> "FilesystemItem":
+    """Create an Item from a UPath"""
+
+    base_path = str(relative_base.resolve())
+    full_path = str(path.resolve())
+    relative = full_path[len(base_path) :]
+
+    if path.is_dir():
+        return cls(type="dir", name=relative, size=None, modified=None)
+
+    if path.is_file():
+        return cls(
+            type="file",
+            name=relative,
+            size=path.stat().st_size,
+            modified=datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S",
+            ),
+        )
+
+    raise ValueError(f"'{relative}' is not a valid file or directory.")
+```
+
+
+</Accordion>
+
+GrepMatch
+---------
+
+```python
+GrepMatch(
+    path: str,
+    line_number: int,
+    line: str,
+    context: list[str],
+)
+```
+
+Individual search match
+Memory
+------
+
+Provides a stateful, in-memory key-value store for the toolset's lifetime.
+
+This toolset allows the agent to save, retrieve, and manage data, enabling it to
+remember information across multiple steps and tool calls.
+
+### clear\_memory
+
+```python
+clear_memory(
+    key: Annotated[
+        str | None,
+        "The specific key to clear. If not provided, all memory is cleared.",
+    ] = None,
+) -> str
+```
+
+Clears a specific key from memory, or clears all memory if no key is provided.
+
+<Accordion title="Source code in dreadnode/agent/tools/memory.py" icon="code">
+```python
+@tool_method(catch=True)
+def clear_memory(
+    self,
+    key: t.Annotated[
+        str | None, "The specific key to clear. If not provided, all memory is cleared."
+    ] = None,
+) -> str:
+    """
+    Clears a specific key from memory, or clears all memory if no key is provided.
+    """
+    if key is None:
+        self._memory.clear()
+        return "All memory has been cleared."
+
+    if key not in self._memory:
+        return f"Key '{key}' not found in memory. Nothing to clear."
+
+    del self._memory[key]
+    return f"Cleared memory for key: '{key}'"
+```
+
+
+</Accordion>
+
+### list\_memory\_keys
+
+```python
+list_memory_keys() -> list[str]
+```
+
+Lists all keys currently stored in memory.
+
+<Accordion title="Source code in dreadnode/agent/tools/memory.py" icon="code">
+```python
+@tool_method
+def list_memory_keys(self) -> list[str]:
+    """Lists all keys currently stored in memory."""
+    return list(self._memory.keys())
+```
+
+
+</Accordion>
+
+### retrieve\_memory
+
+```python
+retrieve_memory(
+    key: Annotated[
+        str, "The key of the value to retrieve."
+    ],
+) -> str
+```
+
+Retrieves a value from memory using the specified key.
+
+<Accordion title="Source code in dreadnode/agent/tools/memory.py" icon="code">
+```python
+@tool_method(catch=True)
+def retrieve_memory(self, key: t.Annotated[str, "The key of the value to retrieve."]) -> str:
+    """Retrieves a value from memory using the specified key."""
+    return self._memory[key]
+```
+
+
+</Accordion>
+
+### save\_memory
+
+```python
+save_memory(
+    key: Annotated[
+        str, "The unique key to store the value under."
+    ],
+    value: Annotated[
+        str, "The string value to store in memory."
+    ],
+) -> str
+```
+
+Saves a value to memory with the specified key, overwriting any existing value.
+
+<Accordion title="Source code in dreadnode/agent/tools/memory.py" icon="code">
+```python
+@tool_method
+def save_memory(
+    self,
+    key: t.Annotated[str, "The unique key to store the value under."],
+    value: t.Annotated[str, "The string value to store in memory."],
+) -> str:
+    """Saves a value to memory with the specified key, overwriting any existing value."""
+    self._memory[key] = value
+    return f"Value saved to memory key: '{key}'"
+```
+
+
+</Accordion>
+TodoItem
+--------
+
+Represents a single task in the todo list.
+
+think
+-----
+
+```python
+think(thought: str) -> None
+```
+
+Records a thought, reflection, or plan to document your reasoning process.
+
+This tool acts as your internal monologue, allowing you to articulate your strategy. Use it to:
+- Break down a complex problem into smaller steps.
+- Formulate a multi-step plan before you act.
+- Interpret the results of another tool's output.
+- Document a change in strategy (self-correction).
+
+A clear chain of thought is essential for explaining your actions.
+
+**Best Practices**
+
+* Do Not Substitute for Action\*\*: After thinking, you must call the appropriate tool to execute your plan. This tool performs no action on its own.
+* Do Not Repeat Information**: Never use this to repeat the output of other tools. Use it to state your* conclusion* or *next step* based on that output.
+
+**Parameters:**
+
+* **`thought`**
+  (`str`)
+  –A clear, concise statement of your thought process or plan.
+
+<Accordion title="Source code in dreadnode/agent/tools/planning.py" icon="code">
+```python
+@tool
+def think(thought: str) -> None:
+    """
+    Records a thought, reflection, or plan to document your reasoning process.
+
+    This tool acts as your internal monologue, allowing you to articulate your strategy. Use it to:
+    - Break down a complex problem into smaller steps.
+    - Formulate a multi-step plan before you act.
+    - Interpret the results of another tool's output.
+    - Document a change in strategy (self-correction).
+
+    A clear chain of thought is essential for explaining your actions.
+
+    ## Best Practices
+    - Do Not Substitute for Action**: After thinking, you must call the appropriate \
+    tool to execute your plan. This tool performs no action on its own.
+    - Do Not Repeat Information**: Never use this to repeat the output of other tools. \
+    Use it to state your *conclusion* or *next step* based on that output.
+
+    Args:
+        thought: A clear, concise statement of your thought process or plan.
+    """
+    logger.info(f"Agent thought: {thought}")
+```
+
+
+</Accordion>
+
+update\_todo
+------------
+
+```python
+update_todo(
+    todos: Annotated[
+        list[TodoItem],
+        "The full, updated list of todo items.",
+    ],
+) -> str
+```
+
+Use this tool to create and manage a structured task list for your current session.
+This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
+
+**When to Use This Tool**
+
+1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+3. User explicitly requests todo list - When the user directly asks you to use the todo list
+4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+5. After receiving new instructions - Immediately capture user requirements as todos
+6. When you start working on a task - Mark it as in\_progress BEFORE beginning work. Ideally you should only have one todo as in\_progress at a time
+7. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+**When NOT to Use This Tool**
+
+1. There is only a single, straightforward task
+2. The task is trivial and tracking it provides no organizational benefit
+3. The task can be completed in less than 3 trivial steps
+4. The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+**Task States and Management**
+
+1. **Task States**: Use these states to track progress:
+2. pending: Task not yet started
+3. in\_progress: Currently working on (limit to ONE task at a time)
+4. completed: Task finished successfully
+5. **Task Management**:
+6. Update task status in real-time as you work
+7. Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
+8. Only have ONE task in\_progress at any time
+9. Complete current tasks before starting new ones
+10. Remove tasks that are no longer relevant from the list entirely
+11. **Task Completion Requirements**:
+12. ONLY mark a task as completed when you have FULLY accomplished it
+13. If you encounter errors, blockers, or cannot finish, keep the task as in\_progress
+14. When blocked, create a new task describing what needs to be resolved
+15. Never mark a task as completed if:
+
+    * Tests are failing
+    * Implementation is partial
+    * You encountered unresolved errors
+    * You couldn't find necessary files or dependencies
+16. **Task Breakdown**:
+17. Create specific, actionable items
+18. Break complex tasks into smaller, manageable steps
+19. Use clear, descriptive task names
+
+When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.
+
+<Accordion title="Source code in dreadnode/agent/tools/planning.py" icon="code">
+```python
+@tool(catch=True)
+def update_todo(todos: t.Annotated[list[TodoItem], "The full, updated list of todo items."]) -> str:
+    """
+    Use this tool to create and manage a structured task list for your current session.
+    This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+    It also helps the user understand the progress of the task and overall progress of their requests.
+
+    ## When to Use This Tool
+
+    1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+    2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+    3. User explicitly requests todo list - When the user directly asks you to use the todo list
+    4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+    5. After receiving new instructions - Immediately capture user requirements as todos
+    6. When you start working on a task - Mark it as in_progress BEFORE beginning work. Ideally you should only have one todo as in_progress at a time
+    7. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+    ## When NOT to Use This Tool
+
+    1. There is only a single, straightforward task
+    2. The task is trivial and tracking it provides no organizational benefit
+    3. The task can be completed in less than 3 trivial steps
+    4. The task is purely conversational or informational
+
+    NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+    ## Task States and Management
+
+    1. **Task States**: Use these states to track progress:
+       - pending: Task not yet started
+       - in_progress: Currently working on (limit to ONE task at a time)
+       - completed: Task finished successfully
+
+    2. **Task Management**:
+       - Update task status in real-time as you work
+       - Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
+       - Only have ONE task in_progress at any time
+       - Complete current tasks before starting new ones
+       - Remove tasks that are no longer relevant from the list entirely
+
+    3. **Task Completion Requirements**:
+       - ONLY mark a task as completed when you have FULLY accomplished it
+       - If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+       - When blocked, create a new task describing what needs to be resolved
+       - Never mark a task as completed if:
+         - Tests are failing
+         - Implementation is partial
+         - You encountered unresolved errors
+         - You couldn't find necessary files or dependencies
+
+    4. **Task Breakdown**:
+       - Create specific, actionable items
+       - Break complex tasks into smaller, manageable steps
+       - Use clear, descriptive task names
+
+    When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.
+    """
+    from dreadnode import log_metric, log_output
+
+    status_counts = Counter(t.status for t in todos)
+
+    log_metric("num_todos", len(todos))
+    log_metric("completed_todos", status_counts["completed"])
+    log_metric("in_progress_todos", status_counts["in_progress"])
+    log_metric("pending_todos", status_counts["pending"])
+
+    log_output("todos", todos)
+
+    if not todos:
+        logger.info("Todo list cleared.")
+        return "Todo list cleared."
+
+    status_log = f"Updated todo list with {len(todos)} tasks:\n"
+    for todo in todos:
+        status = (
+            "✅" if todo.status == "completed" else ("⏳" if todo.status == "in_progress" else "📌")
+        )
+        status_log += f"{status} {todo.content} (priority: {todo.priority})\n"
+
+    logger.info(status_log)
+
+    return (
+        f"Updated todo list with {len(todos)} tasks. "
+        f"{status_counts['completed']} completed, "
+        f"{status_counts['in_progress']} in progress, "
+        f"{status_counts['pending']} pending."
+    )
+```
+
+
+</Accordion>
+highlight\_for\_review
+----------------------
+
+```python
+highlight_for_review(
+    title: str, interest_level: str, justification: str
+) -> str
+```
+
+Flag a finding for human review. Use this to surface leads that warrant further investigation.
+
+This tool is essential for escalating findings that appear anomalous, valuable, or potentially
+vulnerable. It creates a "lead" for a human operator to pick up.
+
+**Parameters:**
+
+* **`title`**
+  (`str`)
+  –A brief, descriptive summary of the finding.
+* **`interest_level`**
+  (`str`)
+  –The priority of the finding. Must be one of:
+  - "high": Urgent. Potential for immediate impact or exploitation. (exposed credentials, pre-authentication vulnerability).
+  - "medium": Noteworthy. Suggests a potential weakness or area for deeper investigation. (debug endpoint, verbose error messages, PII exposure).
+  - "low": Informational. Provides useful context but is not an immediate risk. (software version disclosure, interesting file path).
+* **`justification`**
+  (`str`)
+  –A technical, markdown-formatted explanation. Detail *why* the finding is interesting, what its potential impact is, and suggest next steps for a human analyst.
+
+<Accordion title="Source code in dreadnode/agent/tools/reporting.py" icon="code">
+```python
+@tool(catch=True)
+async def highlight_for_review(title: str, interest_level: str, justification: str) -> str:
+    """
+    Flag a finding for human review. Use this to surface leads that warrant further investigation.
+
+    This tool is essential for escalating findings that appear anomalous, valuable, or potentially
+    vulnerable. It creates a "lead" for a human operator to pick up.
+
+    Args:
+        title: A brief, descriptive summary of the finding.
+        interest_level: The priority of the finding. Must be one of:
+            - "high": Urgent. Potential for immediate impact or exploitation. (exposed credentials, pre-authentication vulnerability).
+            - "medium": Noteworthy. Suggests a potential weakness or area for deeper investigation. (debug endpoint, verbose error messages, PII exposure).
+            - "low": Informational. Provides useful context but is not an immediate risk. (software version disclosure, interesting file path).
+        justification: A technical, markdown-formatted explanation. Detail *why* the finding is interesting, what its potential impact is, and suggest next steps for a human analyst.
+    """
+    from dreadnode import log_metric, log_output, tag
+
+    interest_level = interest_level.lower().strip()
+    if interest_level not in ["high", "medium", "low"]:
+        interest_level = "medium"  # Default to medium if invalid
+
+    logger.success(f"Area of Interest - '{title}' [{interest_level}]:\n{justification}\n---")
+
+    tag(f"interest/{interest_level}")
+    log_output("markdown", Markdown(f"# {title} ({interest_level})\n\n{justification}"))
+    log_metric("count", 1, mode="count")
+
+    return "Highlighted."
+```
+
+
+</Accordion>
+finish\_task
+------------
+
+```python
+finish_task(success: bool, summary: str) -> None
+```
+
+Concludes the task by reporting a final status and a comprehensive summary.
+
+This is the **final tool** to call when your planned sequence of actions is complete, regardless of whether the outcome was successful. Use it when you have no more steps to take and are ready to present a final report.
+
+**Best Practices**
+
+* Honest Status: The `success` flag must accurately reflect the final outcome. If any part of the task failed or objectives were not met, it must be `False`.
+* Comprehensive Summary: The `summary` is your final report. It must be a complete, markdown-formatted document detailing all actions taken, tools used, and the results.
+
+**Parameters:**
+
+* **`success`**
+  (`bool`)
+  –True if the task's objectives were fully met, False otherwise.
+* **`summary`**
+  (`str`)
+  –A complete markdown-formatted report of all actions and outcomes.
+
+<Accordion title="Source code in dreadnode/agent/tools/tasking.py" icon="code">
+```python
+@tool
+async def finish_task(success: bool, summary: str) -> None:  # noqa: ARG001, FBT001
+    """
+    Concludes the task by reporting a final status and a comprehensive summary.
+
+    This is the **final tool** to call when your planned sequence of actions is complete, \
+    regardless of whether the outcome was successful. Use it when you have no more \
+    steps to take and are ready to present a final report.
+
+    ## Best Practices
+    - Honest Status: The `success` flag must accurately reflect the final outcome. \
+    If any part of the task failed or objectives were not met, it must be `False`.
+    - Comprehensive Summary: The `summary` is your final report. It must be a complete, \
+    markdown-formatted document detailing all actions taken, tools used, and the results.
+
+    Args:
+        success: True if the task's objectives were fully met, False otherwise.
+        summary: A complete markdown-formatted report of all actions and outcomes.
+    """
+    from dreadnode import log_metric
+
+    log_func = logger.success if success else logger.warning
+    log_func(f"Agent finished the task (success={success})")
+    log_metric("task_success", success)
+
+    raise Finish if success else Fail("Agent marked the task as failed.")
+```
+
+
+</Accordion>
+
+give\_up\_on\_task
+------------------
+
+```python
+give_up_on_task(reason: str) -> None
+```
+
+Aborts the task when you are irrecoverably stuck and cannot make progress.
+
+This tool is a last resort and should only be used when you have exhausted all possible strategies and alternative approaches. It signals that you were unable to complete your assigned process.
+
+**Best Practices**
+
+* Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures. This tool is strictly for when you cannot* finish* your work.
+* Provide a Clear Justification\*\*: The `reason` must clearly explain why you are stuck. Detail the final obstacle you could not overcome and the approaches you already tried.
+
+**Parameters:**
+
+* **`reason`**
+  (`str`)
+  –A concise explanation of why you are unable to continue the task.
+
+<Accordion title="Source code in dreadnode/agent/tools/tasking.py" icon="code">
+```python
+@tool
+async def give_up_on_task(reason: str) -> None:
+    """
+    Aborts the task when you are irrecoverably stuck and cannot make progress.
+
+    This tool is a last resort and should only be used when you have exhausted all \
+    possible strategies and alternative approaches. It signals that you were unable \
+    to complete your assigned process.
+
+    ## Best Practices
+    - Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures. \
+    This tool is strictly for when you cannot *finish* your work.
+    - Provide a Clear Justification**: The `reason` must clearly explain why you are stuck. \
+    Detail the final obstacle you could not overcome and the approaches you already tried.
+
+    Args:
+        reason: A concise explanation of why you are unable to continue the task.
+    """
+    from dreadnode import log_metric
+
+    logger.warning(f"Agent gave up on the task: {reason}")
+    log_metric("task_give_up", 1)
+
+    raise Fail("Agent gave up on the task.")
+```
+
+
+</Accordion>

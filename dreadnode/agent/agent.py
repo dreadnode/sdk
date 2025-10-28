@@ -2,10 +2,11 @@ import inspect
 import typing as t
 from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
+from textwrap import dedent
 
 import rigging as rg
 from loguru import logger
-from pydantic import ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
+from pydantic import AfterValidator, ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
 from rigging.message import inject_system_content
 from ulid import ULID  # can't access via rg
 
@@ -71,14 +72,18 @@ class Agent(Model):
 
     name: str
     """The name of the agent."""
-    description: str = ""
+    description: t.Annotated[str, AfterValidator(dedent)] = ""
     """A brief description of the agent's purpose."""
     tags: list[str] = Config(default_factory=lambda: ["agent"])
     """A list of tags associated with the agent."""
+    label: str | None = Config(default=None)
+    """Specific label for tracing, otherwise derived from the name."""
 
     model: str | None = Config(default=None)
     """Inference model (rigging generator identifier)."""
-    instructions: str | None = Config(default=None)
+    instructions: t.Annotated[str | None, AfterValidator(lambda x: dedent(x) if x else x)] = Config(
+        default=None
+    )
     """The agent's core instructions."""
     max_steps: int = Config(default=10)
     """The maximum number of steps (generation + tool calls)."""
@@ -90,15 +95,15 @@ class Agent(Model):
     tool_mode: ToolMode = Config(default="auto", repr=False)
     """The tool calling mode to use."""
 
-    hooks: list[Hook] = Config(default_factory=list, exclude=True, repr=False)
+    hooks: list[Hook] = Field(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the agent's lifecycle."""
-    stop_conditions: list[StopCondition] = Config(default_factory=list)
+    stop_conditions: list[StopCondition] = Field(default_factory=list)
     """The logical condition for successfully stopping a run."""
     thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
     """Stateful thread for this agent, for when otherwise not specified during execution."""
-    scorers: ScorersLike[AgentResult] = Config(default_factory=list)
+    scorers: ScorersLike[AgentResult] = Field(default_factory=list)
     """Scorers to evaluate the agent output."""
-    assert_scores: list[str] | t.Literal[True] = Config(default_factory=list)
+    assert_scores: list[str] | t.Literal[True] = Field(default_factory=list)
     """Scores to ensure are truthy, otherwise the agent task is marked as failed."""
 
     _generator: rg.Generator | None = PrivateAttr(None, init=False)
@@ -716,14 +721,25 @@ class Agent(Model):
         )
         trace_params.update(
             {
+                "name": self.name,
                 "model": self.model,
                 "max_steps": self.max_steps,
                 "tool_mode": self.tool_mode,
+                "tool_count": len(self.all_tools),
+                "instructions_length": len(self.instructions or ""),
+                "stop_condition_count": len(self.stop_conditions),
+                "message_count": len(messages),
             }
         )
 
         last_event: AgentEvent | None = None
-        with task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params):
+        with task_and_run(
+            name=self.name,
+            tags=self.tags,
+            label=self.label,
+            inputs=trace_inputs,
+            params=trace_params,
+        ):
             try:
                 async with aclosing(self._stream(thread, messages, hooks, commit=commit)) as stream:
                     async for event in stream:

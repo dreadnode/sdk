@@ -4,6 +4,7 @@ import itertools
 import typing as t
 from inspect import isawaitable
 from pathlib import Path
+from textwrap import dedent
 
 import cyclopts
 import rich
@@ -131,7 +132,7 @@ async def run(  # noqa: PLR0912, PLR0915
 
     help_text = f"Run the '{task_name}' task."
     if task_blueprint.__doc__:
-        help_text += "\n\n" + task_blueprint.__doc__
+        help_text += "\n\n" + dedent(task_blueprint.__doc__)
 
     task_app = cyclopts.App(
         name=task_name,

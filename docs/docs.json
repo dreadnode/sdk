@@ -17,7 +17,11 @@
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["intro", "install", "config"]
+        "pages": [
+          "intro",
+          "install",
+          "config"
+        ]
       },
       {
         "group": "Example Agents",
@@ -88,7 +92,9 @@
       },
       {
         "group": "Migrations",
-        "pages": ["migrations/v1"]
+        "pages": [
+          "migrations/v1"
+        ]
       },
       {
         "group": "SDK",
@@ -96,29 +102,36 @@
           {
             "group": "Core",
             "pages": [
-              "strikes/sdk/main",
-              "strikes/sdk/task",
-              "strikes/sdk/api"
+              "sdk/main",
+              "sdk/task",
+              "sdk/api"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "sdk/agent",
+              "sdk/agent_tools"
             ]
           },
           {
             "group": "Data and Processing",
             "pages": [
-              "strikes/sdk/data_types",
-              "strikes/sdk/serialization",
-              "strikes/sdk/artifact",
-              "strikes/sdk/transforms",
-              "strikes/sdk/optimization"
+              "sdk/data_types",
+              "sdk/serialization",
+              "sdk/artifact",
+              "sdk/transforms",
+              "sdk/optimization"
             ]
           },
           {
             "group": "Evaluation and Integrations",
             "pages": [
-              "strikes/sdk/eval",
-              "strikes/sdk/metrics",
-              "strikes/sdk/scorers",
-              "strikes/sdk/integrations",
-              "strikes/sdk/airt"
+              "sdk/eval",
+              "sdk/metrics",
+              "sdk/scorers",
+              "sdk/integrations",
+              "sdk/airt"
             ]
           }
         ]

@@ -130,8 +130,6 @@ async def run(  # noqa: PLR0912, PLR0915
     study_cli.__annotations__["config"] = config_annotation
 
     help_text = f"Run the '{study_name}' study."
-    if study_blueprint.__doc__:
-        help_text += "\n\n" + study_blueprint.__doc__
     if study_blueprint.description:
         help_text += "\n\n" + study_blueprint.description
 

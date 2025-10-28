@@ -4,7 +4,7 @@ from pydantic import ConfigDict
 from rigging import tools
 from rigging.tools.base import ToolMethod as RiggingToolMethod
 
-from dreadnode.meta import Component, Config, Model
+from dreadnode.meta import Component, Model
 
 Tool = tools.Tool
 ToolMode = tools.ToolMode
@@ -103,18 +103,18 @@ def tool_method(
     description: str | None = None,
     catch: bool | t.Iterable[type[Exception]] | None = None,
     truncate: int | None = None,
-) -> t.Callable[[t.Callable[P, R]], RiggingToolMethod[P, R]]: ...
+) -> t.Callable[[t.Callable[t.Concatenate[t.Any, P], R]], RiggingToolMethod[P, R]]: ...
 
 
 @t.overload
 def tool_method(
-    func: t.Callable[P, R],
+    func: t.Callable[t.Concatenate[t.Any, P], R],
     /,
 ) -> RiggingToolMethod[P, R]: ...
 
 
 def tool_method(
-    func: t.Callable[P, R] | None = None,
+    func: t.Callable[t.Concatenate[t.Any, P], R] | None = None,
     /,
     *,
     variants: list[str] | None = None,
@@ -122,7 +122,10 @@ def tool_method(
     description: str | None = None,
     catch: bool | t.Iterable[type[Exception]] | None = None,
     truncate: int | None = None,
-) -> t.Callable[[t.Callable[P, R]], RiggingToolMethod[P, R]] | RiggingToolMethod[P, R]:
+) -> (
+    t.Callable[[t.Callable[t.Concatenate[t.Any, P], R]], RiggingToolMethod[P, R]]
+    | RiggingToolMethod[P, R]
+):
     """
     Marks a method on a Toolset as a tool, adding it to specified variants.
 
@@ -143,7 +146,9 @@ def tool_method(
         truncate: The maximum number of characters for the tool's output.
     """
 
-    def make_tool_method(func: t.Callable[P, R]) -> RiggingToolMethod[P, R]:
+    def make_tool_method(
+        func: t.Callable[t.Concatenate[t.Any, P], R],
+    ) -> RiggingToolMethod[P, R]:
         tool_method_descriptor: RiggingToolMethod[P, R] = tools.tool_method(
             name=name,
             description=description,
@@ -168,7 +173,7 @@ class Toolset(Model):
     - A `get_tools` method for discovering methods decorated with `@dreadnode.tool_method`.
     """
 
-    variant: str = Config("all")
+    variant: str | None = None
     """The variant for filtering tools available in this toolset."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
@@ -190,7 +195,7 @@ class Toolset(Model):
                     continue
 
                 variants = getattr(class_member, TOOL_VARIANTS_ATTR, [])
-                if variant in variants:
+                if not variant or not variants or variant in variants:
                     bound_tool = t.cast("AnyTool", getattr(self, name))
                     tools.append(bound_tool)
                     seen_names.add(name)

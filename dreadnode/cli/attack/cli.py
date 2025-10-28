@@ -128,8 +128,6 @@ async def run(  # noqa: PLR0912, PLR0915
     attack_cli.__annotations__["config"] = config_annotation
 
     help_text = f"Run the '{attack_name}' attack."
-    if attack_blueprint.__doc__:
-        help_text += "\n\n" + attack_blueprint.__doc__
     if attack_blueprint.description:
         help_text += "\n\n" + attack_blueprint.description
 

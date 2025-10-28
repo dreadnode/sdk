@@ -359,6 +359,7 @@ class Eval(Model, t.Generic[In, Out]):
                     tags=self.tags,
                     inputs=trace_inputs,
                     params={**trace_params, **scenario_params},
+                    label=self.label,
                 )
                 if self.trace
                 else contextlib.nullcontext()

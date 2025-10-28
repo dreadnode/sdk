@@ -58,6 +58,8 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
     """A brief description of the study's purpose."""
     tags: list[str] = Config(default_factory=lambda: ["study"])
     """A list of tags associated with the study for logging."""
+    label: str | None = Config(default=None)
+    """Specific label for tracing, otherwise derived from the name."""
 
     search_strategy: SkipValidation[Search[CandidateT]]
     """The search strategy to use for suggesting new trials."""
@@ -575,7 +577,13 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             log_outputs(to=log_to, **outputs)
 
         with (
-            task_and_run(name=self.name, tags=self.tags, inputs=trace_inputs, params=trace_params),
+            task_and_run(
+                name=self.name,
+                tags=self.tags,
+                inputs=trace_inputs,
+                params=trace_params,
+                label=self.label,
+            ),
             contextlib.ExitStack() as stack,
         ):
             stack.callback(log_study, last_event)
