@@ -4,6 +4,7 @@ from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
 
 import rigging as rg
+from loguru import logger
 from pydantic import ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
 from rigging.message import inject_system_content
 from ulid import ULID  # can't access via rg
@@ -237,6 +238,8 @@ class Agent(Model):
         try:
             messages = rg.caching.apply_cache_mode_to_messages(self.caching, [messages])[0]
 
+            logger.trace(f"Generating with model '{generator.model}'. Messages: {messages!r}")
+
             generated = (await generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
                 raise generated  # noqa: TRY301
@@ -252,6 +255,7 @@ class Agent(Model):
             )
 
         except Exception as error:  # noqa: BLE001
+            logger.error(f"Error during generation: {error}", exc_info=True)
             chat = rg.Chat(
                 messages,
                 [],
@@ -278,6 +282,13 @@ class Agent(Model):
         stop_conditions = self.stop_conditions
         session_id = ULID()
 
+        logger.info(
+            f"Starting Agent '{self.name}' ({session_id}): "
+            f"model='{self.model}', "
+            f"max_steps={self.max_steps}, "
+            f"tools={[tool.name for tool in self.all_tools]}"
+        )
+
         # Event dispatcher
 
         async def _dispatch(event: AgentEvent) -> t.AsyncIterator[AgentEvent]:
@@ -291,6 +302,11 @@ class Agent(Model):
             applicable_hooks = list(set(hooks.get(type(event), []) + hooks.get(AgentEvent, [])))
             if not applicable_hooks:
                 return
+
+            logger.debug(
+                f"Agent '{self.name}' ({session_id}) dispatching '{type(event).__name__}': "
+                f"applicable_hooks={[get_callable_name(h, short=True) for h in applicable_hooks]}"
+            )
 
             # Run all applicable hooks and collect their reactions
             hook_reactions: dict[str, Reaction | None] = {}
@@ -309,6 +325,10 @@ class Agent(Model):
 
                 if reaction is None:
                     continue
+
+                logger.debug(
+                    f"Agent '{self.name}' ({session_id}) hook '{hook_name}' returned reaction: {reaction!r}"
+                )
 
                 if not isinstance(reaction, Reaction):
                     warn_at_user_stacklevel(
@@ -386,6 +406,9 @@ class Agent(Model):
                 return
 
             if isinstance(winning_reaction, RetryWithFeedback):
+                logger.debug(
+                    f"Agent '{self.name}' ({session_id}) injecting feedback for retry: '{winning_reaction.feedback}'"
+                )
                 messages.append(rg.Message("user", winning_reaction.feedback))
                 raise Retry(messages=messages) from winning_reaction
 
@@ -407,6 +430,10 @@ class Agent(Model):
                 )
             ):
                 yield event
+
+            logger.debug(
+                f"Executing tool '{tool_call.name}' with args: {tool_call.function.arguments}"
+            )
 
             message: rg.Message
             stop = False
@@ -431,6 +458,7 @@ class Agent(Model):
                         yield event
                     raise
             else:
+                logger.warning(f"Tool '{tool_call.name}' not found.")
                 message = rg.Message.from_model(
                     rg.model.SystemErrorModel(content=f"Tool '{tool_call.name}' not found.")
                 )
@@ -516,6 +544,7 @@ class Agent(Model):
                 # Check for stop conditions
 
                 if any(cond(events) for cond in stop_conditions):
+                    logger.info("A stop condition was met. Ending run.")
                     break
 
                 # Check if stalled
@@ -523,6 +552,10 @@ class Agent(Model):
                 if not messages[-1].tool_calls:
                     if not stop_conditions:
                         break
+
+                    logger.warning(
+                        f"Agent '{self.name}' ({session_id}) stalled: No tool calls and no stop conditions met."
+                    )
 
                     async for event in _dispatch(
                         AgentStalled(
@@ -588,6 +621,23 @@ class Agent(Model):
         if commit == "always" or (commit == "on-success" and not error):
             thread.messages = messages
             thread.events.extend(events)
+
+        total_usage = _total_usage_from_events(events)
+        log_message = (
+            f"Agent '{self.name}' finished: "
+            f"reason='{stop_reason}', "
+            f"steps={step - 1}, "
+            f"total_tokens={total_usage.total_tokens}, "
+            f"in_tokens={total_usage.input_tokens}, "
+            f"out_tokens={total_usage.output_tokens}"
+        )
+
+        if stop_reason == "finished":
+            logger.success(log_message)
+        elif stop_reason == "error":
+            logger.error(f"{log_message}, error='{error!r}'")
+        else:
+            logger.warning(log_message)
 
         yield AgentEnd(
             session_id=session_id,

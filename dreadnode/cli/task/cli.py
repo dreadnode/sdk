@@ -1,4 +1,5 @@
 import contextlib
+import inspect
 import itertools
 import typing as t
 from inspect import isawaitable
@@ -54,7 +55,7 @@ async def run(  # noqa: PLR0912, PLR0915
     task: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
-    dreadnode_config: DreadnodeConfig | None = None,
+    dn_config: DreadnodeConfig | None = None,
 ) -> None:
     """
     Run a task by name, file, or module.
@@ -104,19 +105,17 @@ async def run(  # noqa: PLR0912, PLR0915
     task_blueprint = tasks_by_lower_name[task_name.lower()]
 
     config_model = get_config_model(task_blueprint)
-    config_parameter = cyclopts.Parameter(name="*", group="Task Config")(config_model)
-
-    config_default = None
+    config_annotation = cyclopts.Parameter(name="*", group="Task Config")(config_model)
+    config_default: t.Any = inspect.Parameter.empty
     with contextlib.suppress(Exception):
         config_default = config_model()
-        config_parameter = config_parameter | None  # type: ignore[assignment]
 
     async def task_cli(
         *,
         config: t.Any = config_default,
-        dreadnode_config: DreadnodeConfig | None = dreadnode_config,
+        dn_config: DreadnodeConfig | None = dn_config,
     ) -> None:
-        (dreadnode_config or DreadnodeConfig()).apply()
+        (dn_config or DreadnodeConfig()).apply()
 
         hydrated_task = hydrate(task_blueprint, config)
         flat_config = flatten_model(config)
@@ -128,11 +127,15 @@ async def run(  # noqa: PLR0912, PLR0915
 
         await hydrated_task()
 
-    task_cli.__annotations__["config"] = config_parameter
+    task_cli.__annotations__["config"] = config_annotation
+
+    help_text = f"Run the '{task_name}' task."
+    if task_blueprint.__doc__:
+        help_text += "\n\n" + task_blueprint.__doc__
 
     task_app = cyclopts.App(
         name=task_name,
-        help=task_blueprint.__doc__ or f"Run the '{task_name}' task.",
+        help=help_text,
         help_on_error=True,
         help_flags=("help"),
         version_flags=(),

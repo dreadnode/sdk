@@ -42,6 +42,8 @@ def format_study(study: "Study") -> RenderableType:
     """
     Format a single Study object into a detailed rich Panel.
     """
+    from dreadnode.airt import Attack
+
     details = Table(
         box=box.MINIMAL,
         show_header=False,
@@ -51,7 +53,15 @@ def format_study(study: "Study") -> RenderableType:
     details.add_column("Value", style="white")
 
     details.add_row(Text("Description", justify="right"), study.description or "-")
-    details.add_row(Text("Task Factory", justify="right"), get_callable_name(study.task_factory))
+
+    # TODO(nick): Move attack formatting out of here
+    if isinstance(study, Attack):
+        details.add_row(Text("Target", justify="right"), repr(study.target))
+    else:
+        details.add_row(
+            Text("Task Factory", justify="right"), get_callable_name(study.task_factory)
+        )
+
     details.add_row(Text("Search Strategy", justify="right"), study.search_strategy.name)
 
     if study.dataset is not None:
@@ -60,10 +70,13 @@ def format_study(study: "Study") -> RenderableType:
         )
 
     if study.objectives:
-        objective_names = ", ".join(f"[cyan]{name}[/]" for name in study.objective_names)
-        details.add_row(Text("Objectives", justify="right"), objective_names)
-        directions = ", ".join(f"[yellow]{direction}[/]" for direction in study.directions)
-        details.add_row(Text("Directions", justify="right"), directions)
+        objectives = " | ".join(
+            f"[cyan]{name} :arrow_upper_right:[/]"
+            if direction == "maximize"
+            else f"[magenta]{name} :arrow_lower_right:[/]"
+            for name, direction in zip(study.objective_names, study.directions, strict=True)
+        )
+        details.add_row(Text("Objectives", justify="right"), objectives)
 
     if study.constraints:
         constraint_names = ", ".join(

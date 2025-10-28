@@ -33,14 +33,11 @@ from logfire._internal.stack_info import (
 from loguru import logger
 
 get_user_frame_and_stacklevel = _get_user_frame_and_stacklevel
-warn_at_user_stacklevel = _warn_at_user_stacklevel
 get_filepath_attribute = _get_filepath_attribute
 is_user_code = _is_user_code
 
 
 import dreadnode  # noqa: E402
-
-warn_at_user_stacklevel = _warn_at_user_stacklevel
 
 SysExcInfo = (
     tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None]
@@ -740,6 +737,18 @@ def _internal_error_exc_info() -> SysExcInfo:
         return exc_type, exc_val, tb  # noqa: TRY300
     except Exception:  # noqa: BLE001
         return original_exc_info
+
+
+def warn_at_user_stacklevel(msg: str, category: type[Warning]) -> None:
+    """
+    Issue a warning at the user code stack level and log it.
+
+    Args:
+        msg: The warning message.
+        category: The warning category.
+    """
+    logger.warning(msg)
+    _warn_at_user_stacklevel(msg, category)
 
 
 @contextmanager

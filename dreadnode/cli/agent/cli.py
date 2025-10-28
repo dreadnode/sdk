@@ -1,4 +1,5 @@
 import contextlib
+import inspect
 import itertools
 import typing as t
 from inspect import isawaitable
@@ -55,7 +56,8 @@ async def run(  # noqa: PLR0912, PLR0915
     agent: str,
     *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: Path | None = None,
-    dreadnode_config: DreadnodeConfig | None = None,
+    raw: t.Annotated[bool, cyclopts.Parameter(["-r", "--raw"], negative=False)] = False,
+    dn_config: DreadnodeConfig | None = None,
 ) -> None:
     """
     Run an agent by name, file, or module.
@@ -70,6 +72,7 @@ async def run(  # noqa: PLR0912, PLR0915
     Args:
         agent: The agent to run, e.g., 'my_agents.py:basic' or 'basic'.
         config: Optional path to a TOML/YAML/JSON configuration file for the agent.
+        raw: If set, only display raw logging output without additional formatting.
     """
     from dreadnode.agent import Agent
 
@@ -107,26 +110,25 @@ async def run(  # noqa: PLR0912, PLR0915
     agent_blueprint = agents_by_lower_name[agent_name.lower()]
 
     config_model = get_config_model(agent_blueprint)
-    config_parameter = cyclopts.Parameter(name="*", group="Agent Config")(config_model)
-
-    config_default = None
+    config_annotation = cyclopts.Parameter(name="*", group="Agent Config")(config_model)
+    config_default: t.Any = inspect.Parameter.empty
     with contextlib.suppress(Exception):
         config_default = config_model()
-        config_parameter = config_parameter | None  # type: ignore [assignment]
 
     async def agent_cli(
         input: t.Annotated[str, cyclopts.Parameter(help="Input to the agent")],
         *,
         config: t.Any = config_default,
-        dreadnode_config: DreadnodeConfig | None = dreadnode_config,
+        dn_config: DreadnodeConfig | None = dn_config,
     ) -> None:
-        (dreadnode_config or DreadnodeConfig()).apply()
-
+        dn_config = dn_config or DreadnodeConfig()
+        if raw and dn_config.log_level is None:
+            dn_config.log_level = "info"
+        dn_config.apply()
         agent = hydrate(agent_blueprint, config)
-        flat_config = flatten_model(config)
 
         rich.print(f"Running agent: [bold]{agent.name}[/bold] with config:")
-        for key, value in flat_config.items():
+        for key, value in flatten_model(config).items():
             rich.print(f" |- {key}: {value}")
         rich.print()
 
@@ -134,11 +136,17 @@ async def run(  # noqa: PLR0912, PLR0915
             async for event in stream:
                 rich.print(event)
 
-    agent_cli.__annotations__["config"] = config_parameter
+    agent_cli.__annotations__["config"] = config_annotation
+
+    help_text = f"Run the '{agent_name}' agent."
+    if agent_blueprint.__doc__:
+        help_text += "\n\n" + agent_blueprint.__doc__
+    if agent_blueprint.description:
+        help_text += "\n\n" + agent_blueprint.description
 
     agent_app = cyclopts.App(
         name=agent_name,
-        help=f"Run the '{agent_name}' agent.",
+        help=help_text,
         help_on_error=True,
         help_flags=("help"),
         version_flags=(),
