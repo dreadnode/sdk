@@ -128,10 +128,6 @@ class AutoDocGenerator:
         module_data = self.handler.collect(module_path, options)
         html = self.handler.render(module_data, options)
 
-        if "When to Use This Tool" in html:
-            with open("debug.html", "w", encoding="utf-8") as f:
-                f.write(html)
-
         return str(
             CustomMarkdownConverter(
                 code_language="python",
