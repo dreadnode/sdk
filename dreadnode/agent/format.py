@@ -30,7 +30,7 @@ def format_agents(agents: "list[Agent]") -> RenderableType:
         table.add_row(
             agent.name,
             agent.description or "-",
-            (agent.model or "-").split(",")[0],
+            agent.model_name or "-",
             tool_names,
         )
 
@@ -50,7 +50,7 @@ def format_agent(agent: "Agent") -> RenderableType:
     details.add_column("Value", style="white")
 
     details.add_row(Text("Description", justify="right"), agent.description or "-")
-    details.add_row(Text("Model", justify="right"), agent.model or "-")
+    details.add_row(Text("Model", justify="right"), agent.model_name or "-")
     details.add_row(
         Text("Instructions", justify="right"),
         f'"{shorten_string(agent.instructions, 100)}"' if agent.instructions else "-",

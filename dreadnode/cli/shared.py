@@ -31,4 +31,10 @@ class DreadnodeConfig:
         if self.log_level:
             configure_logging(self.log_level, self.log_file)
 
-        configure(server=self.server, token=self.token, project=self.project, console=self.console)
+        configure(
+            server=self.server,
+            token=self.token,
+            profile=self.profile,
+            project=self.project,
+            console=self.console,
+        )

@@ -1,6 +1,6 @@
 [project]
 name = "dreadnode"
-version = "1.15.2"
+version = "1.15.3"
 description = "Dreadnode SDK"
 authors = [{ name = "Nick Landers", email = "monoxgas@gmail.com" }]
 readme = "README.md"
@@ -15,7 +15,6 @@ dependencies = [
     "coolname>=2.2.0,<3.0.0",
     "pandas>=2.2.3,<3.0.0",
     "fsspec[s3]>=2023.1.0,<=2025.3.0",
-    "cyclopts>=3.22.2,<4.0.0",
     "rigging>=3.2.1,<4.0.0",
     "optuna>=4.5.0,<5.0.0",
     "numpy<=2.2.6", # 3.10 support was dropped in 2.3.0
@@ -23,6 +22,7 @@ dependencies = [
     "loguru>=0.7.3",
     "python-jsonpath>=2.0.1",
     "pyyaml>=6.0.2",
+    "cyclopts>=4.2.0",
 ]
 
 [project.optional-dependencies]

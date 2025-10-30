@@ -158,11 +158,11 @@ async def run(  # noqa: PLR0912, PLR0915
             return
 
         if config.suffix in {".toml"}:
-            agent_app._config = cyclopts.config.Toml(config, use_commands_as_keys=False)  # noqa: SLF001
+            agent_app._config = cyclopts.config.Toml(config, use_commands_as_keys=False)  # type: ignore[assignment] # noqa: SLF001
         elif config.suffix in {".yaml", ".yml"}:
-            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # noqa: SLF001
+            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # type: ignore[assignment] # noqa: SLF001
         elif config.suffix in {".json"}:
-            agent_app._config = cyclopts.config.Json(config, use_commands_as_keys=False)  # noqa: SLF001
+            agent_app._config = cyclopts.config.Json(config, use_commands_as_keys=False)  # type: ignore[assignment] # noqa: SLF001
         else:
             rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
             return
