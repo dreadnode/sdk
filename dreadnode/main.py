@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urlunparse
+from uuid import UUID
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -34,10 +35,12 @@ from dreadnode.constants import (
     ENV_API_TOKEN,
     ENV_CONSOLE,
     ENV_LOCAL_DIR,
+    ENV_ORGANIZATION,
     ENV_PROFILE,
     ENV_PROJECT,
     ENV_SERVER,
     ENV_SERVER_URL,
+    ENV_WORKSPACE,
 )
 from dreadnode.error import AssertionFailedError
 from dreadnode.logging_ import console as logging_console
@@ -176,6 +179,8 @@ class Dreadnode:
         token: str | None = None,
         profile: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
+        organization: str | UUID | None = None,
+        workspace: str | UUID | None = None,
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
@@ -204,6 +209,8 @@ class Dreadnode:
             token: The Dreadnode API token.
             profile: The Dreadnode profile name to use (only used if env vars are not set).
             local_dir: The local directory to store data in.
+            organization: The default organization name or ID to use.
+            workspace: The default workspace name or ID to use.
             project: The default project name to associate all runs with.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
@@ -258,7 +265,38 @@ class Dreadnode:
         else:
             self.local_dir = local_dir
 
+        self.organization = organization or os.environ.get(ENV_ORGANIZATION)
+        with contextlib.suppress(ValueError):
+            self.organization = UUID(
+                str(self.organization)
+            )  # Now, it's a UUID if possible, else str
+
+        self.workspace = workspace or os.environ.get(ENV_WORKSPACE)
         self.project = project or os.environ.get(ENV_PROJECT)
+
+        organizations = self._api.list_organizations()
+
+        if not organizations:
+            raise RuntimeError(
+                f"You are not part of any organizations on {self.server}. You will not be able to use Strikes.",
+            )
+
+        if not self.organization and len(organizations) > 1:
+            raise RuntimeError(
+                "You are part of multiple organizations. Please specify an organization."
+            )
+
+        if self.project:
+            all_projects = self._api.list_projects()
+            # ensure there are not multiple projects with the same name and different workspace_ids
+            if self.project:
+                matching_projects = [p for p in all_projects if p.name == self.project]
+                if len(matching_projects) > 1:
+                    raise RuntimeError(
+                        f"Multiple projects named '{self.project}' found."
+                        "Please specify a workspace to disambiguate."
+                    )
+
         self.service_name = service_name
         self.service_version = service_version
         self.console = (
@@ -288,6 +326,28 @@ class Dreadnode:
             )
 
         self.initialize()
+
+    def _verify_organization_and_workspace(self) -> None:
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+
+        if self.organization is not None:
+            organizations = self._api.list_organizations()
+            if self.organization not in [o.name for o in organizations]:
+                raise RuntimeError(
+                    f"Organization '{self.organization}' not found in your Dreadnode account.",
+                )
+            if isinstance(self.organization, str):
+                self.organization = next(
+                    (o.id for o in organizations if o.name == self.organization), None
+                )
+
+        if self.workspace is not None:
+            workspaces = self._api.list_workspaces()
+            if self.workspace not in [w.name for w in workspaces]:
+                raise RuntimeError(
+                    f"Workspace '{self.workspace}' not found in your Dreadnode account.",
+                )
 
     def initialize(self) -> None:
         """
@@ -333,6 +393,7 @@ class Dreadnode:
 
                 self._api = ApiClient(self.server, api_key=self.token)
 
+                self._verify_organization_and_workspace()
                 self._api.list_projects()
             except Exception as e:
                 raise RuntimeError(
