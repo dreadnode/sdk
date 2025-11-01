@@ -431,6 +431,8 @@ class Project(BaseModel):
     """Name of the project."""
     description: str | None = Field(repr=False)
     """Description of the project."""
+    workspace_id: UUID | None
+    """Unique identifier for the workspace the project belongs to."""
     created_at: datetime
     """Timestamp when the project was created."""
     updated_at: datetime
@@ -439,6 +441,54 @@ class Project(BaseModel):
     """Number of runs associated with the project."""
     last_run: RawRun | None = Field(repr=False)
     """Last run associated with the project, if any."""
+
+
+class Workspace(BaseModel):
+    id: UUID
+    """Unique identifier for the workspace."""
+    name: str
+    """Name of the workspace."""
+    slug: str
+    """URL-friendly slug for the workspace."""
+    description: str | None
+    """Description of the workspace."""
+    owner_id: UUID
+    """Unique identifier for the owner of the workspace."""
+    org_id: UUID
+    """Unique identifier for the organization the workspace belongs to."""
+    org_name: str | None
+    """Name of the organization the workspace belongs to."""
+    is_active: bool
+    """Is the workspace active?"""
+    is_default: bool
+    """Is the workspace the default one?"""
+    project_count: int | None
+    """Number of projects in the workspace."""
+    created_at: datetime
+    """Creation timestamp."""
+    updated_at: datetime
+    """Last update timestamp."""
+
+
+class Organization(BaseModel):
+    id: UUID
+    """Unique identifier for the organization."""
+    name: str
+    """Name of the organization."""
+    slug: str
+    """URL-friendly slug for the organization."""
+    description: str | None
+    """Description of the organization."""
+    is_active: bool
+    """Is the organization active?"""
+    allow_external_invites: bool
+    """Allow external invites to the organization?"""
+    max_members: int
+    """Maximum number of members allowed in the organization."""
+    created_at: datetime
+    """Creation timestamp."""
+    updated_at: datetime
+    """Last update timestamp."""
 
 
 # Derived types
