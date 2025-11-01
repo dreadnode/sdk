@@ -19,6 +19,7 @@ from dreadnode.api.models import (
     ExportFormat,
     GithubTokenResponse,
     MetricAggregationType,
+    Organization,
     Project,
     RawRun,
     RawTask,
@@ -34,6 +35,7 @@ from dreadnode.api.models import (
     TraceTree,
     UserDataCredentials,
     UserResponse,
+    Workspace,
 )
 from dreadnode.api.util import (
     convert_flat_tasks_to_tree,
@@ -757,3 +759,50 @@ class ApiClient:
         response = self.request("GET", "/platform/templates/all", params=params)
         zip_content: bytes = response.content
         return zip_content
+
+    # RBAC
+    def list_organizations(self) -> list[Organization]:
+        """
+        Retrieves a list of organizations the user belongs to.
+
+        Returns:
+            A list of organization names.
+        """
+        response = self.request("GET", "/organizations")
+        return [Organization(**org) for org in response.json()]
+
+    def get_organization(self, organization_id: str) -> Organization:
+        """
+        Retrieves details of a specific organization.
+
+        Args:
+            organization_id (str): The organization identifier.
+
+        Returns:
+            Organization: The Organization object.
+        """
+        response = self.request("GET", f"/organizations/{organization_id!s}")
+        return Organization(**response.json())
+
+    def list_workspaces(self) -> list[Workspace]:
+        """
+        Retrieves a list of workspaces the user has access to.
+
+        Returns:
+            A list of workspace names.
+        """
+        response = self.request("GET", "/workspaces")
+        return [Workspace(**ws) for ws in response.json()]
+
+    def get_workspace(self, workspace_id: str) -> Workspace:
+        """
+        Retrieves details of a specific workspace.
+
+        Args:
+            workspace_id (str): The workspace identifier.
+
+        Returns:
+            Workspace: The Workspace object.
+        """
+        response = self.request("GET", f"/workspaces/{workspace_id!s}")
+        return Workspace(**response.json())
