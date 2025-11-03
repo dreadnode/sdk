@@ -16,7 +16,7 @@ from dreadnode.agent.reactions import (
     Reaction,
     RetryWithFeedback,
 )
-from dreadnode.agent.types import Message, ToolCall, Usage
+from dreadnode.agent._types import Message, ToolCall, Usage
 from dreadnode.util import format_dict, shorten_string
 
 if t.TYPE_CHECKING:
