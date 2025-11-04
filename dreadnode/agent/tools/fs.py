@@ -119,7 +119,7 @@ class Filesystem(Toolset):
     def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"],
-    ) -> rg.ContentImageUrl | str:
+    ) -> rg.ContentImageUrl | str | bytes:
         """Read a file and return its contents."""
         _path = self._resolve(path)
         content = _path.read_bytes()
@@ -129,7 +129,7 @@ class Filesystem(Toolset):
         except UnicodeDecodeError as e:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)
-            raise ValueError("File is not a valid text file.") from e
+            return content
 
     @tool_method(variants=["read", "write"], catch=True)
     def read_lines(
@@ -277,6 +277,19 @@ class Filesystem(Toolset):
         _path = self._safe_create_file(path)
         with _path.open("w") as f:
             f.write(contents)
+
+        return FilesystemItem.from_path(_path, self._upath)
+
+    @tool_method(variants=["write"], catch=True)
+    def write_file_bytes(
+        self,
+        path: t.Annotated[str, "Path to write the file to"],
+        bytes: t.Annotated[bytes, "Bytes to write to the file"]
+    ) -> FilesystemItem:
+        """Create or overwrite a file with the given bytes."""
+        _path = self._safe_create_file(path)
+        with _path.open("wb") as f:
+            f.write(bytes)
 
         return FilesystemItem.from_path(_path, self._upath)
 
