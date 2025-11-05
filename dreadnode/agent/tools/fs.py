@@ -135,7 +135,17 @@ class Filesystem(Toolset):
         self,
         path: t.Annotated[str, "Path to the file to read"],
     ) -> rg.ContentImageUrl | str | bytes:
-        """Read a file and return its contents."""
+        """
+        Read a file and return its contents.
+
+        Returns:
+            - str: The file contents decoded as UTF-8 if possible.
+            - rg.ContentImageUrl: If the file is non-text and multi_modal is True.
+            - bytes: If the file cannot be decoded as UTF-8 and multi_modal is False.
+
+        Note:
+            Callers should be prepared to handle raw bytes if the file is not valid UTF-8 and multi_modal is False.
+        """
         _path = self._resolve(path)
         async with aiofiles.open(_path, "rb") as f:
             content = await f.read()
