@@ -72,6 +72,8 @@ class Filesystem(Toolset):
     """Extra options for the universal filesystem."""
     multi_modal: bool = Config(default=False)
     """Enable returning non-text context like images."""
+    max_concurrent_reads: int = Config(default=25)
+    """Maximum number of concurrent file reads for grep operations."""
 
     variant: t.Literal["read", "write"] = Config(default="read")
 
@@ -300,10 +302,17 @@ class Filesystem(Toolset):
 
             return file_matches
 
-        # Search files in parallel
+        # Search files in parallel with concurrency limit
+        semaphore = asyncio.Semaphore(self.max_concurrent_reads)
+
+        async def search_file_limited(file_path: UPath) -> list[GrepMatch]:
+            """Search a single file with semaphore to limit concurrency."""
+            async with semaphore:
+                return await search_file(file_path)
+
         all_matches: list[GrepMatch] = []
         results = await asyncio.gather(
-            *[search_file(file_path) for file_path in files_to_search]
+            *[search_file_limited(file_path) for file_path in files_to_search]
         )
 
         # Flatten results and respect max_results
