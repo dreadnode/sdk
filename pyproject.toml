@@ -24,6 +24,7 @@ dependencies = [
     "cyclopts>=4.2.0",
     "aiofiles>=24.1.0,<25.0.0",
     "rigging>=3.3.4",
+    "aiofiles>=24.1.0,<25.0.0",
 ]
 
 [project.optional-dependencies]
