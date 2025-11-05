@@ -23,6 +23,7 @@ dependencies = [
     "python-jsonpath>=2.0.1",
     "pyyaml>=6.0.2",
     "cyclopts>=4.2.0",
+    "aiofiles>=24.1.0,<25.0.0",
 ]
 
 [project.optional-dependencies]

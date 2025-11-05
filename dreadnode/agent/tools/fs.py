@@ -1,14 +1,16 @@
-import contextlib
+import asyncio
 import re
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import aiofiles
 import rigging as rg
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from pydantic import PrivateAttr
 from upath import UPath
+from loguru import logger
 
 from dreadnode.agent.tools import Toolset, tool_method
 from dreadnode.common_types import AnyDict
@@ -43,7 +45,9 @@ class FilesystemItem:
                 type="file",
                 name=relative,
                 size=path.stat().st_size,
-                modified=datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime(
+                modified=datetime.fromtimestamp(
+                    path.stat().st_mtime, tz=timezone.utc
+                ).strftime(
                     "%Y-%m-%d %H:%M:%S",
                 ),
             )
@@ -94,15 +98,26 @@ class Filesystem(Toolset):
 
         return full_path
 
-    def _safe_create_file(self, path: str) -> "UPath":
+    async def _safe_create_file(self, path: str) -> "UPath":
+        """
+        Safely create a file and its parent directories if they don't exist.
+
+        Args:
+            path: Path to the file to create
+
+        Returns:
+            UPath: The resolved path to the created file
+        """
         file_path = self._resolve(path)
 
         parent_path = file_path.parent
         if not parent_path.exists():
-            parent_path.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(
+                lambda: parent_path.mkdir(parents=True, exist_ok=True)
+            )
 
         if not file_path.exists():
-            file_path.touch()
+            await asyncio.to_thread(file_path.touch)
 
         return file_path
 
@@ -116,23 +131,24 @@ class Filesystem(Toolset):
         return full_path[len(base_path) :]
 
     @tool_method(variants=["read", "write"], catch=True)
-    def read_file(
+    async def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"],
     ) -> rg.ContentImageUrl | str | bytes:
         """Read a file and return its contents."""
         _path = self._resolve(path)
-        content = _path.read_bytes()
+        async with aiofiles.open(_path, "rb") as f:
+            content = await f.read()
 
         try:
             return content.decode("utf-8")
-        except UnicodeDecodeError as e:
+        except UnicodeDecodeError:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)
             return content
 
     @tool_method(variants=["read", "write"], catch=True)
-    def read_lines(
+    async def read_lines(
         self,
         path: t.Annotated[str, "Path to the file to read"],
         start_line: t.Annotated[int, "Start line number (0-indexed)"] = 0,
@@ -150,8 +166,8 @@ class Filesystem(Toolset):
         if not _path.is_file():
             raise ValueError(f"'{path}' is not a file.")
 
-        with _path.open("r") as f:
-            lines = f.readlines()
+        async with aiofiles.open(_path, "r") as f:
+            lines = await f.readlines()
 
             if start_line < 0:
                 start_line = len(lines) + start_line
@@ -165,7 +181,7 @@ class Filesystem(Toolset):
             return "\n".join(lines[start_line:end_line])
 
     @tool_method(variants=["read", "write"], catch=True)
-    def ls(
+    async def ls(
         self,
         path: t.Annotated[str, "Directory path to list"] = "",
     ) -> list[FilesystemItem]:
@@ -178,11 +194,11 @@ class Filesystem(Toolset):
         if not _path.is_dir():
             raise ValueError(f"'{path}' is not a directory.")
 
-        items = list(_path.iterdir())
+        items = await asyncio.to_thread(lambda: list(_path.iterdir()))
         return [FilesystemItem.from_path(item, self._upath) for item in items]
 
     @tool_method(catch=True)
-    def glob(
+    async def glob(
         self,
         pattern: t.Annotated[str, "Glob pattern for file matching"],
     ) -> list[FilesystemItem]:
@@ -190,7 +206,7 @@ class Filesystem(Toolset):
         Returns a list of paths matching a valid glob pattern. The pattern can
         include ** for recursive matching, such as '/path/**/dir/*.py'.
         """
-        matches = list(self._upath.glob(pattern))
+        matches = await asyncio.to_thread(lambda: list(self._upath.glob(pattern)))
 
         # Check to make sure all matches are within the base path
         for match in matches:
@@ -200,7 +216,7 @@ class Filesystem(Toolset):
         return [FilesystemItem.from_path(match, self._upath) for match in matches]
 
     @tool_method(variants=["read", "write"], catch=True)
-    def grep(
+    async def grep(
         self,
         pattern: t.Annotated[str, "Regular expression pattern to search for"],
         path: t.Annotated[str, "File or directory path to search in"],
@@ -225,25 +241,28 @@ class Filesystem(Toolset):
             files_to_search.append(target_path)
         elif target_path.is_dir():
             files_to_search.extend(
-                list(target_path.rglob("*") if recursive else target_path.glob("*")),
+                await asyncio.to_thread(
+                    lambda: list(
+                        target_path.rglob("*") if recursive else target_path.glob("*")
+                    )
+                ),
             )
 
-        matches: list[GrepMatch] = []
-        for file_path in [f for f in files_to_search if f.is_file()]:
-            if len(matches) >= max_results:
-                break
+        # Filter to files only and check size
+        files_to_search = [
+            f
+            for f in files_to_search
+            if f.is_file() and f.stat().st_size <= MAX_GREP_FILE_SIZE
+        ]
 
-            if file_path.stat().st_size > MAX_GREP_FILE_SIZE:
-                continue
-
-            with contextlib.suppress(Exception):
-                with file_path.open("r") as f:
-                    lines = f.readlines()
+        async def search_file(file_path: UPath) -> list[GrepMatch]:
+            """Search a single file for matches."""
+            file_matches: list[GrepMatch] = []
+            try:
+                async with aiofiles.open(file_path, "r") as f:
+                    lines = await f.readlines()
 
                 for i, line in enumerate(lines):
-                    if len(matches) >= max_results:
-                        break
-
                     if regex.search(line):
                         line_num = i + 1
                         context_start = max(0, i - 1)
@@ -253,10 +272,12 @@ class Filesystem(Toolset):
                         for j in range(context_start, context_end):
                             prefix = ">" if j == i else " "
                             line_text = lines[j].rstrip("\r\n")
-                            context.append(f"{prefix} {j + 1}: {shorten_string(line_text, 80)}")
+                            context.append(
+                                f"{prefix} {j + 1}: {shorten_string(line_text, 80)}"
+                            )
 
                         rel_path = self._relative(file_path)
-                        matches.append(
+                        file_matches.append(
                             GrepMatch(
                                 path=rel_path,
                                 line_number=line_num,
@@ -264,41 +285,59 @@ class Filesystem(Toolset):
                                 context=context,
                             ),
                         )
+            except Exception as e:
+                logger.warning(f"Error occurred while searching file {file_path}: {e}")
 
-        return matches
+            return file_matches
+
+        # Search files in parallel
+        all_matches: list[GrepMatch] = []
+        results = await asyncio.gather(
+            *[search_file(file_path) for file_path in files_to_search]
+        )
+
+        # Flatten results and respect max_results
+        for file_matches in results:
+            all_matches.extend(file_matches)
+            if len(all_matches) >= max_results:
+                break
+
+        return all_matches[:max_results]
 
     @tool_method(variants=["write"], catch=True)
-    def write_file(
+    async def write_file(
         self,
         path: t.Annotated[str, "Path to write the file to"],
         contents: t.Annotated[str, "Content to write to the file"],
     ) -> FilesystemItem:
         """Create or overwrite a file with the given contents."""
-        _path = self._safe_create_file(path)
-        with _path.open("w") as f:
-            f.write(contents)
+        _path = await self._safe_create_file(path)
+        async with aiofiles.open(_path, "w") as f:
+            await f.write(contents)
 
         return FilesystemItem.from_path(_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
-    def write_file_bytes(
+    async def write_file_bytes(
         self,
         path: t.Annotated[str, "Path to write the file to"],
-        bytes: t.Annotated[bytes, "Bytes to write to the file"]
+        bytes: t.Annotated[bytes, "Bytes to write to the file"],
     ) -> FilesystemItem:
         """Create or overwrite a file with the given bytes."""
-        _path = self._safe_create_file(path)
-        with _path.open("wb") as f:
-            f.write(bytes)
+        _path = await self._safe_create_file(path)
+        async with aiofiles.open(_path, "wb") as f:
+            await f.write(bytes)
 
         return FilesystemItem.from_path(_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
-    def write_lines(
+    async def write_lines(
         self,
         path: t.Annotated[str, "Path to write to"],
         contents: t.Annotated[str, "Content to write"],
-        insert_line: t.Annotated[int, "Line number to insert at (negative counts from end)"] = -1,
+        insert_line: t.Annotated[
+            int, "Line number to insert at (negative counts from end)"
+        ] = -1,
         mode: t.Annotated[str, "'insert' or 'overwrite'"] = "insert",
     ) -> FilesystemItem:
         """
@@ -308,11 +347,11 @@ class Filesystem(Toolset):
         if mode not in ["insert", "overwrite"]:
             raise ValueError("Invalid mode. Use 'insert' or 'overwrite'")
 
-        _path = self._safe_create_file(path)
+        _path = await self._safe_create_file(path)
 
         lines: list[str] = []
-        with _path.open("r") as f:
-            lines = f.readlines()
+        async with aiofiles.open(_path, "r") as f:
+            lines = await f.readlines()
 
         # Normalize line endings in content
         content_lines = [
@@ -332,24 +371,24 @@ class Filesystem(Toolset):
         elif mode == "overwrite":
             lines[insert_line : insert_line + len(content_lines)] = content_lines
 
-        with _path.open("w") as f:
-            f.writelines(lines)
+        async with aiofiles.open(_path, "w") as f:
+            await f.writelines(lines)
 
         return FilesystemItem.from_path(_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
-    def mkdir(
+    async def mkdir(
         self,
         path: t.Annotated[str, "Directory path to create"],
     ) -> FilesystemItem:
         """Create a directory and any necessary parent directories."""
         dir_path = self._resolve(path)
-        dir_path.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: dir_path.mkdir(parents=True, exist_ok=True))
 
         return FilesystemItem.from_path(dir_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
-    def mv(
+    async def mv(
         self,
         src: t.Annotated[str, "Source path"],
         dest: t.Annotated[str, "Destination path"],
@@ -361,14 +400,16 @@ class Filesystem(Toolset):
         if not src_path.exists():
             raise ValueError(f"'{src}' not found")
 
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            lambda: dest_path.parent.mkdir(parents=True, exist_ok=True)
+        )
 
-        src_path.rename(dest_path)
+        await asyncio.to_thread(lambda: src_path.rename(dest_path))
 
         return FilesystemItem.from_path(dest_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
-    def cp(
+    async def cp(
         self,
         src: t.Annotated[str, "Source file"],
         dest: t.Annotated[str, "Destination path"],
@@ -383,15 +424,21 @@ class Filesystem(Toolset):
         if not src_path.is_file():
             raise ValueError(f"'{src}' is not a file")
 
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            lambda: dest_path.parent.mkdir(parents=True, exist_ok=True)
+        )
 
-        with src_path.open("rb") as src_file, dest_path.open("wb") as dest_file:
-            dest_file.write(src_file.read())
+        async with (
+            aiofiles.open(src_path, "rb") as src_file,
+            aiofiles.open(dest_path, "wb") as dest_file,
+        ):
+            content = await src_file.read()
+            await dest_file.write(content)
 
         return FilesystemItem.from_path(dest_path, self._upath)
 
     @tool_method(variants=["write"], catch=True)
-    def delete(
+    async def delete(
         self,
         path: t.Annotated[str, "File or directory"],
     ) -> bool:
@@ -401,8 +448,8 @@ class Filesystem(Toolset):
             raise ValueError(f"'{path}' not found")
 
         if _path.is_dir():
-            _path.rmdir()
+            await asyncio.to_thread(_path.rmdir)
         else:
-            _path.unlink()
+            await asyncio.to_thread(_path.unlink)
 
         return True
