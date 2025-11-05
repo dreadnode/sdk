@@ -126,7 +126,7 @@ class Filesystem(Toolset):
 
         try:
             return content.decode("utf-8")
-        except UnicodeDecodeError as e:
+        except UnicodeDecodeError:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)
             return content
