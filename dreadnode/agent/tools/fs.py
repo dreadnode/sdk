@@ -8,9 +8,9 @@ from pathlib import Path
 import aiofiles
 import rigging as rg
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
+from loguru import logger
 from pydantic import PrivateAttr
 from upath import UPath
-from loguru import logger
 
 from dreadnode.agent.tools import Toolset, tool_method
 from dreadnode.common_types import AnyDict
@@ -297,7 +297,13 @@ class Filesystem(Toolset):
                                 context=context,
                             ),
                         )
-            except Exception as e:
+            except (
+                FileNotFoundError,
+                PermissionError,
+                IsADirectoryError,
+                UnicodeDecodeError,
+                OSError,
+            ) as e:
                 logger.warning(f"Error occurred while searching file {file_path}: {e}")
 
             return file_matches
