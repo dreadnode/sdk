@@ -146,10 +146,10 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
     def clone(self) -> te.Self:
         """
-        Clone a task.
+        Clone the study.
 
         Returns:
-            A new Task instance with the same attributes as this one.
+            A new Study instance with the same attributes as this one.
         """
         return self.model_copy(deep=True)
 
@@ -186,12 +186,8 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         new.concurrency = concurrency or new.concurrency
         new.max_evals = max_trials or new.max_evals
 
-        new_tags = tags or []
         new_objectives = fit_objectives(objectives) if objectives is not None else []
         new_directions = directions or ["maximize"] * len(new_objectives)
-        new_stop_conditions = stop_conditions or []
-        new_constraints = Scorer.fit_many(constraints) if constraints is not None else []
-
         if len(new_directions) != len(new_objectives):
             raise ValueError(
                 f"The number of directions ({len(new_directions)}) must match the "
@@ -199,17 +195,19 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             )
 
         if append:
-            new.tags = [*new.tags, *new_tags]
+            new.tags = [*new.tags, *(tags or [])]
             new.objectives = [*fit_objectives(new.objectives), *new_objectives]
             new.directions = [*new.directions, *new_directions]
-            new.stop_conditions = [*new.stop_conditions, *new_stop_conditions]
-            new.constraints = [*Scorer.fit_many(new.constraints), *new_constraints]
+            new.stop_conditions = [*new.stop_conditions, *(stop_conditions or [])]
+            new.constraints = [*Scorer.fit_many(new.constraints), *Scorer.fit_many(constraints)]
         else:
-            new.tags = new_tags or new.tags
-            new.objectives = new_objectives or new.objectives
-            new.directions = new_directions or new.directions
-            new.stop_conditions = new_stop_conditions or new.stop_conditions
-            new.constraints = new_constraints or new.constraints
+            new.tags = tags if tags is not None else new.tags
+            new.objectives = new_objectives if objectives is not None else new.objectives
+            new.directions = new_directions if directions is not None else new.directions
+            new.stop_conditions = (
+                stop_conditions if stop_conditions is not None else new.stop_conditions
+            )
+            new.constraints = constraints if constraints is not None else new.constraints
 
         return new
 

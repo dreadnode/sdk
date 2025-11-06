@@ -91,10 +91,20 @@ The maximum number of steps (generation + tool calls).
 ### model
 
 ```python
-model: str | None = Config(default=None)
+model: str | Generator | None = Config(
+    default=None, expose_as=str | None
+)
 ```
 
-Inference model (rigging generator identifier).
+Inference model (rigging generator or identifier).
+
+### model\_name
+
+```python
+model_name: str | None
+```
+
+The model name if specified as a string, otherwise None.
 
 ### name
 
@@ -160,6 +170,34 @@ tools: Annotated[
 
 Tools the agent can use.
 
+### clone
+
+```python
+clone() -> te.Self
+```
+
+Clone the agent.
+
+**Returns:**
+
+* `Self`
+  –A new Agent instance with the same attributes as this one.
+
+<Accordion title="Source code in dreadnode/agent/agent.py" icon="code">
+```python
+def clone(self) -> te.Self:
+    """
+    Clone the agent.
+
+    Returns:
+        A new Agent instance with the same attributes as this one.
+    """
+    return self.model_copy(deep=True)
+```
+
+
+</Accordion>
+
 ### get\_prompt
 
 ```python
@@ -200,6 +238,102 @@ def reset(self) -> Thread:
     previous = self.thread
     self.thread = Thread()
     return previous
+```
+
+
+</Accordion>
+
+### with\_
+
+```python
+with_(
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    label: str | None = None,
+    model: str | Generator | None = None,
+    instructions: str | None = None,
+    max_steps: int | None = None,
+    caching: CacheMode | None = None,
+    tools: list[AnyTool | Toolset] | None = None,
+    tool_mode: ToolMode | None = None,
+    hooks: list[Hook] | None = None,
+    stop_conditions: list[StopCondition] | None = None,
+    scorers: ScorersLike[AgentResult] | None = None,
+    assert_scores: list[str] | Literal[True] | None = None,
+    append: bool = False,
+) -> te.Self
+```
+
+Clone the agent and modify its attributes.
+
+**Returns:**
+
+* `Self`
+  –A new Agent instance with the modified attributes.
+
+<Accordion title="Source code in dreadnode/agent/agent.py" icon="code">
+```python
+def with_(
+    self,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    label: str | None = None,
+    model: str | rg.Generator | None = None,
+    instructions: str | None = None,
+    max_steps: int | None = None,
+    caching: rg.caching.CacheMode | None = None,
+    tools: list[AnyTool | Toolset] | None = None,
+    tool_mode: ToolMode | None = None,
+    hooks: list[Hook] | None = None,
+    stop_conditions: list[StopCondition] | None = None,
+    scorers: ScorersLike[AgentResult] | None = None,
+    assert_scores: list[str] | t.Literal[True] | None = None,
+    append: bool = False,
+) -> te.Self:
+    """
+    Clone the agent and modify its attributes.
+
+    Returns:
+        A new Agent instance with the modified attributes.
+    """
+    new = self.clone()
+
+    new.name = name or new.name
+    new.description = description or new.description
+    new.label = label or new.label
+    new.model = model or new.model
+    new.instructions = instructions or new.instructions
+    new.max_steps = max_steps or new.max_steps
+    new.caching = caching or new.caching
+    new.tool_mode = tool_mode or new.tool_mode
+
+    if append:
+        new.tags = [*new.tags, *(tags or [])]
+        new.tools = [*new.tools, *(tools or [])]
+        new.hooks = [*new.hooks, *(hooks or [])]
+        new.stop_conditions = [*new.stop_conditions, *(stop_conditions or [])]
+        new.scorers = [*new.scorers, *(scorers or [])]
+        if isinstance(assert_scores, bool):
+            new.assert_scores = assert_scores
+        elif isinstance(new.assert_scores, list):
+            new.assert_scores = [*new.assert_scores, *(assert_scores or [])]
+        else:
+            new.assert_scores = assert_scores or new.assert_scores
+    else:
+        new.tags = tags if tags is not None else new.tags
+        new.tools = tools if tools is not None else new.tools
+        new.hooks = hooks if hooks is not None else new.hooks
+        new.stop_conditions = (
+            stop_conditions if stop_conditions is not None else new.stop_conditions
+        )
+        new.scorers = scorers if scorers is not None else new.scorers
+        new.assert_scores = assert_scores if assert_scores is not None else new.assert_scores
+
+    return new
 ```
 
 

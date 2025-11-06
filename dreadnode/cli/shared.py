@@ -38,6 +38,7 @@ class DreadnodeConfig:
         configure(
             server=self.server,
             token=self.token,
+            profile=self.profile,
             organization=self.organization,
             workspace=self.workspace,
             project=self.project,

@@ -4,7 +4,9 @@ from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
 from textwrap import dedent
 
+import litellm
 import rigging as rg
+import typing_extensions as te
 from loguru import logger
 from pydantic import AfterValidator, ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
 from rigging.message import inject_system_content
@@ -26,12 +28,11 @@ from dreadnode.agent.events import (
     ToolStart,
     _total_usage_from_events,
 )
-from dreadnode.agent.hooks import retry_with_feedback
+from dreadnode.agent.hooks import Hook, retry_with_feedback
 from dreadnode.agent.reactions import (
     Continue,
     Fail,
     Finish,
-    Hook,
     Reaction,
     Retry,
     RetryWithFeedback,
@@ -54,6 +55,8 @@ from dreadnode.util import (
     shorten_string,
     warn_at_user_stacklevel,
 )
+
+litellm.suppress_debug_info = True
 
 CommitBehavior = t.Literal["always", "on-success"]
 HookMap = dict[type[AgentEvent], list[Hook]]
@@ -79,8 +82,8 @@ class Agent(Model):
     label: str | None = Config(default=None)
     """Specific label for tracing, otherwise derived from the name."""
 
-    model: str | None = Config(default=None)
-    """Inference model (rigging generator identifier)."""
+    model: str | rg.Generator | None = Config(default=None, expose_as=str | None)
+    """Inference model (rigging generator or identifier)."""
     instructions: t.Annotated[str | None, AfterValidator(lambda x: dedent(x) if x else x)] = Config(
         default=None
     )
@@ -126,12 +129,11 @@ class Agent(Model):
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)
-        model = (self.model or "").split(",")[0]
 
         parts: list[str] = [
             f"name='{self.name}'",
             f"description='{description}'",
-            f"model='{model}'",
+            f"model='{self.model_name}'",
         ]
 
         if self.instructions:
@@ -150,6 +152,27 @@ class Agent(Model):
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
     @property
+    def model_name(self) -> str | None:
+        """The model name if specified as a string, otherwise None."""
+        if self.model is not None:
+            return self.generator.to_identifier(short=True)
+        return None
+
+    @property
+    def generator(self) -> rg.Generator:
+        if self._generator is not None:
+            return self._generator
+
+        if isinstance(self.model, str):
+            self._generator = rg.get_generator(self.model)
+        elif isinstance(self.model, rg.Generator):
+            self._generator = self.model
+        else:
+            raise TypeError("Model must be a string or a Generator instance.")
+
+        return self._generator
+
+    @property
     def all_tools(self) -> list[AnyTool]:
         """Returns a flattened list of all available tools."""
         flat_tools: list[AnyTool] = []
@@ -159,6 +182,75 @@ class Agent(Model):
             elif isinstance(item, Tool):
                 flat_tools.append(item)
         return flat_tools
+
+    def clone(self) -> te.Self:
+        """
+        Clone the agent.
+
+        Returns:
+            A new Agent instance with the same attributes as this one.
+        """
+        return self.model_copy(deep=True)
+
+    def with_(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        label: str | None = None,
+        model: str | rg.Generator | None = None,
+        instructions: str | None = None,
+        max_steps: int | None = None,
+        caching: rg.caching.CacheMode | None = None,
+        tools: list[AnyTool | Toolset] | None = None,
+        tool_mode: ToolMode | None = None,
+        hooks: list[Hook] | None = None,
+        stop_conditions: list[StopCondition] | None = None,
+        scorers: ScorersLike[AgentResult] | None = None,
+        assert_scores: list[str] | t.Literal[True] | None = None,
+        append: bool = False,
+    ) -> te.Self:
+        """
+        Clone the agent and modify its attributes.
+
+        Returns:
+            A new Agent instance with the modified attributes.
+        """
+        new = self.clone()
+
+        new.name = name or new.name
+        new.description = description or new.description
+        new.label = label or new.label
+        new.model = model or new.model
+        new.instructions = instructions or new.instructions
+        new.max_steps = max_steps or new.max_steps
+        new.caching = caching or new.caching
+        new.tool_mode = tool_mode or new.tool_mode
+
+        if append:
+            new.tags = [*new.tags, *(tags or [])]
+            new.tools = [*new.tools, *(tools or [])]
+            new.hooks = [*new.hooks, *(hooks or [])]
+            new.stop_conditions = [*new.stop_conditions, *(stop_conditions or [])]
+            new.scorers = [*new.scorers, *(scorers or [])]
+            if isinstance(assert_scores, bool):
+                new.assert_scores = assert_scores
+            elif isinstance(new.assert_scores, list):
+                new.assert_scores = [*new.assert_scores, *(assert_scores or [])]
+            else:
+                new.assert_scores = assert_scores or new.assert_scores
+        else:
+            new.tags = tags if tags is not None else new.tags
+            new.tools = tools if tools is not None else new.tools
+            new.hooks = hooks if hooks is not None else new.hooks
+            new.stop_conditions = (
+                stop_conditions if stop_conditions is not None else new.stop_conditions
+            )
+            new.scorers = scorers if scorers is not None else new.scorers
+            new.assert_scores = assert_scores if assert_scores is not None else new.assert_scores
+
+        return new
 
     def _get_transforms(self) -> list[rg.Transform]:
         transforms = []
@@ -203,28 +295,7 @@ class Agent(Model):
     async def _generate(
         self,
         messages: list[rg.Message],
-        *,
-        model: str | rg.Generator | None = None,
     ) -> rg.Chat:
-        if model is None and self.model is None:
-            raise ValueError("No model specified for agent generation.")
-
-        # Build our default generator if we haven't already
-        if model is None and self._generator is None:
-            self._generator = rg.get_generator(self.model)
-
-        generator = self._generator
-
-        # Override if the user supplied one
-        if model is not None:
-            if isinstance(model, str):
-                self._generator = rg.get_generator(model)
-            elif isinstance(model, rg.Generator):
-                self._generator = model
-
-        if generator is None:
-            raise TypeError("Model must be a string or a Generator instance.")
-
         messages = list(messages)  # Ensure we have a mutable list
         params = rg.GenerateParams(
             tools=[tool.api_definition for tool in self.all_tools],
@@ -232,7 +303,9 @@ class Agent(Model):
         messages = inject_system_content(messages, self.get_prompt())
 
         if self.tool_mode == "auto" and self.tools:
-            self.tool_mode = "api" if await generator.supports_function_calling() else "json-in-xml"
+            self.tool_mode = (
+                "api" if await self.generator.supports_function_calling() else "json-in-xml"
+            )
 
         transforms = self._get_transforms()
         post_transforms: list[rg.PostTransform | None] = []
@@ -243,16 +316,16 @@ class Agent(Model):
         try:
             messages = rg.caching.apply_cache_mode_to_messages(self.caching, [messages])[0]
 
-            logger.trace(f"Generating with model '{generator.model}'. Messages: {messages!r}")
+            logger.trace(f"Generating with model '{self.generator.model}'. Messages: {messages!r}")
 
-            generated = (await generator.generate_messages([messages], [params]))[0]
+            generated = (await self.generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
                 raise generated  # noqa: TRY301
 
             chat = rg.Chat(
                 messages,
                 [generated.message],
-                generator=generator,
+                generator=self.generator,
                 params=params,
                 stop_reason=generated.stop_reason,
                 usage=generated.usage,
@@ -260,11 +333,11 @@ class Agent(Model):
             )
 
         except Exception as error:  # noqa: BLE001
-            logger.error(f"Error during generation: {error}", exc_info=True)
+            logger.opt(exception=True).error("Error during generation")
             chat = rg.Chat(
                 messages,
                 [],
-                generator=generator,
+                generator=self.generator,
                 params=params,
                 failed=True,
                 error=error,
@@ -289,7 +362,7 @@ class Agent(Model):
 
         logger.info(
             f"Starting Agent '{self.name}' ({session_id}): "
-            f"model='{self.model}', "
+            f"model='{self.model_name}', "
             f"max_steps={self.max_steps}, "
             f"tools={[tool.name for tool in self.all_tools]}"
         )
@@ -531,6 +604,9 @@ class Agent(Model):
                         yield event
                     raise step_chat.error
 
+                # Sync extra fields to metadata for storage
+                step_chat.generated[-1].metadata.update(step_chat.extra)
+
                 messages.extend(step_chat.generated)
 
                 async for event in _dispatch(
@@ -710,19 +786,20 @@ class Agent(Model):
 
         trace_inputs.update(
             {
-                "user_input": user_input,
-                "messages": messages,
-                "instructions": self.instructions,
                 "hooks": [get_callable_name(hook, short=True) for hook in self.hooks],
                 "stop_conditions": [s.name for s in self.stop_conditions],
                 "tools": [t.name for t in self.all_tools],
+                "generator_params": self.generator.params.to_dict(),
+                "user_input": user_input,
+                "instructions": self.instructions,
+                "messages": messages,
                 "tool_schemas": [t.api_definition for t in self.all_tools],
             }
         )
         trace_params.update(
             {
                 "name": self.name,
-                "model": self.model,
+                "model": self.model_name,
                 "max_steps": self.max_steps,
                 "tool_mode": self.tool_mode,
                 "tool_count": len(self.all_tools),
@@ -731,6 +808,10 @@ class Agent(Model):
                 "message_count": len(messages),
             }
         )
+        trace_params.pop("instructions", None)
+
+        for tag in self.tags:
+            trace_params[f"tag:{tag}"] = True
 
         last_event: AgentEvent | None = None
         with task_and_run(

@@ -122,11 +122,11 @@ The name of the evaluation.
 
 ```python
 parameters: dict[str, list[Any]] | None = Config(
-    default=None
+    default=None, expose_as=str | None
 )
 ```
 
-A dictionary defining a parameter space to run experiments against.
+A dictionary (or JSON string) defining a parameter space to run experiments against.
 A scenario will be created for every combination of the parameters defined here.
 Key names should align with arguments on the task assigned with a `Config` context.
 
@@ -157,7 +157,7 @@ A list of tags to associate during tracing.
 ### task
 
 ```python
-task: Task[[In], Out] | str
+task: Task[..., Out] | str
 ```
 
 The task to evaluate. Can be a Task object or a string representing qualified task name.

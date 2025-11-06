@@ -1161,7 +1161,7 @@ class Dreadnode:
                         _tracer=_tracer,
                     )
                 )
-                self.log_inputs(**(inputs or {}))
+                self.log_inputs(**(inputs or {}), to="run")
 
             task_span = stack.enter_context(
                 self.task_span(name, label=label, tags=tags, _tracer=_tracer)

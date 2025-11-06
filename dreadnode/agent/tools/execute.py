@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import os
 import sys
 
 from loguru import logger
@@ -14,52 +15,85 @@ async def command(
     timeout: int = 120,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    input: str | None = None,
 ) -> str:
     """
     Execute a shell command.
 
-    Use this tool to run system utilities and command-line programs (e.g., `ls`, `cat`, `grep`). \
-    It is designed for straightforward, single-shot operations and returns the combined output and error streams.
-
     ## Best Practices
-    - Argument Format: The command and its arguments *must* be provided as a \
-    list of strings (e.g., `["ls", "-la", "/tmp"]`), not as a single string.
-    - No Shell Syntax: Does not use a shell. Features like pipes (`|`), \
-    redirection (`>`), and variable expansion (`$VAR`) are not supported.
-    - Error on Failure: The tool will raise a `RuntimeError` if the command returns a non-zero exit code.
+    - Argument Format: Command and arguments must be a list of strings.
+    - No Shell Syntax: Does not use a shell (no pipes, redirection, var expansion, etc.).
+    - Error on Failure: Raises RuntimeError for non-zero exit codes.
+    - Use input Parameter: Send data to the command's standard input to avoid hanging.
 
     Args:
-        cmd: The command to execute, provided as a list of strings.
-        timeout: Maximum time in seconds to allow for command execution.
-        cwd: The working directory in which to execute the command.
-        env: Optional environment variables to set for the command.
+        cmd: The command to execute as a list of strings.
+        timeout: Maximum execution time in seconds.
+        cwd: The working directory for the command.
+        env: Environment variables for the command.
+        input: Optional string to send to the command's standard input.
     """
+    command_str = " ".join(cmd)
+    logger.debug(f"Executing '{command_str}'")
+
+    process_env = os.environ.copy()
+    if env:
+        process_env.update(env)
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        stdin=asyncio.subprocess.PIPE if input is not None else None,
+        env=process_env,
+        cwd=cwd,
+    )
+
+    output = ""
+
+    async def read_stdout() -> None:
+        nonlocal output
+
+        if not proc.stdout:
+            return
+
+        while True:
+            chunk = await proc.stdout.read(1024)
+            if not chunk:
+                break
+            output += chunk.decode(errors="replace")
+
+    async def write_and_close_stdin() -> None:
+        if proc.stdin and input:
+            proc.stdin.write(input.encode())
+            await proc.stdin.drain()
+            proc.stdin.close()
+
     try:
-        command_str = " ".join(cmd)
-        logger.debug(f"Executing '{command_str}'")
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-            cwd=cwd,
+        await asyncio.wait_for(
+            asyncio.gather(read_stdout(), write_and_close_stdin()), timeout=timeout
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        output = stdout.decode() + stderr.decode()
+        await proc.wait()
+
     except asyncio.TimeoutError as e:
-        logger.warning(f"Command '{command_str}' timed out after {timeout} seconds.")
+        error_message = f"Command '{command_str}' timed out after {timeout} seconds."
+        if output:
+            error_message += f"\n\nPartial Output:\n{output}"
+        logger.warning(error_message)
+
         with contextlib.suppress(OSError):
             proc.kill()
-        raise TimeoutError(f"Command timed out after {timeout} seconds") from e
-    except Exception as e:
-        logger.error(f"Error executing '{command_str}': {e}")
-        raise
+            await proc.wait()
+
+        raise TimeoutError(error_message) from e
 
     if proc.returncode != 0:
-        logger.error(f"Command '{command_str}' failed with return code {proc.returncode}: {output}")
-        raise RuntimeError(f"Command failed ({proc.returncode}): {output}")
+        logger.error(
+            f"Command '{command_str}' failed with return code {proc.returncode}:\n{output}"
+        )
+        raise RuntimeError(f"Command failed ({proc.returncode}):\n{output}")
 
-    logger.debug(f"Command '{command_str}':\n{output}")
+    logger.debug(f"Command '{command_str}' completed:\n{output}")
     return output
 
 

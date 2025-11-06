@@ -2,13 +2,22 @@ import contextlib
 import contextvars
 import inspect
 import itertools
+import json
 import typing as t
 from contextlib import asynccontextmanager
 from functools import cached_property
 
 import typing_extensions as te
 from loguru import logger
-from pydantic import ConfigDict, Field, FilePath, TypeAdapter, computed_field, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    FilePath,
+    TypeAdapter,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from dreadnode.common_types import AnyDict, Unset
 from dreadnode.discovery import find
@@ -66,7 +75,7 @@ class Eval(Model, t.Generic[In, Out]):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
-    task: Task[[In], Out] | str
+    task: Task[..., Out] | str
     """The task to evaluate. Can be a Task object or a string representing qualified task name."""
 
     # It's easiest to split these up as we want our config system to support
@@ -114,9 +123,9 @@ class Eval(Model, t.Generic[In, Out]):
     explicit mapping from dataset keys to task parameter names.
     If None, will attempt to map keys that match parameter names.
     """
-    parameters: dict[str, list[t.Any]] | None = Config(default=None)
+    parameters: dict[str, list[t.Any]] | None = Config(default=None, expose_as=str | None)
     """
-    A dictionary defining a parameter space to run experiments against.
+    A dictionary (or JSON string) defining a parameter space to run experiments against.
     A scenario will be created for every combination of the parameters defined here.
     Key names should align with arguments on the task assigned with a `Config` context.
     """
@@ -136,6 +145,16 @@ class Eval(Model, t.Generic[In, Out]):
         if self.dataset is None and self.dataset_file is None:
             raise ValueError("One of 'dataset' or 'dataset_file' must be provided.")
         return self
+
+    @field_validator("parameters", mode="before")
+    @classmethod
+    def _deserialize_parameters(cls, value: t.Any) -> t.Any:
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except Exception as e:
+                raise ValueError(f"Failed to parse parameters from string: {e}") from e
+        return value
 
     @computed_field  # type: ignore[prop-decorator]
     @cached_property
