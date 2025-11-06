@@ -150,9 +150,9 @@ class Dreadnode:
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
 
-        self._organization: Organization | None = None
-        self._workspace: Workspace | None = None
-        self._project: Project | None = None
+        self._organization: Organization
+        self._workspace: Workspace
+        self._project: Project
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -204,12 +204,12 @@ class Dreadnode:
                 )
             self._organization = organizations[0]
 
-    def _create_workspace(self, name: str) -> None:
+    def _create_workspace(self, name: str) -> Workspace:
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+
         try:
-            self._workspace = self._api.create_workspace(
-                name=name,
-                organization_id=self._organization.id if self._organization else None,
-            )
+            return self._api.create_workspace(name=name, organization_id=self._organization.id)
         except RuntimeError as e:
             if "403: Forbidden" in str(e):
                 raise RuntimeError(
@@ -221,21 +221,22 @@ class Dreadnode:
         if self._api is None:
             return
 
+        found_workspace: Workspace | None = None
         if self.workspace:
             try:
-                self._workspace = self._api.get_workspace(self.workspace)
+                found_workspace = self._api.get_workspace(self.workspace)
             except RuntimeError as e:
                 if "404: Workspace not found" in str(e):
-                    self._workspace = None
+                    pass  # do nothing, we'll create it below
                 else:
                     raise
 
-            if not self._workspace and isinstance(self.workspace, UUID):
+            if not found_workspace and isinstance(self.workspace, UUID):
                 raise RuntimeError(f"Workspace with ID '{self.workspace}' not found.")
 
-            if not self._workspace and isinstance(self.workspace, str):  # specified by name/slug
+            if not found_workspace and isinstance(self.workspace, str):  # specified by name/slug
                 # create the workspace (must be an org contributor)
-                self._create_workspace(name=self.workspace)
+                found_workspace = self._create_workspace(name=self.workspace)
 
         else:  # the user provided no workspace, attempt to find a default one
             workspaces = self._api.list_workspaces(
@@ -243,32 +244,41 @@ class Dreadnode:
                     org_id=self._organization.id if self._organization else None
                 )
             )
-            self._workspace = next((ws for ws in workspaces if ws.is_default is True), None)
-            if not self._workspace:
-                self._create_workspace(name=DEFAULT_WORKSPACE_NAME)
+            default_workspace = next((ws for ws in workspaces if ws.is_default is True), None)
+            if default_workspace:
+                found_workspace = default_workspace
+            else:
+                found_workspace = self._create_workspace(name=DEFAULT_WORKSPACE_NAME)
+
+        if not found_workspace:
+            raise RuntimeError("Failed to resolve or create a workspace.")
+
+        self._workspace = found_workspace
 
     def _resolve_project(self) -> None:
         if self._api is None:
             return
 
         # fetch the project
+        found_project: Project | None = None
         try:
-            self._project = self._api.get_project(
+            found_project = self._api.get_project(
                 project_identifier=self.project or DEFAULT_PROJECT_NAME,
                 workspace_id=self._workspace.id,
             )
         except RuntimeError as e:
             if "404: Project not found" in str(e):
-                self._project = None
+                pass  # do nothing, we'll create it below
             else:
                 raise
 
-        if not self._project:
+        if not found_project:
             # create it in the workspace
-            self._project = self._api.create_project(
+            found_project = self._api.create_project(
                 name=self.project or DEFAULT_PROJECT_NAME, workspace_id=self._workspace.id
             )
         # This is what's used in all of the Traces/Spans/Runs
+        self._project = found_project
         self.project = str(self._project.id)
 
     def _resolve_rbac(self) -> None:

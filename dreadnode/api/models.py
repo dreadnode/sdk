@@ -443,12 +443,6 @@ class Project(BaseModel):
     """Last run associated with the project, if any."""
 
 
-class ProjectFilter(BaseModel):
-    """Filter parameters for project listing"""
-
-    name_or_slug: str | None = Field(None, description="Filter by project name or slug")
-
-
 class Workspace(BaseModel):
     id: UUID
     """Unique identifier for the workspace."""

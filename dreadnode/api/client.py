@@ -23,7 +23,6 @@ from dreadnode.api.models import (
     Organization,
     PaginatedWorkspaces,
     Project,
-    ProjectFilter,
     RawRun,
     RawTask,
     RegistryImageDetails,
@@ -273,15 +272,13 @@ class ApiClient:
 
     # Strikes
 
-    def list_projects(self, filter: ProjectFilter | None = None) -> list[Project]:
+    def list_projects(self) -> list[Project]:
         """Retrieves a list of projects.
 
         Returns:
             list[Project]: A list of Project objects.
         """
-        response = self.request(
-            "GET", "/strikes/projects", params=filter.model_dump() if filter else None
-        )
+        response = self.request("GET", "/strikes/projects")
         return [Project(**project) for project in response.json()]
 
     def get_project(self, project_identifier: str | UUID, workspace_id: UUID) -> Project:
