@@ -566,7 +566,7 @@ class Agent(Model):
         step = 0
         error: Exception | str | None = None
 
-        while step <= self.max_steps:
+        while step < self.max_steps:
             step += 1
 
             try:

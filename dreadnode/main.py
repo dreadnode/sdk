@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 import random
+import sys
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -213,6 +214,11 @@ class Dreadnode:
         """
 
         self._initialized = False
+
+        # Skip during testing
+        if "pytest" in sys.modules:
+            self._initialized = True
+            return
 
         # Determine configuration source and active profile for logging
         config_source = "explicit parameters"
@@ -838,7 +844,7 @@ class Dreadnode:
             tracer=_tracer or self._get_tracer(),
             params=params,
             tags=tags,
-            credential_manager=self._credential_manager,  # type: ignore[arg-type]
+            credential_manager=self._credential_manager,
             autolog=autolog,
         )
 

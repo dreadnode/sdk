@@ -295,7 +295,7 @@ async def test_run_stops_on_max_steps(mock_generator: MockGenerator, simple_tool
     assert result.failed
     assert result.stop_reason == "max_steps_reached"
     assert isinstance(result.error, MaxStepsError)
-    assert result.steps == 2  # It tries to start step 2, then fails.
+    assert result.steps == 1
 
 
 @pytest.mark.asyncio
