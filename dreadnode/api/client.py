@@ -319,7 +319,7 @@ class ApiClient:
         if workspace_id is not None:
             payload["workspace_id"] = str(workspace_id)
         if organization_id is not None:
-            payload["organization_id"] = str(organization_id)
+            payload["org_id"] = str(organization_id)
 
         response = self.request("POST", "/strikes/projects", json_data=payload)
         return Project(**response.json())
@@ -848,7 +848,7 @@ class ApiClient:
 
         return all_workspaces
 
-    def get_workspace(self, workspace_id: str | UUID) -> Workspace:
+    def get_workspace(self, workspace_id: str | UUID, org_id: UUID | None = None) -> Workspace:
         """
         Retrieves details of a specific workspace.
 
@@ -858,7 +858,10 @@ class ApiClient:
         Returns:
             Workspace: The Workspace object.
         """
-        response = self.request("GET", f"/workspaces/{workspace_id!s}")
+        params: dict[str, str] = {}
+        if org_id:
+            params = {"org_id": str(org_id)}
+        response = self.request("GET", f"/workspaces/{workspace_id!s}", params=params)
         return Workspace(**response.json())
 
     def create_workspace(

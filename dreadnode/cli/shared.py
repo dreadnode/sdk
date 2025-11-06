@@ -14,6 +14,10 @@ class DreadnodeConfig:
     """Server URL"""
     token: str | None = None
     """API token"""
+    organization: str | None = None
+    """Organization name"""
+    workspace: str | None = None
+    """Workspace name"""
     project: str | None = None
     """Project name"""
     profile: str | None = None
@@ -31,4 +35,11 @@ class DreadnodeConfig:
         if self.log_level:
             configure_logging(self.log_level, self.log_file)
 
-        configure(server=self.server, token=self.token, project=self.project, console=self.console)
+        configure(
+            server=self.server,
+            token=self.token,
+            organization=self.organization,
+            workspace=self.workspace,
+            project=self.project,
+            console=self.console,
+        )
