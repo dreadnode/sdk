@@ -29,6 +29,10 @@ DEFAULT_DOCKER_REGISTRY_SUBDOMAIN = "registry"
 DEFAULT_DOCKER_REGISTRY_LOCAL_PORT = 5005
 # default docker registry image tag
 DEFAULT_DOCKER_REGISTRY_IMAGE_TAG = "registry"
+# default workspace name
+DEFAULT_WORKSPACE_NAME = "Personal Workspace"
+# default project name
+DEFAULT_PROJECT_NAME = "Default"
 
 #
 # Environment Variable Names

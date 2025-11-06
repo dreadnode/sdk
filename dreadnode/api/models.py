@@ -443,6 +443,12 @@ class Project(BaseModel):
     """Last run associated with the project, if any."""
 
 
+class ProjectFilter(BaseModel):
+    """Filter parameters for project listing"""
+
+    name_or_slug: str | None = Field(None, description="Filter by project name or slug")
+
+
 class Workspace(BaseModel):
     id: UUID
     """Unique identifier for the workspace."""
@@ -468,6 +474,29 @@ class Workspace(BaseModel):
     """Creation timestamp."""
     updated_at: datetime
     """Last update timestamp."""
+
+
+class WorkspaceFilter(BaseModel):
+    """Filter parameters for workspace listing"""
+
+    org_id: UUID | None = Field(None, description="Filter by organization ID")
+
+
+class PaginatedWorkspaces(BaseModel):
+    workspaces: list[Workspace]
+    """List of workspaces in the current page."""
+    total: int
+    """Total number of workspaces available."""
+    page: int
+    """Current page number."""
+    limit: int
+    """Number of workspaces per page."""
+    total_pages: int
+    """Total number of pages available."""
+    has_next: bool
+    """Is there a next page available?"""
+    has_previous: bool
+    """Is there a previous page available?"""
 
 
 class Organization(BaseModel):

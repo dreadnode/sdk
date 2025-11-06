@@ -6,6 +6,7 @@ import typing as t
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
+from uuid import UUID
 
 import httpx
 from loguru import logger
@@ -20,7 +21,9 @@ from dreadnode.api.models import (
     GithubTokenResponse,
     MetricAggregationType,
     Organization,
+    PaginatedWorkspaces,
     Project,
+    ProjectFilter,
     RawRun,
     RawTask,
     RegistryImageDetails,
@@ -36,6 +39,7 @@ from dreadnode.api.models import (
     UserDataCredentials,
     UserResponse,
     Workspace,
+    WorkspaceFilter,
 )
 from dreadnode.api.util import (
     convert_flat_tasks_to_tree,
@@ -269,25 +273,58 @@ class ApiClient:
 
     # Strikes
 
-    def list_projects(self) -> list[Project]:
+    def list_projects(self, filter: ProjectFilter | None = None) -> list[Project]:
         """Retrieves a list of projects.
 
         Returns:
             list[Project]: A list of Project objects.
         """
-        response = self.request("GET", "/strikes/projects")
+        response = self.request(
+            "GET", "/strikes/projects", params=filter.model_dump() if filter else None
+        )
         return [Project(**project) for project in response.json()]
 
-    def get_project(self, project: str) -> Project:
+    def get_project(self, project_identifier: str | UUID, workspace_id: UUID) -> Project:
         """Retrieves details of a specific project.
 
         Args:
-            project (str): The project identifier.
+            project (str | UUID): The project identifier. ID, name, or slug.
 
         Returns:
             Project: The Project object.
         """
-        response = self.request("GET", f"/strikes/projects/{project!s}")
+        response = self.request(
+            "GET",
+            f"/strikes/projects/{project_identifier!s}",
+            params={"workspace_id": workspace_id},
+        )
+        return Project(**response.json())
+
+    def create_project(
+        self,
+        name: str | UUID | None = None,
+        workspace_id: UUID | None = None,
+        organization_id: UUID | None = None,
+    ) -> Project:
+        """Creates a new project.
+
+        Args:
+            name (str | UUID | None): The name of the project. If None, a default name will be used.
+            workspace (str | UUID | None): The workspace ID to create the project in. If None, the default workspace will be used.
+            organization (str | UUID | None): The organization ID to create the project in. If None, the default organization will be used.
+
+        Returns:
+            Project: The created Project object.
+        """
+        payload: dict[str, t.Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if workspace_id is not None:
+            payload["workspace_id"] = str(workspace_id)
+        if organization_id is not None:
+            payload["organization_id"] = str(organization_id)
+
+        response = self.request("POST", "/strikes/projects", json_data=payload)
         return Project(**response.json())
 
     def list_runs(self, project: str) -> list[RunSummary]:
@@ -771,7 +808,7 @@ class ApiClient:
         response = self.request("GET", "/organizations")
         return [Organization(**org) for org in response.json()]
 
-    def get_organization(self, organization_id: str) -> Organization:
+    def get_organization(self, organization_id: str | UUID) -> Organization:
         """
         Retrieves details of a specific organization.
 
@@ -784,17 +821,37 @@ class ApiClient:
         response = self.request("GET", f"/organizations/{organization_id!s}")
         return Organization(**response.json())
 
-    def list_workspaces(self) -> list[Workspace]:
+    def list_workspaces(self, filters: WorkspaceFilter | None = None) -> list[Workspace]:
         """
         Retrieves a list of workspaces the user has access to.
 
         Returns:
             A list of workspace names.
         """
-        response = self.request("GET", "/workspaces")
-        return [Workspace(**ws) for ws in response.json()]
+        response = self.request(
+            "GET", "/workspaces", params=filters.model_dump() if filters else None
+        )
+        paginated_workspaces = PaginatedWorkspaces(**response.json())
+        # handle the pagination
+        all_workspaces: list[Workspace] = paginated_workspaces.workspaces.copy()
+        while paginated_workspaces.has_next:
+            response = self.request(
+                "GET",
+                "/workspaces",
+                params={
+                    "page": paginated_workspaces.page + 1,
+                    "limit": paginated_workspaces.limit,
+                    **(filters.model_dump() if filters else {}),
+                },
+            )
+            next_page = PaginatedWorkspaces(**response.json())
+            all_workspaces.extend(next_page.workspaces)
+            paginated_workspaces.page = next_page.page
+            paginated_workspaces.has_next = next_page.has_next
 
-    def get_workspace(self, workspace_id: str) -> Workspace:
+        return all_workspaces
+
+    def get_workspace(self, workspace_id: str | UUID) -> Workspace:
         """
         Retrieves details of a specific workspace.
 
@@ -805,4 +862,28 @@ class ApiClient:
             Workspace: The Workspace object.
         """
         response = self.request("GET", f"/workspaces/{workspace_id!s}")
+        return Workspace(**response.json())
+
+    def create_workspace(
+        self,
+        name: str,
+        organization_id: UUID,
+    ) -> Workspace:
+        """
+        Creates a new workspace.
+
+        Args:
+            name (str): The name of the workspace.
+            organization_id (str | UUID): The organization ID to create the workspace in.
+
+        Returns:
+            Workspace: The created Workspace object.
+        """
+
+        payload = {
+            "name": name,
+            "org_id": str(organization_id),
+        }
+
+        response = self.request("POST", "/workspaces", json_data=payload)
         return Workspace(**response.json())

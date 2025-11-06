@@ -21,6 +21,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
+from dreadnode.api.models import Organization, Project, Workspace, WorkspaceFilter
 from dreadnode.artifact.credential_manager import CredentialManager
 from dreadnode.common_types import (
     INHERITED,
@@ -30,7 +31,9 @@ from dreadnode.common_types import (
 )
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
+    DEFAULT_PROJECT_NAME,
     DEFAULT_SERVER_URL,
+    DEFAULT_WORKSPACE_NAME,
     ENV_API_KEY,
     ENV_API_TOKEN,
     ENV_CONSOLE,
@@ -106,6 +109,8 @@ class Dreadnode:
     server: str | None
     token: str | None
     local_dir: str | Path | t.Literal[False]
+    organization: str | UUID | None
+    workspace: str | UUID | None
     project: str | None
     service_name: str | None
     service_version: str | None
@@ -119,6 +124,8 @@ class Dreadnode:
         server: str | None = None,
         token: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
+        organization: str | UUID | None = None,
+        workspace: str | UUID | None = None,
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
@@ -129,6 +136,8 @@ class Dreadnode:
         self.server = server
         self.token = token
         self.local_dir = local_dir
+        self.organization = organization
+        self.workspace = workspace
         self.project = project
         self.service_name = service_name
         self.service_version = service_version
@@ -140,6 +149,10 @@ class Dreadnode:
         self._credential_manager: CredentialManager | None = None
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
+
+        self._organization: Organization | None = None
+        self._workspace: Workspace | None = None
+        self._project: Project | None = None
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -165,6 +178,111 @@ class Dreadnode:
 
         # Silently fail if profile config is not available or invalid
         return None
+
+    def _resolve_organization(self) -> None:
+        if self._api is None:
+            return
+
+        if self.organization:
+            self._organization = self._api.get_organization(self.organization)
+            if not self._organization:
+                raise RuntimeError(f"Organization '{self.organization}' not found.")
+
+        else:
+            organizations = self._api.list_organizations()
+
+            if not organizations:
+                raise RuntimeError(
+                    f"You are not part of any organizations on {self.server}. You will not be able to use Strikes.",
+                )
+
+            if len(organizations) > 1:
+                # We should not presume to choose an organization
+                org_list = "\t\n".join([f"- {o.name}" for o in organizations])
+                raise RuntimeError(
+                    f"You are part of multiple organizations. Please specify an organization from:\n{org_list}"
+                )
+            self._organization = organizations[0]
+
+    def _create_workspace(self, name: str) -> None:
+        try:
+            self._workspace = self._api.create_workspace(
+                name=name,
+                organization_id=self._organization.id if self._organization else None,
+            )
+        except RuntimeError as e:
+            if "403: Forbidden" in str(e):
+                raise RuntimeError(
+                    "You do not have permission to create the specified workspace for this organization. (You must be a Contributor to create new workspaces)."
+                ) from e
+            raise
+
+    def _resolve_workspace(self) -> None:
+        if self._api is None:
+            return
+
+        if self.workspace:
+            try:
+                self._workspace = self._api.get_workspace(self.workspace)
+            except RuntimeError as e:
+                if "404: Workspace not found" in str(e):
+                    self._workspace = None
+                else:
+                    raise
+
+            if not self._workspace and isinstance(self.workspace, UUID):
+                raise RuntimeError(f"Workspace with ID '{self.workspace}' not found.")
+
+            if not self._workspace and isinstance(self.workspace, str):  # specified by name/slug
+                # create the workspace (must be an org contributor)
+                self._create_workspace(name=self.workspace)
+
+        else:  # the user provided no workspace, attempt to find a default one
+            workspaces = self._api.list_workspaces(
+                filters=WorkspaceFilter(
+                    org_id=self._organization.id if self._organization else None
+                )
+            )
+            self._workspace = next((ws for ws in workspaces if ws.is_default is True), None)
+            if not self._workspace:
+                self._create_workspace(name=DEFAULT_WORKSPACE_NAME)
+
+    def _resolve_project(self) -> None:
+        if self._api is None:
+            return
+
+        # fetch the project
+        try:
+            self._project = self._api.get_project(
+                project_identifier=self.project or DEFAULT_PROJECT_NAME,
+                workspace_id=self._workspace.id,
+            )
+        except RuntimeError as e:
+            if "404: Project not found" in str(e):
+                self._project = None
+            else:
+                raise
+
+        if not self._project:
+            # create it in the workspace
+            self._project = self._api.create_project(
+                name=self.project or DEFAULT_PROJECT_NAME, workspace_id=self._workspace.id
+            )
+        # This is what's used in all of the Traces/Spans/Runs
+        self.project = str(self._project.id)
+
+    def _resolve_rbac(self) -> None:
+        if self._api is None:
+            return
+        self._resolve_organization()
+        self._resolve_workspace()
+        self._resolve_project()
+
+        console_msg = "Dreadnode configured with:\n"
+        console_msg += f" Organization: [green]{self._organization.name}[/]\n"
+        console_msg += f" Workspace: [green]{self._workspace.name}[/]\n"
+        console_msg += f" Project: [green]{self._project.name}[/]\n"
+        logging_console.print(f"{console_msg}")
 
     def get_current_run(self) -> RunSpan | None:
         return current_run_span.get()
@@ -269,33 +387,15 @@ class Dreadnode:
         with contextlib.suppress(ValueError):
             self.organization = UUID(
                 str(self.organization)
-            )  # Now, it's a UUID if possible, else str
+            )  # Now, it's a UUID if possible, else str (name/slug)
 
         self.workspace = workspace or os.environ.get(ENV_WORKSPACE)
+        with contextlib.suppress(ValueError):
+            self.workspace = UUID(
+                str(self.workspace)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
         self.project = project or os.environ.get(ENV_PROJECT)
-
-        organizations = self._api.list_organizations()
-
-        if not organizations:
-            raise RuntimeError(
-                f"You are not part of any organizations on {self.server}. You will not be able to use Strikes.",
-            )
-
-        if not self.organization and len(organizations) > 1:
-            raise RuntimeError(
-                "You are part of multiple organizations. Please specify an organization."
-            )
-
-        if self.project:
-            all_projects = self._api.list_projects()
-            # ensure there are not multiple projects with the same name and different workspace_ids
-            if self.project:
-                matching_projects = [p for p in all_projects if p.name == self.project]
-                if len(matching_projects) > 1:
-                    raise RuntimeError(
-                        f"Multiple projects named '{self.project}' found."
-                        "Please specify a workspace to disambiguate."
-                    )
 
         self.service_name = service_name
         self.service_version = service_version
@@ -316,7 +416,7 @@ class Dreadnode:
         if self.server or self.token or self.local_dir:
             destination = self.server or DEFAULT_SERVER_URL or "local storage"
             logging_console.print(
-                f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source}, project: {self.project or 'default'})"
+                f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source})"
             )
 
         # Warn the user if the profile didn't resolve
@@ -326,28 +426,6 @@ class Dreadnode:
             )
 
         self.initialize()
-
-    def _verify_organization_and_workspace(self) -> None:
-        if self._api is None:
-            raise RuntimeError("API client is not initialized.")
-
-        if self.organization is not None:
-            organizations = self._api.list_organizations()
-            if self.organization not in [o.name for o in organizations]:
-                raise RuntimeError(
-                    f"Organization '{self.organization}' not found in your Dreadnode account.",
-                )
-            if isinstance(self.organization, str):
-                self.organization = next(
-                    (o.id for o in organizations if o.name == self.organization), None
-                )
-
-        if self.workspace is not None:
-            workspaces = self._api.list_workspaces()
-            if self.workspace not in [w.name for w in workspaces]:
-                raise RuntimeError(
-                    f"Workspace '{self.workspace}' not found in your Dreadnode account.",
-                )
 
     def initialize(self) -> None:
         """
@@ -393,19 +471,19 @@ class Dreadnode:
 
                 self._api = ApiClient(self.server, api_key=self.token)
 
-                self._verify_organization_and_workspace()
-                self._api.list_projects()
+                self._resolve_rbac()
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to connect to the Dreadnode server: {e}",
                 ) from e
 
             headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
+            endpoint = "/api/otel/traces"
             span_processors.append(
                 BatchSpanProcessor(
                     RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
                         OTLPSpanExporter(
-                            endpoint=urljoin(self.server, "/api/otel/traces"),
+                            endpoint=urljoin(self.server, endpoint),
                             headers=headers,
                             compression=Compression.Gzip,
                         ),
@@ -966,7 +1044,7 @@ class Dreadnode:
         return {
             "run_id": run.run_id,
             "run_name": run.name,
-            "project": run.project,
+            "project": run.project_id,
             "trace_context": trace_context,
         }
 
