@@ -333,6 +333,9 @@ def with_(
         new.scorers = scorers if scorers is not None else new.scorers
         new.assert_scores = assert_scores if assert_scores is not None else new.assert_scores
 
+    # Retrigger model_post_init functions to ensure consistency
+    new.model_post_init(None)
+
     return new
 ```
 
@@ -344,10 +347,19 @@ AgentWarning
 
 Warning raised when an agent is used in a way that may not be safe or intended.
 
+RegexRefAgent
+-------------
+
+An agent mixin that allows for dynamic references of prior text using regex patterns in tool arguments.
+This helps prevent repeating large amounts of prior text in tool calls.
+
+Instructions are automatically added to the agent's instructions to guide usage of the {find:} syntax
+along with a hook that resolves these references during tool calls.
+
 TaskAgent
 ---------
 
-A specialized agent for running tasks with a focus on completion and reporting.
+A specialized agent mixin for running tasks with a focus on completion and reporting.
 It extends the base Agent class to provide task-specific functionality.
 
 * Automatically includes the `finish_task`, `give_up_on_task`, and `update_todo` tools.

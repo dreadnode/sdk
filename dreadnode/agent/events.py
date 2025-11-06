@@ -24,13 +24,12 @@ from dreadnode.util import format_dict, shorten_string
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
     from dreadnode.agent.reactions import Reaction
-    from dreadnode.agent.result import AgentResult
+    from dreadnode.agent.result import AgentResult, AgentStopReason
     from dreadnode.agent.thread import Thread
     from dreadnode.common_types import AnyDict
 
 
 AgentEventT = t.TypeVar("AgentEventT", bound="AgentEvent")
-AgentStopReason = t.Literal["finished", "max_steps_reached", "error", "stalled"]
 
 
 @dataclass
@@ -292,7 +291,7 @@ class Reacted(AgentEventInStep):
 
 @dataclass
 class AgentEnd(AgentEvent):
-    stop_reason: AgentStopReason
+    stop_reason: "AgentStopReason"
     result: "AgentResult"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002

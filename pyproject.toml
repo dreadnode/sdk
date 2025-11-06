@@ -181,4 +181,5 @@ skip-magic-trailing-comma = false
     "SLF001",  # allow access to private members
     "PLR2004", # magic values
     "S1",      # security issues in tests are not relevant
+    "PERF",    # performance issues in tests are not relevant
 ]
