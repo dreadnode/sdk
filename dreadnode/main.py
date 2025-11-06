@@ -409,7 +409,7 @@ class Dreadnode:
         if not path:
             return (None, None, "")
 
-        pattern = r"^(?:([a-zA-Z0-9_-]+)/)?(?:([a-zA-Z0-9_-]+)/)?([a-zA-Z0-9_-]+)$"
+        pattern = r"^(?:([\s\w-]+?)/)?(?:([\s\w-]+?)/)?([\s\w-]+?)$"
         match = re.match(pattern, path)
 
         if not match:
