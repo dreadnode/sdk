@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import aiofiles
+import aiofiles  # type: ignore
 import rigging as rg
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from loguru import logger
@@ -20,6 +20,7 @@ from dreadnode.util import shorten_string
 
 if t.TYPE_CHECKING:
     import aioboto3  # type: ignore[import-untyped]
+
 
 MAX_GREP_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
@@ -345,14 +346,13 @@ class LocalFilesystem(FilesystemBase):
     async def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"],
-    ) -> rg.ContentImageUrl | str | bytes:
+    ) -> rg.ContentImageUrl | str:
         """
         Read a file and return its contents.
 
         Returns:
             - str: The file contents decoded as UTF-8 if possible.
             - rg.ContentImageUrl: If the file is non-text and multi_modal is True.
-            - bytes: If the file cannot be decoded as UTF-8 and multi_modal is False.
 
         Note:
             Callers should be prepared to handle raw bytes if the file is not valid UTF-8 and multi_modal is False.
@@ -590,13 +590,12 @@ class S3Filesystem(FilesystemBase):
     async def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"],
-    ) -> str | bytes:
+    ) -> str:
         """
         Read a file from S3 and return its contents.
 
         Returns:
             - str: The file contents decoded as UTF-8 if possible.
-            - bytes: If the file cannot be decoded as UTF-8.
 
         Note:
             multi_modal support for S3 is limited as we can't easily determine
