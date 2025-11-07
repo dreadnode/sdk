@@ -238,7 +238,7 @@ class FilesystemBase(Toolset):
             if f.is_file() and f.stat().st_size <= MAX_GREP_FILE_SIZE
         ]
 
-        async def search_file(file_path: UPath) -> list[GrepMatch]:
+        async def search_file(file_path: UPath) -> list[GrepMatch | str]:
             """Search a single file for matches."""
             file_matches: list[GrepMatch | str] = []
             try:
