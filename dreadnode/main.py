@@ -18,7 +18,6 @@ from fsspec.implementations.local import (  # type: ignore [import-untyped]
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
@@ -47,6 +46,7 @@ from dreadnode.constants import (
     ENV_WORKSPACE,
 )
 from dreadnode.error import AssertionFailedError
+from dreadnode.exporter import CustomOTLPSpanExporter
 from dreadnode.logging_ import console as logging_console
 from dreadnode.metric import (
     Metric,
@@ -618,12 +618,12 @@ class Dreadnode:
                     f"Failed to connect to the Dreadnode server: {e}",
                 ) from e
 
-            headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
+            headers = {"X-Api-Key": self.token}
             endpoint = "/api/otel/traces"
             span_processors.append(
                 BatchSpanProcessor(
                     RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
-                        OTLPSpanExporter(
+                        CustomOTLPSpanExporter(
                             endpoint=urljoin(self.server, endpoint),
                             headers=headers,
                             compression=Compression.Gzip,

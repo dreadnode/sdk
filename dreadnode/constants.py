@@ -1,6 +1,8 @@
 import os
 import pathlib
 
+from dreadnode.version import VERSION
+
 #
 # Defaults
 #
@@ -67,3 +69,6 @@ USER_CONFIG_PATH = pathlib.Path(
 
 # Default values for the file system credential management
 FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes in seconds
+
+# Default User-Agent
+DEFAULT_USER_AGENT = f"dreadnode/{VERSION}"
