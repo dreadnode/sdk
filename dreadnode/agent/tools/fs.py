@@ -18,6 +18,9 @@ from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.util import shorten_string
 
+if t.TYPE_CHECKING:
+    import aioboto3  # type: ignore[import-untyped]
+
 MAX_GREP_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
@@ -32,11 +35,21 @@ class FilesystemItem:
 
     @classmethod
     def from_path(cls, path: "UPath", relative_base: "UPath") -> "FilesystemItem":
-        """Create an Item from a UPath"""
+        """Create an Item from a UPath.
 
-        base_path = str(relative_base.resolve())
-        full_path = str(path.resolve())
-        relative = full_path[len(base_path) :]
+        Args:
+            path: The UPath to create an item from
+            relative_base: The base path to calculate relative paths from
+
+        Returns:
+            FilesystemItem representing the path
+
+        Raises:
+            ValueError: If the path is neither a file nor a directory
+        """
+        base_path: str = str(relative_base.resolve())
+        full_path: str = str(path.resolve())
+        relative: str = full_path[len(base_path) :]
 
         if path.is_dir():
             return cls(type="dir", name=relative, size=None, modified=None)
@@ -86,7 +99,7 @@ class FilesystemBase(Toolset):
     variant: t.Literal["read", "write"] = Config(default="read")
 
     _fs: AbstractFileSystem = PrivateAttr()
-    _upath: UPath = PrivateAttr()
+    _upath: "UPath" = PrivateAttr()
 
     def model_post_init(self, _: t.Any) -> None:
         self._upath = (
@@ -98,8 +111,18 @@ class FilesystemBase(Toolset):
         self._fs = self._upath.fs
 
     def _resolve(self, path: str) -> "UPath":
-        """Resolve a relative path to an absolute UPath within the base path."""
-        full_path = (self._upath / path.lstrip("/")).resolve()
+        """Resolve a relative path to an absolute UPath within the base path.
+
+        Args:
+            path: Relative path to resolve
+
+        Returns:
+            Resolved UPath object within the base path
+
+        Raises:
+            ValueError: If the resolved path is outside the base path
+        """
+        full_path: UPath = (self._upath / path.lstrip("/")).resolve()
 
         # Check if the resolved path starts with the base path
         if not str(full_path).startswith(str(self.path)):
@@ -110,10 +133,19 @@ class FilesystemBase(Toolset):
         return full_path
 
     def _relative(self, path: "UPath") -> str:
-        """Get the path relative to the base path."""
-        # Would prefer relative_to here, but it's very flaky with UPath
-        base_path = str(self._upath.resolve())
-        full_path = str(path.resolve())
+        """Get the path relative to the base path.
+
+        Args:
+            path: UPath object to make relative
+
+        Returns:
+            String representation of the relative path
+
+        Note:
+            Uses string slicing instead of relative_to() due to UPath compatibility issues.
+        """
+        base_path: str = str(self._upath.resolve())
+        full_path: str = str(path.resolve())
         return full_path[len(base_path) :]
 
     # Methods that must be implemented by subclasses
@@ -517,16 +549,27 @@ class S3Filesystem(FilesystemBase):
     Requires aioboto3 and properly configured AWS credentials.
     """
 
-    def _get_s3_parts(self, path_obj: UPath) -> tuple[str, str]:
-        """Parse S3 path into bucket and key components."""
-        path_str = str(path_obj).replace("s3://", "")
-        parts = path_str.split("/", 1)
-        bucket = parts[0]
-        key = parts[1] if len(parts) > 1 else ""
+    def _get_s3_parts(self, path_obj: "UPath") -> tuple[str, str]:
+        """Parse S3 path into bucket and key components.
+
+        Args:
+            path_obj: UPath object representing an S3 path
+
+        Returns:
+            Tuple of (bucket_name, object_key)
+        """
+        path_str: str = str(path_obj).replace("s3://", "")
+        parts: list[str] = path_str.split("/", 1)
+        bucket: str = parts[0]
+        key: str = parts[1] if len(parts) > 1 else ""
         return bucket, key
 
-    def _get_session(self):
-        """Get aioboto3 session with profile if available."""
+    def _get_session(self) -> t.Any:
+        """Get aioboto3 session with profile if available.
+
+        Returns:
+            aioboto3.Session: An aioboto3 session with optional profile configuration
+        """
         try:
             import aioboto3
         except ImportError as e:
@@ -535,7 +578,7 @@ class S3Filesystem(FilesystemBase):
             ) from e
 
         # Try to get profile from fs_options, then environment
-        profile = None
+        profile: str | None = None
         if self.fs_options:
             profile = self.fs_options.get("profile")
         if not profile:
