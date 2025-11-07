@@ -18,9 +18,6 @@ from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.util import shorten_string
 
-if t.TYPE_CHECKING:
-    import aioboto3  # type: ignore[import-untyped]
-
 
 MAX_GREP_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
@@ -362,7 +359,7 @@ class LocalFilesystem(FilesystemBase):
             content = await f.read()
 
         try:
-            return content.decode("utf-8")
+            return str(content.decode("utf-8"))
         except UnicodeDecodeError as e:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)
@@ -610,7 +607,7 @@ class S3Filesystem(FilesystemBase):
             content = await response["Body"].read()
 
         try:
-            return content.decode("utf-8")
+            return str(content.decode("utf-8"))
         except UnicodeDecodeError as e:
             raise ValueError("File is not a valid text file.") from e
 
@@ -875,7 +872,5 @@ def Filesystem(
             return S3Filesystem(path=path, **kwargs)
     except Exception:
         # If UPath creation fails, fall through to local
-        pass
-
-    # Default to local filesystem
-    return LocalFilesystem(path=path, **kwargs)
+        logger.warning("Upath initialization failed, defaulting to local path")
+        return LocalFilesystem(path=path, **kwargs)
