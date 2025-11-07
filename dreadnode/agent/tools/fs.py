@@ -206,7 +206,7 @@ class FilesystemBase(Toolset):
         *,
         max_results: t.Annotated[int, "Maximum number of results to return"] = 100,
         recursive: t.Annotated[bool, "Search recursively in directories"] = False,
-    ) -> list[GrepMatch]:
+    ) -> list[GrepMatch | str]:
         """
         Search for pattern in files and return matches with line numbers and context.
 
@@ -240,7 +240,7 @@ class FilesystemBase(Toolset):
 
         async def search_file(file_path: UPath) -> list[GrepMatch]:
             """Search a single file for matches."""
-            file_matches: list[GrepMatch] = []
+            file_matches: list[GrepMatch | str] = []
             try:
                 # Use the subclass's read_file method
                 content = await self.read_file(self._relative(file_path))
@@ -283,19 +283,19 @@ class FilesystemBase(Toolset):
                 OSError,
                 ValueError,
             ) as e:
-                logger.warning(f"Error occurred while searching file {file_path}: {e}")
+                file_matches.append(f"Error occurred while searching file {file_path}: {e}")
 
             return file_matches
 
         # Search files in parallel with concurrency limit
         semaphore = asyncio.Semaphore(self.max_concurrent_reads)
 
-        async def search_file_limited(file_path: UPath) -> list[GrepMatch]:
+        async def search_file_limited(file_path: UPath) -> list[GrepMatch| str]:
             """Search a single file with semaphore to limit concurrency."""
             async with semaphore:
                 return await search_file(file_path)
 
-        all_matches: list[GrepMatch] = []
+        all_matches: list[GrepMatch | str] = []
         results = await asyncio.gather(
             *[search_file_limited(file_path) for file_path in files_to_search]
         )
@@ -874,3 +874,6 @@ def Filesystem(
         # If UPath creation fails, fall through to local
         logger.warning("Upath initialization failed, defaulting to local path")
         return LocalFilesystem(path=path, **kwargs)
+
+    # Default to local filesystem
+    return LocalFilesystem(path=path, **kwargs)
