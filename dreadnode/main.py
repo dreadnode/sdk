@@ -33,7 +33,6 @@ from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
     DEFAULT_PROJECT_NAME,
     DEFAULT_SERVER_URL,
-    DEFAULT_WORKSPACE_NAME,
     ENV_API_KEY,
     ENV_API_TOKEN,
     ENV_CONSOLE,
@@ -254,6 +253,9 @@ class Dreadnode:
             raise RuntimeError("API client is not initialized.")
 
         try:
+            logging_console.print(
+                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{name}'...[/]"
+            )
             return self._api.create_workspace(name=name, organization_id=self._organization.id)
         except RuntimeError as e:
             if "403: Forbidden" in str(e):
@@ -307,7 +309,9 @@ class Dreadnode:
             if default_workspace:
                 found_workspace = default_workspace
             else:
-                found_workspace = self._create_workspace(name=DEFAULT_WORKSPACE_NAME)
+                raise RuntimeError(
+                    "No default workspace found. Please specify a workspace which you have contributor access to."
+                )
 
         if not found_workspace:
             raise RuntimeError("Failed to resolve or create a workspace.")
