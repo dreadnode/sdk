@@ -363,10 +363,10 @@ class LocalFilesystem(FilesystemBase):
 
         try:
             return content.decode("utf-8")
-        except UnicodeDecodeError:
+        except UnicodeDecodeError as e:
             if self.multi_modal:
                 return rg.ContentImageUrl.from_file(path)
-            return content
+            raise ValueError("File is not a valid text file.") from e
 
     @tool_method(variants=["read", "write"], catch=True)
     async def read_lines(
@@ -612,8 +612,8 @@ class S3Filesystem(FilesystemBase):
 
         try:
             return content.decode("utf-8")
-        except UnicodeDecodeError:
-            return content
+        except UnicodeDecodeError as e:
+            raise ValueError("File is not a valid text file.") from e
 
     @tool_method(variants=["read", "write"], catch=True)
     async def read_lines(
