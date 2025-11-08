@@ -431,6 +431,8 @@ class Project(BaseModel):
     """Name of the project."""
     description: str | None = Field(repr=False)
     """Description of the project."""
+    workspace_id: UUID | None
+    """Unique identifier for the workspace the project belongs to."""
     created_at: datetime
     """Timestamp when the project was created."""
     updated_at: datetime
@@ -439,6 +441,77 @@ class Project(BaseModel):
     """Number of runs associated with the project."""
     last_run: RawRun | None = Field(repr=False)
     """Last run associated with the project, if any."""
+
+
+class Workspace(BaseModel):
+    id: UUID
+    """Unique identifier for the workspace."""
+    name: str
+    """Name of the workspace."""
+    slug: str
+    """URL-friendly slug for the workspace."""
+    description: str | None
+    """Description of the workspace."""
+    created_by: UUID
+    """Unique identifier for the user who created the workspace."""
+    org_id: UUID
+    """Unique identifier for the organization the workspace belongs to."""
+    org_name: str | None
+    """Name of the organization the workspace belongs to."""
+    is_active: bool
+    """Is the workspace active?"""
+    is_default: bool
+    """Is the workspace the default one?"""
+    project_count: int | None
+    """Number of projects in the workspace."""
+    created_at: datetime
+    """Creation timestamp."""
+    updated_at: datetime
+    """Last update timestamp."""
+
+
+class WorkspaceFilter(BaseModel):
+    """Filter parameters for workspace listing"""
+
+    org_id: UUID | None = Field(None, description="Filter by organization ID")
+
+
+class PaginatedWorkspaces(BaseModel):
+    workspaces: list[Workspace]
+    """List of workspaces in the current page."""
+    total: int
+    """Total number of workspaces available."""
+    page: int
+    """Current page number."""
+    limit: int
+    """Number of workspaces per page."""
+    total_pages: int
+    """Total number of pages available."""
+    has_next: bool
+    """Is there a next page available?"""
+    has_previous: bool
+    """Is there a previous page available?"""
+
+
+class Organization(BaseModel):
+    id: UUID
+    """Unique identifier for the organization."""
+    name: str
+    """Name of the organization."""
+    slug: str
+    """URL-friendly slug for the organization."""
+    description: str | None
+    """Description of the organization."""
+    is_active: bool
+    """Is the organization active?"""
+    allow_external_invites: bool
+    """Allow external invites to the organization?"""
+    max_members: int
+    """Maximum number of members allowed in the organization."""
+    created_at: datetime
+    """Creation timestamp."""
+    updated_at: datetime
+    """Last update timestamp."""
 
 
 # Derived types

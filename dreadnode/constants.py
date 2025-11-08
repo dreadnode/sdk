@@ -1,6 +1,8 @@
 import os
 import pathlib
 
+from dreadnode.version import VERSION
+
 #
 # Defaults
 #
@@ -29,6 +31,10 @@ DEFAULT_DOCKER_REGISTRY_SUBDOMAIN = "registry"
 DEFAULT_DOCKER_REGISTRY_LOCAL_PORT = 5005
 # default docker registry image tag
 DEFAULT_DOCKER_REGISTRY_IMAGE_TAG = "registry"
+# default workspace name
+DEFAULT_WORKSPACE_NAME = "Personal Workspace"
+# default project name
+DEFAULT_PROJECT_NAME = "Default"
 
 #
 # Environment Variable Names
@@ -39,6 +45,8 @@ ENV_SERVER = "DREADNODE_SERVER"  # alternative to SERVER_URL
 ENV_API_TOKEN = "DREADNODE_API_TOKEN"  # noqa: S105 # nosec
 ENV_API_KEY = "DREADNODE_API_KEY"  # pragma: allowlist secret (alternative to API_TOKEN)
 ENV_LOCAL_DIR = "DREADNODE_LOCAL_DIR"
+ENV_ORGANIZATION = "DREADNODE_ORGANIZATION"
+ENV_WORKSPACE = "DREADNODE_WORKSPACE"
 ENV_PROJECT = "DREADNODE_PROJECT"
 ENV_PROFILE = "DREADNODE_PROFILE"
 ENV_CONSOLE = "DREADNODE_CONSOLE"
@@ -61,3 +69,6 @@ USER_CONFIG_PATH = pathlib.Path(
 
 # Default values for the file system credential management
 FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes in seconds
+
+# Default User-Agent
+DEFAULT_USER_AGENT = f"dreadnode/{VERSION}"

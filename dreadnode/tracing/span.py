@@ -391,7 +391,7 @@ class RunSpan(Span):
         type: SpanType = "run",
     ) -> None:
         self.autolog = autolog
-        self.project = project
+        self.project_id = project
 
         self._params = params or {}
         self._metrics = metrics or {}
@@ -543,7 +543,7 @@ class RunSpan(Span):
 
         with RunUpdateSpan(
             run_id=self.run_id,
-            project=self.project,
+            project=self.project_id,
             tracer=self._tracer,
             metrics=self._pending_metrics if self._pending_metrics else None,
             params=self._pending_params if self._pending_params else None,
@@ -850,7 +850,7 @@ class RunSpan(Span):
 
     def __repr__(self) -> str:
         run_id = self.run_id
-        project = self.project
+        project = self.project_id
         num_tasks = len(self._tasks)
         num_objects = len(self._objects)
         return (
