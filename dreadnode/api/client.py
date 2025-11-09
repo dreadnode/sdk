@@ -868,6 +868,7 @@ class ApiClient:
         self,
         name: str,
         organization_id: UUID,
+        description: str | None = None,
     ) -> Workspace:
         """
         Creates a new workspace.
@@ -882,8 +883,19 @@ class ApiClient:
 
         payload = {
             "name": name,
+            "description": description,
             "org_id": str(organization_id),
         }
 
         response = self.request("POST", "/workspaces", json_data=payload)
         return Workspace(**response.json())
+
+    def delete_workspace(self, workspace_id: str | UUID) -> None:
+        """
+        Deletes a specific workspace.
+
+        Args:
+            workspace_id (str | UUID): The workspace identifier.
+        """
+
+        self.request("DELETE", f"/workspaces/{workspace_id!s}")

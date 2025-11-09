@@ -25,6 +25,8 @@ from dreadnode.cli.github import (
 )
 from dreadnode.cli.platform import cli as platform_cli
 from dreadnode.cli.profile import cli as profile_cli
+from dreadnode.cli.rbac.organizations import cli as rbac_organizations_cli
+from dreadnode.cli.rbac.workspaces import cli as rbac_workspaces_cli
 from dreadnode.cli.study import cli as study_cli
 from dreadnode.cli.task import cli as task_cli
 from dreadnode.constants import DEBUG, PLATFORM_BASE_URL
@@ -46,6 +48,8 @@ cli.command(task_cli)
 cli.command(eval_cli)
 cli.command(study_cli)
 cli.command(attack_cli)
+cli.command(rbac_organizations_cli)
+cli.command(rbac_workspaces_cli)
 cli.command(platform_cli)
 cli.command(profile_cli)
 
