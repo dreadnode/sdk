@@ -11,7 +11,7 @@ from typing import Literal, TypedDict, Union
 
 from loguru import logger
 
-from dreadnode.artifact.storage import ArtifactStorage
+from dreadnode.storage.artifact import ArtifactStorage
 
 
 class FileNode(TypedDict):

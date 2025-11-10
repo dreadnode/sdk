@@ -27,16 +27,15 @@ from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.util import types as otel_types
 from ulid import ULID
 
-from dreadnode.artifact.credential_manager import CredentialManager
-from dreadnode.artifact.merger import ArtifactMerger
-from dreadnode.artifact.storage import ArtifactStorage
-from dreadnode.artifact.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.common_types import UNSET, AnyDict, Arguments, JsonDict, Unset
 from dreadnode.constants import DEFAULT_MAX_INLINE_OBJECT_BYTES
 from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
+from dreadnode.storage.artifact import ArtifactStorage
+from dreadnode.storage.merger import ArtifactMerger
+from dreadnode.storage.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.tracing.constants import (
     EVENT_ATTRIBUTE_LINK_HASH,
     EVENT_ATTRIBUTE_OBJECT_HASH,
@@ -71,6 +70,8 @@ from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
     import networkx as nx  # type: ignore [import-untyped]
+
+    from dreadnode.api.models import UserDataCredentials
 
 
 logger = logging.getLogger(__name__)
@@ -379,7 +380,7 @@ class RunSpan(Span):
         name: str,
         project: str,
         tracer: Tracer,
-        credential_manager: CredentialManager,
+        credential_fetcher: t.Callable[[], "UserDataCredentials"],
         *,
         attributes: AnyDict | None = None,
         params: AnyDict | None = None,
@@ -400,15 +401,12 @@ class RunSpan(Span):
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
 
-        # Credential manager for S3 operations
-        self._credential_manager = credential_manager
-
         # Initialize artifact components
-        self._artifact_storage = ArtifactStorage(credential_manager=credential_manager)
+        self._artifact_storage = ArtifactStorage(credential_fetcher=credential_fetcher)
         self._artifacts: list[DirectoryNode] = []
         self._artifact_merger = ArtifactMerger()
         self._artifact_tree_builder = ArtifactTreeBuilder(
-            storage=self._artifact_storage, prefix_path=self._credential_manager.get_prefix()
+            storage=self._artifact_storage, prefix_path=""
         )
 
         # Update mechanics
@@ -439,7 +437,7 @@ class RunSpan(Span):
         cls,
         context: RunContext,
         tracer: Tracer,
-        credential_manager: CredentialManager,
+        credential_fetcher: t.Callable[[], "UserDataCredentials"],
     ) -> "RunSpan":
         self = RunSpan(
             name=f"run.{context['run_id']}.fragment",
@@ -448,7 +446,7 @@ class RunSpan(Span):
             tracer=tracer,
             type="run_fragment",
             run_id=context["run_id"],
-            credential_manager=credential_manager,
+            credential_fetcher=credential_fetcher,
         )
 
         self._remote_context = context["trace_context"]
@@ -631,7 +629,7 @@ class RunSpan(Span):
         """Store file with automatic credential refresh."""
 
         def store_operation() -> str:
-            filesystem = self._credential_manager.get_filesystem()
+            filesystem = self._storage_manager.get_filesystem()
 
             if not filesystem.exists(full_path):
                 with filesystem.open(full_path, "wb") as f:
@@ -639,7 +637,7 @@ class RunSpan(Span):
 
             return str(filesystem.unstrip_protocol(full_path))
 
-        return self._credential_manager.execute_with_retry(store_operation)
+        return self._storage_manager.execute_with_retry(store_operation)
 
     def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
         """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
@@ -659,7 +657,7 @@ class RunSpan(Span):
         # Offload to file system (e.g., S3)
         # For storage efficiency, still use just the data_hash for the file path
         # This ensures we don't duplicate storage for the same data
-        prefix = self._credential_manager.get_prefix()
+        prefix = self._storage_manager.get_prefix()
         full_path = f"{prefix.rstrip('/')}/{data_hash}"
         object_uri = self._store_file_by_hash(data_bytes, full_path)
 

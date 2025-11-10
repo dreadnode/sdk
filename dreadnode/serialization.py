@@ -406,9 +406,9 @@ def _handle_pandas_series(
 
 
 def _handle_dataset(obj: t.Any, _seen: set[int]) -> tuple[JsonValue, JsonDict]:
-    import datasets  # type: ignore[import-not-found,import-untyped,unused-ignore]
+    import storage  # type: ignore[import-not-found,import-untyped,unused-ignore]
 
-    if not isinstance(obj, datasets.Dataset):
+    if not isinstance(obj, storage.Dataset):
         return safe_repr(obj), UNKNOWN_OBJECT_SCHEMA
 
     buffer = io.BytesIO()
@@ -516,9 +516,9 @@ def _get_handlers() -> dict[type, HandlerFunc]:
         handlers[pd.Series] = _handle_pandas_series
 
     with contextlib.suppress(Exception):
-        import datasets
+        import storage
 
-        handlers[datasets.Dataset] = _handle_dataset
+        handlers[storage.Dataset] = _handle_dataset
 
     with contextlib.suppress(Exception):
         handlers[DataType] = _handle_custom_data_type

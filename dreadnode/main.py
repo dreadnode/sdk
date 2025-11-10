@@ -21,8 +21,13 @@ from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
-from dreadnode.api.models import Organization, Project, Workspace, WorkspaceFilter
-from dreadnode.artifact.credential_manager import CredentialManager
+from dreadnode.api.models import (
+    Organization,
+    Project,
+    UserDataCredentials,
+    Workspace,
+    WorkspaceFilter,
+)
 from dreadnode.common_types import (
     INHERITED,
     AnyDict,
@@ -44,6 +49,7 @@ from dreadnode.constants import (
     ENV_SERVER_URL,
     ENV_WORKSPACE,
 )
+from dreadnode.dataset import Dataset
 from dreadnode.error import AssertionFailedError
 from dreadnode.exporter import CustomOTLPSpanExporter
 from dreadnode.logging_ import console as logging_console
@@ -56,6 +62,7 @@ from dreadnode.metric import (
 )
 from dreadnode.scorers import Scorer, ScorerCallable
 from dreadnode.scorers.base import ScorersLike
+from dreadnode.storage.dataset import DatasetStorage
 from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -146,13 +153,14 @@ class Dreadnode:
         self.otel_scope = otel_scope
 
         self._api: ApiClient | None = None
-        self._credential_manager: CredentialManager | None = None
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
 
         self._organization: Organization
         self._workspace: Workspace
         self._project: Project
+
+        self._credential_fetcher: t.Callable[[], UserDataCredentials]
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -615,6 +623,7 @@ class Dreadnode:
                     self.server = urlunparse(parsed_new)
 
                 self._api = ApiClient(self.server, api_key=self.token)
+                self._credential_fetcher = lambda: self._api.get_user_data_credentials()
 
                 self._resolve_rbac()
             except Exception as e:
@@ -647,15 +656,6 @@ class Dreadnode:
             #         )
             #     )
             # )
-            if self._api is not None:
-                api = self._api
-                self._credential_manager = CredentialManager(
-                    credential_fetcher=lambda: api.get_user_data_credentials()
-                )
-                self._credential_manager.initialize()
-
-                self._fs = self._credential_manager.get_filesystem()
-                self._fs_prefix = self._credential_manager.get_prefix()
 
         self._logfire = logfire.configure(
             local=not self.is_default,
@@ -1131,7 +1131,7 @@ class Dreadnode:
             tracer=_tracer or self._get_tracer(),
             params=params,
             tags=tags,
-            credential_manager=self._credential_manager,  # type: ignore[arg-type]
+            credential_fetcher=self._credential_fetcher,  # type: ignore[arg-type]
             autolog=autolog,
         )
 
@@ -1218,7 +1218,7 @@ class Dreadnode:
         return RunSpan.from_context(
             context=run_context,
             tracer=self._get_tracer(),
-            credential_manager=self._credential_manager,  # type: ignore[arg-type]
+            storage_manager=self._storage_manager,  # type: ignore[arg-type]
         )
 
     def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> None:
@@ -1250,6 +1250,47 @@ class Dreadnode:
 
         for target in [target for target in targets if target]:
             target.add_tags(tag)
+
+    #    @handle_internal_errors()
+    def load_dataset(self, path: str) -> Dataset:
+        """
+        Load a dataset from the local cache or Dreadnode server.
+
+        Example:
+            ```
+            dataset = dreadnode.load_dataset("dreadnode://my_dataset/versions/1")
+            ```
+        """
+
+        dataset_storage = DatasetStorage(self._credential_fetcher)  # type: ignore[arg-type]
+        return dataset_storage.load(path)
+
+    def save_dataset(self, dataset: Dataset, uri: str) -> None:
+        """
+        Save a dataset to the local cache.
+
+        Example:
+            ```
+            dreadnode.save_dataset(dataset, "/path/to/my/dataset")
+            ```
+        """
+
+        dataset_storage = DatasetStorage(self._credential_fetcher)  # type: ignore[arg-type]
+        dataset_storage.save(dataset, uri)
+
+    @handle_internal_errors()
+    def push_dataset(self, uri: str) -> None:
+        """
+        Push a local dataset to the Dreadnode server.
+
+        Example:
+            ```
+            dataset = dreadnode.push_dataset("/path/to/my/dataset")
+            ```
+        """
+
+        dataset_storage = DatasetStorage(self._storage_manager)  # type: ignore[arg-type]
+        dataset_storage.push(uri)
 
     @handle_internal_errors()
     def push_update(self) -> None:

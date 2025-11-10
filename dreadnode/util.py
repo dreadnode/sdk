@@ -7,12 +7,16 @@ import re
 import socket
 import sys
 import typing as t
+from collections.abc import Callable
 from contextlib import aclosing, asynccontextmanager, contextmanager
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 from types import TracebackType
+from typing import ParamSpec, TypeVar
 from urllib.parse import ParseResult, urlparse
 
+import fsspec
 import typing_extensions as te
 from logfire import suppress_instrumentation
 from logfire._internal.stack_info import (
@@ -31,6 +35,9 @@ from logfire._internal.stack_info import (
     warn_at_user_stacklevel as _warn_at_user_stacklevel,
 )
 from loguru import logger
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 get_user_frame_and_stacklevel = _get_user_frame_and_stacklevel
 get_filepath_attribute = _get_filepath_attribute
@@ -860,3 +867,20 @@ def resolve_docker_service(original_endpoint: str, parsed: ParseResult) -> str:
     raise RuntimeError(
         f"Failed to connect to the Dreadnode Artifact storage at {original_endpoint}."
     )
+
+
+def _factory(func: Callable[P, R]) -> Callable[P, R]:
+    """
+    A simple, type-safe wrapper to maintain a consistent API factory pattern.
+    """
+
+    @wraps(func)
+    def _wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        return func(*args, **kwargs)
+
+    return _wrapper
+
+
+def is_path_remote(uri: str) -> bool:
+    scheme = fsspec.utils.get_protocol(uri)
+    return scheme not in ("file", None, "")

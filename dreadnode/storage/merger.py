@@ -5,7 +5,7 @@ Utility for merging artifact tree structures while preserving directory hierarch
 import hashlib
 from pathlib import Path
 
-from dreadnode.artifact.tree_builder import DirectoryNode, FileNode
+from dreadnode.storage.tree_builder import DirectoryNode, FileNode
 
 
 class ArtifactMerger:

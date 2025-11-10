@@ -35,6 +35,8 @@ DEFAULT_DOCKER_REGISTRY_IMAGE_TAG = "registry"
 DEFAULT_WORKSPACE_NAME = "Personal Workspace"
 # default project name
 DEFAULT_PROJECT_NAME = "Default"
+# default datasets cache directory
+DATASETS_CACHE = f"{DEFAULT_LOCAL_STORAGE_DIR}/datasets"
 
 #
 # Environment Variable Names

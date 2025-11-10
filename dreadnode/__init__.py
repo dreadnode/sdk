@@ -9,6 +9,7 @@ from dreadnode import (
 )
 from dreadnode import logging_ as logging
 from dreadnode.data_types import Code, Markdown, Object3D, Text
+from dreadnode.dataset import Dataset
 from dreadnode.logging_ import configure_logging
 from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.meta import (
@@ -55,6 +56,8 @@ scorer = DEFAULT_INSTANCE.scorer
 score = DEFAULT_INSTANCE.score
 push_update = DEFAULT_INSTANCE.push_update
 tag = DEFAULT_INSTANCE.tag
+load_dataset = DEFAULT_INSTANCE.load_dataset
+save_dataset = DEFAULT_INSTANCE.save_dataset
 get_run_context = DEFAULT_INSTANCE.get_run_context
 continue_run = DEFAULT_INSTANCE.continue_run
 log_metric = DEFAULT_INSTANCE.log_metric
@@ -83,6 +86,7 @@ __all__ = [
     "CurrentRun",
     "CurrentTask",
     "CurrentTrial",
+    "Dataset",
     "DatasetField",
     "Dreadnode",
     "EnvVar",
@@ -120,6 +124,7 @@ __all__ = [
     "eval",
     "get_run_context",
     "link_objects",
+    "load_dataset",
     "log_artifact",
     "log_input",
     "log_inputs",
@@ -132,6 +137,7 @@ __all__ = [
     "optimization",
     "push_update",
     "run",
+    "save_dataset",
     "scorer",
     "scorers",
     "shutdown",
