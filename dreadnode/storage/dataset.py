@@ -77,11 +77,9 @@ class DatasetStorage(BaseStorage):
             cache_path = Path(self._local_cache_path).joinpath(strip_protocol(path))
             if not cache_path.exists():
                 # if not in cache, load from remote and cache locally
-                print("Loading dataset from remote storage...")
                 fs, fs_path = self.get_filesystem(path)
             else:
                 # load from cache
-                print("Loading dataset from local cache...")
                 fs, fs_path = self.get_filesystem(cache_path)
 
             loaded_ds = Dataset.from_path(fs_path, _fs=fs)
@@ -92,7 +90,6 @@ class DatasetStorage(BaseStorage):
                 raise FileNotFoundError(f"Dataset path does not exist: {path}")
 
             fs, fs_path = self.get_filesystem(path)
-            print("Loading dataset from local path...")
             loaded_ds = Dataset.from_path(fs_path, _fs=fs)
 
         return loaded_ds

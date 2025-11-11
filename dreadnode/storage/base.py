@@ -67,12 +67,12 @@ class BaseStorage:
                 raise
 
         return {
-            "key": "mock-user",  # self._s3_credentials.access_key_id,
-            "secret": "mock-password",  # self._s3_credentials.secret_access_key,
-            # "token": self._s3_credentials.session_token,
+            "key": self._s3_credentials.access_key_id,
+            "secret": self._s3_credentials.secret_access_key,
+            "token": self._s3_credentials.session_token,
             "client_kwargs": {
-                "endpoint_url": "http://localhost:9000",  # self._s3_credentials.endpoint,
-                "region_name": "us-east-1",  # self._s3_credentials.region,
+                "endpoint_url": self._s3_credentials.endpoint,
+                "region_name": self._s3_credentials.region,
             },
             "skip_instance_cache": True,
             "listings_expiry_time": 0,
