@@ -1,7 +1,8 @@
 import uuid
 from typing import Any
 
-from pyarrow import dataset
+from fsspec import AbstractFileSystem
+from pyarrow import Table, dataset
 from pydantic import BaseModel, ConfigDict
 
 from dreadnode.constants import DATASETS_CACHE
@@ -28,7 +29,7 @@ class Dataset(BaseModel):
     and a lazy-loaded Ray Dataset.
     """
 
-    ds: dataset.Dataset
+    ds: dataset.Dataset | Table
     name: str | None = None
     description: str | None = None
     version: str | None = None
@@ -73,7 +74,8 @@ class Dataset(BaseModel):
 
     def _get_uri(self) -> None:
         """Get a the uri for the dataset."""
-        return f"{DATASETS_CACHE}/{self.name}_{self.version}"
+        # normalize the name to create a uri
+        return self.name.replace(" ", "_").lower()
 
     def _get_schema(self) -> dict[str, Any]:
         """Set the schema of the dataset."""
@@ -108,8 +110,15 @@ class Dataset(BaseModel):
             files=self.files,
         )
 
+    def save(self, path: str, *, _fs: AbstractFileSystem) -> None:
+        """
+        Save the dataset to the given path.
+        """
+
+        dataset.write_dataset(data=self.ds, base_dir=path, format="parquet", filesystem=_fs)
+
     @classmethod
-    def from_path(cls, path: str) -> "Dataset":
+    def from_path(cls, path: str, *, _fs: AbstractFileSystem) -> "Dataset":
         """
         Create a Dataset instance from a given path.
 
@@ -122,9 +131,9 @@ class Dataset(BaseModel):
             A new Dataset instance.
         """
 
-        ds_obj = dataset.dataset(path, format="parquet")
+        ds_obj = dataset.dataset(path, format="parquet", filesystem=_fs)
 
-        return cls(ds=ds_obj)
+        return cls(ds=ds_obj.to_table())
 
     @classmethod
     def from_json(cls, metadata: dict[str, Any]) -> "Dataset":

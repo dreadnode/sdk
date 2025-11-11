@@ -44,9 +44,8 @@ class BaseStorage:
         """
         self._credential_fetcher = credential_fetcher
         self._s3_credentials: UserDataCredentials | None = None
-        self._s3_credentials_expiry: datetime | None = None
-        self._local_cache_path: Path | None = Path(DATASETS_CACHE)
-        self._remote_storage_path: Path | None = None
+
+        self._local_cache_path = DATASETS_CACHE
 
     def _get_s3_storage_options(self) -> dict:
         """
@@ -54,56 +53,59 @@ class BaseStorage:
         """
         now = datetime.now(timezone.utc)
         needs_refresh = (
-            not self._s3_credentials_expiry
-            or (self._s3_credentials_expiry - now).total_seconds() < FS_CREDENTIAL_REFRESH_BUFFER
+            not self._s3_credentials
+            or (self._s3_credentials.expiration - now).total_seconds()
+            < FS_CREDENTIAL_REFRESH_BUFFER
         )
 
         if needs_refresh:
-            logger.info("Refreshing S3 storage credentials.")
             try:
                 self._s3_credentials = self._credential_fetcher()
-                self._s3_credentials_expiry = self._s3_credentials.expiration
-                self._remote_storage_path = Path(
-                    f"{self._s3_credentials.bucket}/{self._s3_credentials.prefix}"
-                )
-                logger.info(f"S3 credentials refreshed, valid until {self._s3_credentials_expiry}")
+
             except Exception:
                 logger.exception("Failed to refresh S3 storage credentials.")
                 raise
 
         return {
-            "key": self._s3_credentials.access_key_id,
-            "secret": self._s3_credentials.secret_access_key,
-            "token": self._s3_credentials.session_token,
+            "key": "mock-user",  # self._s3_credentials.access_key_id,
+            "secret": "mock-password",  # self._s3_credentials.secret_access_key,
+            # "token": self._s3_credentials.session_token,
             "client_kwargs": {
-                "endpoint_url": self._s3_credentials.endpoint,
-                "region_name": self._s3_credentials.region,
+                "endpoint_url": "http://localhost:9000",  # self._s3_credentials.endpoint,
+                "region_name": "us-east-1",  # self._s3_credentials.region,
             },
             "skip_instance_cache": True,
+            "listings_expiry_time": 0,
         }
 
-    def get_filesystem(self, path: str) -> tuple[AbstractFileSystem, Path]:
+    def get_filesystem(self, path: str) -> tuple[AbstractFileSystem, str]:
         """
-        Dynamically get the correct fsspec filesystem instance based on the URL protocol.
+        Dynamically gets the correct filesystem and the clean path string for a given URL.
 
         Args:
-            urlpath: The full URL to the resource (e.g., "s3://bucket/key" or "/local/path").
+            path: The full URL string (e.g., "dn://my-dataset", "/local/path").
 
         Returns:
-            A tuple containing the filesystem instance and the path within that filesystem.
+            A tuple of (filesystem_instance, path_within_filesystem_as_string).
         """
         protocol = get_protocol(path)
-        storage_options = {}  # would prefer to pass these in and get fs based on config
+        storage_options = {}
+        is_remote = False
 
         if protocol in ("dn", "dreadnode"):
             storage_options = self._get_s3_storage_options()
-            fs, path = url_to_fs(path, **storage_options)
-            path = self._remote_storage_path / "datasets"
+            is_remote = True
         elif protocol == "file":
             storage_options = {"auto_mkdir": True}
-            fs, path = url_to_fs(path, **storage_options)
 
-        return fs, Path(path)
+        fs, fs_path = url_to_fs(path, **storage_options)
+
+        if is_remote:
+            fs_path = (
+                f"{self._s3_credentials.bucket}/{self._s3_credentials.prefix}/datasets/{fs_path}"
+            )
+
+        return fs, fs_path
 
     def execute_with_retry(self, operation: Callable[[], T], max_retries: int = 3) -> T:
         """

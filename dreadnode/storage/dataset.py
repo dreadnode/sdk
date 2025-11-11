@@ -3,10 +3,12 @@ Dataset storage implementation for fsspec-compatible file systems.
 Provides efficient uploading of files and directories
 """
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from fsspec.core import strip_protocol
+from fsspec.utils import get_protocol
 
 from dreadnode.dataset import Dataset
 from dreadnode.storage.base import BaseStorage
@@ -33,26 +35,27 @@ class DatasetStorage(BaseStorage):
         super().__init__(credential_fetcher=credential_fetcher)
         self._prefix: str = "datasets"
 
-    def save(self, dataset: Dataset, path: Path, *, to_hub: bool = False) -> Dataset | None:
+    def save(self, dataset: Dataset, *, cache: bool) -> None:
         """
         Saves a dataset to the local cache.
 
         Args:
             dataset: The Dataset instance to save.
-            path: The full URL to the dataset's directory.
+            cache: If True, saves to local cache. If False, saves to remote storage.
 
         """
 
-        fs, dataset_path = self.get_filesystem(path)
+        if cache:
+            # save to the local cache
+            cache_path = self._local_cache_path
+            fs, fs_path = self.get_filesystem(cache_path)
+            dataset.save(cache_path, _fs=fs)
 
-        # check local cache
-        check_cache_path = self._local_cache_path / dataset_path.stem
-        if not fs.exists(check_cache_path):
-            dataset.ds.write_to_dataset(str(check_cache_path), format="parquet", filesystem=fs)
-
-        # check remote paths
-
-        return None
+        else:
+            # save to remote storage
+            remote_path = f"dn://{dataset.name}"
+            fs, fs_path = self.get_filesystem(remote_path)
+            dataset.save(fs_path, _fs=fs)
 
     def load(self, path: str, lazy: bool = False) -> Dataset | None:
         """
@@ -67,22 +70,29 @@ class DatasetStorage(BaseStorage):
         Returns:
             A new Dataset instance.
         """
+        protocol = get_protocol(path)
 
-        fs, dataset_path = self.get_filesystem(path)
+        if protocol in ("dn", "dreadnode"):
+            # check the cache first
+            cache_path = Path(self._local_cache_path).joinpath(strip_protocol(path))
+            if not cache_path.exists():
+                # if not in cache, load from remote and cache locally
+                print("Loading dataset from remote storage...")
+                fs, fs_path = self.get_filesystem(path)
+            else:
+                # load from cache
+                print("Loading dataset from local cache...")
+                fs, fs_path = self.get_filesystem(cache_path)
 
-        # check local cache first
-        check_cache_path = self._local_cache_path / dataset_path.stem
-        if fs.exists(check_cache_path):
-            print(f"Loading dataset from cache at {check_cache_path}")
-            # if there is a metadata file, load from that
-            with fs.open(check_cache_path.joinpath(".metadata.json"), "r") as f:
-                metadata_json = json.load(f)
-                return Dataset.from_json(metadata_json)
+            loaded_ds = Dataset.from_path(fs_path, _fs=fs)
 
-        # check remote paths
-        if fs.exists(dataset_path):
-            print(f"Loading dataset from path at {dataset_path}")
-            return Dataset.from_path(path)
+        else:
+            # load directly from the path
+            if not Path(path).exists():
+                raise FileNotFoundError(f"Dataset path does not exist: {path}")
 
-        print(f"Dataset not found at path: {path}")
-        return None
+            fs, fs_path = self.get_filesystem(path)
+            print("Loading dataset from local path...")
+            loaded_ds = Dataset.from_path(fs_path, _fs=fs)
+
+        return loaded_ds

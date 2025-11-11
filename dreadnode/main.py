@@ -1265,18 +1265,18 @@ class Dreadnode:
         dataset_storage = DatasetStorage(self._credential_fetcher)  # type: ignore[arg-type]
         return dataset_storage.load(path)
 
-    def save_dataset(self, dataset: Dataset, uri: str) -> None:
+    def save_dataset(self, dataset: Dataset, *, cache=False) -> None:
         """
         Save a dataset to the local cache.
 
         Example:
             ```
-            dreadnode.save_dataset(dataset, "/path/to/my/dataset")
+            dreadnode.save_dataset(dataset, cache=True)
             ```
         """
 
         dataset_storage = DatasetStorage(self._credential_fetcher)  # type: ignore[arg-type]
-        dataset_storage.save(dataset, uri)
+        dataset_storage.save(dataset, cache=cache)
 
     @handle_internal_errors()
     def push_dataset(self, uri: str) -> None:
