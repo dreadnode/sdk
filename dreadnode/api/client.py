@@ -16,6 +16,8 @@ from ulid import ULID
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
     ContainerRegistryCredentials,
+    DatasetCreateRequest,
+    DatasetMetadata,
     DeviceCodeResponse,
     ExportFormat,
     GithubTokenResponse,
@@ -887,3 +889,32 @@ class ApiClient:
 
         response = self.request("POST", "/workspaces", json_data=payload)
         return Workspace(**response.json())
+
+    # Dataset
+
+    def create_dataset(
+        self,
+        dataset: DatasetCreateRequest,
+    ) -> DatasetMetadata:
+        """
+        Creates a new dataset.
+
+        Args:
+            name (str): The name of the dataset.
+            org_id (str | UUID): The organization ID to create the dataset in.
+            workspace_id (str | UUID | None): The workspace ID to create the dataset in.
+            description (str | None): The description of the dataset.
+            version (str | None): The version of the dataset.
+            license (str | None): The license of the dataset.
+            tags (list[str] | None): The tags associated with the dataset.
+            ds_schema (dict[str, Any] | None): The dataset schema.
+            file_pointers (list[str] | None): The file pointers for the dataset.
+
+        Returns:
+            Dataset: The created Dataset object.
+        """
+
+        payload: dict[str, t.Any] = dataset.model_dump()
+
+        response = self.request("POST", "/datasets", json_data=payload)
+        return DatasetMetadata(**response.json())

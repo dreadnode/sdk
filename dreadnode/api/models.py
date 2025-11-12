@@ -542,3 +542,97 @@ class GithubTokenResponse(BaseModel):
     token: str
     expires_at: datetime
     repos: list[str]
+
+
+# Dataset
+class DatasetMetadata(BaseModel):
+    """
+    A data model representing the metadata of a dataset.
+    """
+
+    id: UUID
+    """Unique identifier for the dataset."""
+    org_id: UUID
+    """Unique identifier for the organization owning the dataset."""
+    repo_id: UUID
+    """Unique identifier for the repository containing the dataset."""
+    name: str
+    """Name of the dataset."""
+    description: str | None = None
+    """Description of the dataset."""
+    version: str | None = None
+    """Version of the dataset."""
+    license: str | None = None
+    """License of the dataset."""
+    tags: list[str] | None = None
+    """Tags associated with the dataset."""
+    ds_schema: dict[str, t.Any] | None = None
+    """Schema of the dataset."""
+    file_pointers: list[str] | None = None
+    """List of file pointers for the dataset files."""
+
+
+class PaginatedDatasets(BaseModel):
+    """
+    A data model representing a paginated list of datasets.
+    """
+
+    datasets: list[DatasetMetadata]
+    """List of dataset metadata objects."""
+    total: int
+    """Total number of datasets available."""
+    page: int
+    """Current page number."""
+    limit: int
+    """Number of datasets per page."""
+    total_pages: int
+    """Total number of pages available."""
+    has_next: bool
+    """Indicates if there is a next page available."""
+    has_previous: bool
+    """Indicates if there is a previous page available."""
+
+
+class DatasetCreateRequest(BaseModel):
+    """
+    A data model representing the request body for creating a new dataset.
+    """
+
+    name: str
+    """Name of the dataset."""
+    org_id: UUID
+    """Unique identifier for the organization owning the dataset."""
+    workspace_id: UUID | None = None
+    """Unique identifier for the workspace to create the dataset in."""
+    description: str | None = None
+    """Description of the dataset."""
+    version: str | None = None
+    """Version of the dataset."""
+    license: str | None = None
+    """License of the dataset."""
+    tags: list[str] | None = None
+    """Tags associated with the dataset."""
+    ds_schema: dict[str, t.Any] | None = None
+    """Schema of the dataset."""
+    file_pointers: list[str] | None = None
+    """List of file pointers for the dataset files."""
+
+
+class DatasetDownloadRequest(BaseModel):
+    """
+    A data model representing the request body for downloading a dataset.
+    """
+
+    dataset_id: UUID
+    """Unique identifier for the dataset to download."""
+    version: str | None = None
+    """Version of the dataset to download. If None, the latest version is downloaded."""
+
+
+class DatasetDownloadResponse(BaseModel):
+    """
+    A data model representing the response for downloading a dataset.
+    """
+
+    download_url: str
+    """URL to download the dataset."""

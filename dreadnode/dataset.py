@@ -25,8 +25,8 @@ class DatasetMetadata(BaseModel):
 
 class Dataset(BaseModel):
     """
-    A data model representing a versioned dataset, containing both metadata
-    and a lazy-loaded Ray Dataset.
+    A data model representing a versioned dataset.
+
     """
 
     ds: dataset.Dataset | Table
