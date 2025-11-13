@@ -2,12 +2,14 @@ import asyncio
 import contextlib
 import os
 import random
+import re
 import sys
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urlunparse
+from uuid import UUID
 
 import coolname  # type: ignore [import-untyped]
 import logfire
@@ -17,10 +19,10 @@ from fsspec.implementations.local import (  # type: ignore [import-untyped]
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from dreadnode.api.client import ApiClient
+from dreadnode.api.models import Organization, Project, Workspace, WorkspaceFilter
 from dreadnode.artifact.credential_manager import CredentialManager
 from dreadnode.common_types import (
     INHERITED,
@@ -30,17 +32,21 @@ from dreadnode.common_types import (
 )
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
+    DEFAULT_PROJECT_NAME,
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
     ENV_API_TOKEN,
     ENV_CONSOLE,
     ENV_LOCAL_DIR,
+    ENV_ORGANIZATION,
     ENV_PROFILE,
     ENV_PROJECT,
     ENV_SERVER,
     ENV_SERVER_URL,
+    ENV_WORKSPACE,
 )
 from dreadnode.error import AssertionFailedError
+from dreadnode.exporter import CustomOTLPSpanExporter
 from dreadnode.logging_ import console as logging_console
 from dreadnode.metric import (
     Metric,
@@ -104,6 +110,8 @@ class Dreadnode:
     server: str | None
     token: str | None
     local_dir: str | Path | t.Literal[False]
+    organization: str | UUID | None
+    workspace: str | UUID | None
     project: str | None
     service_name: str | None
     service_version: str | None
@@ -117,6 +125,8 @@ class Dreadnode:
         server: str | None = None,
         token: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
+        organization: str | UUID | None = None,
+        workspace: str | UUID | None = None,
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
@@ -127,6 +137,8 @@ class Dreadnode:
         self.server = server
         self.token = token
         self.local_dir = local_dir
+        self.organization = organization
+        self.workspace = workspace
         self.project = project
         self.service_name = service_name
         self.service_version = service_version
@@ -139,12 +151,26 @@ class Dreadnode:
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
 
+        self._organization: Organization
+        self._workspace: Workspace
+        self._project: Project
+
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
 
         self._initialized = False
 
     def _get_profile_server(self, profile: str | None = None) -> str | None:
+        """
+        Get the server URL from the user config for a given profile.
+
+        Args:
+            profile: The profile name to use. If not provided, it will use the
+                `DREADNODE_PROFILE` environment variable or the active profile.
+
+        Returns:
+            The server URL, or None if not found.
+        """
         with contextlib.suppress(Exception):
             user_config = UserConfig.read()
             profile = profile or os.environ.get(ENV_PROFILE)
@@ -155,6 +181,16 @@ class Dreadnode:
         return None
 
     def _get_profile_api_key(self, profile: str | None = None) -> str | None:
+        """
+        Get the API key from the user config for a given profile.
+
+        Args:
+            profile: The profile name to use. If not provided, it will use the
+                `DREADNODE_PROFILE` environment variable or the active profile.
+
+        Returns:
+            The API key, or None if not found.
+        """
         with contextlib.suppress(Exception):
             user_config = UserConfig.read()
             profile = profile or os.environ.get(ENV_PROFILE)
@@ -163,6 +199,245 @@ class Dreadnode:
 
         # Silently fail if profile config is not available or invalid
         return None
+
+    def _resolve_organization(self) -> None:
+        """
+        Resolve the organization to use based on configuration.
+
+        It will try to find the organization by ID or name if provided.
+        If not, it will list organizations and use the only one available.
+
+        Raises:
+            RuntimeError: If the API client is not initialized, the organization
+                is not found, or the user belongs to multiple organizations without
+                specifying one.
+        """
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+
+        if self.organization:
+            self._organization = self._api.get_organization(self.organization)
+            if not self._organization:
+                raise RuntimeError(f"Organization '{self.organization}' not found.")
+
+        else:
+            organizations = self._api.list_organizations()
+
+            if not organizations:
+                raise RuntimeError(
+                    f"You are not part of any organizations on {self.server}. You will not be able to use Strikes.",
+                )
+
+            if len(organizations) > 1:
+                # We should not presume to choose an organization
+                org_list = "\t\n".join([f"- {o.name}" for o in organizations])
+                raise RuntimeError(
+                    f"You are part of multiple organizations. Please specify an organization from:\n{org_list}"
+                )
+            self._organization = organizations[0]
+
+    def _create_workspace(self, name: str) -> Workspace:
+        """
+        Create a new workspace.
+
+        Args:
+            name: The name of the workspace to create.
+
+        Returns:
+            The created Workspace object.
+
+        Raises:
+            RuntimeError: If the API client is not initialized or if the user
+                does not have permission to create a workspace.
+        """
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+
+        try:
+            logging_console.print(
+                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{name}'...[/]"
+            )
+            return self._api.create_workspace(name=name, organization_id=self._organization.id)
+        except RuntimeError as e:
+            if "403: Forbidden" in str(e):
+                raise RuntimeError(
+                    "You do not have permission to create the specified workspace for this organization. (You must be a Contributor to create new workspaces)."
+                ) from e
+            raise
+
+    def _resolve_workspace(self) -> None:
+        """
+        Resolve the workspace to use based on configuration.
+
+        If a workspace is specified by name and doesn't exist, it will be created.
+        If no workspace is specified, it will look for a default workspace or
+        create one named 'default'.
+
+        Raises:
+            RuntimeError: If the API client is not initialized, a specified
+                workspace ID is not found, or if it fails to resolve or create a
+                workspace.
+        """
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+
+        found_workspace: Workspace | None = None
+        if self.workspace:
+            try:
+                found_workspace = self._api.get_workspace(
+                    self.workspace, org_id=self._organization.id
+                )
+            except RuntimeError as e:
+                if "404: Workspace not found" in str(e):
+                    pass  # do nothing, we'll create it below
+                else:
+                    raise
+
+            if not found_workspace and isinstance(self.workspace, UUID):
+                raise RuntimeError(f"Workspace with ID '{self.workspace}' not found.")
+
+            if not found_workspace and isinstance(self.workspace, str):  # specified by name/slug
+                # create the workspace (must be an org contributor)
+                found_workspace = self._create_workspace(name=self.workspace)
+
+        else:  # the user provided no workspace, attempt to find a default one
+            workspaces = self._api.list_workspaces(
+                filters=WorkspaceFilter(
+                    org_id=self._organization.id if self._organization else None
+                )
+            )
+            default_workspace = next((ws for ws in workspaces if ws.is_default is True), None)
+            if default_workspace:
+                found_workspace = default_workspace
+            else:
+                raise RuntimeError(
+                    "No default workspace found. Please specify a workspace which you have contributor access to."
+                )
+
+        if not found_workspace:
+            raise RuntimeError("Failed to resolve or create a workspace.")
+
+        self._workspace = found_workspace
+
+    def _resolve_project(self) -> None:
+        """
+        Resolve the project to use based on configuration.
+
+        If a project is specified by name and doesn't exist, it will be created.
+        If no project is specified, it will use or create one named 'default'.
+
+        Raises:
+            RuntimeError: If the API client is not initialized.
+        """
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+
+        # fetch the project
+        found_project: Project | None = None
+        try:
+            found_project = self._api.get_project(
+                project_identifier=self.project or DEFAULT_PROJECT_NAME,
+                workspace_id=self._workspace.id,
+            )
+        except RuntimeError as e:
+            if "404: Project not found" in str(e):
+                pass  # do nothing, we'll create it below
+            else:
+                raise
+
+        if not found_project:
+            # create it in the workspace
+            found_project = self._api.create_project(
+                name=self.project or DEFAULT_PROJECT_NAME, workspace_id=self._workspace.id
+            )
+        # This is what's used in all of the Traces/Spans/Runs
+        self._project = found_project
+        self.project = str(self._project.id)
+
+    def _resolve_rbac(self) -> None:
+        """
+        Resolve organization, workspace, and project for RBAC.
+
+        This is a convenience method that calls the individual resolution methods.
+
+        Raises:
+            RuntimeError: If the API client is not initialized.
+        """
+        if self._api is None:
+            raise RuntimeError("API client is not initialized.")
+        self._resolve_organization()
+        self._resolve_workspace()
+        self._resolve_project()
+
+    def _log_configuration(self, config_source: str, active_profile: str | t.Any | None) -> None:
+        """
+        Log the current Dreadnode configuration to the console.
+
+        Args:
+            config_source: A string indicating where the configuration came from.
+            active_profile: The name of the active profile, if any.
+        """
+        logging_console.print(f"Dreadnode Configuration: (from {config_source})")
+
+        if self.server or self.token:
+            destination = self.server or DEFAULT_SERVER_URL or "local storage"
+            logging_console.print(f" Server: [orange_red1]{destination}[/]")
+        elif self.local_dir:
+            logging_console.print(
+                f"Local directory: [orange_red1]{self.local_dir}[/] ({config_source})"
+            )
+
+        # Warn the user if the profile didn't resolve
+        elif active_profile and not (self.server or self.token):
+            logging_console.print(
+                f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
+            )
+        logging_console.print(f" Organization: [green]{self._organization.name}[/]")
+        logging_console.print(f" Workspace: [green]{self._workspace.name}[/]")
+        logging_console.print(f" Project: [green]{self._project.name}[/]")
+
+    @staticmethod
+    def _extract_project_components(path: str | None) -> tuple[str | None, str | None, str]:
+        """
+        Extract organization, workspace, and project from a path string.
+
+        The path can be in the format `org/workspace/project`, `workspace/project`,
+        or `project`.
+
+        Args:
+            path: The path string to parse.
+
+        Returns:
+            A tuple containing (organization, workspace, project). Components that
+            are not present will be None.
+        """
+        if not path:
+            return (None, None, "")
+
+        pattern = r"^(?:([\s\w-]+?)/)?(?:([\s\w-]+?)/)?([\s\w-]+?)$"
+        match = re.match(pattern, path)
+
+        if not match:
+            raise RuntimeError(f"Invalid project path format: '{path}'")
+
+        # The groups are: (Org, Workspace, Project)
+        groups = match.groups()
+
+        present_components = [c for c in groups if c is not None]
+
+        if len(present_components) == 3:
+            org, workspace, project = groups
+        elif len(present_components) == 2:
+            org = None
+            workspace, project = groups[1], groups[2]
+        elif len(present_components) == 1:
+            org = None
+            workspace = None
+            project = groups[2]
+        else:
+            raise RuntimeError("Regex matched, but component count is unexpected.")
+
+        return (org, workspace, project)
 
     def get_current_run(self) -> RunSpan | None:
         return current_run_span.get()
@@ -177,6 +452,8 @@ class Dreadnode:
         token: str | None = None,
         profile: str | None = None,
         local_dir: str | Path | t.Literal[False] = False,
+        organization: str | UUID | None = None,
+        workspace: str | UUID | None = None,
         project: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
@@ -205,7 +482,9 @@ class Dreadnode:
             token: The Dreadnode API token.
             profile: The Dreadnode profile name to use (only used if env vars are not set).
             local_dir: The local directory to store data in.
-            project: The default project name to associate all runs with.
+            organization: The default organization name or ID to use.
+            workspace: The default workspace name or ID to use.
+            project: The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
             console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
@@ -264,7 +543,22 @@ class Dreadnode:
         else:
             self.local_dir = local_dir
 
-        self.project = project or os.environ.get(ENV_PROJECT)
+        _org, _workspace, _project = self._extract_project_components(project)
+
+        self.organization = _org or organization or os.environ.get(ENV_ORGANIZATION)
+        with contextlib.suppress(ValueError):
+            self.organization = UUID(
+                str(self.organization)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
+        self.workspace = _workspace or workspace or os.environ.get(ENV_WORKSPACE)
+        with contextlib.suppress(ValueError):
+            self.workspace = UUID(
+                str(self.workspace)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
+        self.project = _project or project or os.environ.get(ENV_PROJECT)
+
         self.service_name = service_name
         self.service_version = service_version
         self.console = (
@@ -280,20 +574,9 @@ class Dreadnode:
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
 
-        # Log config information for clarity
-        if self.server or self.token or self.local_dir:
-            destination = self.server or DEFAULT_SERVER_URL or "local storage"
-            logging_console.print(
-                f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source}, project: {self.project or 'default'})"
-            )
-
-        # Warn the user if the profile didn't resolve
-        elif active_profile and not (self.server or self.token):
-            logging_console.print(
-                f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
-            )
-
         self.initialize()
+
+        self._log_configuration(config_source, active_profile)
 
     def initialize(self) -> None:
         """
@@ -339,18 +622,19 @@ class Dreadnode:
 
                 self._api = ApiClient(self.server, api_key=self.token)
 
-                self._api.list_projects()
+                self._resolve_rbac()
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to connect to the Dreadnode server: {e}",
                 ) from e
 
-            headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
+            headers = {"X-Api-Key": self.token}
+            endpoint = "/api/otel/traces"
             span_processors.append(
                 BatchSpanProcessor(
                     RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
-                        OTLPSpanExporter(
-                            endpoint=urljoin(self.server, "/api/otel/traces"),
+                        CustomOTLPSpanExporter(
+                            endpoint=urljoin(self.server, endpoint),
                             headers=headers,
                             compression=Compression.Gzip,
                         ),
@@ -425,6 +709,15 @@ class Dreadnode:
         return self._api
 
     def _get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
+        """
+        Get an OpenTelemetry Tracer instance.
+
+        Args:
+            is_span_tracer: Whether the tracer is for creating spans.
+
+        Returns:
+            An OpenTelemetry Tracer.
+        """
         return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
             self.otel_scope,
             VERSION,
@@ -911,7 +1204,7 @@ class Dreadnode:
         return {
             "run_id": run.run_id,
             "run_name": run.name,
-            "project": run.project,
+            "project": run.project_id,
             "trace_context": trace_context,
         }
 

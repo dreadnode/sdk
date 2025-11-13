@@ -14,6 +14,10 @@ class DreadnodeConfig:
     """Server URL"""
     token: str | None = None
     """API token"""
+    organization: str | None = None
+    """Organization name"""
+    workspace: str | None = None
+    """Workspace name"""
     project: str | None = None
     """Project name"""
     profile: str | None = None
@@ -35,6 +39,8 @@ class DreadnodeConfig:
             server=self.server,
             token=self.token,
             profile=self.profile,
+            organization=self.organization,
+            workspace=self.workspace,
             project=self.project,
             console=self.console,
         )

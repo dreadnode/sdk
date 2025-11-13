@@ -1,6 +1,6 @@
 [project]
 name = "dreadnode"
-version = "1.15.3"
+version = "1.15.4"
 description = "Dreadnode SDK"
 authors = [{ name = "Nick Landers", email = "monoxgas@gmail.com" }]
 readme = "README.md"
@@ -67,7 +67,7 @@ dev = [
     "markdown>=3.8.2,<4.0.0",
     "markdownify>=1.1.0,<2.0.0",
     "mkdocstrings-python>=1.16.12,<2.0.0",
-    "ipykernel>=7.0.1,<7.1.0",
+    "ipykernel>=7.1.0,<7.2.0",
     "ipywidgets>=8.1.7,<9.0.0",
     "types-pyyaml>=6.0.12.20250822",
 ]
