@@ -643,8 +643,9 @@ class Task(Component[P, R], t.Generic[P, R]):
             if span.exception is None:
                 return span.output
 
-            # If the loop finishes, all attempts failed. Raise the exception
-            # from the final attempt for debugging.
+        # If the loop finishes, all attempts failed. Raise the exception
+        # from the final attempt for debugging.
+        if last_span is not None:
             last_span.raise_if_failed()
 
         # Just for type checking - should never be called

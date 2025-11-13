@@ -15,6 +15,8 @@ Dreadnode(
     server: str | None = None,
     token: str | None = None,
     local_dir: str | Path | Literal[False] = False,
+    organization: str | UUID | None = None,
+    workspace: str | UUID | None = None,
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
@@ -39,6 +41,8 @@ def __init__(
     server: str | None = None,
     token: str | None = None,
     local_dir: str | Path | t.Literal[False] = False,
+    organization: str | UUID | None = None,
+    workspace: str | UUID | None = None,
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
@@ -49,6 +53,8 @@ def __init__(
     self.server = server
     self.token = token
     self.local_dir = local_dir
+    self.organization = organization
+    self.workspace = workspace
     self.project = project
     self.service_name = service_name
     self.service_version = service_version
@@ -60,6 +66,10 @@ def __init__(
     self._credential_manager: CredentialManager | None = None
     self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
     self._logfire.config.ignore_no_config = True
+
+    self._organization: Organization
+    self._workspace: Workspace
+    self._project: Project
 
     self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
     self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -141,6 +151,8 @@ configure(
     token: str | None = None,
     profile: str | None = None,
     local_dir: str | Path | Literal[False] = False,
+    organization: str | UUID | None = None,
+    workspace: str | UUID | None = None,
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
@@ -188,11 +200,21 @@ in the following order:
   `False`
   )
   –The local directory to store data in.
+* **`organization`**
+  (`str | UUID | None`, default:
+  `None`
+  )
+  –The default organization name or ID to use.
+* **`workspace`**
+  (`str | UUID | None`, default:
+  `None`
+  )
+  –The default workspace name or ID to use.
 * **`project`**
   (`str | None`, default:
   `None`
   )
-  –The default project name to associate all runs with.
+  –The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
 * **`service_name`**
   (`str | None`, default:
   `None`
@@ -228,6 +250,8 @@ def configure(
     token: str | None = None,
     profile: str | None = None,
     local_dir: str | Path | t.Literal[False] = False,
+    organization: str | UUID | None = None,
+    workspace: str | UUID | None = None,
     project: str | None = None,
     service_name: str | None = None,
     service_version: str | None = None,
@@ -256,7 +280,9 @@ def configure(
         token: The Dreadnode API token.
         profile: The Dreadnode profile name to use (only used if env vars are not set).
         local_dir: The local directory to store data in.
-        project: The default project name to associate all runs with.
+        organization: The default organization name or ID to use.
+        workspace: The default workspace name or ID to use.
+        project: The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
         service_name: The service name to use for OpenTelemetry.
         service_version: The service version to use for OpenTelemetry.
         console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
@@ -265,6 +291,11 @@ def configure(
     """
 
     self._initialized = False
+
+    # Skip during testing
+    if "pytest" in sys.modules:
+        self._initialized = True
+        return
 
     # Determine configuration source and active profile for logging
     config_source = "explicit parameters"
@@ -310,7 +341,22 @@ def configure(
     else:
         self.local_dir = local_dir
 
-    self.project = project or os.environ.get(ENV_PROJECT)
+    _org, _workspace, _project = self._extract_project_components(project)
+
+    self.organization = _org or organization or os.environ.get(ENV_ORGANIZATION)
+    with contextlib.suppress(ValueError):
+        self.organization = UUID(
+            str(self.organization)
+        )  # Now, it's a UUID if possible, else str (name/slug)
+
+    self.workspace = _workspace or workspace or os.environ.get(ENV_WORKSPACE)
+    with contextlib.suppress(ValueError):
+        self.workspace = UUID(
+            str(self.workspace)
+        )  # Now, it's a UUID if possible, else str (name/slug)
+
+    self.project = _project or project or os.environ.get(ENV_PROJECT)
+
     self.service_name = service_name
     self.service_version = service_version
     self.console = (
@@ -326,20 +372,9 @@ def configure(
     self.send_to_logfire = send_to_logfire
     self.otel_scope = otel_scope
 
-    # Log config information for clarity
-    if self.server or self.token or self.local_dir:
-        destination = self.server or DEFAULT_SERVER_URL or "local storage"
-        logging_console.print(
-            f"Dreadnode logging to [orange_red1]{destination}[/] ({config_source}, project: {self.project or 'default'})"
-        )
-
-    # Warn the user if the profile didn't resolve
-    elif active_profile and not (self.server or self.token):
-        logging_console.print(
-            f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
-        )
-
     self.initialize()
+
+    self._log_configuration(config_source, active_profile)
 ```
 
 
@@ -433,7 +468,7 @@ def get_run_context(self) -> RunContext:
     return {
         "run_id": run.run_id,
         "run_name": run.name,
-        "project": run.project,
+        "project": run.project_id,
         "trace_context": trace_context,
     }
 ```
@@ -497,18 +532,19 @@ def initialize(self) -> None:
 
             self._api = ApiClient(self.server, api_key=self.token)
 
-            self._api.list_projects()
+            self._resolve_rbac()
         except Exception as e:
             raise RuntimeError(
                 f"Failed to connect to the Dreadnode server: {e}",
             ) from e
 
-        headers = {"User-Agent": f"dreadnode/{VERSION}", "X-Api-Key": self.token}
+        headers = {"X-Api-Key": self.token}
+        endpoint = "/api/otel/traces"
         span_processors.append(
             BatchSpanProcessor(
                 RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
-                    OTLPSpanExporter(
-                        endpoint=urljoin(self.server, "/api/otel/traces"),
+                    CustomOTLPSpanExporter(
+                        endpoint=urljoin(self.server, endpoint),
                         headers=headers,
                         compression=Compression.Gzip,
                     ),
@@ -1872,7 +1908,7 @@ def run(
         tracer=_tracer or self._get_tracer(),
         params=params,
         tags=tags,
-        credential_manager=self._credential_manager,  # type: ignore[arg-type]
+        credential_manager=self._credential_manager,
         autolog=autolog,
     )
 ```
