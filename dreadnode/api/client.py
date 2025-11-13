@@ -285,7 +285,7 @@ class ApiClient:
         """Retrieves details of a specific project.
 
         Args:
-            project (str | UUID): The project identifier. ID, name, or slug.
+            project_identifier (str | UUID): The project identifier. ID, name, or slug.
 
         Returns:
             Project: The Project object.
@@ -306,9 +306,9 @@ class ApiClient:
         """Creates a new project.
 
         Args:
-            name (str | UUID | None): The name of the project. If None, a default name will be used.
-            workspace (str | UUID | None): The workspace ID to create the project in. If None, the default workspace will be used.
-            organization (str | UUID | None): The organization ID to create the project in. If None, the default organization will be used.
+            name: The name of the project. If None, a default name will be used.
+            workspace_id: The workspace ID to create the project in. If None, the default workspace will be used.
+            organization_id: The organization ID to create the project in. If None, the default organization will be used.
 
         Returns:
             Project: The created Project object.

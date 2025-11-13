@@ -99,6 +99,162 @@ def __init__(
 
 </Accordion>
 
+### create\_project
+
+```python
+create_project(
+    name: str | UUID | None = None,
+    workspace_id: UUID | None = None,
+    organization_id: UUID | None = None,
+) -> Project
+```
+
+Creates a new project.
+
+**Parameters:**
+
+* **`name`**
+  (`str | UUID | None`, default:
+  `None`
+  )
+  –The name of the project. If None, a default name will be used.
+* **`workspace_id`**
+  (`UUID | None`, default:
+  `None`
+  )
+  –The workspace ID to create the project in. If None, the default workspace will be used.
+* **`organization_id`**
+  (`UUID | None`, default:
+  `None`
+  )
+  –The organization ID to create the project in. If None, the default organization will be used.
+
+**Returns:**
+
+* **`Project`** ( `Project`
+  ) –The created Project object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def create_project(
+    self,
+    name: str | UUID | None = None,
+    workspace_id: UUID | None = None,
+    organization_id: UUID | None = None,
+) -> Project:
+    """Creates a new project.
+
+    Args:
+        name: The name of the project. If None, a default name will be used.
+        workspace_id: The workspace ID to create the project in. If None, the default workspace will be used.
+        organization_id: The organization ID to create the project in. If None, the default organization will be used.
+
+    Returns:
+        Project: The created Project object.
+    """
+    payload: dict[str, t.Any] = {}
+    if name is not None:
+        payload["name"] = name
+    if workspace_id is not None:
+        payload["workspace_id"] = str(workspace_id)
+    if organization_id is not None:
+        payload["org_id"] = str(organization_id)
+
+    response = self.request("POST", "/strikes/projects", json_data=payload)
+    return Project(**response.json())
+```
+
+
+</Accordion>
+
+### create\_workspace
+
+```python
+create_workspace(
+    name: str,
+    organization_id: UUID,
+    description: str | None = None,
+) -> Workspace
+```
+
+Creates a new workspace.
+
+**Parameters:**
+
+* **`name`**
+  (`str`)
+  –The name of the workspace.
+* **`organization_id`**
+  (`str | UUID`)
+  –The organization ID to create the workspace in.
+
+**Returns:**
+
+* **`Workspace`** ( `Workspace`
+  ) –The created Workspace object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def create_workspace(
+    self,
+    name: str,
+    organization_id: UUID,
+    description: str | None = None,
+) -> Workspace:
+    """
+    Creates a new workspace.
+
+    Args:
+        name (str): The name of the workspace.
+        organization_id (str | UUID): The organization ID to create the workspace in.
+
+    Returns:
+        Workspace: The created Workspace object.
+    """
+
+    payload = {
+        "name": name,
+        "description": description,
+        "org_id": str(organization_id),
+    }
+
+    response = self.request("POST", "/workspaces", json_data=payload)
+    return Workspace(**response.json())
+```
+
+
+</Accordion>
+
+### delete\_workspace
+
+```python
+delete_workspace(workspace_id: str | UUID) -> None
+```
+
+Deletes a specific workspace.
+
+**Parameters:**
+
+* **`workspace_id`**
+  (`str | UUID`)
+  –The workspace identifier.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def delete_workspace(self, workspace_id: str | UUID) -> None:
+    """
+    Deletes a specific workspace.
+
+    Args:
+        workspace_id (str | UUID): The workspace identifier.
+    """
+
+    self.request("DELETE", f"/workspaces/{workspace_id!s}")
+```
+
+
+</Accordion>
+
 ### export\_metrics
 
 ```python
@@ -548,6 +704,46 @@ def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
 
 </Accordion>
 
+### get\_organization
+
+```python
+get_organization(
+    organization_id: str | UUID,
+) -> Organization
+```
+
+Retrieves details of a specific organization.
+
+**Parameters:**
+
+* **`organization_id`**
+  (`str`)
+  –The organization identifier.
+
+**Returns:**
+
+* **`Organization`** ( `Organization`
+  ) –The Organization object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_organization(self, organization_id: str | UUID) -> Organization:
+    """
+    Retrieves details of a specific organization.
+
+    Args:
+        organization_id (str): The organization identifier.
+
+    Returns:
+        Organization: The Organization object.
+    """
+    response = self.request("GET", f"/organizations/{organization_id!s}")
+    return Organization(**response.json())
+```
+
+
+</Accordion>
+
 ### get\_platform\_registry\_credentials
 
 ```python
@@ -639,16 +835,18 @@ def get_platform_templates(self, tag: str) -> bytes:
 ### get\_project
 
 ```python
-get_project(project: str) -> Project
+get_project(
+    project_identifier: str | UUID, workspace_id: UUID
+) -> Project
 ```
 
 Retrieves details of a specific project.
 
 **Parameters:**
 
-* **`project`**
-  (`str`)
-  –The project identifier.
+* **`project_identifier`**
+  (`str | UUID`)
+  –The project identifier. ID, name, or slug.
 
 **Returns:**
 
@@ -657,16 +855,20 @@ Retrieves details of a specific project.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def get_project(self, project: str) -> Project:
+def get_project(self, project_identifier: str | UUID, workspace_id: UUID) -> Project:
     """Retrieves details of a specific project.
 
     Args:
-        project (str): The project identifier.
+        project_identifier (str | UUID): The project identifier. ID, name, or slug.
 
     Returns:
         Project: The Project object.
     """
-    response = self.request("GET", f"/strikes/projects/{project!s}")
+    response = self.request(
+        "GET",
+        f"/strikes/projects/{project_identifier!s}",
+        params={"workspace_id": workspace_id},
+    )
     return Project(**response.json())
 ```
 
@@ -892,6 +1094,78 @@ def get_user_data_credentials(self) -> UserDataCredentials:
 
 </Accordion>
 
+### get\_workspace
+
+```python
+get_workspace(
+    workspace_id: str | UUID, org_id: UUID | None = None
+) -> Workspace
+```
+
+Retrieves details of a specific workspace.
+
+**Parameters:**
+
+* **`workspace_id`**
+  (`str`)
+  –The workspace identifier.
+
+**Returns:**
+
+* **`Workspace`** ( `Workspace`
+  ) –The Workspace object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_workspace(self, workspace_id: str | UUID, org_id: UUID | None = None) -> Workspace:
+    """
+    Retrieves details of a specific workspace.
+
+    Args:
+        workspace_id (str): The workspace identifier.
+
+    Returns:
+        Workspace: The Workspace object.
+    """
+    params: dict[str, str] = {}
+    if org_id:
+        params = {"org_id": str(org_id)}
+    response = self.request("GET", f"/workspaces/{workspace_id!s}", params=params)
+    return Workspace(**response.json())
+```
+
+
+</Accordion>
+
+### list\_organizations
+
+```python
+list_organizations() -> list[Organization]
+```
+
+Retrieves a list of organizations the user belongs to.
+
+**Returns:**
+
+* `list[Organization]`
+  –A list of organization names.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def list_organizations(self) -> list[Organization]:
+    """
+    Retrieves a list of organizations the user belongs to.
+
+    Returns:
+        A list of organization names.
+    """
+    response = self.request("GET", "/organizations")
+    return [Organization(**org) for org in response.json()]
+```
+
+
+</Accordion>
+
 ### list\_projects
 
 ```python
@@ -953,6 +1227,57 @@ def list_runs(self, project: str) -> list[RunSummary]:
     """
     response = self.request("GET", f"/strikes/projects/{project!s}/runs")
     return [RunSummary(**run) for run in response.json()]
+```
+
+
+</Accordion>
+
+### list\_workspaces
+
+```python
+list_workspaces(
+    filters: WorkspaceFilter | None = None,
+) -> list[Workspace]
+```
+
+Retrieves a list of workspaces the user has access to.
+
+**Returns:**
+
+* `list[Workspace]`
+  –A list of workspace names.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def list_workspaces(self, filters: WorkspaceFilter | None = None) -> list[Workspace]:
+    """
+    Retrieves a list of workspaces the user has access to.
+
+    Returns:
+        A list of workspace names.
+    """
+    response = self.request(
+        "GET", "/workspaces", params=filters.model_dump() if filters else None
+    )
+    paginated_workspaces = PaginatedWorkspaces(**response.json())
+    # handle the pagination
+    all_workspaces: list[Workspace] = paginated_workspaces.workspaces.copy()
+    while paginated_workspaces.has_next:
+        response = self.request(
+            "GET",
+            "/workspaces",
+            params={
+                "page": paginated_workspaces.page + 1,
+                "limit": paginated_workspaces.limit,
+                **(filters.model_dump() if filters else {}),
+            },
+        )
+        next_page = PaginatedWorkspaces(**response.json())
+        all_workspaces.extend(next_page.workspaces)
+        paginated_workspaces.page = next_page.page
+        paginated_workspaces.has_next = next_page.has_next
+
+    return all_workspaces
 ```
 
 
@@ -1425,6 +1750,140 @@ value: Any
 
 The actual value of the object, can be any type.
 
+Organization
+------------
+
+### allow\_external\_invites
+
+```python
+allow_external_invites: bool
+```
+
+Allow external invites to the organization?
+
+### created\_at
+
+```python
+created_at: datetime
+```
+
+Creation timestamp.
+
+### description
+
+```python
+description: str | None
+```
+
+Description of the organization.
+
+### id
+
+```python
+id: UUID
+```
+
+Unique identifier for the organization.
+
+### is\_active
+
+```python
+is_active: bool
+```
+
+Is the organization active?
+
+### max\_members
+
+```python
+max_members: int
+```
+
+Maximum number of members allowed in the organization.
+
+### name
+
+```python
+name: str
+```
+
+Name of the organization.
+
+### slug
+
+```python
+slug: str
+```
+
+URL-friendly slug for the organization.
+
+### updated\_at
+
+```python
+updated_at: datetime
+```
+
+Last update timestamp.
+
+PaginatedWorkspaces
+-------------------
+
+### has\_next
+
+```python
+has_next: bool
+```
+
+Is there a next page available?
+
+### has\_previous
+
+```python
+has_previous: bool
+```
+
+Is there a previous page available?
+
+### limit
+
+```python
+limit: int
+```
+
+Number of workspaces per page.
+
+### page
+
+```python
+page: int
+```
+
+Current page number.
+
+### total
+
+```python
+total: int
+```
+
+Total number of workspaces available.
+
+### total\_pages
+
+```python
+total_pages: int
+```
+
+Total number of pages available.
+
+### workspaces
+
+```python
+workspaces: list[Workspace]
+```
+
+List of workspaces in the current page.
+
 Project
 -------
 
@@ -1493,6 +1952,14 @@ updated_at: datetime
 ```
 
 Timestamp when the project was last updated.
+
+### workspace\_id
+
+```python
+workspace_id: UUID | None
+```
+
+Unique identifier for the workspace the project belongs to.
 
 Run
 ---
@@ -1802,3 +2269,107 @@ span: Task | TraceSpan
 ```
 
 Span at this node, can be a Task or a TraceSpan.
+
+Workspace
+---------
+
+### created\_at
+
+```python
+created_at: datetime
+```
+
+Creation timestamp.
+
+### created\_by
+
+```python
+created_by: UUID | None = None
+```
+
+Unique identifier for the user who created the workspace.
+
+### description
+
+```python
+description: str | None
+```
+
+Description of the workspace.
+
+### id
+
+```python
+id: UUID
+```
+
+Unique identifier for the workspace.
+
+### is\_active
+
+```python
+is_active: bool
+```
+
+Is the workspace active?
+
+### is\_default
+
+```python
+is_default: bool
+```
+
+Is the workspace the default one?
+
+### name
+
+```python
+name: str
+```
+
+Name of the workspace.
+
+### org\_id
+
+```python
+org_id: UUID
+```
+
+Unique identifier for the organization the workspace belongs to.
+
+### org\_name
+
+```python
+org_name: str | None
+```
+
+Name of the organization the workspace belongs to.
+
+### project\_count
+
+```python
+project_count: int | None
+```
+
+Number of projects in the workspace.
+
+### slug
+
+```python
+slug: str
+```
+
+URL-friendly slug for the workspace.
+
+### updated\_at
+
+```python
+updated_at: datetime
+```
+
+Last update timestamp.
+
+WorkspaceFilter
+---------------
+
+Filter parameters for workspace listing
