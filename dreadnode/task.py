@@ -538,6 +538,7 @@ class Task(Component[P, R], t.Generic[P, R]):
 
                 # Log the output
 
+                output_object_hash: str | None = None
                 if log_output and (
                     not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
                 ):
@@ -546,10 +547,12 @@ class Task(Component[P, R], t.Generic[P, R]):
                         output,
                         attributes={"auto": True},
                     )
-                elif run is not None:
-                    # Link the output to the inputs
-                    for input_object_hash in input_object_hashes:
-                        run.link_objects(output_object_hash, input_object_hash)
+
+                if run is not None:
+                    # Link the output to the inputs if we logged it
+                    if output_object_hash is not None:
+                        for input_object_hash in input_object_hashes:
+                            run.link_objects(output_object_hash, input_object_hash)
 
                     if create_run:
                         run.log_output("output", output, attributes={"auto": True})

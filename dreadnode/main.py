@@ -623,12 +623,14 @@ class Dreadnode:
                 ) from e
 
             headers = {"X-Api-Key": self.token}
-            endpoint = "/api/otel/traces"
+            # Use custom_endpoint to bypass OTLP's automatic /v1/traces suffix
+            custom_endpoint = urljoin(self.server, "/api/otel/traces")
             span_processors.append(
                 BatchSpanProcessor(
                     RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
                         CustomOTLPSpanExporter(
-                            endpoint=urljoin(self.server, endpoint),
+                            endpoint=self.server,  
+                            custom_endpoint=custom_endpoint,  
                             headers=headers,
                             compression=Compression.Gzip,
                         ),
