@@ -741,7 +741,7 @@ class Agent(Model):
         from dreadnode import log_metric
 
         if isinstance(event, AgentEnd):
-            log_metric("steps_taken", min(0, event.result.steps - 1))
+            log_metric("steps_taken", max(0, event.result.steps - 1))
             log_metric(f"stop_{event.stop_reason}", 1)
 
         if not isinstance(event, AgentEventInStep):
@@ -836,7 +836,7 @@ class Agent(Model):
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
                         to="both",
-                        steps_taken=min(0, last_event.result.steps - 1),
+                        steps_taken=max(0, last_event.result.steps - 1),
                         reason=last_event.stop_reason,
                         failed=last_event.result.failed,
                     )
