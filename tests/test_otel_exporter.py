@@ -1,8 +1,9 @@
 """Tests for OTLP exporter and Task output linking changes."""
 
-import pytest
 from unittest.mock import Mock
 from urllib.parse import urljoin
+
+import pytest
 
 
 class TestCustomOTLPSpanExporterLogic:
@@ -26,7 +27,7 @@ class TestCustomOTLPSpanExporterLogic:
 
     def test_user_agent_combination_with_string(self):
         """Test User-Agent combination logic with string input."""
-        DEFAULT_USER_AGENT = "dreadnode/1.0.0"
+        default_user_agent = "dreadnode/1.0.0"
         otlp_user_agent = "OTel-OTLP-Exporter-Python/1.0.0"
 
         # Simulate the combination logic from exporter.py
@@ -34,15 +35,15 @@ class TestCustomOTLPSpanExporterLogic:
             otlp_user_agent = otlp_user_agent.decode("utf-8")
 
         if otlp_user_agent:
-            combined_user_agent = f"{DEFAULT_USER_AGENT} {otlp_user_agent}"
+            combined_user_agent = f"{default_user_agent} {otlp_user_agent}"
 
-        assert DEFAULT_USER_AGENT in combined_user_agent
+        assert default_user_agent in combined_user_agent
         assert "OTel-OTLP-Exporter-Python/1.0.0" in combined_user_agent
-        assert combined_user_agent.startswith(DEFAULT_USER_AGENT)
+        assert combined_user_agent.startswith(default_user_agent)
 
     def test_user_agent_combination_with_bytes(self):
         """Test User-Agent combination logic with bytes input."""
-        DEFAULT_USER_AGENT = "dreadnode/1.0.0"
+        default_user_agent = "dreadnode/1.0.0"
         otlp_user_agent = b"OTel-OTLP-Exporter-Python/1.0.0"
 
         # Simulate the combination logic
@@ -50,15 +51,15 @@ class TestCustomOTLPSpanExporterLogic:
             otlp_user_agent = otlp_user_agent.decode("utf-8")
 
         if otlp_user_agent:
-            combined_user_agent = f"{DEFAULT_USER_AGENT} {otlp_user_agent}"
+            combined_user_agent = f"{default_user_agent} {otlp_user_agent}"
 
         assert isinstance(combined_user_agent, str)
-        assert DEFAULT_USER_AGENT in combined_user_agent
+        assert default_user_agent in combined_user_agent
         assert "OTel-OTLP-Exporter-Python/1.0.0" in combined_user_agent
 
     def test_user_agent_fallback_when_none(self):
         """Test User-Agent fallback when no OTLP User-Agent exists."""
-        DEFAULT_USER_AGENT = "dreadnode/1.0.0"
+        default_user_agent = "dreadnode/1.0.0"
         otlp_user_agent = None
 
         # Simulate the fallback logic
@@ -66,11 +67,11 @@ class TestCustomOTLPSpanExporterLogic:
             otlp_user_agent = otlp_user_agent.decode("utf-8")
 
         if otlp_user_agent:
-            combined_user_agent = f"{DEFAULT_USER_AGENT} {otlp_user_agent}"
+            combined_user_agent = f"{default_user_agent} {otlp_user_agent}"
         else:
-            combined_user_agent = DEFAULT_USER_AGENT
+            combined_user_agent = default_user_agent
 
-        assert combined_user_agent == DEFAULT_USER_AGENT
+        assert combined_user_agent == default_user_agent
 
     def test_custom_endpoint_override_logic(self):
         """Test the custom_endpoint override logic."""

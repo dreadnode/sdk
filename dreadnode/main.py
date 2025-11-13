@@ -629,8 +629,8 @@ class Dreadnode:
                 BatchSpanProcessor(
                     RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
                         CustomOTLPSpanExporter(
-                            endpoint=self.server,  
-                            custom_endpoint=custom_endpoint,  
+                            endpoint=self.server,
+                            custom_endpoint=custom_endpoint,
                             headers=headers,
                             compression=Compression.Gzip,
                         ),
