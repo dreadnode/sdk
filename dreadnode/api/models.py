@@ -448,8 +448,8 @@ class Workspace(BaseModel):
     """Unique identifier for the workspace."""
     name: str
     """Name of the workspace."""
-    slug: str
-    """URL-friendly slug for the workspace."""
+    identifier: str
+    """URL-friendly identifier for the workspace."""
     description: str | None
     """Description of the workspace."""
     created_by: UUID | None = None
