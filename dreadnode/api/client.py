@@ -867,6 +867,7 @@ class ApiClient:
     def create_workspace(
         self,
         name: str,
+        identifier: str,
         organization_id: UUID,
         description: str | None = None,
     ) -> Workspace:
@@ -883,6 +884,7 @@ class ApiClient:
 
         payload = {
             "name": name,
+            "identifier": identifier,
             "description": description,
             "org_id": str(organization_id),
         }

@@ -469,6 +469,9 @@ class Workspace(BaseModel):
     updated_at: datetime
     """Last update timestamp."""
 
+    def __str__(self) -> str:
+        return f"{self.name} (Identifier: {self.identifier}), ID: {self.id}"
+
 
 class WorkspaceFilter(BaseModel):
     """Filter parameters for workspace listing"""
@@ -512,6 +515,9 @@ class Organization(BaseModel):
     """Creation timestamp."""
     updated_at: datetime
     """Last update timestamp."""
+
+    def __str__(self) -> str:
+        return f"{self.name} (Identifier: {self.identifier}), ID: {self.id}"
 
 
 # Derived types

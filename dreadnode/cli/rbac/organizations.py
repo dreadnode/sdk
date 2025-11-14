@@ -1,7 +1,9 @@
 import cyclopts
+from rich import box
+from rich.table import Table
 
 from dreadnode.cli.api import create_api_client
-from dreadnode.logging_ import print_info
+from dreadnode.logging_ import console
 
 cli = cyclopts.App("organizations", help="View and manage organizations.", help_flags=[])
 
@@ -11,5 +13,17 @@ def show() -> None:
     # get the client and call the list organizations endpoint
     client = create_api_client()
     organizations = client.list_organizations()
+
+    table = Table(box=box.ROUNDED)
+    table.add_column("Name", style="orange_red1")
+    table.add_column("Identifier", style="green")
+    table.add_column("ID")
+
     for org in organizations:
-        print_info(f"- {org.name} (ID: {org.id})")
+        table.add_row(
+            org.name,
+            org.identifier,
+            str(org.id),
+        )
+
+    console.print(table)
