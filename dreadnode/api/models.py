@@ -498,8 +498,8 @@ class Organization(BaseModel):
     """Unique identifier for the organization."""
     name: str
     """Name of the organization."""
-    slug: str
-    """URL-friendly slug for the organization."""
+    identifier: str
+    """URL-friendly identifer for the organization."""
     description: str | None
     """Description of the organization."""
     is_active: bool
