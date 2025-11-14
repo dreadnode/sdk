@@ -95,7 +95,7 @@ async def test_task_exception_handling() -> None:
     """Test that exceptions don't cause issues with output_object_hash logic."""
 
     @task(log_inputs=True, log_output=True)
-    def failing_task(x: int) -> int:
+    def failing_task(_x: int) -> int:
         raise ValueError("Intentional test error")
 
     result = await failing_task.run_always(5)
