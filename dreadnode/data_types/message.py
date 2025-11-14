@@ -101,7 +101,8 @@ class Message(DataType):
         for part in self.content:
             if isinstance(part, Image):
                 base64_str = part.to_base64()
-                data_url = f"data:image/{part._format};base64,{base64_str}"
+                _, meta = part.to_serializable()
+                data_url = f"data:image/{meta.get('format', 'png')};base64,{base64_str}"
                 rg_content.append(rg.ContentImageUrl.from_url(data_url))
 
             elif isinstance(part, Audio):
@@ -155,7 +156,16 @@ class Message(DataType):
             content=parts,
             metadata=msg.metadata.copy() if msg.metadata else {},
             uuid=msg.uuid,
-            tool_calls=msg.tool_calls,
+            tool_calls=[
+                {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ]
+            if msg.tool_calls
+            else None,
             tool_call_id=msg.tool_call_id,
         )
 
