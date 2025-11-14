@@ -42,7 +42,7 @@ class CustomMarkdownConverter(MarkdownConverter):  # type: ignore[misc]
         classes = el.get("class", [])
 
         # Handle source code details specially
-        if "quote" in classes:
+        if "mkdocstrings-source" in classes or "quote" in classes:
             summary = el.find("summary")
             if summary:
                 file_path = summary.get_text().replace("Source code in ", "").strip()
@@ -127,6 +127,10 @@ class AutoDocGenerator:
 
         module_data = self.handler.collect(module_path, options)
         html = self.handler.render(module_data, options)
+
+        if "Source code in " in html:
+            with open("debug.html", "w", encoding="utf-8") as f:
+                f.write(html)
 
         return str(
             CustomMarkdownConverter(
