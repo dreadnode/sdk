@@ -35,6 +35,7 @@ class Dataset(BaseModel):
     version: str | None = None
     license: str | None = None
     tags: list[str] | None = None
+    files: list[str] | None = None
 
     _metadata: DatasetMetadata | None = None
 
@@ -52,6 +53,9 @@ class Dataset(BaseModel):
         if not self.version:
             self.version = "0.0.1"
 
+        if not self.files:
+            self.files = self._get_files()
+
     @property
     def uri(self) -> str:
         """Get the URI of the dataset if available."""
@@ -66,11 +70,6 @@ class Dataset(BaseModel):
     def metadata(self) -> dict:
         """Get the manifest of the dataset."""
         return self._get_metadata()
-
-    @property
-    def files(self) -> list[str]:
-        """Get the list of files in the dataset."""
-        return self._get_files()
 
     def _get_uri(self) -> None:
         """Get a the uri for the dataset."""
@@ -110,12 +109,25 @@ class Dataset(BaseModel):
             files=self.files,
         )
 
-    def save(self, path: str, *, _fs: AbstractFileSystem) -> None:
+    def save(self, path: str, *, _fs: AbstractFileSystem = None) -> list[str]:
         """
         Save the dataset to the given path.
         """
 
-        dataset.write_dataset(data=self.ds, base_dir=path, format="parquet", filesystem=_fs)
+        files = []
+
+        def file_writer_func(written_file):
+            files.append(written_file.path)
+
+        dataset.write_dataset(
+            data=self.ds,
+            base_dir=path,
+            format="parquet",
+            filesystem=_fs if _fs else None,
+            file_visitor=file_writer_func,
+        )
+
+        return files
 
     @classmethod
     def from_path(cls, path: str, *, _fs: AbstractFileSystem) -> "Dataset":
@@ -133,7 +145,7 @@ class Dataset(BaseModel):
 
         ds_obj = dataset.dataset(path, format="parquet", filesystem=_fs)
 
-        return cls(ds=ds_obj.to_table())
+        return cls(ds=ds_obj)
 
     @classmethod
     def from_json(cls, metadata: dict[str, Any]) -> "Dataset":

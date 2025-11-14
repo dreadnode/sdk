@@ -724,6 +724,7 @@ dependencies = [
     { name = "loguru" },
     { name = "numpy" },
     { name = "optuna" },
+    { name = "oras" },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pydantic" },
@@ -810,6 +811,7 @@ requires-dist = [
     { name = "nltk", marker = "extra == 'scoring'", specifier = ">=3.9.1,<4.0.0" },
     { name = "numpy", specifier = "<=2.2.6" },
     { name = "optuna", specifier = ">=4.5.0,<5.0.0" },
+    { name = "oras", specifier = ">=0.2.38" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },
     { name = "pillow", marker = "extra == 'multimodal'", specifier = ">=11.2.1,<12.0.0" },
     { name = "presidio-analyzer", marker = "extra == 'scoring'", specifier = ">=2.2.359,<3.0.0" },
@@ -2573,6 +2575,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/53/a3/bcd1e5500de6ec794c085a277e5b624e60b4fac1790681d7cdbde25b93a2/optuna-4.5.0.tar.gz", hash = "sha256:264844da16dad744dea295057d8bc218646129c47567d52c35a201d9f99942ba", size = 472338, upload-time = "2025-08-18T06:49:22.402Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/12/cba81286cbaf0f0c3f0473846cfd992cb240bdcea816bf2ef7de8ed0f744/optuna-4.5.0-py3-none-any.whl", hash = "sha256:5b8a783e84e448b0742501bc27195344a28d2c77bd2feef5b558544d954851b0", size = 400872, upload-time = "2025-08-18T06:49:20.697Z" },
+]
+
+[[package]]
+name = "oras"
+version = "0.2.38"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/78/16f3847ef31a3b1410c401712336a9c5d90fa97c3cc1f4bacd9dcfced9b7/oras-0.2.38.tar.gz", hash = "sha256:58482f78275cb5cc9fdf135248ca878a19204428a51bd3a1ca24c32714d35341", size = 44755, upload-time = "2025-09-08T13:45:29.372Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/a4/f98db9c8498b11d8e82fccb343f189880a8fc33d496e7f8f9c0bbcbfbf64/oras-0.2.38-py3-none-any.whl", hash = "sha256:a97658086cea1e1ebb412a5b504005480c70de5d2e81a160d33e60fc187d42f4", size = 50249, upload-time = "2025-09-08T13:45:27.785Z" },
 ]
 
 [[package]]

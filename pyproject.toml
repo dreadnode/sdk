@@ -24,6 +24,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "cyclopts>=4.2.0",
     "pyarrow>=22.0.0",
+    "oras>=0.2.38",
 ]
 
 [project.optional-dependencies]
