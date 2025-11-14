@@ -20,7 +20,7 @@ class Text(DataType):
         self._format = format
 
     def to_serializable(self) -> tuple[str, dict[str, t.Any]]:
-        return self._text, {"format": self._format}
+        return self._text, {"format": self._format, "x-python-datatype": "dreadnode.Text"}
 
 
 class Markdown(Text):
