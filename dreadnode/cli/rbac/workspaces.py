@@ -1,5 +1,3 @@
-import re
-
 import cyclopts
 from click import confirm
 from rich import box
@@ -8,33 +6,24 @@ from rich.table import Table
 from dreadnode.api.models import Organization, Workspace, WorkspaceFilter
 from dreadnode.cli.api import create_api_client
 from dreadnode.logging_ import console, print_error, print_info
+from dreadnode.util import create_key_from_name
 
 cli = cyclopts.App("workspaces", help="View and manage workspaces.", help_flags=[])
-
-
-def _create_identifier_from_name(name: str) -> str:
-    identifier = name.strip().lower()
-
-    # 2. Replace one or more spaces or underscores with a single hyphen
-    identifier = re.sub(r"[\s_]+", "-", identifier)
-
-    # 3. Remove any character that is not a letter, number, or hyphen
-    return re.sub(r"[^a-z0-9-]", "", identifier)
 
 
 def _print_workspace_table(workspaces: list[Workspace], organization: Organization) -> None:
     table = Table(box=box.ROUNDED)
     table.add_column("Name", style="orange_red1")
-    table.add_column("Identifier", style="green")
+    table.add_column("Key", style="green")
     table.add_column("ID")
     table.add_column("dn.configure() Command", style="cyan")
 
     for ws in workspaces:
         table.add_row(
             ws.name,
-            ws.identifier,
+            ws.key,
             str(ws.id),
-            f'dn.configure(organization="{organization.identifier}", workspace="{ws.identifier}")',
+            f'dn.configure(organization="{organization.key}", workspace="{ws.key}")',
         )
 
     console.print(table)
@@ -70,7 +59,7 @@ def show(
 
     table = Table(box=box.ROUNDED)
     table.add_column("Name", style="orange_red1")
-    table.add_column("Identifier", style="green")
+    table.add_column("Key", style="green")
     table.add_column("ID")
     table.add_column("dn.configure() Command", style="cyan")
 
@@ -80,14 +69,14 @@ def show(
 @cli.command(name=["create", "new"])
 def create(
     name: str,
-    identifier: str | None = None,
+    key: str | None = None,
     description: str | None = None,
     organization: str | None = None,
 ) -> None:
     # get the client and call the create workspace endpoint
     client = create_api_client()
-    if not identifier:
-        identifier = _create_identifier_from_name(name)
+    if not key:
+        key = create_key_from_name(name)
 
     if organization:
         matched_organization = client.get_organization(organization)
@@ -106,7 +95,7 @@ def create(
             return
         matched_organization = user_organizations[0]
         print_info(
-            f"Workspace '{name}' ([cyan]{identifier}[/cyan]) will be created in organization '{matched_organization.name}'"
+            f"Workspace '{name}' ([cyan]{key}[/cyan]) will be created in organization '{matched_organization.name}'"
         )
         # verify with the user
         if not confirm("Do you want to continue?"):
@@ -115,7 +104,7 @@ def create(
 
     workspace: Workspace = client.create_workspace(
         name=name,
-        identifier=identifier,
+        key=key,
         organization_id=matched_organization.id,
         description=description,
     )

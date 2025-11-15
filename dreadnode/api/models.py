@@ -448,8 +448,8 @@ class Workspace(BaseModel):
     """Unique identifier for the workspace."""
     name: str
     """Name of the workspace."""
-    identifier: str
-    """URL-friendly identifier for the workspace."""
+    key: str
+    """Unique key for the workspace."""
     description: str | None
     """Description of the workspace."""
     created_by: UUID | None = None
@@ -470,7 +470,7 @@ class Workspace(BaseModel):
     """Last update timestamp."""
 
     def __str__(self) -> str:
-        return f"{self.name} (Identifier: {self.identifier}), ID: {self.id}"
+        return f"{self.name} (Key: {self.key}), ID: {self.id}"
 
 
 class WorkspaceFilter(BaseModel):
@@ -501,7 +501,7 @@ class Organization(BaseModel):
     """Unique identifier for the organization."""
     name: str
     """Name of the organization."""
-    identifier: str
+    key: str
     """URL-friendly identifer for the organization."""
     description: str | None
     """Description of the organization."""
@@ -517,7 +517,7 @@ class Organization(BaseModel):
     """Last update timestamp."""
 
     def __str__(self) -> str:
-        return f"{self.name} (Identifier: {self.identifier}), ID: {self.id}"
+        return f"{self.name} (Identifier: {self.key}), ID: {self.id}"
 
 
 # Derived types

@@ -74,7 +74,9 @@ from dreadnode.tracing.span import (
 from dreadnode.user_config import UserConfig
 from dreadnode.util import (
     clean_str,
+    create_key_from_name,
     handle_internal_errors,
+    valid_key,
     warn_at_user_stacklevel,
 )
 from dreadnode.version import VERSION
@@ -215,6 +217,16 @@ class Dreadnode:
         if self._api is None:
             raise RuntimeError("API client is not initialized.")
 
+        with contextlib.suppress(ValueError):
+            self.organization = UUID(
+                str(self.organization)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
+        if isinstance(self.organization, str) and not valid_key(self.organization):
+            raise RuntimeError(
+                f'Invalid Organization Key: "{self.organization}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your organization using the CLI or the web interface.',
+            )
+
         if self.organization:
             self._organization = self._api.get_organization(self.organization)
             if not self._organization:
@@ -236,7 +248,7 @@ class Dreadnode:
                 )
             self._organization = organizations[0]
 
-    def _create_workspace(self, name: str) -> Workspace:
+    def _create_workspace(self, key: str) -> Workspace:
         """
         Create a new workspace.
 
@@ -255,9 +267,12 @@ class Dreadnode:
 
         try:
             logging_console.print(
-                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{name}'...[/]"
+                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{key}'...[/]"
             )
-            return self._api.create_workspace(name=name, organization_id=self._organization.id)
+            key = create_key_from_name(key)
+            return self._api.create_workspace(
+                name=key, key=key, organization_id=self._organization.id
+            )
         except RuntimeError as e:
             if "403: Forbidden" in str(e):
                 raise RuntimeError(
@@ -281,6 +296,16 @@ class Dreadnode:
         if self._api is None:
             raise RuntimeError("API client is not initialized.")
 
+        with contextlib.suppress(ValueError):
+            self.workspace = UUID(
+                str(self.workspace)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
+        if isinstance(self.workspace, str) and not valid_key(self.workspace):
+            raise RuntimeError(
+                f'Invalid Workspace Key: "{self.workspace}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your workspace using the CLI or the web interface.',
+            )
+
         found_workspace: Workspace | None = None
         if self.workspace:
             try:
@@ -298,7 +323,7 @@ class Dreadnode:
 
             if not found_workspace and isinstance(self.workspace, str):  # specified by name/slug
                 # create the workspace (must be an org contributor)
-                found_workspace = self._create_workspace(name=self.workspace)
+                found_workspace = self._create_workspace(key=self.workspace)
 
         else:  # the user provided no workspace, attempt to find a default one
             workspaces = self._api.list_workspaces(
@@ -331,6 +356,11 @@ class Dreadnode:
         """
         if self._api is None:
             raise RuntimeError("API client is not initialized.")
+
+        if self.project and not valid_key(self.project):
+            raise RuntimeError(
+                f'Invalid Project Key: "{self.project}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your project using the CLI or the web interface.',
+            )
 
         # fetch the project
         found_project: Project | None = None
@@ -418,12 +448,21 @@ class Dreadnode:
         match = re.match(pattern, path)
 
         if not match:
-            raise RuntimeError(f"Invalid project path format: '{path}'")
+            raise RuntimeError(
+                f"Invalid project path format: '{path}'.\n\nExpected formats are 'org/workspace/project', 'workspace/project', or 'project'. Where each component is the key for that entity.'"
+            )
 
         # The groups are: (Org, Workspace, Project)
         groups = match.groups()
 
         present_components = [c for c in groups if c is not None]
+
+        # validate each component
+        for component in present_components:
+            if not valid_key(component):
+                raise RuntimeError(
+                    f'Invalid Key: "{component}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your organization, workspace, and project using the CLI or the web interface.',
+                )
 
         if len(present_components) == 3:
             org, workspace, project = groups
@@ -472,6 +511,10 @@ class Dreadnode:
         1. Environment variables:
            - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
            - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+           - `DREADNODE_ORGANIZATION`
+           - `DREADNODE_WORKSPACE`
+           - `DREADNODE_PROJECT`
+
         2. Dreadnode profile (from `dreadnode login`)
            - Uses `profile` parameter if provided
            - Falls back to `DREADNODE_PROFILE` environment variable
@@ -484,7 +527,7 @@ class Dreadnode:
             local_dir: The local directory to store data in.
             organization: The default organization name or ID to use.
             workspace: The default workspace name or ID to use.
-            project: The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
+            project: The default project name to associate all runs with. This can also be in the format `org/workspace/project` using the keys.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
             console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
@@ -544,19 +587,8 @@ class Dreadnode:
             self.local_dir = local_dir
 
         _org, _workspace, _project = self._extract_project_components(project)
-
         self.organization = _org or organization or os.environ.get(ENV_ORGANIZATION)
-        with contextlib.suppress(ValueError):
-            self.organization = UUID(
-                str(self.organization)
-            )  # Now, it's a UUID if possible, else str (name/slug)
-
         self.workspace = _workspace or workspace or os.environ.get(ENV_WORKSPACE)
-        with contextlib.suppress(ValueError):
-            self.workspace = UUID(
-                str(self.workspace)
-            )  # Now, it's a UUID if possible, else str (name/slug)
-
         self.project = _project or project or os.environ.get(ENV_PROJECT)
 
         self.service_name = service_name

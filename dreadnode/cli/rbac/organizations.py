@@ -16,13 +16,13 @@ def show() -> None:
 
     table = Table(box=box.ROUNDED)
     table.add_column("Name", style="orange_red1")
-    table.add_column("Identifier", style="green")
+    table.add_column("Key", style="green")
     table.add_column("ID")
 
     for org in organizations:
         table.add_row(
             org.name,
-            org.identifier,
+            org.key,
             str(org.id),
         )
 

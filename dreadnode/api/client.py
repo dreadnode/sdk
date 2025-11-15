@@ -805,17 +805,17 @@ class ApiClient:
         response = self.request("GET", "/organizations")
         return [Organization(**org) for org in response.json()]
 
-    def get_organization(self, organization_id: str | UUID) -> Organization:
+    def get_organization(self, org_id_or_key: UUID | str) -> Organization:
         """
         Retrieves details of a specific organization.
 
         Args:
-            organization_id (str): The organization identifier.
+            org_id_or_key (str | UUID): The organization identifier.
 
         Returns:
             Organization: The Organization object.
         """
-        response = self.request("GET", f"/organizations/{organization_id!s}")
+        response = self.request("GET", f"/organizations/{org_id_or_key!s}")
         return Organization(**response.json())
 
     def list_workspaces(self, filters: WorkspaceFilter | None = None) -> list[Workspace]:
@@ -848,12 +848,14 @@ class ApiClient:
 
         return all_workspaces
 
-    def get_workspace(self, workspace_id: str | UUID, org_id: UUID | None = None) -> Workspace:
+    def get_workspace(
+        self, workspace_id_or_key: UUID | str, org_id: UUID | None = None
+    ) -> Workspace:
         """
         Retrieves details of a specific workspace.
 
         Args:
-            workspace_id (str): The workspace identifier.
+            workspace_id_or_key (str | UUID): The workspace identifier.
 
         Returns:
             Workspace: The Workspace object.
@@ -861,13 +863,13 @@ class ApiClient:
         params: dict[str, str] = {}
         if org_id:
             params = {"org_id": str(org_id)}
-        response = self.request("GET", f"/workspaces/{workspace_id!s}", params=params)
+        response = self.request("GET", f"/workspaces/{workspace_id_or_key!s}", params=params)
         return Workspace(**response.json())
 
     def create_workspace(
         self,
         name: str,
-        identifier: str,
+        key: str,
         organization_id: UUID,
         description: str | None = None,
     ) -> Workspace:
@@ -884,7 +886,7 @@ class ApiClient:
 
         payload = {
             "name": name,
-            "identifier": identifier,
+            "key": key,
             "description": description,
             "org_id": str(organization_id),
         }
@@ -897,7 +899,7 @@ class ApiClient:
         Deletes a specific workspace.
 
         Args:
-            workspace_id (str | UUID): The workspace identifier.
+            workspace_id (str | UUID): The workspace key.
         """
 
         self.request("DELETE", f"/workspaces/{workspace_id!s}")
