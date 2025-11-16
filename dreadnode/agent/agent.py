@@ -272,6 +272,8 @@ class Agent(Model):
                     transforms.append(rg.transform.tools_to_json_with_tag_transform)
                 case "json":
                     transforms.append(rg.transform.tools_to_json_transform)
+                case "pythonic":
+                    transforms.append(rg.transform.tools_to_pythonic_transform)
 
         return transforms
 
@@ -931,7 +933,7 @@ class TaskAgent(Agent):
             self.hooks.append(
                 retry_with_feedback(
                     event_type=AgentStalled,
-                    feedback="Continue the task if possible, use the 'finish_task' tool to complete it, or 'give_up_on_task' if it cannot be completed.",
+                    feedback="No tool calls were observed. Continue the task if possible, use the 'finish_task' tool to complete it, or 'give_up_on_task' if it cannot be completed.",
                 )
             )
 
