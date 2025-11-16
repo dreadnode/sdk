@@ -1,11 +1,32 @@
 import cyclopts
 from click import confirm
+from rich import box
+from rich.table import Table
 
 from dreadnode.api.models import Organization, Workspace, WorkspaceFilter
 from dreadnode.cli.api import create_api_client
-from dreadnode.logging_ import print_error, print_info
+from dreadnode.logging_ import console, print_error, print_info
+from dreadnode.util import create_key_from_name
 
 cli = cyclopts.App("workspaces", help="View and manage workspaces.", help_flags=[])
+
+
+def _print_workspace_table(workspaces: list[Workspace], organization: Organization) -> None:
+    table = Table(box=box.ROUNDED)
+    table.add_column("Name", style="orange_red1")
+    table.add_column("Key", style="green")
+    table.add_column("ID")
+    table.add_column("dn.configure() Command", style="cyan")
+
+    for ws in workspaces:
+        table.add_row(
+            ws.name,
+            ws.key,
+            str(ws.id),
+            f'dn.configure(organization="{organization.key}", workspace="{ws.key}")',
+        )
+
+    console.print(table)
 
 
 @cli.command(name=["list", "ls", "show"])
@@ -35,20 +56,28 @@ def show(
 
     workspace_filter = WorkspaceFilter(org_id=matched_organization.id)
     workspaces = client.list_workspaces(filters=workspace_filter)
-    print_info(f"Workspaces in Organization '{matched_organization.name}':")
-    for workspace in workspaces:
-        print_info(f"- {workspace.name} (ID: {workspace.id})")
-    print_info("")
+
+    table = Table(box=box.ROUNDED)
+    table.add_column("Name", style="orange_red1")
+    table.add_column("Key", style="green")
+    table.add_column("ID")
+    table.add_column("dn.configure() Command", style="cyan")
+
+    _print_workspace_table(workspaces, matched_organization)
 
 
 @cli.command(name=["create", "new"])
 def create(
     name: str,
+    key: str | None = None,
     description: str | None = None,
     organization: str | None = None,
 ) -> None:
     # get the client and call the create workspace endpoint
     client = create_api_client()
+    if not key:
+        key = create_key_from_name(name)
+
     if organization:
         matched_organization = client.get_organization(organization)
         if not matched_organization:
@@ -65,16 +94,21 @@ def create(
             )
             return
         matched_organization = user_organizations[0]
-        print_info(f"The workspace will be created in organization '{matched_organization.name}'")
+        print_info(
+            f"Workspace '{name}' ([cyan]{key}[/cyan]) will be created in organization '{matched_organization.name}'"
+        )
         # verify with the user
         if not confirm("Do you want to continue?"):
             print_info("Workspace creation cancelled.")
             return
 
     workspace: Workspace = client.create_workspace(
-        name=name, organization_id=matched_organization.id, description=description
+        name=name,
+        key=key,
+        organization_id=matched_organization.id,
+        description=description,
     )
-    print_info(f"Workspace '{workspace.name}' created inwith ID: {workspace.id}")
+    _print_workspace_table([workspace], matched_organization)
 
 
 @cli.command(name=["delete", "rm"])
