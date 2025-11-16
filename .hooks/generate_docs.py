@@ -129,7 +129,8 @@ class AutoDocGenerator:
         html = self.handler.render(module_data, options)
 
         if "Source code in " in html:
-            with open("debug.html", "w", encoding="utf-8") as f:
+            debug_path = Path("debug.html")
+            with debug_path.open("w", encoding="utf-8") as f:
                 f.write(html)
 
         return str(
