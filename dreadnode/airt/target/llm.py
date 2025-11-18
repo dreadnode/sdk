@@ -10,13 +10,13 @@ from dreadnode.meta import Config
 from dreadnode.task import Task
 
 
-class LLMTarget(Target[DnMessage, str]):
+class LLMTarget(Target[DnMessage, DnMessage]):
     """
     Target backed by a rigging generator for LLM inference.
 
     - Accepts dn.Message as input
     - Converts to Rigging format only for LLM API call
-    - Returns generated text from the LLM
+    - Returns dn.Message as output (supports multimodal responses)
     """
 
     model: str | rg.Generator
@@ -39,18 +39,18 @@ class LLMTarget(Target[DnMessage, str]):
     def name(self) -> str:
         return self.generator.to_identifier(short=True).split("/")[-1]
 
-    def task_factory(self, input: DnMessage) -> Task[[], str]:
+    def task_factory(self, input: DnMessage) -> Task[[], DnMessage]:
         """
-        Create a task that:
+        reate a task that:
         1. Takes dn.Message as input (auto-logged via to_serializable())
         2. Converts to rg.Message only for LLM API call
-        3. Returns string response (auto-logged)
+        3. Returns dn.Message with full multimodal content (text/images/audio/video)
 
         Args:
             input: The dn.Message to send to the LLM
 
         Returns:
-            Task that executes the LLM call
+            Task that executes the LLM call and returns dn.Message
 
         Raises:
             TypeError: If input is not a dn.Message
@@ -75,7 +75,7 @@ class LLMTarget(Target[DnMessage, str]):
         async def generate(
             message: DnMessage = dn_message,
             params: rg.GenerateParams = params,
-        ) -> str:
+        ) -> DnMessage:
             """Execute LLM generation task."""
             rg_message = message.to_rigging()
 
@@ -83,6 +83,6 @@ class LLMTarget(Target[DnMessage, str]):
             if isinstance(generated, BaseException):
                 raise generated
 
-            return generated.message.content
+            return DnMessage.from_rigging(generated.message)
 
         return generate
