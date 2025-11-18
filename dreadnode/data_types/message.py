@@ -72,24 +72,24 @@ class Message(DataType):
                     "schema": result.schema,
                 }
             )
+        schema = {
+            "x-python-datatype": "Message",
+            "role": self.role,
+            "num_parts": len(self.content),
+        }
 
         message_data = {
             "role": self.role,
             "content": serialized_content,
             "uuid": str(self.uuid),
             "metadata": self.metadata,
+            "schema": schema,
         }
 
         if self.tool_calls:
             message_data["tool_calls"] = self.tool_calls
         if self.tool_call_id:
             message_data["tool_call_id"] = self.tool_call_id
-
-        schema = {
-            "x-python-datatype": "Message",
-            "role": self.role,
-            "num_parts": len(self.content),
-        }
 
         return message_data, schema
 
