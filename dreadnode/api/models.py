@@ -502,7 +502,7 @@ class Organization(BaseModel):
     name: str
     """Name of the organization."""
     key: str
-    """URL-friendly identifer for the organization."""
+    """URL-friendly identifier for the organization."""
     description: str | None
     """Description of the organization."""
     is_active: bool
