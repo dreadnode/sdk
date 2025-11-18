@@ -1,6 +1,6 @@
 [project]
 name = "dreadnode"
-version = "1.15.4"
+version = "1.16.0"
 description = "Dreadnode SDK"
 authors = [{ name = "Nick Landers", email = "monoxgas@gmail.com" }]
 readme = "README.md"
