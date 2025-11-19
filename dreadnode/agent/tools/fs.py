@@ -1,4 +1,5 @@
 import asyncio
+import aiofiles
 import os
 import re
 import typing as t
@@ -6,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import aiofiles  # type: ignore
 import rigging as rg
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from loguru import logger
@@ -149,6 +149,13 @@ class FilesystemBase(Toolset):
     # Methods that must be implemented by subclasses
     # Note: Cannot use @abc.abstractmethod with @tool_method due to decorator conflicts
     # Subclasses must override these methods to provide implementation
+
+    async def read_file(
+        self,
+        path: t.Annotated[str, "Path to the file to read"]
+    ) -> str:
+        """Must be implemented in subclasses"""
+        raise NotImplementedError("Subclasses must implement")
 
     # Common methods that work for all filesystem types (use UPath native methods)
 
@@ -626,7 +633,7 @@ class S3Filesystem(FilesystemBase):
         if isinstance(content, bytes):
             content = content.decode("utf-8")
         elif isinstance(content, rg.ContentImageUrl):
-            raise ValueError("Cannot read lines from non-text content")
+            raise TypeError("Cannot read lines from non-text content")
 
         lines = content.splitlines(keepends=True)
 
@@ -701,7 +708,7 @@ class S3Filesystem(FilesystemBase):
         Mode can be 'insert' to add lines or 'overwrite' to replace lines.
         """
         if mode not in ["insert", "overwrite"]:
-            raise ValueError("Invalid mode. Use 'insert' or 'overwrite'")
+            raise TypeError("Invalid mode. Use 'insert' or 'overwrite'")
 
         # Read existing content
         try:
@@ -709,7 +716,8 @@ class S3Filesystem(FilesystemBase):
             if isinstance(existing_content, bytes):
                 existing_content = existing_content.decode("utf-8")
             elif isinstance(existing_content, rg.ContentImageUrl):
-                raise ValueError("Cannot write lines to non-text content")
+                logger.warning("Cannot write lines to non-text content")
+                lines = []
             lines = existing_content.splitlines(keepends=True)
         except Exception:
             # File doesn't exist, start with empty lines
@@ -829,7 +837,7 @@ class S3Filesystem(FilesystemBase):
         return True
 
 
-def Filesystem(
+def Filesystem(  # noqa: N802
     path: str | Path | UPath, **kwargs: t.Any
 ) -> LocalFilesystem | S3Filesystem:
     """
@@ -870,9 +878,9 @@ def Filesystem(
         upath = UPath(str(path), **fs_options)
         if upath.protocol in ["s3", "s3a"]:
             return S3Filesystem(path=path, **kwargs)
-    except Exception:
+    except (TypeError, ValueError) as e:
         # If UPath creation fails, fall through to local
-        logger.warning("Upath initialization failed, defaulting to local path")
+        logger.warning(f"Upath initialization failed ({type(e).__name__}: {e}), defaulting to local path")
         return LocalFilesystem(path=path, **kwargs)
 
     # Default to local filesystem
