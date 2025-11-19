@@ -17,6 +17,7 @@ ApiClient(
     api_key: str | None = None,
     cookies: dict[str, str] | None = None,
     debug: bool = False,
+    timeout: int = 30,
 )
 ```
 
@@ -33,15 +34,25 @@ Initializes the API client.
   (`str`)
   –The base URL of the Dreadnode API.
 * **`api_key`**
-  (`str`, default:
+  (`str | None`, default:
   `None`
   )
   –The API key for authentication.
+* **`cookies`**
+  (`dict[str, str] | None`, default:
+  `None`
+  )
+  –A dictionary of cookies to include in requests.
 * **`debug`**
   (`bool`, default:
   `False`
   )
   –Whether to enable debug logging. Defaults to False.
+* **`timeout`**
+  (`int`, default:
+  `30`
+  )
+  –The timeout for HTTP requests in seconds.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
@@ -52,14 +63,17 @@ def __init__(
     api_key: str | None = None,
     cookies: dict[str, str] | None = None,
     debug: bool = False,
+    timeout: int = 30,
 ):
     """
     Initializes the API client.
 
     Args:
-        base_url (str): The base URL of the Dreadnode API.
-        api_key (str): The API key for authentication.
-        debug (bool, optional): Whether to enable debug logging. Defaults to False.
+        base_url: The base URL of the Dreadnode API.
+        api_key: The API key for authentication.
+        cookies: A dictionary of cookies to include in requests.
+        debug: Whether to enable debug logging. Defaults to False.
+        timeout: The timeout for HTTP requests in seconds.
     """
     self._base_url = base_url.rstrip("/")
     if not self._base_url.endswith("/api"):
@@ -87,7 +101,7 @@ def __init__(
     self._client = httpx.Client(
         headers=headers,
         base_url=self._base_url,
-        timeout=30,
+        timeout=httpx.Timeout(timeout, connect=5),
         cookies=_cookies,
     )
 

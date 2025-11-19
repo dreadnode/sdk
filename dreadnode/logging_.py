@@ -4,6 +4,7 @@ We use loguru for logging. This module provides a function to configure logging 
 To just enable dreadnode logs to flow, call `logger.enable("dreadnode")` after importing the module.
 """
 
+import os
 import pathlib
 import typing as t
 from textwrap import dedent
@@ -23,8 +24,12 @@ console = Console(
             "logging.level.success": "green",
             "logging.level.trace": "dim blue",
         }
-    ),
+    )
 )
+
+# In vscode juputer, disable rich's jupyter detection to avoid issues with styling
+if "VSCODE_PID" in os.environ:
+    console.is_jupyter = False
 
 
 def configure_logging(
