@@ -172,6 +172,7 @@ def create_project(
 ```python
 create_workspace(
     name: str,
+    key: str,
     organization_id: UUID,
     description: str | None = None,
 ) -> Workspace
@@ -198,6 +199,7 @@ Creates a new workspace.
 def create_workspace(
     self,
     name: str,
+    key: str,
     organization_id: UUID,
     description: str | None = None,
 ) -> Workspace:
@@ -214,6 +216,7 @@ def create_workspace(
 
     payload = {
         "name": name,
+        "key": key,
         "description": description,
         "org_id": str(organization_id),
     }
@@ -237,7 +240,7 @@ Deletes a specific workspace.
 
 * **`workspace_id`**
   (`str | UUID`)
-  –The workspace identifier.
+  –The workspace key.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
@@ -246,7 +249,7 @@ def delete_workspace(self, workspace_id: str | UUID) -> None:
     Deletes a specific workspace.
 
     Args:
-        workspace_id (str | UUID): The workspace identifier.
+        workspace_id (str | UUID): The workspace key.
     """
 
     self.request("DELETE", f"/workspaces/{workspace_id!s}")
@@ -707,17 +710,15 @@ def get_github_access_token(self, repos: list[str]) -> GithubTokenResponse:
 ### get\_organization
 
 ```python
-get_organization(
-    organization_id: str | UUID,
-) -> Organization
+get_organization(org_id_or_key: UUID | str) -> Organization
 ```
 
 Retrieves details of a specific organization.
 
 **Parameters:**
 
-* **`organization_id`**
-  (`str`)
+* **`org_id_or_key`**
+  (`str | UUID`)
   –The organization identifier.
 
 **Returns:**
@@ -727,17 +728,17 @@ Retrieves details of a specific organization.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def get_organization(self, organization_id: str | UUID) -> Organization:
+def get_organization(self, org_id_or_key: UUID | str) -> Organization:
     """
     Retrieves details of a specific organization.
 
     Args:
-        organization_id (str): The organization identifier.
+        org_id_or_key (str | UUID): The organization identifier.
 
     Returns:
         Organization: The Organization object.
     """
-    response = self.request("GET", f"/organizations/{organization_id!s}")
+    response = self.request("GET", f"/organizations/{org_id_or_key!s}")
     return Organization(**response.json())
 ```
 
@@ -1098,7 +1099,8 @@ def get_user_data_credentials(self) -> UserDataCredentials:
 
 ```python
 get_workspace(
-    workspace_id: str | UUID, org_id: UUID | None = None
+    workspace_id_or_key: UUID | str,
+    org_id: UUID | None = None,
 ) -> Workspace
 ```
 
@@ -1106,8 +1108,8 @@ Retrieves details of a specific workspace.
 
 **Parameters:**
 
-* **`workspace_id`**
-  (`str`)
+* **`workspace_id_or_key`**
+  (`str | UUID`)
   –The workspace identifier.
 
 **Returns:**
@@ -1117,12 +1119,14 @@ Retrieves details of a specific workspace.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def get_workspace(self, workspace_id: str | UUID, org_id: UUID | None = None) -> Workspace:
+def get_workspace(
+    self, workspace_id_or_key: UUID | str, org_id: UUID | None = None
+) -> Workspace:
     """
     Retrieves details of a specific workspace.
 
     Args:
-        workspace_id (str): The workspace identifier.
+        workspace_id_or_key (str | UUID): The workspace identifier.
 
     Returns:
         Workspace: The Workspace object.
@@ -1130,7 +1134,7 @@ def get_workspace(self, workspace_id: str | UUID, org_id: UUID | None = None) ->
     params: dict[str, str] = {}
     if org_id:
         params = {"org_id": str(org_id)}
-    response = self.request("GET", f"/workspaces/{workspace_id!s}", params=params)
+    response = self.request("GET", f"/workspaces/{workspace_id_or_key!s}", params=params)
     return Workspace(**response.json())
 ```
 
@@ -1793,6 +1797,14 @@ is_active: bool
 
 Is the organization active?
 
+### key
+
+```python
+key: str
+```
+
+URL-friendly identifier for the organization.
+
 ### max\_members
 
 ```python
@@ -1808,14 +1820,6 @@ name: str
 ```
 
 Name of the organization.
-
-### slug
-
-```python
-slug: str
-```
-
-URL-friendly slug for the organization.
 
 ### updated\_at
 
@@ -2321,6 +2325,14 @@ is_default: bool
 
 Is the workspace the default one?
 
+### key
+
+```python
+key: str
+```
+
+Unique key for the workspace.
+
 ### name
 
 ```python
@@ -2352,14 +2364,6 @@ project_count: int | None
 ```
 
 Number of projects in the workspace.
-
-### slug
-
-```python
-slug: str
-```
-
-URL-friendly slug for the workspace.
 
 ### updated\_at
 
