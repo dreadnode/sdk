@@ -19,7 +19,6 @@ from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.util import shorten_string
 
-
 MAX_GREP_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
