@@ -279,7 +279,7 @@ class Image(DataType):
         Returns:
             float32 numpy array in [0,1] range, HWC format
         """
-        return t.cast("np.ndarray[t.Any, np.dtype[np.float32]]", self._canonical_array.copy())
+        return t.cast("np.ndarray[t.Any, np.dtype[np.float32]]", self._canonical_array.copy())  # type: ignore[redundant-cast]
 
     @property
     def shape(self) -> tuple[int, ...]:
