@@ -173,10 +173,13 @@ in the following order:
 1. Environment variables:
 2. `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
 3. `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
-4. Dreadnode profile (from `dreadnode login`)
-5. Uses `profile` parameter if provided
-6. Falls back to `DREADNODE_PROFILE` environment variable
-7. Defaults to active profile
+4. `DREADNODE_ORGANIZATION`
+5. `DREADNODE_WORKSPACE`
+6. `DREADNODE_PROJECT`
+7. Dreadnode profile (from `dreadnode login`)
+8. Uses `profile` parameter if provided
+9. Falls back to `DREADNODE_PROFILE` environment variable
+10. Defaults to active profile
 
 **Parameters:**
 
@@ -214,7 +217,7 @@ in the following order:
   (`str | None`, default:
   `None`
   )
-  –The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
+  –The default project name to associate all runs with. This can also be in the format `org/workspace/project` using the keys.
 * **`service_name`**
   (`str | None`, default:
   `None`
@@ -270,6 +273,10 @@ def configure(
     1. Environment variables:
        - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
        - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+       - `DREADNODE_ORGANIZATION`
+       - `DREADNODE_WORKSPACE`
+       - `DREADNODE_PROJECT`
+
     2. Dreadnode profile (from `dreadnode login`)
        - Uses `profile` parameter if provided
        - Falls back to `DREADNODE_PROFILE` environment variable
@@ -282,7 +289,7 @@ def configure(
         local_dir: The local directory to store data in.
         organization: The default organization name or ID to use.
         workspace: The default workspace name or ID to use.
-        project: The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
+        project: The default project name to associate all runs with. This can also be in the format `org/workspace/project` using the keys.
         service_name: The service name to use for OpenTelemetry.
         service_version: The service version to use for OpenTelemetry.
         console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
@@ -342,19 +349,8 @@ def configure(
         self.local_dir = local_dir
 
     _org, _workspace, _project = self._extract_project_components(project)
-
     self.organization = _org or organization or os.environ.get(ENV_ORGANIZATION)
-    with contextlib.suppress(ValueError):
-        self.organization = UUID(
-            str(self.organization)
-        )  # Now, it's a UUID if possible, else str (name/slug)
-
     self.workspace = _workspace or workspace or os.environ.get(ENV_WORKSPACE)
-    with contextlib.suppress(ValueError):
-        self.workspace = UUID(
-            str(self.workspace)
-        )  # Now, it's a UUID if possible, else str (name/slug)
-
     self.project = _project or project or os.environ.get(ENV_PROJECT)
 
     self.service_name = service_name
