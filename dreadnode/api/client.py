@@ -166,7 +166,7 @@ class ApiClient:
             obj = response.json()
             return f"{response.status_code}: {obj.get('detail', json.dumps(obj))}"
         except Exception:  # noqa: BLE001
-            return f"{response.status_code}: {response.content.decode()}"
+            return f"{response.status_code}: {response.content!r}"
 
     def _request(
         self,

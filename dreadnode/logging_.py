@@ -27,7 +27,7 @@ console = Console(
     )
 )
 
-# In vscode juputer, disable rich's jupyter detection to avoid issues with styling
+# In vscode jupyter, disable rich's jupyter detection to avoid issues with styling
 if "VSCODE_PID" in os.environ:
     console.is_jupyter = False
 
