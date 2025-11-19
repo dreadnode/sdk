@@ -538,6 +538,7 @@ class Task(Component[P, R], t.Generic[P, R]):
 
                 # Log the output
 
+                output_object_hash = None
                 if log_output and (
                     not isinstance(self.log_inputs, Inherited) or seems_useful_to_serialize(output)
                 ):
@@ -546,13 +547,12 @@ class Task(Component[P, R], t.Generic[P, R]):
                         output,
                         attributes={"auto": True},
                     )
-                elif run is not None:
                     # Link the output to the inputs
-                    for input_object_hash in input_object_hashes:
-                        run.link_objects(output_object_hash, input_object_hash)
-
-                    if create_run:
-                        run.log_output("output", output, attributes={"auto": True})
+                    if run is not None:
+                        for input_object_hash in input_object_hashes:
+                            run.link_objects(output_object_hash, input_object_hash)
+                elif run is not None and create_run:
+                    run.log_output("output", output, attributes={"auto": True})
 
                 # Score and check assertions
 
@@ -640,8 +640,9 @@ class Task(Component[P, R], t.Generic[P, R]):
             if span.exception is None:
                 return span.output
 
-            # If the loop finishes, all attempts failed. Raise the exception
-            # from the final attempt for debugging.
+        # If the loop finishes, all attempts failed. Raise the exception
+        # from the final attempt for debugging.
+        if last_span is not None:
             last_span.raise_if_failed()
 
         # Just for type checking - should never be called

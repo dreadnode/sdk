@@ -379,8 +379,8 @@ class RunSpan(Span):
         name: str,
         project: str,
         tracer: Tracer,
-        credential_manager: CredentialManager,
         *,
+        credential_manager: CredentialManager | None = None,
         attributes: AnyDict | None = None,
         params: AnyDict | None = None,
         metrics: MetricsDict | None = None,
@@ -391,7 +391,7 @@ class RunSpan(Span):
         type: SpanType = "run",
     ) -> None:
         self.autolog = autolog
-        self.project = project
+        self.project_id = project
 
         self._params = params or {}
         self._metrics = metrics or {}
@@ -404,12 +404,16 @@ class RunSpan(Span):
         self._credential_manager = credential_manager
 
         # Initialize artifact components
-        self._artifact_storage = ArtifactStorage(credential_manager=credential_manager)
         self._artifacts: list[DirectoryNode] = []
         self._artifact_merger = ArtifactMerger()
-        self._artifact_tree_builder = ArtifactTreeBuilder(
-            storage=self._artifact_storage, prefix_path=self._credential_manager.get_prefix()
-        )
+        self._artifact_storage: ArtifactStorage | None = None
+        self._artifact_tree_builder: ArtifactTreeBuilder | None = None
+
+        if self._credential_manager is not None:
+            self._artifact_storage = ArtifactStorage(credential_manager=self._credential_manager)
+            self._artifact_tree_builder = ArtifactTreeBuilder(
+                storage=self._artifact_storage, prefix_path=self._credential_manager.get_prefix()
+            )
 
         # Update mechanics
         self._last_update_time = time.time()
@@ -543,7 +547,7 @@ class RunSpan(Span):
 
         with RunUpdateSpan(
             run_id=self.run_id,
-            project=self.project,
+            project=self.project_id,
             tracer=self._tracer,
             metrics=self._pending_metrics if self._pending_metrics else None,
             params=self._pending_params if self._pending_params else None,
@@ -630,8 +634,11 @@ class RunSpan(Span):
     def _store_file_by_hash(self, data_bytes: bytes, full_path: str) -> str:
         """Store file with automatic credential refresh."""
 
+        if self._credential_manager is None:
+            raise RuntimeError("Credential manager is not configured for file storage.")
+
         def store_operation() -> str:
-            filesystem = self._credential_manager.get_filesystem()
+            filesystem = self._credential_manager.get_filesystem()  # type: ignore[union-attr]
 
             if not filesystem.exists(full_path):
                 with filesystem.open(full_path, "wb") as f:
@@ -649,7 +656,12 @@ class RunSpan(Span):
         data_hash = serialized.data_hash
         schema_hash = serialized.schema_hash
 
-        if data is None or data_bytes is None or data_len <= DEFAULT_MAX_INLINE_OBJECT_BYTES:
+        if (
+            self._credential_manager is None
+            or data is None
+            or data_bytes is None
+            or data_len <= DEFAULT_MAX_INLINE_OBJECT_BYTES
+        ):
             return ObjectVal(
                 hash=object_hash,
                 value=data,
@@ -747,6 +759,8 @@ class RunSpan(Span):
         Raises:
             FileNotFoundError: If the path doesn't exist
         """
+        if self._artifact_tree_builder is None:
+            return
         artifact_tree = self._artifact_tree_builder.process_artifact(local_uri)
         self._artifact_merger.add_tree(artifact_tree)
         self._artifacts = self._artifact_merger.get_merged_trees()
@@ -850,7 +864,7 @@ class RunSpan(Span):
 
     def __repr__(self) -> str:
         run_id = self.run_id
-        project = self.project
+        project = self.project_id
         num_tasks = len(self._tasks)
         num_objects = len(self._objects)
         return (
