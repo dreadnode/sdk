@@ -1,5 +1,4 @@
 import asyncio
-import aiofiles
 import os
 import re
 import typing as t
@@ -7,7 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import aiofiles  # type: ignore[import-untyped]
 import rigging as rg
+from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import-untyped]
 from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
 from loguru import logger
 from pydantic import PrivateAttr
@@ -153,7 +154,7 @@ class FilesystemBase(Toolset):
     async def read_file(
         self,
         path: t.Annotated[str, "Path to the file to read"]
-    ) -> str:
+    ) -> rg.ContentImageUrl | str:
         """Must be implemented in subclasses"""
         raise NotImplementedError("Subclasses must implement")
 
@@ -391,7 +392,7 @@ class LocalFilesystem(FilesystemBase):
         if not _path.is_file():
             raise ValueError(f"'{path}' is not a file.")
 
-        async with aiofiles.open(_path, "r") as f:
+        async with aiofiles.open(_path) as f:
             lines = await f.readlines()
 
             if start_line < 0:
@@ -451,7 +452,7 @@ class LocalFilesystem(FilesystemBase):
         _path = await self._safe_create_file(path)
 
         lines: list[str] = []
-        async with aiofiles.open(_path, "r") as f:
+        async with aiofiles.open(_path) as f:
             lines = await f.readlines()
 
         # Normalize line endings in content
@@ -575,7 +576,7 @@ class S3Filesystem(FilesystemBase):
             aioboto3.Session: An aioboto3 session with optional profile configuration
         """
         try:
-            import aioboto3
+            import aioboto3  # type: ignore[import-not-found]
         except ImportError as e:
             raise ImportError(
                 "aioboto3 is required for S3 operations. Install with: pip install aioboto3"
@@ -719,9 +720,12 @@ class S3Filesystem(FilesystemBase):
                 logger.warning("Cannot write lines to non-text content")
                 lines = []
             lines = existing_content.splitlines(keepends=True)
-        except Exception:
+        except FileNotFoundError:
             # File doesn't exist, start with empty lines
             lines = []
+        except (PermissionError, IsADirectoryError, ClientError, BotoCoreError, ValueError) as e:
+            # File doesn't exist or can't be read, start with empty lines
+            return f"Error occured while trying to write to the supplied filepath {path}: {e}"
 
         # Normalize line endings in content
         content_lines = [
