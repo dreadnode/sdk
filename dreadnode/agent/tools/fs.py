@@ -58,9 +58,7 @@ class FilesystemItem:
                 type="file",
                 name=relative,
                 size=path.stat().st_size,
-                modified=datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                ).strftime(
+                modified=datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S",
                 ),
             )
@@ -152,8 +150,7 @@ class FilesystemBase(Toolset):
     # Subclasses must override these methods to provide implementation
 
     async def read_file(
-        self,
-        path: t.Annotated[str, "Path to the file to read"]
+        self, path: t.Annotated[str, "Path to the file to read"]
     ) -> rg.ContentImageUrl | str:
         """Must be implemented in subclasses"""
         raise NotImplementedError("Subclasses must implement")
@@ -233,17 +230,13 @@ class FilesystemBase(Toolset):
         elif target_path.is_dir():
             files_to_search.extend(
                 await asyncio.to_thread(
-                    lambda: list(
-                        target_path.rglob("*") if recursive else target_path.glob("*")
-                    )
+                    lambda: list(target_path.rglob("*") if recursive else target_path.glob("*"))
                 ),
             )
 
         # Filter to files only and check size
         files_to_search = [
-            f
-            for f in files_to_search
-            if f.is_file() and f.stat().st_size <= MAX_GREP_FILE_SIZE
+            f for f in files_to_search if f.is_file() and f.stat().st_size <= MAX_GREP_FILE_SIZE
         ]
 
         async def search_file(file_path: UPath) -> list[GrepMatch | str]:
@@ -270,9 +263,7 @@ class FilesystemBase(Toolset):
                         for j in range(context_start, context_end):
                             prefix = ">" if j == i else " "
                             line_text = lines[j].rstrip("\r\n")
-                            context.append(
-                                f"{prefix} {j + 1}: {shorten_string(line_text, 80)}"
-                            )
+                            context.append(f"{prefix} {j + 1}: {shorten_string(line_text, 80)}")
 
                         rel_path = self._relative(file_path)
                         file_matches.append(
@@ -298,7 +289,7 @@ class FilesystemBase(Toolset):
         # Search files in parallel with concurrency limit
         semaphore = asyncio.Semaphore(self.max_concurrent_reads)
 
-        async def search_file_limited(file_path: UPath) -> list[GrepMatch| str]:
+        async def search_file_limited(file_path: UPath) -> list[GrepMatch | str]:
             """Search a single file with semaphore to limit concurrency."""
             async with semaphore:
                 return await search_file(file_path)
@@ -338,9 +329,7 @@ class LocalFilesystem(FilesystemBase):
 
         parent_path = file_path.parent
         if not parent_path.exists():
-            await asyncio.to_thread(
-                lambda: parent_path.mkdir(parents=True, exist_ok=True)
-            )
+            await asyncio.to_thread(lambda: parent_path.mkdir(parents=True, exist_ok=True))
 
         if not file_path.exists():
             await asyncio.to_thread(file_path.touch)
@@ -437,9 +426,7 @@ class LocalFilesystem(FilesystemBase):
         self,
         path: t.Annotated[str, "Path to write to"],
         contents: t.Annotated[str, "Content to write"],
-        insert_line: t.Annotated[
-            int, "Line number to insert at (negative counts from end)"
-        ] = -1,
+        insert_line: t.Annotated[int, "Line number to insert at (negative counts from end)"] = -1,
         mode: t.Annotated[str, "'insert' or 'overwrite'"] = "insert",
     ) -> FilesystemItem:
         """
@@ -494,9 +481,7 @@ class LocalFilesystem(FilesystemBase):
         if not src_path.is_file():
             raise ValueError(f"'{src}' is not a file")
 
-        await asyncio.to_thread(
-            lambda: dest_path.parent.mkdir(parents=True, exist_ok=True)
-        )
+        await asyncio.to_thread(lambda: dest_path.parent.mkdir(parents=True, exist_ok=True))
 
         async with (
             aiofiles.open(src_path, "rb") as src_file,
@@ -520,9 +505,7 @@ class LocalFilesystem(FilesystemBase):
         if not src_path.exists():
             raise ValueError(f"'{src}' not found")
 
-        await asyncio.to_thread(
-            lambda: dest_path.parent.mkdir(parents=True, exist_ok=True)
-        )
+        await asyncio.to_thread(lambda: dest_path.parent.mkdir(parents=True, exist_ok=True))
 
         await asyncio.to_thread(lambda: src_path.rename(dest_path))
 
@@ -661,9 +644,7 @@ class S3Filesystem(FilesystemBase):
 
         session = self._get_session()
         async with session.client("s3") as s3_client:
-            await s3_client.put_object(
-                Bucket=bucket, Key=key, Body=contents.encode("utf-8")
-            )
+            await s3_client.put_object(Bucket=bucket, Key=key, Body=contents.encode("utf-8"))
 
         # Return FilesystemItem without calling stat (S3 put is async)
         relative = self._relative(_path)
@@ -690,20 +671,16 @@ class S3Filesystem(FilesystemBase):
 
         # Return FilesystemItem without calling stat (S3 put is async)
         relative = self._relative(_path)
-        return FilesystemItem(
-            type="file", name=relative, size=len(byte_data), modified=None
-        )
+        return FilesystemItem(type="file", name=relative, size=len(byte_data), modified=None)
 
     @tool_method(variants=["write"], catch=True)
     async def write_lines(
         self,
         path: t.Annotated[str, "Path to write to"],
         contents: t.Annotated[str, "Content to write"],
-        insert_line: t.Annotated[
-            int, "Line number to insert at (negative counts from end)"
-        ] = -1,
+        insert_line: t.Annotated[int, "Line number to insert at (negative counts from end)"] = -1,
         mode: t.Annotated[str, "'insert' or 'overwrite'"] = "insert",
-    ) -> FilesystemItem:
+    ) -> FilesystemItem | str:
         """
         Write content to a specific line in an S3 file.
         Mode can be 'insert' to add lines or 'overwrite' to replace lines.
@@ -772,9 +749,7 @@ class S3Filesystem(FilesystemBase):
         async with session.client("s3") as s3_client:
             # Use S3 copy_object for efficient server-side copy
             copy_source = {"Bucket": src_bucket, "Key": src_key}
-            await s3_client.copy_object(
-                CopySource=copy_source, Bucket=dest_bucket, Key=dest_key
-            )
+            await s3_client.copy_object(CopySource=copy_source, Bucket=dest_bucket, Key=dest_key)
 
         # Return FilesystemItem without calling stat
         relative = self._relative(dest_path)
@@ -884,7 +859,9 @@ def Filesystem(  # noqa: N802
             return S3Filesystem(path=path, **kwargs)
     except (TypeError, ValueError) as e:
         # If UPath creation fails, fall through to local
-        logger.warning(f"Upath initialization failed ({type(e).__name__}: {e}), defaulting to local path")
+        logger.warning(
+            f"Upath initialization failed ({type(e).__name__}: {e}), defaulting to local path"
+        )
         return LocalFilesystem(path=path, **kwargs)
 
     # Default to local filesystem
