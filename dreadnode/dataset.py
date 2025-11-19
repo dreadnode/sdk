@@ -1,164 +1,399 @@
 import uuid
+from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
 from fsspec import AbstractFileSystem
-from pyarrow import Table, dataset
-from pydantic import BaseModel, ConfigDict
+from fsspec.utils import get_protocol
+from pydantic import BaseModel, ConfigDict, Field
 
-from dreadnode.constants import DATASETS_CACHE
+from dreadnode.constants import DATASETS_CACHE, MANIFEST_FILE, METADATA_FILE
+from dreadnode.logging_ import console as logging_console
 
-
-class DatasetMetadata(BaseModel):
-    """
-    A data model representing the metadata of a dataset.
-    """
-
-    name: str
-    description: str | None = None
-    version: str | None = None
-    license: str | None = None
-    tags: list[str] | None = None
-    uri: str | None = None
-    ds_schema: dict[str, Any] | None = None
-    files: list[str] | None = None
+# Import the high-performance filesystem tools
+from dreadnode.storage.datasets.core import (
+    SyncStrategy,
+    get_filesystem,
+    sync_to_local,
+    sync_to_remote,
+)
+from dreadnode.storage.datasets.loader import DatasetLoader, DatasetWriter
+from dreadnode.storage.datasets.manifest import FileManifest, ManifestBuilder
+from dreadnode.storage.datasets.metadata import DatasetMetadata, DatasetSchema
 
 
 class Dataset(BaseModel):
     """
-    A data model representing a versioned dataset.
-
+    A versioned dataset with complete metadata tracking.
     """
 
-    ds: dataset.Dataset | Table
+    ds: ds.Dataset | pa.Table
     name: str | None = None
     description: str | None = None
-    version: str | None = None
+    version: str = "0.0.1"
     license: str | None = None
-    tags: list[str] | None = None
+    tags: list[str] = Field(default_factory=list)
+    format: str = "parquet"
 
+    # Private attributes
     _metadata: DatasetMetadata | None = None
+    _uri: str | None = None
+    _manifest: FileManifest | None = None
+    # _history: VersionHistory | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def model_post_init(self, _context: Any) -> None:
-        """Post-initialization to handle private attributes."""
-
         if self._metadata:
+            self.name = self._metadata.name
+            self.description = self._metadata.description
+            self.version = self._metadata.version
+            self.license = self._metadata.license
+            self.tags = self._metadata.tags
+            self.format = self._metadata.format
+            self._uri = self._metadata.uri
             return
 
         if not self.name:
-            self.name = uuid.uuid4().hex
+            self.name = f"dataset-{uuid.uuid4().hex[:8]}"
 
-        if not self.version:
-            self.version = "0.0.1"
+        if not self._uri:
+            self._uri = self._normalize_uri(self.name)
+
+    @staticmethod
+    def _normalize_uri(name: str) -> str:
+        return name.replace(" ", "_").replace("/", "-").lower()
 
     @property
     def uri(self) -> str:
-        """Get the URI of the dataset if available."""
-        return self._get_uri()
+        if not self._uri:
+            self._uri = self._normalize_uri(self.name or "dataset")
+        return self._uri
 
     @property
-    def ds_schema(self) -> dict:
-        """Get the schema of the dataset."""
-        return self._get_schema()
+    def schema(self) -> pa.Schema:
+        if isinstance(self.ds, ds.Dataset):
+            return self.ds.schema
+        return self.ds.schema
 
     @property
-    def metadata(self) -> dict:
-        """Get the manifest of the dataset."""
-        return self._get_metadata()
+    def ds_schema(self) -> DatasetSchema:
+        return DatasetSchema.from_arrow_schema(self.schema)
+
+    @property
+    def metadata(self) -> DatasetMetadata:
+        if not self._metadata:
+            self._metadata = self.create_metadata()
+        return self._metadata
+
+    @property
+    def manifest(self) -> FileManifest | None:
+        if not self._manifest:
+            logging_console.print("Building dataset manifest...")
+            self._manifest = ManifestBuilder.build_from_directory(
+                get_dataset_path(self.uri, self.version),
+                version=self.version,
+                exclude_patterns=[METADATA_FILE],
+            )
+        return self._manifest
 
     @property
     def files(self) -> list[str]:
-        """Get the list of files in the dataset."""
-        return self._get_files()
+        if isinstance(self.ds, ds.Dataset):
+            return self.ds.files
+        return []
 
-    def _get_uri(self) -> None:
-        """Get a the uri for the dataset."""
-        # normalize the name to create a uri
-        return self.name.replace(" ", "_").lower()
-
-    def _get_schema(self) -> dict[str, Any]:
-        """Set the schema of the dataset."""
-        if self.ds is None:
-            raise ValueError("Dataset data is not loaded.")
-
-        _ds_schema = {"fields": []}
-        try:
-            for name, dtype in zip(self.ds.schema.names, self.ds.schema.types, strict=False):
-                _ds_schema["fields"].append({"name": name, "type": str(dtype)})
-        except Exception as e:
-            raise ValueError("Failed to extract schema from dataset.") from e
-
-        return _ds_schema
-
-    def _get_files(self) -> list[str]:
-        """Set the list of files in the dataset."""
-        if not self.ds:
-            raise ValueError("Dataset data (ds) is not loaded.")
-        return self.ds.files
-
-    def _get_metadata(self) -> None:
-        """Create a manifest for the dataset."""
-        return DatasetMetadata(
-            name=self.name,
+    def create_metadata(
+        self,
+    ) -> DatasetMetadata:  # TODO: Some fields not being calculated, bytes. But are written to disk. Some race condition.
+        metadata = DatasetMetadata(
+            name=self.name or "dataset",
             description=self.description,
             version=self.version,
             license=self.license,
             tags=self.tags,
             uri=self.uri,
             ds_schema=self.ds_schema,
-            files=self.files,
+            format=self.format,
+            files=self.files or [],
+        )
+        metadata.update_from_data(self.ds, self.files)
+        return metadata
+
+    def save(
+        self,
+        name: str | None = None,
+        version: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        license: str | None = None,
+        *,
+        to_remote: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Save the dataset to cache and optionally sync to remote.
+        """
+        self.name = name or self.name
+        self.version = version or self.version or "0.0.1"
+        self.description = description or self.description
+        self.tags = tags or self.tags
+        self.license = license or self.license
+
+        dataset_path = get_dataset_path(self.uri, self.version)
+
+        dataset_path.mkdir(parents=True, exist_ok=True)
+
+        DatasetWriter.write(
+            self.ds,
+            str(dataset_path / "data"),
+            format=self.format,
+            filesystem=None,  # TODO: Save to remote
+            **kwargs,
         )
 
-    def save(self, path: str, *, _fs: AbstractFileSystem) -> None:
-        """
-        Save the dataset to the given path.
-        """
+        if not self._metadata:
+            self._metadata = self.create_metadata()
+        self._metadata.save(dataset_path / METADATA_FILE)
 
-        dataset.write_dataset(data=self.ds, base_dir=path, format="parquet", filesystem=_fs)
+        if not self._manifest:
+            self._manifest = ManifestBuilder.build_from_directory(
+                dataset_path, version=self.version
+            )
+        self._manifest.save(dataset_path / MANIFEST_FILE)
+
+        if to_remote:
+            remote_url = f"dn://{self.uri}/{self.version}"
+            logging_console.print(f"Syncing dataset to remote: {remote_url}")
+
+            stats = sync_to_remote(
+                local_dir=dataset_path,
+                remote_url=remote_url,
+                strategy=SyncStrategy.HASH,
+                delete=False,
+            )
+            logging_console.print(f"Dataset saved and synced: {stats}")
+
+    def to_table(self) -> pa.Table:
+        if isinstance(self.ds, pa.Table):
+            return self.ds
+        return self.ds.to_table()
+
+    def head(self, n: int = 5) -> pa.Table:
+        table = self.to_table()
+        return table.slice(0, min(n, len(table)))
+
+    def filter(self, expression: pc.Expression) -> "Dataset":
+        if isinstance(self.ds, pa.Table):
+            filtered = self.ds.filter(expression)
+        else:
+            filtered = self.ds.to_table().filter(expression)
+        return self._reconstruct(filtered)
+
+    def select(self, columns: list[str]) -> "Dataset":
+        table = self.to_table()
+        selected = table.select(columns)
+        return self._reconstruct(selected)
+
+    def _reconstruct(self, new_ds: pa.Table) -> "Dataset":
+        return Dataset(
+            ds=new_ds,
+            name=self.name,
+            description=self.description,
+            version=self.version,
+            license=self.license,
+            tags=self.tags,
+            format=self.format,
+        )
 
     @classmethod
-    def from_path(cls, path: str, *, _fs: AbstractFileSystem) -> "Dataset":
-        """
-        Create a Dataset instance from a given path.
+    def from_path(
+        cls,
+        path: str,
+        *,
+        lazy: bool = False,
+        format: str | None = None,
+        fs: AbstractFileSystem | None = None,
+        load_metadata: bool = True,
+        **kwargs: Any,
+    ) -> "Dataset":
+        if fs is None:
+            fs, path = get_filesystem(path)
 
-        Args:
-        path: The base path to the dataset.
-        lazy: If True, loads a `pyarrow.dataset.Dataset` pointer without
-              reading data into memory. If False, loads the data
-              into an in-memory `pyarrow.Table`.
-        Returns:
-            A new Dataset instance.
-        """
+        # Try to load metadata
+        metadata = None
+        if load_metadata:
+            try:
+                meta_path = f"{path}/{METADATA_FILE}"
+                if fs.exists(meta_path):
+                    metadata = DatasetMetadata.load(meta_path, fs=fs)
+                    format = format or metadata.format
+            except Exception as e:
+                logging_console.print(f"Could not load metadata: {e}")
 
-        ds_obj = dataset.dataset(path, format="parquet", filesystem=_fs)
+        # Determine data path (assuming standard structure)
+        # Check if 'data' subdir exists
+        data_path = f"{path}/data"
+        if not fs.exists(data_path):
+            data_path = path
 
-        return cls(ds=ds_obj.to_table())
+        ds_obj = DatasetLoader.load(
+            path=data_path,
+            format=format,
+            filesystem=fs,
+            lazy=lazy,
+            **kwargs,
+        )
 
-    @classmethod
-    def from_json(cls, metadata: dict[str, Any]) -> "Dataset":
-        """
-        Create a Dataset instance from metadata.
-
-        Args:
-            metadata: The DatasetMetadata instance.
-        Returns:
-            A new Dataset instance.
-        """
-
-        try:
-            valid_metadata = DatasetMetadata.model_validate(metadata, strict=True)
-        except Exception as e:
-            raise ValueError("Invalid dataset metadata.") from e
-
-        base_data_path = f"{DATASETS_CACHE}/{valid_metadata.uri}/data"
+        if metadata:
+            return cls(ds=ds_obj, _metadata=metadata)
 
         return cls(
-            ds=dataset.dataset(base_data_path, format="parquet"),
-            name=valid_metadata.name,
-            description=valid_metadata.description,
-            version=valid_metadata.version,
-            license=valid_metadata.license,
-            tags=valid_metadata.tags,
-            metadata=valid_metadata,
+            ds=ds_obj,
+            name=Path(path).name,
+            format=format or "parquet",
         )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], metadata: dict[str, Any] | None = None) -> "Dataset":
+        table = pa.Table.from_pydict(data)
+        meta_obj = DatasetMetadata(**metadata) if metadata else None
+        return cls(ds=table, _metadata=meta_obj)
+
+    @classmethod
+    def from_pandas(cls, df: Any, metadata: dict[str, Any] | None = None) -> "Dataset":
+        table = pa.Table.from_pandas(df)
+        meta_obj = DatasetMetadata(**metadata) if metadata else None
+        return cls(ds=table, _metadata=meta_obj)
+
+    def to_pandas(self) -> Any:
+        return self.to_table().to_pandas()
+
+    def __len__(self) -> int:
+        if isinstance(self.ds, pa.Table):
+            return len(self.ds)
+        return self.ds.count_rows()
+
+
+def parse_uri(uri: str) -> tuple[str, str | None]:
+    """Parse dataset URI into org/name and version."""
+    # Remove protocol (dn://, s3://)
+    if "://" in uri:
+        uri = uri.split("://", 1)[1]
+
+    if "@" in uri:
+        path, version = uri.rsplit("@", 1)
+        return path, version
+
+    # Also support path/version syntax which dn protocol maps to
+    parts = uri.split("/")
+    if len(parts) > 2:
+        return f"{parts[0]}/{parts[1]}", parts[2]
+
+    return uri, None
+
+
+def get_dataset_path(uri: str, version: str | None = None) -> Path:
+    """Get local cache path for a dataset."""
+    version = version or "latest"
+    return Path(DATASETS_CACHE) / uri / version
+
+
+def is_cached(uri: str, version: str | None = None) -> bool:
+    """Check if dataset exists in local cache."""
+    path = get_dataset_path(uri, version)
+    return (path / METADATA_FILE).exists()
+
+
+def load_dataset(
+    uri: str,
+    version: str | None = None,
+    *,
+    lazy: bool = False,
+    from_remote: bool = False,
+    sync: bool = True,
+    **kwargs: Any,
+) -> Dataset:
+    """
+    Load dataset from local path, cache, or remote storage.
+
+    Resolution Order:
+    1. If `uri` is an explicit local path that exists -> Load Local.
+    2. If `from_remote=True` -> Stream directly from Remote.
+    3. If `sync=True` -> Sync from Remote (DN) to Cache -> Load Cache.
+    4. Check Cache -> Load Cache.
+    """
+    protocol = get_protocol(uri)
+
+    if protocol == "file":
+        local_path = Path(uri).expanduser().resolve()
+        if local_path.exists():
+            logging_console.print(f"Loading dataset from local path: {local_path}")
+            return Dataset.from_path(
+                path=str(local_path),
+                lazy=lazy,
+                **kwargs,
+            )
+
+    # If we are here, it's either:
+    # a) An explicit remote URL (s3://, dn://)
+    # b) A managed dataset key (org/dataset) that doesn't exist locally
+
+    # If it looks like "org/dataset", treat it as "dn://org/dataset" for syncing
+    if protocol == "file":
+        # It's a managed key, not an existing path
+        full_remote_uri = f"dn://{uri}"
+        parsed_uri, parsed_version = parse_uri(uri)
+    else:
+        # It's already a remote protocol (s3://, dn://)
+        full_remote_uri = uri
+        parsed_uri, parsed_version = parse_uri(uri)
+
+    version = version or parsed_version or "latest"
+
+    cache_path = get_dataset_path(parsed_uri, version)
+
+    if from_remote:
+        logging_console.print(f"Streaming dataset from remote: {full_remote_uri}")
+        return Dataset.from_path(full_remote_uri, lazy=lazy, **kwargs)
+
+    should_sync = sync and (protocol in ("dn", "dreadnode") or protocol == "file")
+
+    if should_sync:
+        sync_url = f"dn://{parsed_uri}/{version}" if protocol == "file" else full_remote_uri
+
+        if (
+            protocol in ("dn", "dreadnode")
+            and "@" not in sync_url
+            and "/" not in sync_url.replace("://", "")
+        ):
+            sync_url = f"{sync_url}/{version}"
+
+        try:
+            sync_to_local(
+                remote_url=sync_url,
+                local_dir=cache_path,
+                strategy=SyncStrategy.SIZE_AND_TIMESTAMP,
+                delete=False,
+            )
+        except Exception as e:
+            logging_console.print(f"Sync failed ({e}). Attempting to load existing cache...")
+
+    # load from Cache
+    if cache_path.exists():
+        logging_console.print(f"Loading dataset from cache: {cache_path}")
+        return Dataset.from_path(
+            path=str(cache_path),
+            lazy=lazy,
+            **kwargs,
+        )
+
+    # Failure
+    raise FileNotFoundError(
+        f"Dataset not found.\n"
+        f" - Checked Local Path: {uri}\n"
+        f" - Checked Cache: {cache_path}\n"
+        f" - Remote Sync Attempted: {should_sync}"
+    )

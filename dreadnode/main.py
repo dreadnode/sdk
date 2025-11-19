@@ -20,6 +20,7 @@ from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from dreadnode import dataset
 from dreadnode.api.client import ApiClient
 from dreadnode.api.models import (
     Organization,
@@ -49,7 +50,6 @@ from dreadnode.constants import (
     ENV_SERVER_URL,
     ENV_WORKSPACE,
 )
-from dreadnode.dataset import Dataset
 from dreadnode.error import AssertionFailedError
 from dreadnode.exporter import CustomOTLPSpanExporter
 from dreadnode.logging_ import console as logging_console
@@ -62,7 +62,7 @@ from dreadnode.metric import (
 )
 from dreadnode.scorers import Scorer, ScorerCallable
 from dreadnode.scorers.base import ScorersLike
-from dreadnode.storage.dataset import DatasetStorage
+from dreadnode.storage.datasets.core import _fs_manager
 from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -671,6 +671,8 @@ class Dreadnode:
         )
         self._logfire.config.ignore_no_config = True
 
+        _fs_manager.configure(credential_fetcher=self._credential_fetcher)
+
         self._initialized = True
 
     @property
@@ -1252,7 +1254,15 @@ class Dreadnode:
             target.add_tags(tag)
 
     #    @handle_internal_errors()
-    def load_dataset(self, path: str) -> Dataset:
+    def load_dataset(
+        self,
+        path: str,
+        version: str | None = None,
+        *,
+        lazy: bool = False,
+        from_remote: bool = False,
+        **kwargs: t.Any,
+    ) -> dataset.Dataset:
         """
         Load a dataset from the local cache or Dreadnode server.
 
@@ -1261,36 +1271,7 @@ class Dreadnode:
             dataset = dreadnode.load_dataset("dreadnode://my_dataset/versions/1")
             ```
         """
-
-        dataset_storage = DatasetStorage(self._credential_fetcher)  # type: ignore[arg-type]
-        return dataset_storage.load(path)
-
-    def save_dataset(self, dataset: Dataset, *, cache=False) -> None:
-        """
-        Save a dataset to the local cache.
-
-        Example:
-            ```
-            dreadnode.save_dataset(dataset, cache=True)
-            ```
-        """
-
-        dataset_storage = DatasetStorage(self._credential_fetcher)  # type: ignore[arg-type]
-        dataset_storage.save(dataset, cache=cache)
-
-    @handle_internal_errors()
-    def push_dataset(self, uri: str) -> None:
-        """
-        Push a local dataset to the Dreadnode server.
-
-        Example:
-            ```
-            dataset = dreadnode.push_dataset("/path/to/my/dataset")
-            ```
-        """
-
-        dataset_storage = DatasetStorage(self._storage_manager)  # type: ignore[arg-type]
-        dataset_storage.push(uri)
+        return dataset.load_dataset(path, version, lazy=lazy, from_remote=from_remote, **kwargs)
 
     @handle_internal_errors()
     def push_update(self) -> None:

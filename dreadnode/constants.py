@@ -35,8 +35,29 @@ DEFAULT_DOCKER_REGISTRY_IMAGE_TAG = "registry"
 DEFAULT_WORKSPACE_NAME = "Personal Workspace"
 # default project name
 DEFAULT_PROJECT_NAME = "Default"
+
+
+#
+# Storage Constants
+#
+
 # default datasets cache directory
 DATASETS_CACHE = f"{DEFAULT_LOCAL_STORAGE_DIR}/datasets"
+# Metadata file name
+METADATA_FILE = "metadata.json"
+# Mainifest file name
+MANIFEST_FILE = "manifest.json"
+# File chunk size for uploads/downloads
+CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
+# Supported dataset file formats
+SUPPORTED_FORMATS = {
+    "parquet": "parquet",
+    "json": "json",
+    "jsonl": "json",
+    "csv": "csv",
+    "arrow": "arrow",
+    "ipc": "arrow",
+}
 
 #
 # Environment Variable Names

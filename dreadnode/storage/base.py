@@ -1,6 +1,5 @@
 """
-Artifact storage implementation for fsspec-compatible file systems.
-Provides efficient uploading of files and directories with deduplication.
+Base storage implementation for fsspec-compatible filesystems.
 """
 
 import hashlib
@@ -18,52 +17,56 @@ from fsspec.core import url_to_fs
 from fsspec.utils import get_protocol
 from loguru import logger
 
-from dreadnode.constants import DATASETS_CACHE, FS_CREDENTIAL_REFRESH_BUFFER
+from dreadnode.constants import CHUNK_SIZE, DATASETS_CACHE, FS_CREDENTIAL_REFRESH_BUFFER
 
 if TYPE_CHECKING:
     from dreadnode.api.models import UserDataCredentials
 
-
 T = TypeVar("T")
-
-
-CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
 
 
 class BaseStorage:
     """
-    Storage for artifacts that dynamically handles local and remote fsspec backends.
+    Base storage for managing datasets with local and remote fsspec backends.
     """
 
-    def __init__(self, credential_fetcher: Callable[[], "UserDataCredentials"]):
+    def __init__(
+        self,
+        credential_fetcher: Callable[[], "UserDataCredentials"] | None = None,
+    ):
         """
         Initialize storage manager.
 
         Args:
-            credential_fetcher: Function that returns new UserDataCredentials for S3.
+            credential_fetcher: Function that returns UserDataCredentials for S3.
         """
         self._credential_fetcher = credential_fetcher
         self._s3_credentials: UserDataCredentials | None = None
-
+        self._s3_credentials_expiry: datetime | None = None
         self._local_cache_path = DATASETS_CACHE
+        self._prefix: str = "datasets"
 
-    def _get_s3_storage_options(self) -> dict:
+    def _get_s3_storage_options(self) -> dict[str, any]:
         """
-        Get the storage_options dictionary for S3, refreshing credentials if needed.
+        Get storage_options for S3, refreshing credentials if needed.
         """
+        if not self._credential_fetcher:
+            raise ValueError("No credential fetcher configured for S3 access")
+
         now = datetime.now(timezone.utc)
         needs_refresh = (
             not self._s3_credentials
-            or (self._s3_credentials.expiration - now).total_seconds()
-            < FS_CREDENTIAL_REFRESH_BUFFER
+            or not self._s3_credentials_expiry
+            or (self._s3_credentials_expiry - now).total_seconds() < FS_CREDENTIAL_REFRESH_BUFFER
         )
 
         if needs_refresh:
             try:
                 self._s3_credentials = self._credential_fetcher()
-
+                self._s3_credentials_expiry = self._s3_credentials.expiration
+                logger.debug("Refreshed S3 credentials")
             except Exception:
-                logger.exception("Failed to refresh S3 storage credentials.")
+                logger.exception("Failed to refresh S3 storage credentials")
                 raise
 
         return {
@@ -80,36 +83,51 @@ class BaseStorage:
 
     def get_filesystem(self, path: str) -> tuple[AbstractFileSystem, str]:
         """
-        Dynamically gets the correct filesystem and the clean path string for a given URL.
+        Get the correct filesystem and clean path for a URL.
 
         Args:
-            path: The full URL string (e.g., "dn://my-dataset", "/local/path").
+            path: Full URL (e.g., "dn://org/dataset", "/local/path")
 
         Returns:
-            A tuple of (filesystem_instance, path_within_filesystem_as_string).
+            Tuple of (filesystem, clean_path)
         """
         protocol = get_protocol(path)
-        storage_options = {}
+        storage_options: dict[str, any] = {}
         is_remote = False
 
         if protocol in ("dn", "dreadnode"):
             storage_options = self._get_s3_storage_options()
             is_remote = True
-        elif protocol == "file":
+        elif protocol == "file" or protocol == "":
             storage_options = {"auto_mkdir": True}
 
         fs, fs_path = url_to_fs(path, **storage_options)
 
-        if is_remote:
+        if is_remote and self._s3_credentials:
+            # Construct full S3 path
             fs_path = (
-                f"{self._s3_credentials.bucket}/{self._s3_credentials.prefix}/datasets/{fs_path}"
+                f"{self._s3_credentials.bucket}/"
+                f"{self._s3_credentials.prefix}/"
+                f"{self._prefix}/"
+                f"{fs_path}"
             )
 
         return fs, fs_path
 
-    def execute_with_retry(self, operation: Callable[[], T], max_retries: int = 3) -> T:
+    def execute_with_retry(
+        self,
+        operation: Callable[[], T],
+        max_retries: int = 3,
+    ) -> T:
         """
-        Execute an operation with automatic credential refresh on S3 auth errors.
+        Execute operation with automatic credential refresh on auth errors.
+
+        Args:
+            operation: Operation to execute
+            max_retries: Maximum retry attempts
+
+        Returns:
+            Operation result
         """
         for attempt in range(max_retries):
             try:
@@ -124,60 +142,64 @@ class BaseStorage:
 
                 if is_auth_error and attempt < max_retries - 1:
                     logger.info(
-                        "S3 credential error on attempt %d/%d, forcing refresh...",
-                        attempt + 1,
-                        max_retries,
+                        f"S3 credential error on attempt {attempt + 1}/{max_retries}, "
+                        "forcing refresh..."
                     )
-                    # Force expiry to trigger a refresh on the next call to _get_s3_storage_options
+                    # Force expiry
                     self._s3_credentials_expiry = None
                     time.sleep(attempt + 1)
                     continue
                 raise
 
-        raise RuntimeError(f"Operation failed after {max_retries} attempts.")
+        raise RuntimeError(f"Operation failed after {max_retries} attempts")
 
     def store_file(self, local_path: Path, target_url: str) -> str:
         """
-        Store a file, automatically detecting if the target is local or remote.
+        Store a file to target URL.
 
         Args:
-            local_path: Path to the local file.
-            target_url: The destination URL (e.g., "s3://bucket/key" or "/local/path/file").
+            local_path: Local file path
+            target_url: Destination URL
 
         Returns:
-            The full URL to the stored file.
+            Full URL to stored file
         """
 
         def store_operation() -> str:
             fs, target_path = self.get_filesystem(target_url)
 
             if not fs.exists(target_path):
+                logger.info(f"Uploading {local_path} to {target_url}")
                 fs.put(str(local_path), target_path, callback=TqdmCallback())
             else:
-                logger.info("Artifact already exists at %s, skipping upload.", target_url)
+                logger.info(f"File already exists at {target_url}, skipping")
 
             return fs.unstrip_protocol(target_path)
 
-        # The retry logic is now primarily for S3, but is safe for local files.
         return self.execute_with_retry(store_operation)
 
-    def batch_upload_files(self, source_paths: list[str], target_urls: list[str]) -> list[str]:
+    def batch_upload_files(
+        self,
+        source_paths: list[str],
+        target_urls: list[str],
+    ) -> list[str]:
         """
-        Upload multiple files in a single batch, handling mixed local/remote targets.
+        Upload multiple files in batch.
 
         Args:
-            source_paths: List of local file paths to upload.
-            target_urls: List of destination URLs (can be mixed protocols).
+            source_paths: List of local file paths
+            target_urls: List of destination URLs
 
         Returns:
-            List of full URLs for the uploaded files.
+            List of full URLs to uploaded files
         """
         if not source_paths:
             return []
 
         if len(source_paths) != len(target_urls):
-            raise ValueError("source_paths and target_urls must have the same number of elements.")
+            raise ValueError("source_paths and target_urls must have same length")
 
+        # Group by protocol
         grouped_uploads = defaultdict(lambda: {"sources": [], "targets": []})
         for src, url in zip(source_paths, target_urls, strict=True):
             protocol = get_protocol(url)
@@ -193,28 +215,46 @@ class BaseStorage:
 
                 srcs_to_upload = []
                 dsts_to_upload = []
-                for src, dst in zip(uploads["sources"], uploads["targets"], strict=True):
-                    if not fs.exists(dst):
+
+                for src, dst in zip(
+                    uploads["sources"],
+                    uploads["targets"],
+                    strict=True,
+                ):
+                    _, dst_path = self.get_filesystem(dst)
+                    if not fs.exists(dst_path):
                         srcs_to_upload.append(src)
-                        dsts_to_upload.append(dst)
+                        dsts_to_upload.append(dst_path)
 
                 if srcs_to_upload:
+                    logger.info(f"Batch uploading {len(srcs_to_upload)} files")
                     fs.put(srcs_to_upload, dsts_to_upload, callback=TqdmCallback())
                 else:
-                    logger.info(
-                        "All %d files for %s already exist, skipping upload.",
-                        len(uploads["sources"]),
-                        protocol,
-                    )
+                    logger.info(f"All {len(uploads['sources'])} files already exist")
 
             return target_urls
 
         return self.execute_with_retry(batch_upload_operation)
 
-    def compute_file_hash(self, file_path: Path, stream_threshold_mb: int = 10) -> str:
+    def compute_file_hash(
+        self,
+        file_path: Path,
+        stream_threshold_mb: int = 10,
+    ) -> str:
+        """
+        Compute SHA1 hash of file.
+
+        Args:
+            file_path: Path to file
+            stream_threshold_mb: Size threshold for streaming
+
+        Returns:
+            First 16 chars of SHA1 hash
+        """
         file_size = file_path.stat().st_size
         stream_threshold = stream_threshold_mb * 1024 * 1024
         sha1 = hashlib.sha1()
+
         if file_size < stream_threshold:
             with file_path.open("rb") as f:
                 sha1.update(f.read())
@@ -222,9 +262,19 @@ class BaseStorage:
             with file_path.open("rb") as f:
                 for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
                     sha1.update(chunk)
+
         return sha1.hexdigest()[:16]
 
     def compute_file_hashes(self, file_paths: list[Path]) -> dict[str, str]:
+        """
+        Compute hashes for multiple files.
+
+        Args:
+            file_paths: List of file paths
+
+        Returns:
+            Dictionary mapping file path to hash
+        """
         result = {}
         for file_path in file_paths:
             file_path_str = file_path.resolve().as_posix()
