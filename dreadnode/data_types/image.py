@@ -279,7 +279,7 @@ class Image(DataType):
         Returns:
             float32 numpy array in [0,1] range, HWC format
         """
-        return self._canonical_array.copy()  # Always return a copy for safety
+        return t.cast("np.ndarray[t.Any, np.dtype[np.float32]]", self._canonical_array.copy())
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -328,7 +328,7 @@ class Image(DataType):
             # Keep float range [0, 1]
             arr = arr.astype(dtype)
 
-        return arr
+        return t.cast("np.ndarray[t.Any, t.Any]", arr)
 
     def to_pil(self) -> "PILImage":
         """Returns the image as a Pillow Image object."""
