@@ -67,6 +67,37 @@ current_dataset_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
 class EvalWarning(UserWarning):
     """Warning raised during evaluation."""
 
+class EvalFixtureType(str, Enum):
+    BEFORE_EVAL = "before_eval"
+    BEFORE_SCENARIO = "before_scenario"
+    BEFORE_ITERATION = "before_iteration"
+    AFTER_ITERATION = "after_iteration"
+    AFTER_SCENARIO = "after_scenario"
+    AFTER_EVAL = "after_eval"
+
+
+class EvalFixture:
+    """ """
+
+    def __init__(self, fixture_type: EvalFixtureType, fixture: t.Callable):
+        self.fixture_type = fixture_type
+        self.fixture = fixture
+        self.__name__ = fixture.__name__
+        self.__doc__ = fixture.__doc__
+
+    async def __call__(self, *args, **kwargs):
+        return await self.fixture(*args, **kwargs)
+
+    def __repr__(self):
+        return f"EvalFixture(func={self.fixture.__name__}, type={self.fixture_type})"
+
+
+def eval_fixture(fixture_type: str):
+    """ """
+    def decorator(func):
+        return EvalFixture(fixture=func, fixture_type=fixture_type)
+    return decorator
+
 
 class Eval(Model, t.Generic[In, Out]):
     """
@@ -139,6 +170,8 @@ class Eval(Model, t.Generic[In, Out]):
 
     trace: bool = True
     """Whether to produce trace contexts like runs/tasks for this study."""
+
+    fixtures: t.List[EvalFixture] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_dataset(self) -> te.Self:
@@ -255,6 +288,12 @@ class Eval(Model, t.Generic[In, Out]):
                         f"dataset field '{value.ref_name}', which is not available in the current dataset."
                     )
 
+    async def _run_fixtures(self, fixture_type: EvalFixtureType):
+        """ """
+        for fixt in self.fixtures:
+            if fixt.fixture_type == fixture_type:
+                await fixt()
+
     @asynccontextmanager
     async def _run_iteration(
         self,
@@ -358,6 +397,8 @@ class Eval(Model, t.Generic[In, Out]):
             f"iterations={self.iterations}"
         )
 
+        await self._run_fixtures(EvalFixtureType.BEFORE_EVAL)
+
         yield EvalStart(
             eval=self,
             dataset_size=len(dataset),
@@ -407,6 +448,8 @@ class Eval(Model, t.Generic[In, Out]):
             with trace_context as task, contextlib.ExitStack() as stack:
                 stack.callback(log_data, scenario_result)
 
+                await self._run_fixtures(EvalFixtureType.BEFORE_SCENARIO)
+
                 logger.debug(f"Starting scenario: params={scenario_params}")
 
                 run_id = task.run_id if task else ""
@@ -425,6 +468,8 @@ class Eval(Model, t.Generic[In, Out]):
                 ).configure(**scenario_params)
 
                 for iteration in range(1, self.iterations + 1):
+                    await self._run_fixtures(EvalFixtureType.BEFORE_ITERATION)
+
                     logger.debug(f"Starting iteration: {iteration}/{self.iterations}")
 
                     yield IterationStart(
@@ -486,6 +531,8 @@ class Eval(Model, t.Generic[In, Out]):
                 yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
 
+                await self._run_fixtures(EvalFixtureType.AFTER_ITERATION)
+
         eval_result.stop_reason = "finished"
 
         logger.success(
@@ -494,6 +541,8 @@ class Eval(Model, t.Generic[In, Out]):
         )
 
         yield EvalEnd(eval=self, result=eval_result)
+
+        await self._run_fixtures(EvalFixtureType.AFTER_EVAL)
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
