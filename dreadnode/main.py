@@ -653,11 +653,10 @@ class Dreadnode:
                     self.server = urlunparse(parsed_new)
 
                 self._api = ApiClient(self.server, api_key=self.token)
-
                 self._resolve_rbac()
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to connect to the Dreadnode server: {e}",
+                    f"Failed to connect to {self.server}: {e}",
                 ) from e
 
             headers = {"X-Api-Key": self.token}
