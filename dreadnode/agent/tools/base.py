@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import typing as t
 
@@ -183,6 +184,7 @@ class Toolset(Model):
     # Context manager magic
     _entry_ref_count: int = PrivateAttr(default=0)
     _context_handle: object = PrivateAttr(default=None)
+    _entry_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
     @property
     def name(self) -> str:
@@ -200,11 +202,28 @@ class Toolset(Model):
 
         original_aenter = cls.__dict__.get("__aenter__")
         original_enter = cls.__dict__.get("__enter__")
+        original_aexit = cls.__dict__.get("__aexit__")
+        original_exit = cls.__dict__.get("__exit__")
 
-        if callable(original_aenter) or callable(original_enter):
+        has_enter = callable(original_aenter) or callable(original_enter)
+        has_exit = callable(original_aexit) or callable(original_exit)
 
-            @functools.wraps(original_aenter or original_enter)  # type: ignore[arg-type]
-            async def aenter_wrapper(self: "Toolset", *args: t.Any, **kwargs: t.Any) -> t.Any:
+        if has_enter and not has_exit:
+            raise TypeError(
+                f"{cls.__name__} defining __aenter__ or __enter__ must also define __aexit__ or __exit__"
+            )
+        if has_exit and not has_enter:
+            raise TypeError(
+                f"{cls.__name__} defining __aexit__ or __exit__ must also define __aenter__ or __enter__"
+            )
+        if original_aenter and original_enter:
+            raise TypeError(f"{cls.__name__} cannot define both __aenter__ and __enter__")
+        if original_aexit and original_exit:
+            raise TypeError(f"{cls.__name__} cannot define both __aexit__ and __exit__")
+
+        @functools.wraps(original_aenter or original_enter)  # type: ignore[arg-type]
+        async def aenter_wrapper(self: "Toolset", *args: t.Any, **kwargs: t.Any) -> t.Any:
+            async with self._entry_lock:
                 if self._entry_ref_count == 0:
                     handle = None
                     if original_aenter:
@@ -215,15 +234,11 @@ class Toolset(Model):
                 self._entry_ref_count += 1
                 return self._context_handle
 
-            cls.__aenter__ = aenter_wrapper  # type: ignore[attr-defined]
+        cls.__aenter__ = aenter_wrapper  # type: ignore[attr-defined]
 
-        original_aexit = cls.__dict__.get("__aexit__")
-        original_exit = cls.__dict__.get("__exit__")
-
-        if callable(original_aexit) or callable(original_exit):
-
-            @functools.wraps(original_aexit or original_exit)  # type: ignore[arg-type]
-            async def aexit_wrapper(self: "Toolset", *args: t.Any, **kwargs: t.Any) -> t.Any:
+        @functools.wraps(original_aexit or original_exit)  # type: ignore[arg-type]
+        async def aexit_wrapper(self: "Toolset", *args: t.Any, **kwargs: t.Any) -> t.Any:
+            async with self._entry_lock:
                 self._entry_ref_count -= 1
                 if self._entry_ref_count == 0:
                     if original_aexit:
@@ -232,7 +247,7 @@ class Toolset(Model):
                         original_exit(self, *args, **kwargs)
                     self._context_handle = None
 
-            cls.__aexit__ = aexit_wrapper  # type: ignore[attr-defined]
+        cls.__aexit__ = aexit_wrapper  # type: ignore[attr-defined]
 
     def get_tools(self, *, variant: str | None = None) -> list[AnyTool]:
         variant = variant or self.variant
