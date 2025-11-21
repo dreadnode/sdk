@@ -393,7 +393,7 @@ def to_numpy(self, dtype: t.Any = np.float32) -> "np.ndarray[t.Any, t.Any]":
         # Keep float range [0, 1]
         arr = arr.astype(dtype)
 
-    return arr
+    return t.cast("np.ndarray[t.Any, t.Any]", arr)
 ```
 
 
