@@ -1,4 +1,6 @@
 import inspect
+import json
+import re
 import typing as t
 from contextlib import aclosing, asynccontextmanager
 from copy import deepcopy
@@ -20,7 +22,6 @@ from dreadnode.agent.events import (
     AgentEventInStep,
     AgentStalled,
     AgentStart,
-    AgentStopReason,
     GenerationEnd,
     Reacted,
     StepStart,
@@ -37,7 +38,7 @@ from dreadnode.agent.reactions import (
     Retry,
     RetryWithFeedback,
 )
-from dreadnode.agent.result import AgentResult
+from dreadnode.agent.result import AgentResult, AgentStopReason
 from dreadnode.agent.stop import StopCondition, never
 from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
@@ -59,7 +60,6 @@ from dreadnode.util import (
 litellm.suppress_debug_info = True
 
 CommitBehavior = t.Literal["always", "on-success"]
-HookMap = dict[type[AgentEvent], list[Hook]]
 
 
 class AgentWarning(UserWarning):
@@ -250,6 +250,9 @@ class Agent(Model):
             new.scorers = scorers if scorers is not None else new.scorers
             new.assert_scores = assert_scores if assert_scores is not None else new.assert_scores
 
+        # Retrigger model_post_init functions to ensure consistency
+        new.model_post_init(None)
+
         return new
 
     def _get_transforms(self) -> list[rg.Transform]:
@@ -269,28 +272,10 @@ class Agent(Model):
                     transforms.append(rg.transform.tools_to_json_with_tag_transform)
                 case "json":
                     transforms.append(rg.transform.tools_to_json_transform)
+                case "pythonic":
+                    transforms.append(rg.transform.tools_to_pythonic_transform)
 
         return transforms
-
-    def _get_hooks(self) -> dict[type[AgentEvent], list[Hook]]:
-        hooks: dict[type[AgentEvent], list[Hook]] = {}
-        for hook in self.hooks:
-            sig = inspect.signature(hook)
-            if not (params := list(sig.parameters.values())):
-                continue
-            event_type = params[0].annotation
-
-            if hasattr(event_type, "__origin__") and event_type.__origin__ is t.Union:
-                union_args = event_type.__args__
-                for arg in union_args:
-                    if inspect.isclass(arg) and issubclass(arg, AgentEvent):
-                        hooks.setdefault(arg, []).append(hook)
-            elif inspect.isclass(event_type) and issubclass(event_type, AgentEvent):
-                hooks.setdefault(event_type, []).append(hook)
-            else:
-                hooks.setdefault(AgentEvent, []).append(hook)
-
-        return hooks
 
     async def _generate(
         self,
@@ -352,7 +337,6 @@ class Agent(Model):
         self,
         thread: "Thread",
         messages: list[rg.Message],
-        hooks: HookMap,
         *,
         commit: CommitBehavior,
     ) -> t.AsyncGenerator[AgentEvent, None]:
@@ -369,26 +353,21 @@ class Agent(Model):
 
         # Event dispatcher
 
-        async def _dispatch(event: AgentEvent) -> t.AsyncIterator[AgentEvent]:
+        async def _dispatch(event: AgentEvent) -> t.AsyncIterator[AgentEvent]:  # noqa: PLR0912
             nonlocal messages, events
 
             yield event
 
             events.append(event)
 
-            # If we have no hooks, just return the event
-            applicable_hooks = list(set(hooks.get(type(event), []) + hooks.get(AgentEvent, [])))
-            if not applicable_hooks:
-                return
-
             logger.debug(
                 f"Agent '{self.name}' ({session_id}) dispatching '{type(event).__name__}': "
-                f"applicable_hooks={[get_callable_name(h, short=True) for h in applicable_hooks]}"
+                f"hooks={[get_callable_name(h, short=True) for h in self.hooks]}"
             )
 
             # Run all applicable hooks and collect their reactions
             hook_reactions: dict[str, Reaction | None] = {}
-            for hook in applicable_hooks:
+            for hook in self.hooks:
                 hook_name = getattr(
                     hook, "__name__", getattr(hook, "__qualname__", safe_repr(hook))
                 )
@@ -411,6 +390,20 @@ class Agent(Model):
                 if not isinstance(reaction, Reaction):
                     warn_at_user_stacklevel(
                         f"Hook '{hook_name}' returned {reaction}, but expected a Reaction.",
+                        AgentWarning,
+                    )
+                    continue
+
+                if isinstance(event, AgentEnd):
+                    warn_at_user_stacklevel(
+                        f"Hook '{hook_name}' returned {reaction} during AgentEnd, but reactions are ignored at this stage.",
+                        AgentWarning,
+                    )
+                    continue
+
+                if isinstance(event, Reacted):
+                    warn_at_user_stacklevel(
+                        f"Hook '{hook_name}' returned {reaction} during Reacted, but reactions are ignored at this stage.",
                         AgentWarning,
                     )
                     continue
@@ -477,7 +470,9 @@ class Agent(Model):
                 reaction=winning_reaction,
             )
             events.append(reacted_event)
-            yield reacted_event
+
+            async for _event in _dispatch(reacted_event):
+                yield _event
 
             if isinstance(winning_reaction, Continue):
                 messages = winning_reaction.messages
@@ -570,10 +565,12 @@ class Agent(Model):
 
         # Core step loop
 
-        step = 1
+        step = 0
         error: Exception | str | None = None
 
-        while step <= self.max_steps + 1:
+        while step < self.max_steps:
+            step += 1
+
             try:
                 async for event in _dispatch(
                     StepStart(
@@ -589,7 +586,7 @@ class Agent(Model):
 
                 # Generation
 
-                step_chat = await self._generate(messages=messages)
+                step_chat = await self._generate(messages)
                 if step_chat.failed and step_chat.error:
                     async for event in _dispatch(
                         AgentError(
@@ -602,7 +599,9 @@ class Agent(Model):
                         )
                     ):
                         yield event
-                    raise step_chat.error
+
+                    error = t.cast("Exception", step_chat.error)  # Should be Exception in rigging
+                    break
 
                 # Sync extra fields to metadata for storage
                 step_chat.generated[-1].metadata.update(step_chat.extra)
@@ -649,7 +648,8 @@ class Agent(Model):
                     ):
                         yield event
 
-                    continue
+                    # If the agent is stalled and nobody handled it, break out
+                    break
 
                 # Process tool calls
 
@@ -675,8 +675,6 @@ class Agent(Model):
                 if any(cond(events) for cond in stop_conditions):
                     break
 
-                step += 1
-
             except Retry as e:
                 messages = e.messages or messages
                 continue
@@ -689,7 +687,7 @@ class Agent(Model):
                 break
 
         stop_reason: AgentStopReason = "finished"
-        if step > self.max_steps + 1:
+        if step >= self.max_steps:
             error = MaxStepsError(max_steps=self.max_steps)
             stop_reason = "max_steps_reached"
         elif error is not None:
@@ -720,28 +718,32 @@ class Agent(Model):
         else:
             logger.warning(log_message)
 
-        yield AgentEnd(
-            session_id=session_id,
-            agent=self,
-            thread=thread,
-            messages=messages,
-            events=events,
-            stop_reason=stop_reason,
-            result=AgentResult(
+        async for event in _dispatch(
+            AgentEnd(
+                session_id=session_id,
                 agent=self,
+                thread=thread,
                 messages=messages,
-                usage=_total_usage_from_events(events),
-                steps=step,
-                failed=stop_reason != "finished",
-                error=error,
-            ),
-        )
+                events=events,
+                stop_reason=stop_reason,
+                result=AgentResult(
+                    agent=self,
+                    messages=messages,
+                    stop_reason=stop_reason,
+                    usage=_total_usage_from_events(events),
+                    steps=step,
+                    failed=stop_reason != "finished",
+                    error=error,
+                ),
+            )
+        ):
+            yield event
 
     def _log_event_metrics(self, event: AgentEvent) -> None:
         from dreadnode import log_metric
 
         if isinstance(event, AgentEnd):
-            log_metric("steps_taken", min(0, event.result.steps - 1))
+            log_metric("steps_taken", max(0, event.result.steps - 1))
             log_metric(f"stop_{event.stop_reason}", 1)
 
         if not isinstance(event, AgentEventInStep):
@@ -778,7 +780,6 @@ class Agent(Model):
     ) -> t.AsyncGenerator[AgentEvent, None]:
         from dreadnode import log_output, log_outputs, score, task_and_run
 
-        hooks = self._get_hooks()
         messages = [*deepcopy(thread.messages), rg.Message("user", str(user_input))]
 
         configuration = get_config_model(self)()
@@ -822,7 +823,7 @@ class Agent(Model):
             params=trace_params,
         ):
             try:
-                async with aclosing(self._stream(thread, messages, hooks, commit=commit)) as stream:
+                async with aclosing(self._stream(thread, messages, commit=commit)) as stream:
                     async for event in stream:
                         last_event = event
                         self._log_event_metrics(event)
@@ -837,7 +838,7 @@ class Agent(Model):
                 if isinstance(last_event, AgentEnd):
                     log_outputs(
                         to="both",
-                        steps_taken=min(0, last_event.result.steps - 1),
+                        steps_taken=max(0, last_event.result.steps - 1),
                         reason=last_event.stop_reason,
                         failed=last_event.result.failed,
                     )
@@ -897,7 +898,7 @@ class Agent(Model):
 
 class TaskAgent(Agent):
     """
-    A specialized agent for running tasks with a focus on completion and reporting.
+    A specialized agent mixin for running tasks with a focus on completion and reporting.
     It extends the base Agent class to provide task-specific functionality.
 
     - Automatically includes the `finish_task`, `give_up_on_task`, and `update_todo` tools.
@@ -905,7 +906,12 @@ class TaskAgent(Agent):
     - Uses the `AgentStalled` event to handle stalled tasks by pushing the model to continue or finish the task.
     """
 
-    def model_post_init(self, _: t.Any) -> None:
+    def model_post_init(self, context: t.Any) -> None:
+        super().model_post_init(context)
+
+        # TODO(nick): Would be better to have a pattern here for
+        # add-if-missing for tools, hooks, and stop conditions
+
         if not any(tool for tool in self.tools if tool.name == "finish_task"):
             self.tools.append(finish_task)
 
@@ -916,11 +922,72 @@ class TaskAgent(Agent):
             self.tools.append(update_todo)
 
         # Force the agent to use finish_task
-        self.stop_conditions.append(never())
-        self.hooks.insert(
-            0,
-            retry_with_feedback(
-                event_type=AgentStalled,
-                feedback="Continue the task if possible, use the 'finish_task' tool to complete it, or 'give_up_on_task' if it cannot be completed.",
-            ),
-        )
+        if not any(cond for cond in self.stop_conditions if cond.name == "stop_never"):
+            self.stop_conditions.append(never())
+
+        if not any(
+            hook
+            for hook in self.hooks
+            if get_callable_name(hook, short=True) == "retry_with_feedback"
+        ):
+            self.hooks.append(
+                retry_with_feedback(
+                    event_type=AgentStalled,
+                    feedback="No tool calls were observed. Continue the task if possible, use the 'finish_task' tool to complete it, or 'give_up_on_task' if it cannot be completed.",
+                )
+            )
+
+
+class RegexRefAgent(Agent):
+    """
+    An agent mixin that allows for dynamic references of prior text using regex patterns in tool arguments.
+    This helps prevent repeating large amounts of prior text in tool calls.
+
+    Instructions are automatically added to the agent's instructions to guide usage of the {find:<pattern>} syntax
+    along with a hook that resolves these references during tool calls.
+    """
+
+    @staticmethod
+    async def resolve_regex_ref(event: AgentEvent) -> Reaction | None:
+        if not isinstance(event, ToolStart):
+            return None
+
+        for m in re.finditer(r"\{find:(.*?)\}", event.tool_call.arguments):
+            regex = m.group(1).replace("\\\\", "\\")  # models tend to over-escape
+            logger.info(f"Found find reference: {regex}")
+            all_message_content = "\n\n".join([m.content for m in event.messages])
+            reference_matches = re.findall(regex, all_message_content)
+            if reference_matches:
+                logger.debug(f"Replacing '{m.group(0)}' with '{reference_matches[-1][:50]}...'.")
+                event.tool_call.function.arguments = event.tool_call.arguments.replace(
+                    m.group(0), json.dumps(reference_matches[-1]).strip('"')
+                )
+
+        return None
+
+    def model_post_init(self, context: t.Any) -> None:
+        super().model_post_init(context)
+
+        if not any(
+            hook
+            for hook in self.hooks
+            if get_callable_name(hook, short=True) == "resolve_regex_ref"
+        ):
+            self.hooks.append(RegexRefAgent.resolve_regex_ref)
+
+        instruction_section = dedent("""
+        # Regex Find Instructions
+        To efficiently reuse data from the conversation, you can pass {find:<pattern>} anywhere in tool arguments to dynamically
+        refer to prior text using a regex pattern. This helps prevent costly repetition of prior text.
+
+        You must escape special characters in the regex.
+
+        Example: If the history contains `$krb5tgs$23$*user...<long_hash>`, use:
+        `hashcat(hashes=["{find:\\$krb5tgs\\$.*}"], wordlist="...")`
+        and the system will find the full hash for you and insert it into the tool call.
+        """)
+
+        if self.instructions is None:
+            self.instructions = instruction_section
+        elif self.instructions and instruction_section not in self.instructions:
+            self.instructions += "\n\n" + instruction_section

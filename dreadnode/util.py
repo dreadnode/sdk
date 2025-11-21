@@ -159,6 +159,23 @@ def format_dict(data: dict[str, t.Any], max_length: int = 80) -> str:
     return f"{{{formatted}}}"
 
 
+def create_key_from_name(name: str) -> str:
+    key = name.strip().lower()
+
+    # 2. Replace one or more spaces or underscores with a single hyphen
+    key = re.sub(r"[\s_]+", "-", key)
+
+    # 3. Remove any character that is not a letter, number, or hyphen
+    return re.sub(r"[^a-z0-9-]", "", key)
+
+
+def valid_key(key: str) -> bool:
+    """
+    Check if the key is valid (only contains lowercase letters, numbers, and hyphens).
+    """
+    return bool(re.fullmatch(r"[a-z0-9-]+", key))
+
+
 # Imports
 
 

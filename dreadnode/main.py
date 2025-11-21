@@ -3,6 +3,7 @@ import contextlib
 import os
 import random
 import re
+import sys
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -80,7 +81,9 @@ from dreadnode.tracing.span import (
 from dreadnode.user_config import UserConfig
 from dreadnode.util import (
     clean_str,
+    create_key_from_name,
     handle_internal_errors,
+    valid_key,
     warn_at_user_stacklevel,
 )
 from dreadnode.version import VERSION
@@ -222,6 +225,16 @@ class Dreadnode:
         if self._api is None:
             raise RuntimeError("API client is not initialized.")
 
+        with contextlib.suppress(ValueError):
+            self.organization = UUID(
+                str(self.organization)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
+        if isinstance(self.organization, str) and not valid_key(self.organization):
+            raise RuntimeError(
+                f'Invalid Organization Key: "{self.organization}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your organization using the CLI or the web interface.',
+            )
+
         if self.organization:
             self._organization = self._api.get_organization(self.organization)
             if not self._organization:
@@ -243,7 +256,7 @@ class Dreadnode:
                 )
             self._organization = organizations[0]
 
-    def _create_workspace(self, name: str) -> Workspace:
+    def _create_workspace(self, key: str) -> Workspace:
         """
         Create a new workspace.
 
@@ -262,9 +275,12 @@ class Dreadnode:
 
         try:
             logging_console.print(
-                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{name}'...[/]"
+                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{key}'...[/]"
             )
-            return self._api.create_workspace(name=name, organization_id=self._organization.id)
+            key = create_key_from_name(key)
+            return self._api.create_workspace(
+                name=key, key=key, organization_id=self._organization.id
+            )
         except RuntimeError as e:
             if "403: Forbidden" in str(e):
                 raise RuntimeError(
@@ -288,6 +304,16 @@ class Dreadnode:
         if self._api is None:
             raise RuntimeError("API client is not initialized.")
 
+        with contextlib.suppress(ValueError):
+            self.workspace = UUID(
+                str(self.workspace)
+            )  # Now, it's a UUID if possible, else str (name/slug)
+
+        if isinstance(self.workspace, str) and not valid_key(self.workspace):
+            raise RuntimeError(
+                f'Invalid Workspace Key: "{self.workspace}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your workspace using the CLI or the web interface.',
+            )
+
         found_workspace: Workspace | None = None
         if self.workspace:
             try:
@@ -303,9 +329,11 @@ class Dreadnode:
             if not found_workspace and isinstance(self.workspace, UUID):
                 raise RuntimeError(f"Workspace with ID '{self.workspace}' not found.")
 
-            if not found_workspace and isinstance(self.workspace, str):  # specified by name/slug
+            if not found_workspace and isinstance(
+                self.workspace, str
+            ):  # specified by name/slug
                 # create the workspace (must be an org contributor)
-                found_workspace = self._create_workspace(name=self.workspace)
+                found_workspace = self._create_workspace(key=self.workspace)
 
         else:  # the user provided no workspace, attempt to find a default one
             workspaces = self._api.list_workspaces(
@@ -313,7 +341,9 @@ class Dreadnode:
                     org_id=self._organization.id if self._organization else None
                 )
             )
-            default_workspace = next((ws for ws in workspaces if ws.is_default is True), None)
+            default_workspace = next(
+                (ws for ws in workspaces if ws.is_default is True), None
+            )
             if default_workspace:
                 found_workspace = default_workspace
             else:
@@ -339,6 +369,11 @@ class Dreadnode:
         if self._api is None:
             raise RuntimeError("API client is not initialized.")
 
+        if self.project and not valid_key(self.project):
+            raise RuntimeError(
+                f'Invalid Project Key: "{self.project}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your project using the CLI or the web interface.',
+            )
+
         # fetch the project
         found_project: Project | None = None
         try:
@@ -355,7 +390,8 @@ class Dreadnode:
         if not found_project:
             # create it in the workspace
             found_project = self._api.create_project(
-                name=self.project or DEFAULT_PROJECT_NAME, workspace_id=self._workspace.id
+                name=self.project or DEFAULT_PROJECT_NAME,
+                workspace_id=self._workspace.id,
             )
         # This is what's used in all of the Traces/Spans/Runs
         self._project = found_project
@@ -376,7 +412,9 @@ class Dreadnode:
         self._resolve_workspace()
         self._resolve_project()
 
-    def _log_configuration(self, config_source: str, active_profile: str | t.Any | None) -> None:
+    def _log_configuration(
+        self, config_source: str, active_profile: str | t.Any | None
+    ) -> None:
         """
         Log the current Dreadnode configuration to the console.
 
@@ -404,7 +442,9 @@ class Dreadnode:
         logging_console.print(f" Project: [green]{self._project.name}[/]")
 
     @staticmethod
-    def _extract_project_components(path: str | None) -> tuple[str | None, str | None, str]:
+    def _extract_project_components(
+        path: str | None,
+    ) -> tuple[str | None, str | None, str]:
         """
         Extract organization, workspace, and project from a path string.
 
@@ -425,12 +465,21 @@ class Dreadnode:
         match = re.match(pattern, path)
 
         if not match:
-            raise RuntimeError(f"Invalid project path format: '{path}'")
+            raise RuntimeError(
+                f"Invalid project path format: '{path}'.\n\nExpected formats are 'org/workspace/project', 'workspace/project', or 'project'. Where each component is the key for that entity.'"
+            )
 
         # The groups are: (Org, Workspace, Project)
         groups = match.groups()
 
         present_components = [c for c in groups if c is not None]
+
+        # validate each component
+        for component in present_components:
+            if not valid_key(component):
+                raise RuntimeError(
+                    f'Invalid Key: "{component}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your organization, workspace, and project using the CLI or the web interface.',
+                )
 
         if len(present_components) == 3:
             org, workspace, project = groups
@@ -479,6 +528,10 @@ class Dreadnode:
         1. Environment variables:
            - `DREADNODE_SERVER_URL` or `DREADNODE_SERVER`
            - `DREADNODE_API_TOKEN` or `DREADNODE_API_KEY`
+           - `DREADNODE_ORGANIZATION`
+           - `DREADNODE_WORKSPACE`
+           - `DREADNODE_PROJECT`
+
         2. Dreadnode profile (from `dreadnode login`)
            - Uses `profile` parameter if provided
            - Falls back to `DREADNODE_PROFILE` environment variable
@@ -491,7 +544,7 @@ class Dreadnode:
             local_dir: The local directory to store data in.
             organization: The default organization name or ID to use.
             workspace: The default workspace name or ID to use.
-            project: The default project name to associate all runs with. This can also be in the format `org/workspace/project`.
+            project: The default project name to associate all runs with. This can also be in the format `org/workspace/project` using the keys.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
             console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
@@ -500,6 +553,11 @@ class Dreadnode:
         """
 
         self._initialized = False
+
+        # Skip during testing
+        if "pytest" in sys.modules:
+            self._initialized = True
+            return
 
         # Determine configuration source and active profile for logging
         config_source = "explicit parameters"
@@ -546,19 +604,8 @@ class Dreadnode:
             self.local_dir = local_dir
 
         _org, _workspace, _project = self._extract_project_components(project)
-
         self.organization = _org or organization or os.environ.get(ENV_ORGANIZATION)
-        with contextlib.suppress(ValueError):
-            self.organization = UUID(
-                str(self.organization)
-            )  # Now, it's a UUID if possible, else str (name/slug)
-
         self.workspace = _workspace or workspace or os.environ.get(ENV_WORKSPACE)
-        with contextlib.suppress(ValueError):
-            self.workspace = UUID(
-                str(self.workspace)
-            )  # Now, it's a UUID if possible, else str (name/slug)
-
         self.project = _project or project or os.environ.get(ENV_PROJECT)
 
         self.service_name = service_name
@@ -1042,7 +1089,9 @@ class Dreadnode:
 
         _scorers = Scorer.fit_many(scorers)
         _assert_scores = (
-            [s.name for s in _scorers] if assert_scores is True else list(assert_scores or [])
+            [s.name for s in _scorers]
+            if assert_scores is True
+            else list(assert_scores or [])
         )
 
         metrics: dict[str, list[Metric]] = {}
@@ -1056,7 +1105,9 @@ class Dreadnode:
                 metric_name = str(getattr(metric, "_scorer_name", scorer.name))
                 metric_name = clean_str(metric_name)
                 metrics.setdefault(metric_name, []).append(
-                    self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
+                    self.log_metric(
+                        metric_name, metric, origin=scorer.bound_obj or object
+                    )
                 )
 
         failed_assertions: dict[str, list[Metric]] = {}
@@ -1123,7 +1174,9 @@ class Dreadnode:
         if not self._initialized:
             self.configure()
 
-        name_prefix = clean_str(name_prefix or coolname.generate_slug(2), replace_with="-")
+        name_prefix = clean_str(
+            name_prefix or coolname.generate_slug(2), replace_with="-"
+        )
         name = name or f"{name_prefix}-{random.randint(100, 999)}"  # noqa: S311 # nosec
 
         return RunSpan(
@@ -1133,7 +1186,7 @@ class Dreadnode:
             tracer=_tracer or self._get_tracer(),
             params=params,
             tags=tags,
-            credential_fetcher=self._credential_fetcher,  # type: ignore[arg-type]
+            credential_manager=self._credential_manager,
             autolog=autolog,
         )
 
@@ -1242,7 +1295,13 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
+        targets = (
+            [(task or run)]
+            if to == "task-or-run"
+            else [task, run]
+            if to == "both"
+            else [run]
+        )
         if not targets:
             warn_at_user_stacklevel(
                 "tag() was called outside of a task or run.",
@@ -1271,7 +1330,9 @@ class Dreadnode:
             dataset = dreadnode.load_dataset("dreadnode://my_dataset/versions/1")
             ```
         """
-        return dataset.load_dataset(path, version, lazy=lazy, from_remote=from_remote, **kwargs)
+        return dataset.load_dataset(
+            path, version, lazy=lazy, from_remote=from_remote, **kwargs
+        )
 
     @handle_internal_errors()
     def push_update(self) -> None:
@@ -1785,7 +1846,13 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
+        targets = (
+            [(task or run)]
+            if to == "task-or-run"
+            else [task, run]
+            if to == "both"
+            else [run]
+        )
         if not targets:
             warn_at_user_stacklevel(
                 "log_input() was called outside of a task or run.",
@@ -1852,7 +1919,13 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
+        targets = (
+            [(task or run)]
+            if to == "task-or-run"
+            else [task, run]
+            if to == "both"
+            else [run]
+        )
         if not targets:
             warn_at_user_stacklevel(
                 "log_output() was called outside of a task or run.",

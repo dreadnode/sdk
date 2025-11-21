@@ -448,11 +448,11 @@ class Workspace(BaseModel):
     """Unique identifier for the workspace."""
     name: str
     """Name of the workspace."""
-    slug: str
-    """URL-friendly slug for the workspace."""
+    key: str
+    """Unique key for the workspace."""
     description: str | None
     """Description of the workspace."""
-    # created_by: UUID
+    created_by: UUID | None = None
     """Unique identifier for the user who created the workspace."""
     org_id: UUID
     """Unique identifier for the organization the workspace belongs to."""
@@ -468,6 +468,9 @@ class Workspace(BaseModel):
     """Creation timestamp."""
     updated_at: datetime
     """Last update timestamp."""
+
+    def __str__(self) -> str:
+        return f"{self.name} (Key: {self.key}), ID: {self.id}"
 
 
 class WorkspaceFilter(BaseModel):
@@ -498,8 +501,8 @@ class Organization(BaseModel):
     """Unique identifier for the organization."""
     name: str
     """Name of the organization."""
-    slug: str
-    """URL-friendly slug for the organization."""
+    key: str
+    """URL-friendly identifier for the organization."""
     description: str | None
     """Description of the organization."""
     is_active: bool
@@ -512,6 +515,9 @@ class Organization(BaseModel):
     """Creation timestamp."""
     updated_at: datetime
     """Last update timestamp."""
+
+    def __str__(self) -> str:
+        return f"{self.name} (Identifier: {self.key}), ID: {self.id}"
 
 
 # Derived types

@@ -287,7 +287,7 @@ class ApiClient:
         """Retrieves details of a specific project.
 
         Args:
-            project (str | UUID): The project identifier. ID, name, or slug.
+            project_identifier (str | UUID): The project identifier. ID, name, or slug.
 
         Returns:
             Project: The Project object.
@@ -308,9 +308,9 @@ class ApiClient:
         """Creates a new project.
 
         Args:
-            name (str | UUID | None): The name of the project. If None, a default name will be used.
-            workspace (str | UUID | None): The workspace ID to create the project in. If None, the default workspace will be used.
-            organization (str | UUID | None): The organization ID to create the project in. If None, the default organization will be used.
+            name: The name of the project. If None, a default name will be used.
+            workspace_id: The workspace ID to create the project in. If None, the default workspace will be used.
+            organization_id: The organization ID to create the project in. If None, the default organization will be used.
 
         Returns:
             Project: The created Project object.
@@ -807,17 +807,17 @@ class ApiClient:
         response = self.request("GET", "/organizations")
         return [Organization(**org) for org in response.json()]
 
-    def get_organization(self, organization_id: str | UUID) -> Organization:
+    def get_organization(self, org_id_or_key: UUID | str) -> Organization:
         """
         Retrieves details of a specific organization.
 
         Args:
-            organization_id (str): The organization identifier.
+            org_id_or_key (str | UUID): The organization identifier.
 
         Returns:
             Organization: The Organization object.
         """
-        response = self.request("GET", f"/organizations/{organization_id!s}")
+        response = self.request("GET", f"/organizations/{org_id_or_key!s}")
         return Organization(**response.json())
 
     def list_workspaces(self, filters: WorkspaceFilter | None = None) -> list[Workspace]:
@@ -850,12 +850,14 @@ class ApiClient:
 
         return all_workspaces
 
-    def get_workspace(self, workspace_id: str | UUID, org_id: UUID | None = None) -> Workspace:
+    def get_workspace(
+        self, workspace_id_or_key: UUID | str, org_id: UUID | None = None
+    ) -> Workspace:
         """
         Retrieves details of a specific workspace.
 
         Args:
-            workspace_id (str): The workspace identifier.
+            workspace_id_or_key (str | UUID): The workspace identifier.
 
         Returns:
             Workspace: The Workspace object.
@@ -863,13 +865,15 @@ class ApiClient:
         params: dict[str, str] = {}
         if org_id:
             params = {"org_id": str(org_id)}
-        response = self.request("GET", f"/workspaces/{workspace_id!s}", params=params)
+        response = self.request("GET", f"/workspaces/{workspace_id_or_key!s}", params=params)
         return Workspace(**response.json())
 
     def create_workspace(
         self,
         name: str,
+        key: str,
         organization_id: UUID,
+        description: str | None = None,
     ) -> Workspace:
         """
         Creates a new workspace.
@@ -884,6 +888,8 @@ class ApiClient:
 
         payload = {
             "name": name,
+            "key": key,
+            "description": description,
             "org_id": str(organization_id),
         }
 
@@ -900,15 +906,7 @@ class ApiClient:
         Creates a new dataset.
 
         Args:
-            name (str): The name of the dataset.
-            org_id (str | UUID): The organization ID to create the dataset in.
-            workspace_id (str | UUID | None): The workspace ID to create the dataset in.
-            description (str | None): The description of the dataset.
-            version (str | None): The version of the dataset.
-            license (str | None): The license of the dataset.
-            tags (list[str] | None): The tags associated with the dataset.
-            ds_schema (dict[str, Any] | None): The dataset schema.
-            file_pointers (list[str] | None): The file pointers for the dataset.
+            dataset (DatasetCreateRequest): The dataset creation request object.
 
         Returns:
             Dataset: The created Dataset object.
@@ -918,3 +916,13 @@ class ApiClient:
 
         response = self.request("POST", "/datasets", json_data=payload)
         return DatasetMetadata(**response.json())
+
+    def delete_workspace(self, workspace_id: str | UUID) -> None:
+        """
+        Deletes a specific workspace.
+
+        Args:
+            workspace_id (str | UUID): The workspace key.
+        """
+
+        self.request("DELETE", f"/workspaces/{workspace_id!s}")

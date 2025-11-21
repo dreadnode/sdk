@@ -70,6 +70,7 @@ class Dataset(BaseModel):
     def uri(self) -> str:
         if not self._uri:
             self._uri = self._normalize_uri(self.name or "dataset")
+            print(self._uri)
         return self._uri
 
     @property
@@ -292,19 +293,35 @@ def parse_uri(uri: str) -> tuple[str, str | None]:
     if len(parts) > 2:
         return f"{parts[0]}/{parts[1]}", parts[2]
 
-    return uri, None
+    return uri
 
 
-def get_dataset_path(uri: str, version: str | None = None) -> Path:
+def get_dataset_path(
+    uri: str,
+    version: str | None = None,
+    *,
+    is_remote: bool = False,
+) -> Path:
     """Get local cache path for a dataset."""
-    version = version or "latest"
-    return Path(DATASETS_CACHE) / uri / version
+    print(uri)
+    dataset_path = Path(DATASETS_CACHE) / uri
+    print("get_dataset_path", dataset_path)
+
+    if not version:
+        # If version not specified, find latest
+        versions = [d.name for d in dataset_path.iterdir() if d.is_dir()]
+        if not versions:
+            raise FileNotFoundError(f"No cached versions found for dataset: {uri}")
+        versions.sort(reverse=True)  # Assuming semantic versioning
+        version = versions[0]
+
+    return dataset_path / version
 
 
 def is_cached(uri: str, version: str | None = None) -> bool:
     """Check if dataset exists in local cache."""
     path = get_dataset_path(uri, version)
-    return (path / METADATA_FILE).exists()
+    return (path).exists()
 
 
 def load_dataset(
@@ -328,9 +345,9 @@ def load_dataset(
     protocol = get_protocol(uri)
 
     if protocol == "file":
+        # Check if it's a local path
         local_path = Path(uri).expanduser().resolve()
         if local_path.exists():
-            logging_console.print(f"Loading dataset from local path: {local_path}")
             return Dataset.from_path(
                 path=str(local_path),
                 lazy=lazy,
@@ -344,25 +361,20 @@ def load_dataset(
     # If it looks like "org/dataset", treat it as "dn://org/dataset" for syncing
     if protocol == "file":
         # It's a managed key, not an existing path
-        full_remote_uri = f"dn://{uri}"
         parsed_uri, parsed_version = parse_uri(uri)
     else:
         # It's already a remote protocol (s3://, dn://)
-        full_remote_uri = uri
         parsed_uri, parsed_version = parse_uri(uri)
 
-    version = version or parsed_version or "latest"
-
-    cache_path = get_dataset_path(parsed_uri, version)
+    dataset_path = get_dataset_path(parsed_uri, parsed_version)
 
     if from_remote:
-        logging_console.print(f"Streaming dataset from remote: {full_remote_uri}")
-        return Dataset.from_path(full_remote_uri, lazy=lazy, **kwargs)
+        return Dataset.from_path(dataset_path, lazy=lazy, version=version, **kwargs)
 
     should_sync = sync and (protocol in ("dn", "dreadnode") or protocol == "file")
 
     if should_sync:
-        sync_url = f"dn://{parsed_uri}/{version}" if protocol == "file" else full_remote_uri
+        sync_url = f"dn://{parsed_uri}/{version}" if protocol == "file" else dataset_path
 
         if (
             protocol in ("dn", "dreadnode")
@@ -374,7 +386,7 @@ def load_dataset(
         try:
             sync_to_local(
                 remote_url=sync_url,
-                local_dir=cache_path,
+                local_dir=dataset_path,
                 strategy=SyncStrategy.SIZE_AND_TIMESTAMP,
                 delete=False,
             )
@@ -382,10 +394,9 @@ def load_dataset(
             logging_console.print(f"Sync failed ({e}). Attempting to load existing cache...")
 
     # load from Cache
-    if cache_path.exists():
-        logging_console.print(f"Loading dataset from cache: {cache_path}")
+    if dataset_path.exists():
         return Dataset.from_path(
-            path=str(cache_path),
+            path=str(dataset_path),
             lazy=lazy,
             **kwargs,
         )
@@ -394,6 +405,6 @@ def load_dataset(
     raise FileNotFoundError(
         f"Dataset not found.\n"
         f" - Checked Local Path: {uri}\n"
-        f" - Checked Cache: {cache_path}\n"
+        f" - Checked Cache: {dataset_path}\n"
         f" - Remote Sync Attempted: {should_sync}"
     )

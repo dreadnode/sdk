@@ -84,6 +84,7 @@ class FilesystemManager:
     _credential_fetcher: Callable[[], "UserDataCredentials"] | None = None
     _s3_credentials: "UserDataCredentials | None" = None
     _s3_credentials_expiry: datetime | None = None
+    _organization: str | None = None
     _max_workers: int = MAX_WORKERS
     _chunk_size: int = CHUNK_SIZE
 
@@ -259,7 +260,7 @@ class FilesystemManager:
                         size = fs.size(remote_path)
                         callback.set_size(size)
                     except Exception:
-                        pass
+                        print("Could not determine remote file size for progress callback")
 
                 with Path.open(local_path, "wb") as dst:
                     while True:
@@ -392,7 +393,7 @@ class FilesystemManager:
 
     def _compute_file_hash(self, fs: AbstractFileSystem, path: str, chunk_size: int = 8192) -> str:
         """Compute MD5 hash of a file."""
-        hasher = hashlib.md5()  # Same as S3 ETag for single-part uploads
+        hasher = hashlib.md5()  # nosec
         try:
             with fs.open(path, "rb") as f:
                 while chunk := f.read(chunk_size):

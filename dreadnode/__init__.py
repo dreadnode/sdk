@@ -45,7 +45,6 @@ logger.disable("dreadnode")
 
 configure = DEFAULT_INSTANCE.configure
 shutdown = DEFAULT_INSTANCE.shutdown
-
 api = DEFAULT_INSTANCE.api
 span = DEFAULT_INSTANCE.span
 task = DEFAULT_INSTANCE.task
