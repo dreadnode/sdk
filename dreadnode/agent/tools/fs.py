@@ -701,7 +701,7 @@ class S3Filesystem(FilesystemBase):
             lines = []
         except (PermissionError, IsADirectoryError, ClientError, BotoCoreError, ValueError) as e:
             # File doesn't exist or can't be read, start with empty lines
-            return f"Error occured while trying to write to the supplied filepath {path}: {e}"
+            return f"Error occurred while trying to write to the supplied filepath {path}: {e}"
 
         # Normalize line endings in content
         content_lines = [
