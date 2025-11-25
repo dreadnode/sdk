@@ -41,7 +41,7 @@ class LLMTarget(Target[DnMessage, DnMessage]):
 
     def task_factory(self, input: DnMessage) -> Task[[], DnMessage]:
         """
-        reate a task that:
+        create a task that:
         1. Takes dn.Message as input (auto-logged via to_serializable())
         2. Converts to rg.Message only for LLM API call
         3. Returns dn.Message with full multimodal content (text/images/audio/video)

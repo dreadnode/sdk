@@ -1259,7 +1259,7 @@ See: https://docs.dreadnode.io/open-source/rigging/api/generator#generateparams
 task_factory(input: Message) -> Task[[], DnMessage]
 ```
 
-reate a task that:
+create a task that:
 1. Takes dn.Message as input (auto-logged via to\_serializable())
 2. Converts to rg.Message only for LLM API call
 3. Returns dn.Message with full multimodal content (text/images/audio/video)
@@ -1286,7 +1286,7 @@ reate a task that:
 ```python
 def task_factory(self, input: DnMessage) -> Task[[], DnMessage]:
     """
-    reate a task that:
+    create a task that:
     1. Takes dn.Message as input (auto-logged via to_serializable())
     2. Converts to rg.Message only for LLM API call
     3. Returns dn.Message with full multimodal content (text/images/audio/video)
