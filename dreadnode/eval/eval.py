@@ -1,5 +1,6 @@
 import contextlib
 import contextvars
+from enum import Enum
 import inspect
 import itertools
 import json
@@ -67,6 +68,11 @@ current_dataset_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
 class EvalWarning(UserWarning):
     """Warning raised during evaluation."""
 
+
+class EvalFixtureError(EvalWarning):
+    """Error raised if error occurs in EvalFixture."""
+
+
 class EvalFixtureType(str, Enum):
     BEFORE_EVAL = "before_eval"
     BEFORE_SCENARIO = "before_scenario"
@@ -79,9 +85,10 @@ class EvalFixtureType(str, Enum):
 class EvalFixture:
     """ """
 
-    def __init__(self, fixture_type: EvalFixtureType, fixture: t.Callable):
+    def __init__(self, fixture_type: EvalFixtureType, fixture: t.Callable, priority: int = 10):
         self.fixture_type = fixture_type
         self.fixture = fixture
+        self.priority = min(abs(priority), 10)
         self.__name__ = fixture.__name__
         self.__doc__ = fixture.__doc__
 
@@ -92,10 +99,10 @@ class EvalFixture:
         return f"EvalFixture(func={self.fixture.__name__}, type={self.fixture_type})"
 
 
-def eval_fixture(fixture_type: str):
+def eval_fixture(fixture_type: str, priority: int = 10):
     """ """
     def decorator(func):
-        return EvalFixture(fixture=func, fixture_type=fixture_type)
+        return EvalFixture(fixture=func, fixture_type=fixture_type, priority=priority)
     return decorator
 
 
@@ -171,7 +178,7 @@ class Eval(Model, t.Generic[In, Out]):
     trace: bool = True
     """Whether to produce trace contexts like runs/tasks for this study."""
 
-    fixtures: t.List[EvalFixture] = Field(default_factory=list)
+    fixtures: t.Optional[t.List[EvalFixture]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_dataset(self) -> te.Self:
@@ -290,9 +297,13 @@ class Eval(Model, t.Generic[In, Out]):
 
     async def _run_fixtures(self, fixture_type: EvalFixtureType):
         """ """
-        for fixt in self.fixtures:
-            if fixt.fixture_type == fixture_type:
-                await fixt()
+        fixtures_of_type = sorted(
+            [fixture for fixture in self.fixtures if fixture.fixture_type == fixture_type],
+            key=lambda x: x.priority
+        )
+        for f in fixtures_of_type:
+            logger.info(f"Executing fixture [{f}] {f.__name__}.")
+            await f()
 
     @asynccontextmanager
     async def _run_iteration(

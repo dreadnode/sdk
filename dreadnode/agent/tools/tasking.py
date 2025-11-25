@@ -1,7 +1,9 @@
 from loguru import logger
+from pydantic import PrivateAttr
+import typing as t
 
 from dreadnode.agent.reactions import Fail, Finish
-from dreadnode.agent.tools.base import tool
+from dreadnode.agent.tools.base import tool, Toolset, tool_method
 
 
 @tool

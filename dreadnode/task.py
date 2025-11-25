@@ -22,6 +22,7 @@ if t.TYPE_CHECKING:
     from dreadnode.airt.target.custom import CustomTarget
     from dreadnode.eval.eval import (
         Eval,
+        EvalFixture,
         InputDatasetProcessor,
     )
 
@@ -393,6 +394,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         preprocessor: "InputDatasetProcessor | None" = None,
         scorers: "ScorersLike[R] | None" = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
+        fixtures: "list[EvalFixture]" = None
     ) -> "Eval[t.Any, R]":
         from dreadnode.eval.eval import Eval
 
@@ -412,6 +414,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             preprocessor=preprocessor,
             scorers=scorers or [],
             assert_scores=assert_scores or [],
+            fixtures=fixtures or []
         )
 
     def as_target(
