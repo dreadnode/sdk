@@ -343,7 +343,7 @@ class StudyConsoleAdapter:
             self.console.print(Panel("[yellow]No successful trials were completed.[/yellow]"))
 
     async def run(self) -> StudyResult:
-        with Live(self._build_dashboard(), console=self.console, screen=True) as live:
+        with Live(self._build_dashboard(), console=self.console) as live:
             async with self.study.stream() as stream:
                 async for event in stream:
                     self._handle_event(event)
