@@ -2,7 +2,7 @@ import inspect
 import json
 import re
 import typing as t
-from contextlib import aclosing, asynccontextmanager
+from contextlib import AsyncExitStack, aclosing, asynccontextmanager
 from copy import deepcopy
 from textwrap import dedent
 
@@ -875,8 +875,16 @@ class Agent(Model):
         commit: CommitBehavior = "always",
     ) -> t.AsyncIterator[t.AsyncGenerator[AgentEvent, None]]:
         thread = thread or self.thread
-        async with aclosing(self._stream_traced(thread, user_input, commit=commit)) as stream:
-            yield stream
+
+        async with AsyncExitStack() as stack:
+            # Ensure all tools are properly entered if they
+            # are context managers before we start using them
+            for tool_container in self.tools:
+                if hasattr(tool_container, "__aenter__") and hasattr(tool_container, "__aexit__"):
+                    await stack.enter_async_context(tool_container)
+
+            async with aclosing(self._stream_traced(thread, user_input, commit=commit)) as stream:
+                yield stream
 
     async def run(
         self,

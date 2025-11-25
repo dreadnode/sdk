@@ -79,14 +79,17 @@ class ApiClient:
         api_key: str | None = None,
         cookies: dict[str, str] | None = None,
         debug: bool = False,
+        timeout: int = 30,
     ):
         """
         Initializes the API client.
 
         Args:
-            base_url (str): The base URL of the Dreadnode API.
-            api_key (str): The API key for authentication.
-            debug (bool, optional): Whether to enable debug logging. Defaults to False.
+            base_url: The base URL of the Dreadnode API.
+            api_key: The API key for authentication.
+            cookies: A dictionary of cookies to include in requests.
+            debug: Whether to enable debug logging. Defaults to False.
+            timeout: The timeout for HTTP requests in seconds.
         """
         self._base_url = base_url.rstrip("/")
         if not self._base_url.endswith("/api"):
@@ -114,7 +117,7 @@ class ApiClient:
         self._client = httpx.Client(
             headers=headers,
             base_url=self._base_url,
-            timeout=30,
+            timeout=httpx.Timeout(timeout, connect=5),
             cookies=_cookies,
         )
 
@@ -165,7 +168,7 @@ class ApiClient:
             obj = response.json()
             return f"{response.status_code}: {obj.get('detail', json.dumps(obj))}"
         except Exception:  # noqa: BLE001
-            return str(response.content)
+            return f"{response.status_code}: {response.content!r}"
 
     def _request(
         self,

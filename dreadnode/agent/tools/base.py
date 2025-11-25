@@ -1,6 +1,8 @@
+import asyncio
+import functools
 import typing as t
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, PrivateAttr
 from rigging import tools
 from rigging.tools.base import ToolMethod as RiggingToolMethod
 
@@ -171,17 +173,81 @@ class Toolset(Model):
     - Pydantic's declarative syntax for defining state (fields).
     - Automatic application of the `@configurable` decorator.
     - A `get_tools` method for discovering methods decorated with `@dreadnode.tool_method`.
+    - Support for async context management, with automatic re-entrancy handling.
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
     variant: str | None = None
     """The variant for filtering tools available in this toolset."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
+    # Context manager magic
+    _entry_ref_count: int = PrivateAttr(default=0)
+    _context_handle: object = PrivateAttr(default=None)
+    _entry_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
     @property
     def name(self) -> str:
         """The name of the toolset, derived from the class name."""
         return self.__class__.__name__
+
+    def __init_subclass__(cls, **kwargs: t.Any) -> None:
+        super().__init_subclass__(**kwargs)
+
+        # This essentially ensures that if the Toolset is any kind of context manager,
+        # it will be re-entrant, and only actually enter/exit once. This means we can
+        # safely build auto-entry/exit logic into our Agent class without worrying about
+        # breaking the code if the user happens to enter a toolset manually before using
+        # it in an agent.
+
+        original_aenter = cls.__dict__.get("__aenter__")
+        original_enter = cls.__dict__.get("__enter__")
+        original_aexit = cls.__dict__.get("__aexit__")
+        original_exit = cls.__dict__.get("__exit__")
+
+        has_enter = callable(original_aenter) or callable(original_enter)
+        has_exit = callable(original_aexit) or callable(original_exit)
+
+        if has_enter and not has_exit:
+            raise TypeError(
+                f"{cls.__name__} defining __aenter__ or __enter__ must also define __aexit__ or __exit__"
+            )
+        if has_exit and not has_enter:
+            raise TypeError(
+                f"{cls.__name__} defining __aexit__ or __exit__ must also define __aenter__ or __enter__"
+            )
+        if original_aenter and original_enter:
+            raise TypeError(f"{cls.__name__} cannot define both __aenter__ and __enter__")
+        if original_aexit and original_exit:
+            raise TypeError(f"{cls.__name__} cannot define both __aexit__ and __exit__")
+
+        @functools.wraps(original_aenter or original_enter)  # type: ignore[arg-type]
+        async def aenter_wrapper(self: "Toolset", *args: t.Any, **kwargs: t.Any) -> t.Any:
+            async with self._entry_lock:
+                if self._entry_ref_count == 0:
+                    handle = None
+                    if original_aenter:
+                        handle = await original_aenter(self, *args, **kwargs)
+                    elif original_enter:
+                        handle = original_enter(self, *args, **kwargs)
+                    self._context_handle = handle if handle is not None else self
+                self._entry_ref_count += 1
+                return self._context_handle
+
+        cls.__aenter__ = aenter_wrapper  # type: ignore[attr-defined]
+
+        @functools.wraps(original_aexit or original_exit)  # type: ignore[arg-type]
+        async def aexit_wrapper(self: "Toolset", *args: t.Any, **kwargs: t.Any) -> t.Any:
+            async with self._entry_lock:
+                self._entry_ref_count -= 1
+                if self._entry_ref_count == 0:
+                    if original_aexit:
+                        await original_aexit(self, *args, **kwargs)
+                    elif original_exit:
+                        original_exit(self, *args, **kwargs)
+                    self._context_handle = None
+
+        cls.__aexit__ = aexit_wrapper  # type: ignore[attr-defined]
 
     def get_tools(self, *, variant: str | None = None) -> list[AnyTool]:
         variant = variant or self.variant

@@ -84,25 +84,25 @@ from pathlib import Path
 def load_exported_runs(export_path: str) -> pd.DataFrame:
     """Load all exported run files into a single DataFrame."""
     export_dir = Path(export_path)
-    
+
     # For parquet files
     parquet_files = list(export_dir.glob("*.parquet"))
     if parquet_files:
         df = pd.read_parquet(export_path)
         return df
-    
+
     # For CSV files
     csv_files = list(export_dir.glob("*.csv"))
     if csv_files:
         chunks = [pd.read_csv(file) for file in csv_files]
         return pd.concat(chunks, ignore_index=True)
-    
+
     # For JSON files
     json_files = list(export_dir.glob("*.json"))
     if json_files:
         chunks = [pd.read_json(file) for file in json_files]
         return pd.concat(chunks, ignore_index=True)
-    
+
     return pd.DataFrame()
 
 # Usage
@@ -187,7 +187,7 @@ All export functions support filtering to narrow down the results. The filter ex
 ```python
 # Filter by tags
 export_path = api.export_runs('project-name', filter='tags.contains("production")')
-df = load_exported_runs(export_path)  
+df = load_exported_runs(export_path)
 
 # Filter by parameters
 df = api.export_metrics('project-name', filter='params.learning_rate < 0.01')
