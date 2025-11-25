@@ -97,6 +97,16 @@ The directions of optimization for the objective score.
 
 The length must match the number of objectives.
 
+### hooks
+
+```python
+hooks: list[EvalHook] = Field(
+    default_factory=list, exclude=True, repr=False
+)
+```
+
+Hooks to run at various points in the study/evaluation lifecycle.
+
 ### label
 
 ```python
@@ -615,6 +625,14 @@ step: int = Field(default=0)
 ```
 
 The optimization step which produced this trial.
+
+### transformed\_input
+
+```python
+transformed_input: CandidateT | None
+```
+
+Returns the transformed input if available from the eval result.
 
 ### \_\_await\_\_
 

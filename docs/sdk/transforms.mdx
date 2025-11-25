@@ -805,6 +805,161 @@ def add_laplace_noise(*, scale: float = 1, seed: int | None = None) -> Transform
 
 </Accordion>
 
+add\_text\_overlay
+------------------
+
+```python
+add_text_overlay(
+    text: str,
+    *,
+    position: tuple[int, int]
+    | Literal["top", "bottom", "center"] = "bottom",
+    font_size: int = 20,
+    color: tuple[int, int, int] = (255, 0, 0),
+    background_color: tuple[int, int, int, int] | None = (
+        0,
+        0,
+        0,
+        128,
+    ),
+) -> Transform[Image, Image]
+```
+
+Add text overlay to an image using Pillow.
+
+**Parameters:**
+
+* **`text`**
+  (`str`)
+  –The text to add to the image
+* **`position`**
+  (`tuple[int, int] | Literal['top', 'bottom', 'center']`, default:
+  `'bottom'`
+  )
+  –Either a tuple (x, y) or 'top', 'bottom', 'center'
+* **`font_size`**
+  (`int`, default:
+  `20`
+  )
+  –Size of the font
+* **`color`**
+  (`tuple[int, int, int]`, default:
+  `(255, 0, 0)`
+  )
+  –RGB color tuple for text
+* **`background_color`**
+  (`tuple[int, int, int, int] | None`, default:
+  `(0, 0, 0, 128)`
+  )
+  –RGBA color tuple for text background (None for no background)
+
+**Returns:**
+
+* `Transform[Image, Image]`
+  –Transform object that adds text overlay to an Image
+
+Example
+
+> > > transform = add\_text\_overlay("CONFIDENTIAL", position="top", color=(255, 0, 0))
+> > > modified\_image = transform(original\_image)
+
+
+<Accordion title="Source code in dreadnode/transforms/image.py" icon="code">
+```python
+def add_text_overlay(
+    text: str,
+    *,
+    position: tuple[int, int] | t.Literal["top", "bottom", "center"] = "bottom",
+    font_size: int = 20,
+    color: tuple[int, int, int] = (255, 0, 0),  # Red by default
+    background_color: tuple[int, int, int, int] | None = (0, 0, 0, 128),  # Semi-transparent black
+) -> Transform[Image, Image]:
+    """
+    Add text overlay to an image using Pillow.
+
+    Args:
+        text: The text to add to the image
+        position: Either a tuple (x, y) or 'top', 'bottom', 'center'
+        font_size: Size of the font
+        color: RGB color tuple for text
+        background_color: RGBA color tuple for text background (None for no background)
+
+    Returns:
+        Transform object that adds text overlay to an Image
+
+    Example:
+        >>> transform = add_text_overlay("CONFIDENTIAL", position="top", color=(255, 0, 0))
+        >>> modified_image = transform(original_image)
+    """
+
+    def transform_func(image: Image) -> Image:
+        # Convert to PIL
+        pil_img = image.to_pil().convert("RGBA")
+
+        # Create a transparent overlay
+        overlay = PILImage.new("RGBA", pil_img.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # Try to load a font, fallback to default
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
+            )
+        except Exception:  # noqa: BLE001
+            try:
+                # Try alternative font paths
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except Exception:  # noqa: BLE001
+                # Fallback to default
+                font = t.cast("ImageFont.FreeTypeFont", ImageFont.load_default())
+
+        # Get text bounding box
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        # Calculate position
+        if isinstance(position, str):
+            img_width, img_height = pil_img.size
+            if position == "top":
+                x = (img_width - text_width) // 2
+                y = 10
+            elif position == "bottom":
+                x = (img_width - text_width) // 2
+                y = int(img_height - text_height - 10)
+            elif position == "center":
+                x = (img_width - text_width) // 2
+                y = int(img_height - text_height) // 2
+            else:
+                x, y = 10, 10
+        else:
+            x, y = position
+
+        # Draw background rectangle if specified
+        if background_color:
+            padding = 5
+            draw.rectangle(
+                [x - padding, y - padding, x + text_width + padding, y + text_height + padding],
+                fill=background_color,
+            )
+
+        # Draw text
+        draw.text((x, y), text, font=font, fill=(*color, 255))
+
+        # Composite overlay onto original image
+        result = PILImage.alpha_composite(pil_img, overlay)
+
+        if image.mode == "RGB":
+            result = result.convert("RGB")
+
+        return Image(result, mode=image.mode, format=image._format)  # noqa: SLF001
+
+    return Transform(transform_func, name=f"add_text_overlay({text})")
+```
+
+
+</Accordion>
+
 add\_uniform\_noise
 -------------------
 
@@ -1569,38 +1724,73 @@ adapt\_prompt\_trials
 ---------------------
 
 ```python
-adapt_prompt_trials(trials: list[Trial[str]]) -> str
+adapt_prompt_trials(trials: list[Trial[Message]]) -> str
 ```
 
-Adapter which can be used to create attempt context from a set of prompt/response trials.
+Adapter which creates attempt context from a set of Message trials.
 
-Trials are assumed to be a str candidate holding the prompt, and an output object
-that is (or includes) the model's response to the prompt.
+Extracts text from DnMessage candidates and outputs, formats them as XML
+context for the refinement LLM.
 
 The list is assumed to be ordered by relevancy, and is reversed when
 formatting so the context is presented in ascending order of relevancy to the model.
 
+**Parameters:**
+
+* **`trials`**
+  (`list[Trial[Message]]`)
+  –List of trials with DnMessage candidates
+
+**Returns:**
+
+* `str`
+  –Formatted XML string with trial history
+
 <Accordion title="Source code in dreadnode/transforms/refine.py" icon="code">
 ```python
-def adapt_prompt_trials(trials: "list[Trial[str]]") -> str:
+def adapt_prompt_trials(trials: "list[Trial[DnMessage]]") -> str:
     """
-    Adapter which can be used to create attempt context from a set of prompt/response trials.
+    Adapter which creates attempt context from a set of Message trials.
 
-    Trials are assumed to be a str candidate holding the prompt, and an output object
-    that is (or includes) the model's response to the prompt.
+    Extracts text from DnMessage candidates and outputs, formats them as XML
+    context for the refinement LLM.
 
     The list is assumed to be ordered by relevancy, and is reversed when
     formatting so the context is presented in ascending order of relevancy to the model.
+
+    Args:
+        trials: List of trials with DnMessage candidates
+
+    Returns:
+        Formatted XML string with trial history
     """
-    context_parts = [
-        dedent(f"""
-        <attempt score={trial.score:.2f}>
-            <prompt>{trial.candidate}</prompt>
-            <response>{trial.output}</response>
-        </attempt>
-        """)
-        for trial in reversed(trials)
-    ]
+    context_parts = []
+
+    for trial in reversed(trials):
+        # Extract text from Message candidate
+        if isinstance(trial.candidate, DnMessage):
+            prompt_text = trial.candidate.text
+        else:
+            prompt_text = str(trial.candidate)
+
+        # Extract text from Message output
+        if hasattr(trial, "output") and trial.output:
+            if isinstance(trial.output, DnMessage):
+                response_text = trial.output.text
+            else:
+                response_text = str(trial.output)
+        else:
+            response_text = ""
+
+        context_parts.append(
+            dedent(f"""
+            <attempt score={trial.score:.2f}>
+                <prompt>[user]: {prompt_text}</prompt>
+                <response>[assistant]: {response_text}</response>
+            </attempt>
+            """).strip()
+        )
+
     return "\n".join(context_parts)
 ```
 
@@ -1612,11 +1802,11 @@ adapt\_prompt\_trials\_as\_graph
 
 ```python
 adapt_prompt_trials_as_graph(
-    trials: list[Trial[str]],
+    trials: list[Trial[Message]],
 ) -> str
 ```
 
-Builds a clean, nested XML graph string from a list of Trials for an LLM prompt.
+Builds a clean, nested XML graph string from a list of Message Trials for an LLM prompt.
 
 This should be used in contexts where you want to provide the model with
 a clear view of the trial graph structure, including parent-child relationships.
@@ -1625,12 +1815,13 @@ Key Features:
 - Maps noisy ULIDs to clean, zero-indexed integers for prompt clarity.
 - Represents the graph structure directly through nested XML tags.
 - Handles multiple root nodes and disconnected subgraphs gracefully.
+- Extracts text from DnMessage candidates and outputs
 
 <Accordion title="Source code in dreadnode/transforms/refine.py" icon="code">
 ```python
-def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
+def adapt_prompt_trials_as_graph(trials: "list[Trial[DnMessage]]") -> str:
     """
-    Builds a clean, nested XML graph string from a list of Trials for an LLM prompt.
+    Builds a clean, nested XML graph string from a list of Message Trials for an LLM prompt.
 
     This should be used in contexts where you want to provide the model with
     a clear view of the trial graph structure, including parent-child relationships.
@@ -1639,6 +1830,7 @@ def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
     - Maps noisy ULIDs to clean, zero-indexed integers for prompt clarity.
     - Represents the graph structure directly through nested XML tags.
     - Handles multiple root nodes and disconnected subgraphs gracefully.
+    - Extracts text from DnMessage candidates and outputs
     """
     if not trials:
         return ""
@@ -1656,12 +1848,27 @@ def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
 
     root_nodes.sort(key=lambda t: ulid_to_int_map[t.id])
 
-    def _format_node(trial: "Trial") -> str:
+    def _format_node(trial: "Trial[DnMessage]") -> str:
         int_id = ulid_to_int_map[trial.id]
         parent_attr = ""
         if trial.parent_id and trial.parent_id in ulid_to_int_map:
             parent_int_id = ulid_to_int_map[trial.parent_id]
             parent_attr = f" parent_id={parent_int_id}"
+
+        # Extract text from Message candidate
+        if isinstance(trial.candidate, DnMessage):
+            prompt_text = trial.candidate.text
+        else:
+            prompt_text = str(trial.candidate)
+
+        # Extract text from Message output
+        if hasattr(trial, "output") and trial.output:
+            if isinstance(trial.output, DnMessage):
+                response_text = trial.output.text
+            else:
+                response_text = str(trial.output)
+        else:
+            response_text = ""
 
         children = sorted(children_map.get(trial.id, []), key=lambda t: ulid_to_int_map[t.id])
 
@@ -1671,8 +1878,8 @@ def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
 
         return dedent(f"""
         <attempt id={int_id}{parent_attr} score={trial.score:.2f}>
-            <prompt>{trial.candidate}</prompt>
-            <response>{trial.output}</response>{formatted_children}
+            <prompt>[user]: {prompt_text}</prompt>
+            <response>[assistant]: {response_text}</response>{formatted_children}
         </attempt>
         """).strip()
 
