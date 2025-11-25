@@ -2,11 +2,9 @@ import typing as t
 
 from dreadnode.airt.attack import Attack
 from dreadnode.data_types.message import Message as DnMessage
-from dreadnode.eval.hooks.base import EvalHook
 from dreadnode.meta.context import TrialCandidate
 from dreadnode.optimization.search.graph import graph_neighborhood_search
 from dreadnode.optimization.stop import score_value
-from dreadnode.optimization.trial import Trial
 from dreadnode.scorers.judge import llm_judge
 from dreadnode.transforms.base import Transform
 from dreadnode.transforms.refine import (
@@ -16,6 +14,8 @@ from dreadnode.transforms.refine import (
 
 if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
+    from dreadnode.eval.hooks.base import EvalHook
+    from dreadnode.optimization.trial import Trial
 
 
 def goat_attack(
