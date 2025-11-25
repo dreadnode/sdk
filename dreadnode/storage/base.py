@@ -17,7 +17,7 @@ from fsspec.core import url_to_fs
 from fsspec.utils import get_protocol
 from loguru import logger
 
-from dreadnode.constants import CHUNK_SIZE, DATASETS_CACHE, FS_CREDENTIAL_REFRESH_BUFFER
+from dreadnode.constants import CHUNK_SIZE, FS_CREDENTIAL_REFRESH_BUFFER
 
 if TYPE_CHECKING:
     from dreadnode.api.models import UserDataCredentials
@@ -43,7 +43,7 @@ class BaseStorage:
         self._credential_fetcher = credential_fetcher
         self._s3_credentials: UserDataCredentials | None = None
         self._s3_credentials_expiry: datetime | None = None
-        self._local_cache_path = DATASETS_CACHE
+
         self._prefix: str = "datasets"
 
     def _get_s3_storage_options(self) -> dict[str, any]:
@@ -253,7 +253,7 @@ class BaseStorage:
         """
         file_size = file_path.stat().st_size
         stream_threshold = stream_threshold_mb * 1024 * 1024
-        sha1 = hashlib.sha1()
+        sha1 = hashlib.sha1()  # nosec
 
         if file_size < stream_threshold:
             with file_path.open("rb") as f:

@@ -12,9 +12,8 @@ from fsspec import AbstractFileSystem
 from pydantic import BaseModel, Field
 from tqdm import tqdm
 
-from dreadnode.constants import CHUNK_SIZE
+from dreadnode.constants import CHUNK_SIZE, MANIFEST_FILE
 from dreadnode.logging_ import console as logging_console
-from dreadnode.storage.datasets.core import get_filesystem
 
 
 class FileStatus(str, Enum):
@@ -117,37 +116,24 @@ class FileManifest(BaseModel):
             "parent_version": self.parent_version,
         }
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "FileManifest":
-        files = {}
-        for path, entry_data in data.get("files", {}).items():
-            files[path] = FileEntry(**entry_data)
-        return cls(
-            version=data["version"],
-            created_at=datetime.fromisoformat(data["created_at"]),
-            files=files,
-            parent_version=data.get("parent_version"),
-        )
-
     def save(self, path: str | Path, fs: AbstractFileSystem | None = None) -> None:
         import json
 
-        if fs is None:
-            fs, path = get_filesystem(str(path))
+        path = Path(path).joinpath(MANIFEST_FILE)
 
         with fs.open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(self.model_dump_json(), f, indent=2)
 
     @classmethod
     def load(cls, path: str | Path, fs: AbstractFileSystem | None = None) -> "FileManifest":
         import json
 
-        if fs is None:
-            fs, path = get_filesystem(str(path))
+        path = Path(path).joinpath(MANIFEST_FILE)
 
         with fs.open(path, "r") as f:
             data = json.load(f)
-        return cls.from_dict(data)
+
+        return cls(**data)
 
 
 class VersionHistory(BaseModel):
@@ -166,26 +152,8 @@ class VersionHistory(BaseModel):
             return None
         return max(self.versions.values(), key=lambda m: m.created_at)
 
-    def save(self, path: str | Path, fs: AbstractFileSystem | None = None) -> None:
-        import json
 
-        if fs is None:
-            fs, path = get_filesystem(str(path))
-        with fs.open(path, "w") as f:
-            json.dump(self.model_dump(mode="json"), f, indent=2)
-
-    @classmethod
-    def load(cls, path: str | Path, fs: AbstractFileSystem | None = None) -> "VersionHistory":
-        import json
-
-        if fs is None:
-            fs, path = get_filesystem(str(path))
-        with fs.open(path, "r") as f:
-            data = json.load(f)
-        return cls.model_validate(data)
-
-
-class ManifestBuilder:
+class Manifest(BaseModel):
     @staticmethod
     def compute_file_hash(
         file_path: str,
@@ -225,7 +193,7 @@ class ManifestBuilder:
         else:
             rel_path = Path(file_path_str).name
 
-        file_hash = ManifestBuilder.compute_file_hash(file_path, fs, algorithm)
+        file_hash = Manifest.compute_file_hash(file_path, fs, algorithm)
 
         return FileEntry(
             path=rel_path,
@@ -234,24 +202,16 @@ class ManifestBuilder:
         )
 
     @staticmethod
-    def build_from_directory(
-        directory: str | Path,
+    def create_manifest(
+        path: str | Path,
         version: str,
-        filesystem: AbstractFileSystem | None = None,
         parent_version: str | None = None,
-        pattern: str = "*",  # Ignored by fs.find usually
         exclude_patterns: list[str] | None = None,
         algorithm: str = "sha256",
+        fs: AbstractFileSystem | None = None,
     ) -> FileManifest:
-        if filesystem is None:
-            filesystem, directory = get_filesystem(str(directory))
-        else:
-            directory = str(directory)
-
-        logging_console.print(f"Building manifest for {directory}")
-
         # Use recursive listing
-        files = filesystem.find(directory, detail=False, withdirs=False)
+        files = fs.find(path, detail=False, withdirs=False)
 
         manifest = FileManifest(version=version, parent_version=parent_version)
         exclude_patterns = exclude_patterns or []
@@ -264,11 +224,27 @@ class ManifestBuilder:
                 continue
 
             try:
-                entry = ManifestBuilder.create_file_entry(
-                    file_path, filesystem, directory, algorithm
-                )
+                entry = Manifest.create_file_entry(file_path, fs, path, algorithm)
                 manifest.add_file(entry.path, entry)
             except Exception as e:
                 logging_console.print(f"Skipping {file_path}: {e}")
 
         return manifest
+
+    def save(self, path: str | Path, fs: AbstractFileSystem | None = None) -> None:
+        import json
+
+        path = Path(path).joinpath(MANIFEST_FILE)
+
+        with fs.open(path, "w") as f:
+            json.dump(self.model_dump_json(), f, indent=2)
+
+    @classmethod
+    def load(cls, path: str | Path, fs: AbstractFileSystem | None = None) -> "VersionHistory":
+        import json
+
+        path = Path(path).joinpath(MANIFEST_FILE)
+
+        with fs.open(path, "r") as f:
+            data = json.load(f)
+        return cls.model_validate(data)

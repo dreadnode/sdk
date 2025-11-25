@@ -9,6 +9,8 @@ from dreadnode.version import VERSION
 
 # name of the default local storage path
 DEFAULT_LOCAL_STORAGE_DIR = pathlib.Path.home() / ".dreadnode"
+# default remote storage prefix
+DEFAULT_REMOTE_STORAGE_PREFIX = "user-data"
 # name of the default server profile
 DEFAULT_PROFILE_NAME = "main"
 # default poll interval for the authentication flow
@@ -23,8 +25,6 @@ DEFAULT_MAX_INLINE_OBJECT_BYTES = 10 * 1024  # 10KB
 DEFAULT_PLATFORM_BASE_DOMAIN = "dreadnode.io"
 # default server URL
 DEFAULT_SERVER_URL = f"https://platform.{DEFAULT_PLATFORM_BASE_DOMAIN}"
-# default local directory for dreadnode objects
-DEFAULT_LOCAL_OBJECT_DIR = f"{DEFAULT_LOCAL_STORAGE_DIR}/objects"
 # default docker registry subdomain
 DEFAULT_DOCKER_REGISTRY_SUBDOMAIN = "registry"
 # default docker registry local port
@@ -41,14 +41,20 @@ DEFAULT_PROJECT_NAME = "Default"
 # Storage Constants
 #
 
-# default datasets cache directory
-DATASETS_CACHE = f"{DEFAULT_LOCAL_STORAGE_DIR}/datasets"
+# default local directory for dreadnode objects
+DEFAULT_LOCAL_OBJECT_DIR = f"{DEFAULT_LOCAL_STORAGE_DIR}/objects"
 # Metadata file name
 METADATA_FILE = "metadata.json"
-# Mainifest file name
+# Manifest file name
 MANIFEST_FILE = "manifest.json"
 # File chunk size for uploads/downloads
-CHUNK_SIZE = 8 * 1024 * 1024  # 8MB
+CHUNK_SIZE = 64 * 1024 * 1024
+# Parallel uploads/downloads
+MAX_WORKERS = 10
+# Multipart upload threshold
+MULTIPART_THRESHOLD = 100 * 1024 * 1024
+# Multipart upload chunk size
+MULTIPART_CHUNKSIZE = 64 * 1024 * 1024
 # Supported dataset file formats
 SUPPORTED_FORMATS = {
     "parquet": "parquet",

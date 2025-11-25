@@ -53,7 +53,7 @@ from dreadnode.constants import (
 )
 from dreadnode.error import AssertionFailedError
 from dreadnode.exporter import CustomOTLPSpanExporter
-from dreadnode.logging_ import console as logging_console
+from dreadnode.logging_ import configure_logging, console
 from dreadnode.metric import (
     Metric,
     MetricAggMode,
@@ -63,7 +63,7 @@ from dreadnode.metric import (
 )
 from dreadnode.scorers import Scorer, ScorerCallable
 from dreadnode.scorers.base import ScorersLike
-from dreadnode.storage.datasets.core import _fs_manager
+from dreadnode.storage.datasets.core import FilesystemManager
 from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -104,6 +104,9 @@ class DreadnodeConfigWarning(UserWarning):
 
 class DreadnodeUsageWarning(UserWarning):
     """Warnings related to Dreadnode usage."""
+
+
+configure_logging()
 
 
 @dataclass
@@ -274,7 +277,7 @@ class Dreadnode:
             raise RuntimeError("API client is not initialized.")
 
         try:
-            logging_console.print(
+            console.print(
                 f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{key}'...[/]"
             )
             key = create_key_from_name(key)
@@ -329,9 +332,7 @@ class Dreadnode:
             if not found_workspace and isinstance(self.workspace, UUID):
                 raise RuntimeError(f"Workspace with ID '{self.workspace}' not found.")
 
-            if not found_workspace and isinstance(
-                self.workspace, str
-            ):  # specified by name/slug
+            if not found_workspace and isinstance(self.workspace, str):  # specified by name/slug
                 # create the workspace (must be an org contributor)
                 found_workspace = self._create_workspace(key=self.workspace)
 
@@ -341,9 +342,7 @@ class Dreadnode:
                     org_id=self._organization.id if self._organization else None
                 )
             )
-            default_workspace = next(
-                (ws for ws in workspaces if ws.is_default is True), None
-            )
+            default_workspace = next((ws for ws in workspaces if ws.is_default is True), None)
             if default_workspace:
                 found_workspace = default_workspace
             else:
@@ -412,9 +411,7 @@ class Dreadnode:
         self._resolve_workspace()
         self._resolve_project()
 
-    def _log_configuration(
-        self, config_source: str, active_profile: str | t.Any | None
-    ) -> None:
+    def _log_configuration(self, config_source: str, active_profile: str | t.Any | None) -> None:
         """
         Log the current Dreadnode configuration to the console.
 
@@ -422,24 +419,22 @@ class Dreadnode:
             config_source: A string indicating where the configuration came from.
             active_profile: The name of the active profile, if any.
         """
-        logging_console.print(f"Dreadnode Configuration: (from {config_source})")
+        console.print(f"Dreadnode Configuration: (from {config_source})")
 
         if self.server or self.token:
             destination = self.server or DEFAULT_SERVER_URL or "local storage"
-            logging_console.print(f" Server: [orange_red1]{destination}[/]")
+            console.print(f" Server: [orange_red1]{destination}[/]")
         elif self.local_dir:
-            logging_console.print(
-                f"Local directory: [orange_red1]{self.local_dir}[/] ({config_source})"
-            )
+            console.print(f"Local directory: [orange_red1]{self.local_dir}[/] ({config_source})")
 
         # Warn the user if the profile didn't resolve
         elif active_profile and not (self.server or self.token):
-            logging_console.print(
+            console.print(
                 f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
             )
-        logging_console.print(f" Organization: [green]{self._organization.name}[/]")
-        logging_console.print(f" Workspace: [green]{self._workspace.name}[/]")
-        logging_console.print(f" Project: [green]{self._project.name}[/]")
+        console.print(f" Organization: [green]{self._organization.name}[/]")
+        console.print(f" Workspace: [green]{self._workspace.name}[/]")
+        console.print(f" Project: [green]{self._project.name}[/]")
 
     @staticmethod
     def _extract_project_components(
@@ -718,7 +713,10 @@ class Dreadnode:
         )
         self._logfire.config.ignore_no_config = True
 
-        _fs_manager.configure(credential_fetcher=self._credential_fetcher)
+        self._fs_manager = FilesystemManager().configure(
+            credential_fetcher=self._credential_fetcher,
+            organization=self._organization.key,
+        )
 
         self._initialized = True
 
@@ -1089,9 +1087,7 @@ class Dreadnode:
 
         _scorers = Scorer.fit_many(scorers)
         _assert_scores = (
-            [s.name for s in _scorers]
-            if assert_scores is True
-            else list(assert_scores or [])
+            [s.name for s in _scorers] if assert_scores is True else list(assert_scores or [])
         )
 
         metrics: dict[str, list[Metric]] = {}
@@ -1105,9 +1101,7 @@ class Dreadnode:
                 metric_name = str(getattr(metric, "_scorer_name", scorer.name))
                 metric_name = clean_str(metric_name)
                 metrics.setdefault(metric_name, []).append(
-                    self.log_metric(
-                        metric_name, metric, origin=scorer.bound_obj or object
-                    )
+                    self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
                 )
 
         failed_assertions: dict[str, list[Metric]] = {}
@@ -1174,9 +1168,7 @@ class Dreadnode:
         if not self._initialized:
             self.configure()
 
-        name_prefix = clean_str(
-            name_prefix or coolname.generate_slug(2), replace_with="-"
-        )
+        name_prefix = clean_str(name_prefix or coolname.generate_slug(2), replace_with="-")
         name = name or f"{name_prefix}-{random.randint(100, 999)}"  # noqa: S311 # nosec
 
         return RunSpan(
@@ -1295,13 +1287,7 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        targets = (
-            [(task or run)]
-            if to == "task-or-run"
-            else [task, run]
-            if to == "both"
-            else [run]
-        )
+        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
         if not targets:
             warn_at_user_stacklevel(
                 "tag() was called outside of a task or run.",
@@ -1318,20 +1304,45 @@ class Dreadnode:
         path: str,
         version: str | None = None,
         *,
-        lazy: bool = False,
-        from_remote: bool = False,
-        **kwargs: t.Any,
+        materialize: bool = False,
     ) -> dataset.Dataset:
         """
         Load a dataset from the local cache or Dreadnode server.
 
         Example:
             ```
-            dataset = dreadnode.load_dataset("dreadnode://my_dataset/versions/1")
+            dataset = dreadnode.load_dataset("dn://org/my_dataset")
             ```
         """
         return dataset.load_dataset(
-            path, version, lazy=lazy, from_remote=from_remote, **kwargs
+            uri=path,
+            version=version,
+            repo="datasets",
+            materialize=materialize,
+            fsm=self._fs_manager,
+        )
+
+    def save_dataset(
+        self,
+        ds: dataset.Dataset,
+        *,
+        to_cache: bool = False,
+        version: str | None = None,
+    ) -> str:
+        """
+        Save a dataset to the local cache and optionally to the Dreadnode server.
+
+        Example:
+            ```
+            uri = dreadnode.save_dataset(my_dataset)
+            ```
+        """
+        return dataset.save_dataset(
+            dataset=ds,
+            to_cache=to_cache,
+            version=version,
+            repo="datasets",
+            fsm=self._fs_manager,
         )
 
     @handle_internal_errors()
@@ -1846,13 +1857,7 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        targets = (
-            [(task or run)]
-            if to == "task-or-run"
-            else [task, run]
-            if to == "both"
-            else [run]
-        )
+        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
         if not targets:
             warn_at_user_stacklevel(
                 "log_input() was called outside of a task or run.",
@@ -1919,13 +1924,7 @@ class Dreadnode:
         task = current_task_span.get()
         run = current_run_span.get()
 
-        targets = (
-            [(task or run)]
-            if to == "task-or-run"
-            else [task, run]
-            if to == "both"
-            else [run]
-        )
+        targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
         if not targets:
             warn_at_user_stacklevel(
                 "log_output() was called outside of a task or run.",

@@ -1,8 +1,8 @@
+from loguru import logger
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 
 from dreadnode.constants import DEFAULT_PROFILE_NAME, USER_CONFIG_PATH
-from dreadnode.logging_ import print_info
 
 
 class ServerConfig(BaseModel):
@@ -62,7 +62,7 @@ class UserConfig(BaseModel):
         self._update_active()
 
         if not USER_CONFIG_PATH.parent.exists():
-            print_info(f"Creating config at {USER_CONFIG_PATH.parent}")
+            logger.info(f"Creating config at {USER_CONFIG_PATH.parent}")
             USER_CONFIG_PATH.parent.mkdir(parents=True)
 
         with USER_CONFIG_PATH.open("w") as f:

@@ -576,7 +576,10 @@ def initialize(self) -> None:
     )
     self._logfire.config.ignore_no_config = True
 
-    _fs_manager.configure(credential_fetcher=self._credential_fetcher)
+    self._fs_manager = FilesystemManager().configure(
+        credential_fetcher=self._credential_fetcher,
+        organization=self._organization.key,
+    )
 
     self._initialized = True
 ```
@@ -676,9 +679,7 @@ load_dataset(
     path: str,
     version: str | None = None,
     *,
-    lazy: bool = False,
-    from_remote: bool = False,
-    **kwargs: Any,
+    materialize: bool = False,
 ) -> dataset.Dataset
 ```
 
@@ -687,7 +688,7 @@ Load a dataset from the local cache or Dreadnode server.
 Example
 
 ```python
-dataset = dreadnode.load_dataset("dreadnode://my_dataset/versions/1")
+dataset = dreadnode.load_dataset("dn://org/my_dataset")
 ```
 
 
@@ -698,20 +699,22 @@ def load_dataset(
     path: str,
     version: str | None = None,
     *,
-    lazy: bool = False,
-    from_remote: bool = False,
-    **kwargs: t.Any,
+    materialize: bool = False,
 ) -> dataset.Dataset:
     """
     Load a dataset from the local cache or Dreadnode server.
 
     Example:
         ~~~
-        dataset = dreadnode.load_dataset("dreadnode://my_dataset/versions/1")
+        dataset = dreadnode.load_dataset("dn://org/my_dataset")
         ~~~
     """
     return dataset.load_dataset(
-        path, version, lazy=lazy, from_remote=from_remote, **kwargs
+        uri=path,
+        version=version,
+        repo="datasets",
+        materialize=materialize,
+        fsm=self._fs_manager,
     )
 ```
 
@@ -880,13 +883,7 @@ def log_input(
     task = current_task_span.get()
     run = current_run_span.get()
 
-    targets = (
-        [(task or run)]
-        if to == "task-or-run"
-        else [task, run]
-        if to == "both"
-        else [run]
-    )
+    targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
     if not targets:
         warn_at_user_stacklevel(
             "log_input() was called outside of a task or run.",
@@ -1460,13 +1457,7 @@ def log_output(
     task = current_task_span.get()
     run = current_run_span.get()
 
-    targets = (
-        [(task or run)]
-        if to == "task-or-run"
-        else [task, run]
-        if to == "both"
-        else [run]
-    )
+    targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
     if not targets:
         warn_at_user_stacklevel(
             "log_output() was called outside of a task or run.",
@@ -1950,9 +1941,7 @@ def run(
     if not self._initialized:
         self.configure()
 
-    name_prefix = clean_str(
-        name_prefix or coolname.generate_slug(2), replace_with="-"
-    )
+    name_prefix = clean_str(name_prefix or coolname.generate_slug(2), replace_with="-")
     name = name or f"{name_prefix}-{random.randint(100, 999)}"  # noqa: S311 # nosec
 
     return RunSpan(
@@ -1964,6 +1953,55 @@ def run(
         tags=tags,
         credential_manager=self._credential_manager,
         autolog=autolog,
+    )
+```
+
+
+</Accordion>
+
+### save\_dataset
+
+```python
+save_dataset(
+    ds: Dataset,
+    *,
+    to_cache: bool = False,
+    version: str | None = None,
+) -> str
+```
+
+Save a dataset to the local cache and optionally to the Dreadnode server.
+
+Example
+
+```python
+uri = dreadnode.save_dataset(my_dataset)
+```
+
+
+<Accordion title="Source code in dreadnode/main.py" icon="code">
+```python
+def save_dataset(
+    self,
+    ds: dataset.Dataset,
+    *,
+    to_cache: bool = False,
+    version: str | None = None,
+) -> str:
+    """
+    Save a dataset to the local cache and optionally to the Dreadnode server.
+
+    Example:
+        ~~~
+        uri = dreadnode.save_dataset(my_dataset)
+        ~~~
+    """
+    return dataset.save_dataset(
+        dataset=ds,
+        to_cache=to_cache,
+        version=version,
+        repo="datasets",
+        fsm=self._fs_manager,
     )
 ```
 
@@ -2033,9 +2071,7 @@ async def score(
 
     _scorers = Scorer.fit_many(scorers)
     _assert_scores = (
-        [s.name for s in _scorers]
-        if assert_scores is True
-        else list(assert_scores or [])
+        [s.name for s in _scorers] if assert_scores is True else list(assert_scores or [])
     )
 
     metrics: dict[str, list[Metric]] = {}
@@ -2049,9 +2085,7 @@ async def score(
             metric_name = str(getattr(metric, "_scorer_name", scorer.name))
             metric_name = clean_str(metric_name)
             metrics.setdefault(metric_name, []).append(
-                self.log_metric(
-                    metric_name, metric, origin=scorer.bound_obj or object
-                )
+                self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
             )
 
     failed_assertions: dict[str, list[Metric]] = {}
@@ -2367,13 +2401,7 @@ def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> No
     task = current_task_span.get()
     run = current_run_span.get()
 
-    targets = (
-        [(task or run)]
-        if to == "task-or-run"
-        else [task, run]
-        if to == "both"
-        else [run]
-    )
+    targets = [(task or run)] if to == "task-or-run" else [task, run] if to == "both" else [run]
     if not targets:
         warn_at_user_stacklevel(
             "tag() was called outside of a task or run.",
