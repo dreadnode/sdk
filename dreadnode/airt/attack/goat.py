@@ -1,9 +1,14 @@
 import typing as t
 
 from dreadnode.airt.attack import Attack
+from dreadnode.data_types.message import Message as DnMessage
+from dreadnode.eval.hooks.base import EvalHook
+from dreadnode.meta.context import TrialCandidate
 from dreadnode.optimization.search.graph import graph_neighborhood_search
 from dreadnode.optimization.stop import score_value
+from dreadnode.optimization.trial import Trial
 from dreadnode.scorers.judge import llm_judge
+from dreadnode.transforms.base import Transform
 from dreadnode.transforms.refine import (
     adapt_prompt_trials_as_graph,
     llm_refine,
@@ -15,7 +20,7 @@ if t.TYPE_CHECKING:
 
 def goat_attack(
     goal: str,
-    target: "Target[str, str]",
+    target: "Target[DnMessage, DnMessage]",
     attacker_model: str,
     evaluator_model: str,
     *,
@@ -24,7 +29,8 @@ def goat_attack(
     frontier_size: int = 5,
     branching_factor: int = 3,
     name: str = "goat_attack",
-) -> Attack[str, str]:
+    hooks: list["EvalHook"] | None = None,
+) -> Attack[DnMessage, DnMessage]:
     """
     Creates a generative jailbreak attack using the Graph of Attacks (GoAT) pattern,
     using LLMs for both refinement (attacker) and scoring (evaluator/objective).
@@ -42,6 +48,7 @@ def goat_attack(
         frontier_size: The number of best candidates to keep for the iteration.
         branching_factor: The number of new candidates to generate from each existing candidate.
         name: The name of the attack.
+        hooks: Custom hooks for the attack lifecycle (e.g., transforms, logging, custom logic).
 
     Returns:
         A configured Attack instance.
@@ -50,15 +57,27 @@ def goat_attack(
     # Prompt refining
 
     guidance = REFINE_GUIDANCE.format(goal=goal)
-    refiner = llm_refine(model=attacker_model, guidance=guidance).adapt(
-        adapt_prompt_trials_as_graph, lambda x: x
-    )
+    base_refiner = llm_refine(model=attacker_model, guidance=guidance)
 
+    async def message_refiner(trials: list["Trial[DnMessage]"]) -> DnMessage:
+        """
+        Refiner that extracts trial history as graph, refines, and returns a Message.
+        """
+        # Use graph adapter to build context from trial history
+        context_str = adapt_prompt_trials_as_graph(trials)
+
+        # Use base refiner to generate improved prompt text
+        refined_text = await base_refiner.transform(context_str)
+
+        # Wrap refined text in Message for consistency
+        return DnMessage(role="user", content=[refined_text])
+
+    refiner = Transform(message_refiner, name="message_refiner")
     # Search strategy
-
+    initial_message = DnMessage(role="user", content=[goal])
     search_strategy = graph_neighborhood_search(
         refiner,
-        initial_candidate=goal,
+        initial_candidate=initial_message,
         neighborhood_depth=neighborhood_depth,
         frontier_size=frontier_size,
         branching_factor=branching_factor,
@@ -72,6 +91,7 @@ def goat_attack(
         llm_judge(
             evaluator_model,
             rubric,
+            input=TrialCandidate(),
             min_score=1,
             max_score=10,
         )
@@ -88,7 +108,7 @@ def goat_attack(
         name="on_topic",
     )
 
-    attack = Attack[str, str](
+    attack = Attack[DnMessage, DnMessage](
         name=name,
         target=target,
         search_strategy=search_strategy,
@@ -96,6 +116,7 @@ def goat_attack(
             "prompt_judge": prompt_judge,
         },
         constraints=[topic_constraint],
+        hooks=hooks or [],
     )
 
     if early_stopping_score is not None:
