@@ -1,14 +1,16 @@
 """
-Dataset metadata models and management.
+Dataset metadata models and management (Native PyArrow Version).
 """
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import coolname
-from fsspec import AbstractFileSystem
-from pyarrow import dataset
+import pyarrow as pa
+import pyarrow.dataset as ds
+from pyarrow.fs import FileSystem
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -53,7 +55,7 @@ class VersionInfo(BaseModel):
 
 
 class DatasetMetadata(BaseModel):
-    name: str | None = Field(default=coolname.generate_slug(2))
+    name: str | None = Field(default_factory=lambda: coolname.generate_slug(2))
     version: VersionInfo = VersionInfo(major=0, minor=0, patch=1)
     license: str | None = None
     organization: str | None = None
@@ -68,11 +70,11 @@ class DatasetMetadata(BaseModel):
     size_bytes: int | None = None
     row_count: int | None = None
 
-    # Timestamps and checksum
+    # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    checksum: str | None = None
 
+    # Custom
     custom_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("tags", mode="before")
@@ -85,51 +87,96 @@ class DatasetMetadata(BaseModel):
         return list(v)
 
     @classmethod
-    def load(cls, path: str, filesystem: AbstractFileSystem) -> "DatasetMetadata":
-        with filesystem.open(path, "r") as f:
-            content = f.read()
+    def load(cls, path: str, fs: FileSystem) -> "DatasetMetadata":
+        """
+        Load metadata using Native PyArrow streams.
+        """
+        # Ensure we are reading the specific file
+        if not path.endswith(".json"):
+            path = f"{path}/metadata.json"
 
-        return cls.model_validate_json(content)
+        with fs.open_input_stream(path) as f:
+            data = json.load(f)
 
-    def save(self, *, path: str, fs: AbstractFileSystem) -> None:
-        with fs.open(path, "w") as f:
-            f.write(self.model_dump_json(indent=2))
+        return cls.model_validate(data)
+
+    def save(self, *, path: str, fs: FileSystem) -> None:
+        """
+        Save metadata using Native PyArrow streams.
+        """
+        if not path.endswith(".json"):
+            path = f"{path}/metadata.json"
+
+        json_bytes = self.model_dump_json(indent=2).encode("utf-8")
+
+        with fs.open_output_stream(path) as f:
+            f.write(json_bytes)
 
     def set_uri(self, uri: str) -> None:
         self.uri = uri
 
-    def set_ds_schema(self, ds: dataset.Dataset) -> None:
-        """Set the dataset schema in metadata."""
-        if not ds.schema.metadata:
-            ds_schema = {}
-            for field in ds.schema:
-                ds_schema[field.name] = str(field.type)
-            self.ds_schema = ds_schema
-        else:
-            self.ds_schema = ds.schema.metadata
-
-    def update_files(self) -> None:
+    def set_ds_schema(self, ds_obj: ds.Dataset | pa.Table) -> None:
         """
-        Update the list of files in metadata for being managed.
-        Will remove existing path and prepend 'data/' to each file.
+        Set the dataset schema in metadata.
+        Handles both on-disk Dataset and in-memory Table.
         """
+        schema = ds_obj.schema
 
-        files = []
-        for file in self.files:
-            file_path = Path("data") / Path(file).name
-            files.append(str(file_path))
-        self.files = files
+        if schema.metadata:
+            pass
 
-    def set_ds_files(self, ds: dataset.Dataset) -> None:
-        """Set the list of files in metadata."""
-        if hasattr(ds, "files"):
-            self.files = ds.files
+        ds_schema = {}
+        for field in schema:
+            ds_schema[field.name] = str(field.type)
+        self.ds_schema = ds_schema
 
-    def set_size_and_row_count(self, ds: dataset.Dataset) -> None:
-        if hasattr(ds, "size_bytes"):
-            self.size_bytes = ds.size_bytes
-        if hasattr(ds, "num_rows"):
-            self.row_count = ds.num_rows
+    def set_ds_files(self, ds_obj: ds.Dataset | pa.Table) -> None:
+        """
+        Set the list of files. IMPORTANT: Relativizes paths.
+        """
+        # If it's a Table (in-memory), it has no files.
+        if isinstance(ds_obj, pa.Table):
+            self.files = []
+            return
+
+        # If it's a Dataset (on-disk)
+        if hasattr(ds_obj, "files"):
+            # PyArrow returns absolute URIs (s3://bucket/path/to/data/file.parquet)
+            # We want to store only "data/file.parquet" to make the metadata portable.
+            clean_files = []
+            for f in ds_obj.files:
+                # 1. Normalize slashes
+                f_str = str(f).replace("\\", "/")
+
+                # 2. Extract just the filename (assuming flat structure inside /data)
+                # Or if you have partitions, you might need smarter logic.
+                # For now, we assume standard "data/" folder structure.
+                filename = f_str.split("/")[-1]
+                clean_files.append(f"data/{filename}")
+
+            self.files = clean_files
+
+    def set_size_and_row_count(self, ds_obj: ds.Dataset | pa.Table) -> None:
+        """
+        Safely extracts size and row count.
+        """
+        # 1. Handle in-memory Table (Fast and Easy)
+        if isinstance(ds_obj, pa.Table):
+            self.size_bytes = ds_obj.nbytes
+            self.row_count = ds_obj.num_rows
+            return
+
+        # 2. Handle on-disk Dataset
+        # Note: PyArrow Datasets do NOT have a simple size_bytes attribute
+        # We would have to sum file sizes, but we leave that to the Manifest class.
+        self.size_bytes = 0
+
+        # Counting rows on S3 can be slow (it requires reading footers)
+        # We try to do it via scanner if not already computed
+        try:
+            self.row_count = ds_obj.count_rows()
+        except Exception:
+            self.row_count = 0
 
     def set_name(self, name: str) -> None:
         self.name = name
@@ -153,8 +200,14 @@ class DatasetMetadata(BaseModel):
         else:
             raise ValueError("part must be 'major', 'minor', or 'patch'")
 
-    def set_license(self, license: str | Path) -> None:
-        self.license = license.read_text() if isinstance(license, Path) else license
+    def set_license(self, license_content: str | Path) -> None:
+        """
+        Accepts raw string content OR a local Path object to read from.
+        """
+        if isinstance(license_content, Path):
+            self.license = license_content.read_text(encoding="utf-8")
+        else:
+            self.license = license_content
 
     def set_organization(self, organization: str) -> None:
         self.organization = organization
@@ -165,13 +218,17 @@ class DatasetMetadata(BaseModel):
         self.tags.extend(tags)
         self.tags = list(set(self.tags))  # Ensure uniqueness
 
-    def set_readme(self, readme: str | Path) -> None:
-        self.readme = readme.read_text() if isinstance(readme, Path) else readme
+    def set_readme(self, readme_content: str | Path) -> None:
+        """
+        Accepts raw string content OR a local Path object to read from.
+        """
+        if isinstance(readme_content, Path):
+            self.readme = readme_content.read_text(encoding="utf-8")
+        else:
+            self.readme = readme_content
 
     def set_created_at(self) -> None:
-        """Set metadata fields based on the dataset object."""
         self.created_at = datetime.now(timezone.utc)
 
     def set_updated_at(self) -> None:
-        """Set metadata fields based on the dataset object."""
         self.updated_at = datetime.now(timezone.utc)

@@ -33,6 +33,8 @@ from dreadnode.convert import run_span_to_graph
 from dreadnode.metric import Metric, MetricAggMode, MetricsDict
 from dreadnode.object import Object, ObjectRef, ObjectUri, ObjectVal
 from dreadnode.serialization import Serialized, serialize
+from dreadnode.storage.artifact import ArtifactStorage
+from dreadnode.storage.base import CredentialManager
 from dreadnode.storage.merger import ArtifactMerger
 from dreadnode.storage.tree_builder import ArtifactTreeBuilder, DirectoryNode
 from dreadnode.tracing.constants import (
@@ -380,6 +382,7 @@ class RunSpan(Span):
         project: str,
         tracer: Tracer,
         *,
+        credential_manager: CredentialManager | None = None,
         attributes: AnyDict | None = None,
         params: AnyDict | None = None,
         metrics: MetricsDict | None = None,
@@ -399,13 +402,20 @@ class RunSpan(Span):
         self._inputs: list[ObjectRef] = []
         self._outputs: list[ObjectRef] = []
 
+        # Credential manager for S3 operations
+        self._credential_manager = credential_manager
+
         # Initialize artifact components
         self._artifacts: list[DirectoryNode] = []
         self._artifact_merger = ArtifactMerger()
-        self._artifact_tree_builder = ArtifactTreeBuilder(
-            storage=self._artifact_storage,
-            prefix_path=self._credential_manager.get_prefix(),
-        )
+        self._artifact_storage: ArtifactStorage | None = None
+        self._artifact_tree_builder: ArtifactTreeBuilder | None = None
+
+        if self._credential_manager is not None:
+            self._artifact_storage = ArtifactStorage(self._credential_manager)
+            self._artifact_tree_builder = ArtifactTreeBuilder(
+                storage=self._artifact_storage, prefix_path=self._credential_manager.get_prefix()
+            )
 
         # Update mechanics
         self._last_update_time = time.time()

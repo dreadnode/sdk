@@ -560,6 +560,16 @@ def initialize(self) -> None:
         #     )
         # )
 
+        if self._api is not None:
+            api = self._api
+            self._credential_manager = CredentialManager(
+                credential_fetcher=lambda: api.get_user_data_credentials()
+            )
+            self._credential_manager.initialize()
+
+            self._fs = self._credential_manager.get_filesystem()
+            self._fs_prefix = self._credential_manager.get_prefix()
+
     self._logfire = logfire.configure(
         local=not self.is_default,
         send_to_logfire=self.send_to_logfire,
@@ -575,7 +585,7 @@ def initialize(self) -> None:
     self._logfire.config.ignore_no_config = True
 
     self._fs_manager = FilesystemManager().configure(
-        credential_fetcher=self._credential_fetcher,
+        credential_fetcher=lambda: self._api.get_user_data_credentials(),  # type: ignore[return-value]
         organization=self._organization.key,
     )
 
@@ -764,7 +774,6 @@ with dreadnode.run("my_run"):
 
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
-@handle_internal_errors()
 def log_artifact(
     self,
     local_uri: str | Path,
@@ -1949,7 +1958,7 @@ def run(
         tracer=_tracer or self._get_tracer(),
         params=params,
         tags=tags,
-        credential_manager=self._credential_manager,
+        credential_manager=self._credential_manager,  # type: ignore[return-value]
         autolog=autolog,
     )
 ```
@@ -1960,12 +1969,7 @@ def run(
 ### save\_dataset
 
 ```python
-save_dataset(
-    ds: Dataset,
-    *,
-    to_cache: bool = False,
-    version: str | None = None,
-) -> str
+save_dataset(ds: Dataset, *, to_cache: bool = False) -> str
 ```
 
 Save a dataset to the local cache and optionally to the Dreadnode server.
@@ -1984,7 +1988,6 @@ def save_dataset(
     ds: dataset.Dataset,
     *,
     to_cache: bool = False,
-    version: str | None = None,
 ) -> str:
     """
     Save a dataset to the local cache and optionally to the Dreadnode server.
@@ -1997,7 +2000,6 @@ def save_dataset(
     return dataset.save_dataset(
         dataset=ds,
         to_cache=to_cache,
-        version=version,
         repo="datasets",
         fsm=self._fs_manager,
     )

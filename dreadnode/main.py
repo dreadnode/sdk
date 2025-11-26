@@ -63,6 +63,7 @@ from dreadnode.metric import (
 )
 from dreadnode.scorers import Scorer, ScorerCallable
 from dreadnode.scorers.base import ScorersLike
+from dreadnode.storage.base import CredentialManager
 from dreadnode.storage.datasets.core import FilesystemManager
 from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
@@ -697,6 +698,16 @@ class Dreadnode:
             #     )
             # )
 
+            if self._api is not None:
+                api = self._api
+                self._credential_manager = CredentialManager(
+                    credential_fetcher=lambda: api.get_user_data_credentials()
+                )
+                self._credential_manager.initialize()
+
+                self._fs = self._credential_manager.get_filesystem()
+                self._fs_prefix = self._credential_manager.get_prefix()
+
         self._logfire = logfire.configure(
             local=not self.is_default,
             send_to_logfire=self.send_to_logfire,
@@ -712,7 +723,7 @@ class Dreadnode:
         self._logfire.config.ignore_no_config = True
 
         self._fs_manager = FilesystemManager().configure(
-            credential_fetcher=self._credential_fetcher,
+            credential_fetcher=lambda: self._api.get_user_data_credentials(),  # type: ignore[return-value]
             organization=self._organization.key,
         )
 
@@ -1176,7 +1187,7 @@ class Dreadnode:
             tracer=_tracer or self._get_tracer(),
             params=params,
             tags=tags,
-            credential_manager=self._credential_manager,
+            credential_manager=self._credential_manager,  # type: ignore[return-value]
             autolog=autolog,
         )
 
@@ -1325,7 +1336,6 @@ class Dreadnode:
         ds: dataset.Dataset,
         *,
         to_cache: bool = False,
-        version: str | None = None,
     ) -> str:
         """
         Save a dataset to the local cache and optionally to the Dreadnode server.
@@ -1338,7 +1348,6 @@ class Dreadnode:
         return dataset.save_dataset(
             dataset=ds,
             to_cache=to_cache,
-            version=version,
             repo="datasets",
             fsm=self._fs_manager,
         )
@@ -1777,7 +1786,7 @@ class Dreadnode:
 
         return logged_metrics
 
-    @handle_internal_errors()
+    # @handle_internal_errors()
     def log_artifact(
         self,
         local_uri: str | Path,
