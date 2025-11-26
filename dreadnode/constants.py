@@ -35,6 +35,8 @@ DEFAULT_DOCKER_REGISTRY_IMAGE_TAG = "registry"
 DEFAULT_WORKSPACE_NAME = "Personal Workspace"
 # default project name
 DEFAULT_PROJECT_NAME = "Default"
+# default project key
+DEFAULT_PROJECT_KEY = "default"
 
 #
 # Environment Variable Names

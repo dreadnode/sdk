@@ -288,7 +288,7 @@ class ApiClient:
         """Retrieves details of a specific project.
 
         Args:
-            project_identifier (str | UUID): The project identifier. ID, name, or slug.
+            project_identifier (str | UUID): The project identifier. ID or key.
 
         Returns:
             Project: The Project object.
@@ -302,7 +302,8 @@ class ApiClient:
 
     def create_project(
         self,
-        name: str | UUID | None = None,
+        name: str,
+        key: str,
         workspace_id: UUID | None = None,
         organization_id: UUID | None = None,
     ) -> Project:
@@ -317,8 +318,8 @@ class ApiClient:
             Project: The created Project object.
         """
         payload: dict[str, t.Any] = {}
-        if name is not None:
-            payload["name"] = name
+        payload["name"] = name
+        payload["key"] = key
         if workspace_id is not None:
             payload["workspace_id"] = str(workspace_id)
         if organization_id is not None:
