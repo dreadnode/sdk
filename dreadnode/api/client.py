@@ -753,14 +753,17 @@ class ApiClient:
 
     # User data access
 
-    def get_user_data_credentials(self) -> UserDataCredentials:
+    def get_user_data_credentials(
+        self, organization_id: UUID, workspace_id: UUID
+    ) -> UserDataCredentials:
         """
         Retrieves user data credentials for secondary storage access.
 
         Returns:
             The user data credentials object.
         """
-        response = self._request("GET", "/user-data/credentials")
+        params = {"org_id": str(organization_id), "workspace_id": str(workspace_id)}
+        response = self._request("GET", "/user-data/credentials", params=params)
         return UserDataCredentials(**response.json())
 
     # Container registry access
