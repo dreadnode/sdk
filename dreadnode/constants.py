@@ -72,3 +72,12 @@ FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes in seconds
 
 # Default User-Agent
 DEFAULT_USER_AGENT = f"dreadnode/{VERSION}"
+
+
+# Crescendo attack variant paths
+CRESCENDO_VARIANTS_PATH = pathlib.Path(__file__).parent / "data" / "templates" / "crescendo"
+CRESCENDO_VARIANT_1 = CRESCENDO_VARIANTS_PATH / "variant_1.yaml"
+CRESCENDO_VARIANT_2 = CRESCENDO_VARIANTS_PATH / "variant_2.yaml"
+CRESCENDO_VARIANT_3 = CRESCENDO_VARIANTS_PATH / "variant_3.yaml"
+CRESCENDO_VARIANT_4 = CRESCENDO_VARIANTS_PATH / "variant_4.yaml"
+CRESCENDO_VARIANT_5 = CRESCENDO_VARIANTS_PATH / "variant_5.yaml"
