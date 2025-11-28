@@ -13,6 +13,7 @@ from dreadnode.constants import (
     FS_CREDENTIAL_REFRESH_BUFFER,
 )
 from dreadnode.logging_ import console as logging_console
+from dreadnode.util import resolve_endpoint
 
 if TYPE_CHECKING:
     from dreadnode.api.models import UserDataCredentials
@@ -60,6 +61,20 @@ class FilesystemManager:
         instance.organization = organization
         return instance
 
+    def get_remote_uri(self, repo: str, name: str) -> str:
+        """
+        Constructs the full S3 URI including the correct bucket.
+        Example: s3://my-company-bucket/datasets/main/my-dataset
+        """
+        # Ensure _remote_prefix is a string and strip trailing slashes
+        base = str(self._remote_prefix).rstrip("/")
+
+        # Handle cases where base doesn't start with s3:// (e.g. if it's just a bucket name)
+        if not base.startswith("s3://") and not base.startswith("dn://"):
+            base = f"s3://{base}"
+
+        return f"{base}/{repo}/{name}"
+
     def _get_s3_config(self) -> dict[str, Any]:
         """
         Translates your UserDataCredentials into PyArrow S3 arguments.
@@ -68,15 +83,17 @@ class FilesystemManager:
             raise ValueError("No credential fetcher configured")
 
         creds = self._credential_fetcher()
+        resolved_endpoint = resolve_endpoint(creds.endpoint)
 
         # Mapping UserDataCredentials -> PyArrow S3FileSystem kwargs
         return {
             "access_key": creds.access_key_id,
             "secret_key": creds.secret_access_key,
             "session_token": creds.session_token,
+            "endpoint_override": resolved_endpoint,
             "region": creds.region,
-            "endpoint_override": creds.endpoint,  # Crucial for Minio/Custom S3
-            "scheme": "http" if "localhost" in creds.endpoint else "https",
+            "scheme": "http",
+            "check_directory_existence_before_creation": True,
         }
 
     def _needs_refresh(self) -> bool:
@@ -98,9 +115,7 @@ class FilesystemManager:
 
         # 1. Handle Local Files
         if "://" not in uri or uri.startswith("file://"):
-            # Native Local FS
             fs = pafs.LocalFileSystem()
-            # Clean local path
             path = uri.replace("file://", "")
             return fs, path
 
@@ -108,7 +123,6 @@ class FilesystemManager:
         try:
             protocol, path_body = uri.split("://", 1)
         except ValueError:
-            # Fallback if weird formatting
             return pafs.LocalFileSystem(), uri
 
         # Reuse the cached S3 connection unless expired
@@ -157,7 +171,7 @@ class FilesystemManager:
         ]
 
         if not versions:
-            print("[!] No versions found, defaulting to 0.0.1")
+            print("[!] No versions found, defaulting to 0.1.")
             return f"{path}/0.0.1"
 
         latest = sorted(versions, reverse=True)[0]

@@ -1,239 +1,15 @@
-# from pathlib import Path
-# from typing import Any
-
-# import pyarrow as pa
-# import pyarrow.dataset as ds
-# from fsspec import AbstractFileSystem
-# from fsspec.implementations.local import LocalFileSystem
-
-# from dreadnode.constants import METADATA_FILE
-# from dreadnode.storage.datasets.core import (
-#     FilesystemManager,
-# )
-# from dreadnode.storage.datasets.manifest import Manifest
-# from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
-
-
-# class Dataset:
-#     """
-#     A versioned dataset with complete metadata tracking.
-#     """
-
-#     def __init__(
-#         self,
-#         ds: ds.Dataset | pa.Table,
-#         _metadata: DatasetMetadata | None = None,
-#     ) -> None:
-#         self.ds = ds
-#         self._metadata = _metadata
-#         self._manifest: Manifest | None = None
-
-#     @property
-#     def metadata(self) -> DatasetMetadata:
-#         if not self._metadata:
-#             self._metadata = DatasetMetadata()
-#         return self._metadata
-
-#     @staticmethod
-#     def _normalize_uri(name: str) -> str:
-#         return name.replace(" ", "_").lower()
-
-#     def create_manifest(self) -> None:
-#         self._manifest = Manifest.create_manifest(
-#             (self.metadata.uri, self.metadata.version),
-#             version=self.metadata.version,
-#             exclude_patterns=[METADATA_FILE],
-#         )
-
-#     def update_metadata(self, **kwargs) -> None:
-#         """
-#         Update the dataset metadata before saving.
-#         """
-#         self.metadata.set_organization(kwargs.get("organization", self.metadata.organization))
-#         self.metadata.set_version(kwargs.get("version", self.metadata.version))
-#         self.metadata.set_ds_schema(self.ds)
-#         self.metadata.set_ds_files(self.ds)
-#         self.metadata.set_size_and_row_count(self.ds)
-#         self.metadata.set_updated_at()
-
-
-# def _create_dataset(
-#     uri: Path,
-#     format: str,
-#     *,
-#     filesystem: AbstractFileSystem,
-#     materialize: bool = False,
-# ) -> Dataset:
-#     """
-#     Create a Dataset from a local path.
-#     """
-
-#     metadata_path = uri.joinpath(METADATA_FILE)
-#     if filesystem.exists(metadata_path):
-#         print(f"[*] Loading dataset metadata from: {metadata_path}")
-
-#         metadata = DatasetMetadata.load(metadata_path, filesystem=filesystem)
-#         uri = uri.joinpath("data")
-#     else:
-#         metadata = _create_default_metadata()
-
-#     dataset = ds.dataset(str(uri), format=format, filesystem=filesystem)
-#     if materialize:
-#         dataset = dataset.to_table()
-
-#     return Dataset(ds=dataset, _metadata=metadata)
-
-
-# def save_dataset(
-#     dataset: Dataset,
-#     *,
-#     repo: str = "datasets",
-#     to_cache: bool = False,
-#     version: str | None = None,
-#     fsm: FilesystemManager,
-#     **kwargs: Any,
-# ) -> None:
-#     """
-#     Save dataset to remote storage, or local cache.
-#     """
-
-#     if to_cache:
-#         path = fsm._cache_root / repo / "main" / dataset.metadata.name
-#         print("[*] Saving dataset to local cache")
-
-#     else:
-#         print("[*] Saving dataset to remote storage")
-#         path = "dn://" + f"main/{dataset.metadata.name}"
-
-#     fs, fs_path = fsm.get_filesystem(str(path))
-
-#     # fs.mkdir(fs_path, exist_ok=True)
-
-#     save_path = fsm.get_dataset_dir(
-#         path=fs_path,
-#         version=None,
-#         repo=repo,
-#         to_cache=to_cache,
-#         filesystem=fs,
-#     )
-
-#     print("[+] Saved dataset")
-
-#     with fs.open(save_path.joinpath("metadata.json"), "w") as f:
-#         f.write(dataset.metadata.model_dump_json(indent=2))
-
-#     ds.write_dataset(
-#         data=dataset.ds,
-#         base_dir=str(save_path.joinpath("data")),
-#         format="parquet",
-#         filesystem=fs,
-#         existing_data_behavior="overwrite_or_ignore",
-#         **kwargs,
-#     )
-
-#     manifest = _create_manifest(str(save_path), dataset, fs)
-
-#     with fs.open(save_path.joinpath("manifest.json"), "w") as f:
-#         f.write(manifest.model_dump_json(indent=2))
-
-
-# def load_dataset(
-#     uri: str,
-#     version: str | None = None,
-#     repo: str = "datasets",
-#     format: str = "parquet",
-#     *,
-#     materialize: bool = True,
-#     fsm: FilesystemManager,
-# ) -> Dataset:
-#     """
-#     Load dataset from local path, cache, or remote storage.
-
-#     Resolution order:
-#     1. Explicit remote URI (dn://org/name).
-#     2. Cached dataset (org/name)
-#     3. Local filesystem path (../data/my_data)
-#     4. Remote fallback (org/name)
-#     """
-
-#     fs, fs_path = fsm.get_filesystem(uri)
-
-#     if version is not None:
-#         VersionInfo.model_validate(version)
-
-#     # load from explicit remote (dn://org/name)
-#     if not isinstance(fs, LocalFileSystem):
-#         remote_uri = fsm.get_dataset_dir(
-#             path=fs_path,
-#             version=version,
-#             repo=repo,
-#             to_cache=False,
-#             filesystem=fs,
-#         )
-#         print(f"[+] Loading dataset from remote: {remote_uri}")
-#         return _create_dataset(
-#             uri=remote_uri,
-#             format=format,
-#             filesystem=fs,
-#             materialize=materialize,
-#         )
-
-#     # then check the cache (org/name)
-#     try:
-#         cache_path = fsm.get_dataset_dir(
-#             path=uri,
-#             version=version,
-#             repo=repo,
-#             to_cache=True,
-#             filesystem=fs,
-#         )
-#         if cache_path.exists():
-#             print(f"[+] Loading dataset from cache: {cache_path}")
-#             return _create_dataset(
-#                 uri=cache_path,
-#                 format=format,
-#                 filesystem=fs,
-#                 materialize=materialize,
-#             )
-#     except (FileNotFoundError, ValueError):
-#         local_path = Path(uri).expanduser().resolve()
-#         if fs.exists(local_path):
-#             print(f"[+] Loading dataset from local: {local_path}")
-#             return _create_dataset(
-#                 uri=local_path, format=format, filesystem=fs, materialize=materialize
-#             )
-
-#     # remote fallback if neither path not spec'd with protocol(org/name -> remote)
-#     try:
-#         print(f"[*] Dataset not found locally. Attempting remote load for: {uri}")
-#         remote_uri = fsm.get_dataset_dir(
-#             path=fs_path, version=version, repo=repo, to_cache=False, filesystem=fs
-#         )
-#         return _create_dataset(
-#             uri=remote_uri,
-#             format=format,
-#             filesystem=fs,
-#             materialize=materialize,
-#         )
-#     except Exception as e:
-#         print(f"[!] Failed to load dataset from remote: {e}")
-
-#     raise FileNotFoundError(f"[!] Dataset not found locally or remotely: {uri}")
-
-
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 import pyarrow.dataset as ds
+from fsspec.core import strip_protocol
+from fsspec.utils import get_protocol
 from pyarrow.fs import FileSystem, FileType
 
-# We don't need fsspec or s3fs anymore for the core logic
-# from fsspec import AbstractFileSystem
 from dreadnode.constants import METADATA_FILE
-
-# (Assuming FilesystemManager is still used for logic, but not for creating the FS object)
 from dreadnode.storage.datasets.core import FilesystemManager
 from dreadnode.storage.datasets.manifest import Manifest
 from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
@@ -250,7 +26,7 @@ class Dataset:
         _metadata: DatasetMetadata | None = None,
     ) -> None:
         self.ds = ds
-        self._metadata = _metadata
+        self._metadata: DatasetMetadata = _metadata
         self._manifest: Manifest | None = None
 
     @property
@@ -262,16 +38,14 @@ class Dataset:
 
 def _resolve_uri(uri: str) -> tuple[FileSystem, str]:
     """
-    Robustly resolves a URI into a Native PyArrow FileSystem and a clean path.
+    Resolves a URI into a Native PyArrow FileSystem and a clean path.
 
     Input: "s3://my-bucket/data" -> (S3FileSystem, "my-bucket/data")
     Input: "/tmp/data"           -> (LocalFileSystem, "/tmp/data")
     """
     try:
-        # This is the "Magic" native method
         fs, path = FileSystem.from_uri(uri)
     except ValueError:
-        # Fallback: if it's a simple local path without file://
         fs = FileSystem.from_uri("file:///")[0]
         path = str(Path(uri).expanduser().resolve())
 
@@ -299,9 +73,17 @@ def _create_default_metadata() -> DatasetMetadata:
 
 def _ensure_dir(fs: FileSystem, path: str):
     """
-    Native PyArrow equivalent of mkdir -p
+    Creates directory if local. Skips if S3.
+
+    Why skip S3?
+    1. S3 has no real directories (only keys).
+    2. pyarrow.fs.S3FileSystem.create_dir() executes a 'HeadBucket' call.
+    3. Restricted IAM policies (write-only) will fail HeadBucket with ACCESS_DENIED.
     """
-    fs.create_dir(path, recursive=True)
+    if fs.type_name == "s3":
+        return
+    with contextlib.suppress(OSError):
+        fs.create_dir(path, recursive=True)
 
 
 def _read_json_native(fs: FileSystem, path: str) -> dict:
@@ -361,25 +143,18 @@ def save_dataset(
     **kwargs: Any,
 ) -> None:
     fsm._needs_refresh()
-    # 1. Determine the destination URI string
+
     if to_cache:
-        # Keep path generation, but convert to string immediately
-        path_str = str(fsm._cache_root / repo / "main" / dataset.metadata.name)
+        path_str = str(fsm._cache_root / repo / fsm.organization / dataset.metadata.name)
         print("[*] Saving dataset to local cache")
     else:
         print("[*] Saving dataset to remote storage")
-        path_str = f"s3://{fsm.organization}/{dataset.metadata.name}"
+        path_str = fsm.get_remote_uri(repo=repo, name=dataset.metadata.name)
 
-    # 2. Get Native Filesystem
-    fs, base_path = _resolve_uri(path_str)
+    fs, base_path = fsm.get_fs_and_path(path_str)
     print(f"[*] Saving dataset to: {base_path}")
 
-    # 3. Create generic directory (works on S3 and Local)
     _ensure_dir(fs, base_path)
-
-    # 4. Write Metadata
-    print("[+] Saving metadata...")
-    _write_json_native(fs, f"{base_path}/metadata.json", dataset.metadata)
 
     # 5. Write Data (Parquet)
     ds.write_dataset(
@@ -388,8 +163,13 @@ def save_dataset(
         format="parquet",
         filesystem=fs,
         existing_data_behavior="overwrite_or_ignore",
+        create_dir=to_cache,
         **kwargs,
     )
+
+    # 4. Write Metadata
+    print("[+] Saving metadata...")
+    _write_json_native(fs, f"{base_path}/metadata.json", dataset.metadata)
 
     # 6. Create and Write Manifest
     manifest = Manifest.create_manifest(
@@ -399,6 +179,7 @@ def save_dataset(
         fs=fs,
     )
 
+    print("[+] Saving manifest...")
     _write_json_native(fs, f"{base_path}/manifest.json", manifest)
 
     print("[+] Saved dataset successfully")
@@ -406,7 +187,7 @@ def save_dataset(
 
 def load_dataset(
     uri: str,
-    version: str | None = None,
+    version: str = "latest",
     repo: str = "datasets",
     format: str = "parquet",
     *,
@@ -416,16 +197,24 @@ def load_dataset(
     if version is not None:
         VersionInfo.model_validate(version)
 
-    fsm._needs_refresh()
+    protocol = get_protocol(uri)
+    print(f"[*] Resolving dataset URI with protocol: {protocol}")
 
-    # 1. Resolve Input URI
-    fs, fs_path = _resolve_uri(uri)
+    if protocol in ("file", "local", ""):
+        # check the cache first
+        cache_path = Path(fsm._cache_root).joinpath(repo, uri)
+        if not cache_path.exists() and Path(uri).exists():
+            print("[+] Loading dataset from local path...")
+            fs, fs_path = fsm.get_fs_and_path(uri)
+            return _create_dataset(
+                uri=fs_path,
+                format=format,
+                filesystem=fs,
+                materialize=materialize,
+            )
 
-    # 2. Logic to determine paths (Remote vs Cache vs Local)
-    info = fs.get_file_info(fs_path)
-
-    if info.type != FileType.NotFound:
-        print(f"[+] Loading dataset from: {uri}")
+        print("[*] Loading from cache...")
+        fs, fs_path = fsm.get_fs_and_path(str(cache_path))
         return _create_dataset(
             uri=fs_path,
             format=format,
@@ -433,30 +222,25 @@ def load_dataset(
             materialize=materialize,
         )
 
-    # 3. Fallback logic (Cache)
-    cache_path_str = str(fsm._cache_root / repo / "main" / Path(uri).name)
-    local_fs, local_path = _resolve_uri(cache_path_str)
-
-    if local_fs.get_file_info(local_path).type != FileType.NotFound:
-        print(f"[+] Loading dataset from cache: {local_path}")
-        return _create_dataset(
-            uri=local_path, format=format, filesystem=local_fs, materialize=materialize
-        )
-
-    # 4. Remote Fallback (dn:// -> s3://)
-    remote_uri = f"s3://{repo}/main/{uri}"
-    remote_fs, remote_path = _resolve_uri(remote_uri)
-
-    print(f"[*] Attempting remote load for: {remote_uri}")
+    print("[*] Loading from remote storage...")
     try:
+        fsm._needs_refresh()
+
+        remote_uri = fsm.get_remote_uri(repo=repo, name=strip_protocol(uri))
+
+        print(f"[*] Resolved remote URI: {remote_uri}")
+
+        fs, fs_path = fsm.get_fs_and_path(remote_uri)
+
+        print(f"[*] Checking existence of remote path: {fs_path}")
         # Verify it exists before trying to load
-        if remote_fs.get_file_info(remote_path).type == FileType.NotFound:
-            raise FileNotFoundError(f"Remote path {remote_uri} does not exist")
+        if fs.get_file_info(fs_path).type == FileType.NotFound:
+            raise FileNotFoundError(f"Remote path {fs_path} does not exist")
 
         return _create_dataset(
-            uri=remote_path,
+            uri=fs_path,
             format=format,
-            filesystem=remote_fs,
+            filesystem=fs,
             materialize=materialize,
         )
     except Exception as e:
