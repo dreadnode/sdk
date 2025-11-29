@@ -30,9 +30,13 @@ from dreadnode.eval.events import (
     IterationEnd,
     IterationStart,
     SampleComplete,
+    SamplePostProcess,
+    SamplePreProcess,
     ScenarioEnd,
     ScenarioStart,
 )
+from dreadnode.eval.hooks.base import EvalHook
+from dreadnode.eval.reactions import EvalReaction, ModifyInput, ModifyOutput, SkipSample, StopEval
 from dreadnode.eval.result import EvalResult, IterationResult, ScenarioResult
 from dreadnode.eval.sample import Sample
 from dreadnode.meta import Config, DatasetField, Model
@@ -140,6 +144,9 @@ class Eval(Model, t.Generic[In, Out]):
     trace: bool = True
     """Whether to produce trace contexts like runs/tasks for this study."""
 
+    hooks: list[EvalHook] = Field(default_factory=list, exclude=True, repr=False)
+    """Hooks to run at various points in the evaluation lifecycle."""
+
     @model_validator(mode="after")
     def _check_dataset(self) -> te.Self:
         if self.dataset is None and self.dataset_file is None:
@@ -189,6 +196,9 @@ class Eval(Model, t.Generic[In, Out]):
             parts.append(f"assertions={self.assert_scores}")
         if self.concurrency > 1:
             parts.append(f"concurrency={self.concurrency}")
+        if self.hooks:
+            hooks = ", ".join(get_callable_name(hook, short=True) for hook in self.hooks)
+            parts.append(f"hooks=[{hooks}]")
 
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
@@ -255,6 +265,135 @@ class Eval(Model, t.Generic[In, Out]):
                         f"dataset field '{value.ref_name}', which is not available in the current dataset."
                     )
 
+    async def _dispatch_hooks(self, event: EvalEvent) -> EvalReaction | None:
+        """
+        Dispatch event to all hooks and return first reaction.
+        Follows same pattern as Agent._dispatch in agent framework.
+        """
+        for hook in self.hooks:
+            try:
+                reaction: EvalReaction | None | t.Awaitable[EvalReaction | None] = hook(event)
+
+                if inspect.isawaitable(reaction):
+                    reaction = await reaction
+
+                if reaction is not None:
+                    logger.info(
+                        f"Eval '{self.name}' hook '{get_callable_name(hook, short=True)}' "
+                        f"returned reaction: {reaction!r}"
+                    )
+                    return reaction
+
+            except EvalReaction as r:  # noqa: PERF203
+                return r
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    f"Hook '{get_callable_name(hook, short=True)}' raised error: {e}",
+                    exc_info=True,
+                )
+                continue
+
+        return None
+
+    async def _run_sample_with_hooks(
+        self,
+        index: int,
+        row: AnyDict,
+        configured_task: Task[[In], Out],
+        scenario_params: AnyDict,
+        iteration: int,
+    ) -> Sample[In, Out]:
+        """Run a single sample with hook support."""
+
+        token = current_dataset_row.set(row)
+        try:
+            # Prepare task kwargs
+            if self.dataset_input_mapping:
+                if isinstance(self.dataset_input_mapping, list):
+                    task_kwargs = {k: row[k] for k in self.dataset_input_mapping}
+                else:
+                    task_kwargs = {
+                        task_arg: row[ds_key]
+                        for ds_key, task_arg in self.dataset_input_mapping.items()
+                    }
+            else:
+                task_params = set(configured_task.signature.parameters)
+                task_kwargs = {k: v for k, v in row.items() if k in task_params}
+
+            context = {f"dataset_{k}": v for k, v in row.items() if k not in task_kwargs}
+            first_kwarg = next(iter(task_kwargs.values()), None)
+            original_input: In = t.cast("In", task_kwargs if len(task_kwargs) > 1 else first_kwarg)
+            pre_event = SamplePreProcess(
+                eval=self,
+                run_id="",
+                index=index,
+                dataset_row=row,
+                task_kwargs=task_kwargs,
+                original_input=original_input,
+            )
+
+            reaction = await self._dispatch_hooks(pre_event)
+
+            if isinstance(reaction, ModifyInput):
+                task_kwargs = reaction.task_kwargs
+            elif isinstance(reaction, SkipSample):
+                return Sample(
+                    input=original_input,
+                    output=None,
+                    error=ValueError(f"Skipped: {reaction.reason}"),
+                    scenario_params=scenario_params,
+                    iteration=iteration,
+                    index=index,
+                    context=context,
+                )
+            elif isinstance(reaction, StopEval):
+                raise reaction
+
+            # Execute task
+            first_kwarg_transformed = next(iter(task_kwargs.values()), None)
+            transformed_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg_transformed
+
+            logger.trace(f"Processing sample: index={index}, input={transformed_input}")
+
+            span = await configured_task.run_always(**{**task_kwargs, "__dn_ctx_inputs__": context})  # type: ignore[call-arg]
+
+            post_event = SamplePostProcess(
+                eval=self,
+                run_id="",
+                index=index,
+                output=span.output,
+                error=None,
+            )
+
+            reaction = await self._dispatch_hooks(post_event)
+
+            if isinstance(reaction, ModifyOutput):
+                span.output = reaction.output
+            elif isinstance(reaction, StopEval):
+                raise reaction
+
+            # Create sample
+            sample = Sample.from_task(
+                configured_task,
+                span,
+                original_input,
+                scenario_params=scenario_params,
+                iteration=iteration,
+                index=index,
+                context=context,
+            )
+
+            sample.transformed_input = transformed_input
+
+            logger.trace(
+                f"Completed sample: index={index}, passed={sample.passed}, error='{sample.error}'"
+            )
+
+            return sample
+
+        finally:
+            current_dataset_row.reset(token)
+
     @asynccontextmanager
     async def _run_iteration(
         self,
@@ -263,51 +402,10 @@ class Eval(Model, t.Generic[In, Out]):
         scenario_params: AnyDict,
         iteration: int,
     ) -> t.AsyncIterator[t.AsyncGenerator[Sample[In, Out], None]]:
-        async def _run_sample_with_context(index: int, row: AnyDict) -> Sample[In, Out]:
-            token = current_dataset_row.set(row)
-            try:
-                if self.dataset_input_mapping:
-                    if isinstance(self.dataset_input_mapping, list):
-                        task_kwargs = {k: row[k] for k in self.dataset_input_mapping}
-                    else:
-                        task_kwargs = {
-                            task_arg: row[ds_key]
-                            for ds_key, task_arg in self.dataset_input_mapping.items()
-                        }
-                else:
-                    task_params = set(configured_task.signature.parameters)
-                    task_kwargs = {k: v for k, v in row.items() if k in task_params}
-
-                context = {f"dataset_{k}": v for k, v in row.items() if k not in task_params}
-                first_kwarg = next(iter(task_kwargs.values()), None)
-                task_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg
-
-                logger.trace(f"Processing sample: index={index}, input={task_input}")
-
-                span = await configured_task.run_always(  # type: ignore[call-arg]
-                    **{**task_kwargs, "__dn_ctx_inputs__": context}
-                )
-
-                sample = Sample.from_task(
-                    configured_task,
-                    span,
-                    task_input,
-                    scenario_params=scenario_params,
-                    iteration=iteration,
-                    index=index,
-                    context=context,
-                )
-
-                logger.trace(
-                    f"Completed sample: index={index}, passed={sample.passed}, error='{sample.error}'"
-                )
-
-                return sample
-
-            finally:
-                current_dataset_row.reset(token)
-
-        coroutines = [_run_sample_with_context(index, row) for index, row in enumerate(dataset)]
+        coroutines = [
+            self._run_sample_with_hooks(index, row, configured_task, scenario_params, iteration)
+            for index, row in enumerate(dataset)
+        ]
         async with concurrent_gen(coroutines, self.concurrency) as sample_stream:
             yield sample_stream
 
@@ -340,11 +438,13 @@ class Eval(Model, t.Generic[In, Out]):
                 "scorers": [s.name for s in scorers],
                 "assert_scores": self.assert_scores,
                 "dataset_input_mapping": self.dataset_input_mapping,
+                "hooks": [get_callable_name(hook, short=True) for hook in self.hooks],
             }
         )
         trace_params.update(
             {
                 "dataset_size": len(dataset),
+                "hook_count": len(self.hooks),
             }
         )
 

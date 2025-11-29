@@ -1,8 +1,10 @@
 import statistics
 import typing as t
 from collections import deque
+from copy import copy
 
 from rich import box
+from rich.columns import Columns
 from rich.console import Console, RenderableType
 from rich.layout import Layout
 from rich.live import Live
@@ -142,8 +144,36 @@ class StudyConsoleAdapter:
                 border_style="dim",
             )
 
+        trial = self._best_trial
+        transformed_input = trial.transformed_input
+
+        # If we have transforms, display both versions
+        if transformed_input is not None and transformed_input != trial.candidate:
+            # Original candidate panel
+            original_panel = Panel(
+                format_trial(trial),
+                title="[dim]Original[/dim]",
+                border_style="dim",
+            )
+
+            # Transformed candidate panel
+            display_trial = copy(trial)
+            display_trial.candidate = transformed_input
+            transformed_panel = Panel(
+                format_trial(display_trial),
+                title="[bold]Transformed (Sent to Target)[/bold]",
+                border_style="green",
+            )
+
+            return Panel(
+                Columns([original_panel, transformed_panel]),
+                title="[bold magenta]Current Best[/bold magenta]",
+                border_style="magenta",
+            )
+
+        # No transforms or transforms didn't change input
         return Panel(
-            format_trial(self._best_trial),
+            format_trial(trial),
             title="[bold magenta]Current Best[/bold magenta]",
             border_style="magenta",
         )
@@ -291,15 +321,26 @@ class StudyConsoleAdapter:
         self.console.print(
             Panel(format_study_result(result), border_style="dim", title="Study Summary")
         )
-        self.console.print(
-            Panel(
-                format_trial(result.best_trial),
-                title="[bold magenta]Best Trial[/bold magenta]",
-                border_style="magenta",
+
+        if result.best_trial:
+            best_trial = result.best_trial
+
+            display_trial = best_trial
+            if best_trial.transformed_input is not None:
+                from copy import copy
+
+                display_trial = copy(best_trial)
+                display_trial.candidate = best_trial.transformed_input
+
+            self.console.print(
+                Panel(
+                    format_trial(display_trial),
+                    title="[bold magenta]Best Trial[/bold magenta]",
+                    border_style="magenta",
+                )
             )
-            if result.best_trial
-            else Panel("[yellow]No successful trials were completed.[/yellow]")
-        )
+        else:
+            self.console.print(Panel("[yellow]No successful trials were completed.[/yellow]"))
 
     async def run(self) -> StudyResult:
         with Live(self._build_dashboard(), console=self.console) as live:

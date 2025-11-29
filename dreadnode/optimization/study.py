@@ -9,7 +9,9 @@ from pydantic import ConfigDict, Field, FilePath, SkipValidation, computed_field
 
 from dreadnode.common_types import AnyDict
 from dreadnode.error import AssertionFailedError
-from dreadnode.eval import Eval, InputDataset
+from dreadnode.eval import InputDataset
+from dreadnode.eval.eval import Eval
+from dreadnode.eval.hooks.base import EvalHook
 from dreadnode.meta import Config, Model
 from dreadnode.meta.introspect import (
     get_config_model,
@@ -113,6 +115,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
     constraints: ScorersLike[CandidateT] | None = Field(default=None)
     """A list of Scorer-like constraints to apply to trial candidates. If any constraint scores to a falsy value, the candidate is pruned."""
+    hooks: list[EvalHook] = Field(default_factory=list, exclude=True, repr=False)
+    """Hooks to run at various points in the study/evaluation lifecycle."""
+
     stop_conditions: list[StudyStopCondition[CandidateT]] = Field(default_factory=list)
     """A list of conditions that, if any are met, will stop the study."""
 
@@ -235,17 +240,13 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         self.stop_conditions.append(condition)
         return self
 
-    async def _process_trial(  # noqa: PLR0915
+    async def _process_trial(
         self, trial: Trial[CandidateT]
     ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
         """
         Checks constraints and evaluates a single trial, returning a list of events.
-
-        This worker function is designed to be run concurrently. It mutates the
-        input trial object with the results of the evaluation.
         """
         from dreadnode import log_inputs, log_metrics, log_outputs, task_span
-        from dreadnode import score as dn_score
 
         logger.debug(
             f"Processing trial: id={trial.id}, step={trial.step}, is_probe={trial.is_probe}"
@@ -256,7 +257,6 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             if trial.is_probe and self.probe_task_factory
             else self.task_factory
         )
-        task = task_factory(trial.candidate)
         dataset = trial.dataset or self.dataset or [{}]
         probe_or_trial = "probe" if trial.is_probe else "trial"
 
@@ -282,7 +282,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
         with (
             task_span(
-                name=f"{probe_or_trial} - {task.name}",
+                name=f"{probe_or_trial} - {self.name}",
                 tags=[probe_or_trial],
             ) as span,
             contextlib.ExitStack() as stack,
@@ -300,80 +300,26 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 yield TrialStart(study=self, trials=[], probes=[], trial=trial)
 
                 # Check constraints
+                await self._check_constraints(trial.candidate, trial)
 
-                if not trial.is_probe and self.constraints:
-                    logger.debug(
-                        "Checking constraints: "
-                        f"trial_id={trial.id}, "
-                        f"num_constraints={len(self.constraints)}"
-                    )
-                    await dn_score(
-                        trial.candidate,
-                        Scorer.fit_many(self.constraints),
-                        step=trial.step,
-                        assert_scores=True,
-                    )
+                # Create task
+                task = task_factory(trial.candidate)
 
-                # Get the task
-
+                # Get base scorers
                 scorers: list[Scorer[OutputT]] = [
                     scorer
                     for scorer in fit_objectives(self.objectives)
                     if isinstance(scorer, Scorer)
                 ]
 
-                logger.debug(
-                    "Evaluating trial: "
-                    f"trial_id={trial.id}, "
-                    f"step={trial.step}, "
-                    f"dataset_size={len(dataset) if isinstance(dataset, t.Sized) else '<unknown>'}, "
-                    f"task={task.name}"
-                )
-                logger.trace(f"Candidate: {trial.candidate!r}")
+                # Run evaluation (transforms are applied inside Eval now)
+                trial.eval_result = await self._run_evaluation(task, dataset, scorers, trial)
 
-                evaluator = Eval(
-                    task=task,
-                    dataset=dataset,
-                    scorers=scorers,
-                    # TODO(nick): Might be worth separating these into
-                    # a unique configuration for evals specifically.
-                    max_consecutive_errors=self.max_consecutive_errors,
-                    max_errors=self.max_errors,
-                    trace=False,
-                )
-
-                trial.eval_result = await evaluator.run()
-
-                # If our entire evaluation failed, reflect that in the trial
-                # status so it can be handled appropriately upstream.
-                #
-                # TODO(nick): Certainly some different options here depending
-                # on how the study behaves, ideally we would have it reflect
-                # this issue in the trial_result?
-                if trial.eval_result.stop_reason in (
-                    "max_errors_reached",
-                    "max_consecutive_errors_reached",
-                ) or all(sample.failed for sample in trial.eval_result.samples):
-                    first_error = next(
-                        sample.error for sample in trial.eval_result.samples if sample.failed
-                    )
-                    raise RuntimeError(first_error)  # noqa: TRY301
-
-                for i, name in enumerate(self.objective_names):
-                    direction = self.directions[i]
-                    raw_score = trial.all_scores.get(name, -float("inf"))
-                    directional_score = raw_score if direction == "maximize" else -raw_score
-                    trial.scores[name] = raw_score
-                    trial.directional_scores[name] = directional_score
-
-                trial.score = (
-                    sum(trial.directional_scores.values()) / len(trial.directional_scores)
-                    if trial.directional_scores
-                    else 0.0
-                )
+                # Extract final scores
+                self._extract_trial_scores(trial)
 
                 trial.status = "finished"
-                logger.debug(
+                logger.info(
                     f"Completed trial: id={trial.id}, status='{trial.status}', score={trial.score}"
                 )
                 logger.trace(f"Output: {trial.output}")
@@ -397,6 +343,85 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             yield TrialPruned(study=self, trials=[], probes=[], trial=trial)
         else:
             yield TrialComplete(study=self, trials=[], probes=[], trial=trial)
+
+    async def _check_constraints(self, candidate: CandidateT, trial: Trial[CandidateT]) -> None:
+        """Check constraints on the candidate."""
+        from dreadnode import score as dn_score
+
+        if trial.is_probe or not self.constraints:
+            return
+
+        logger.info(
+            f"Checking constraints: trial_id={trial.id}, num_constraints={len(self.constraints)}"
+        )
+
+        await dn_score(
+            candidate,
+            Scorer.fit_many(self.constraints),
+            step=trial.step,
+            assert_scores=True,
+        )
+
+    async def _run_evaluation(
+        self,
+        task: Task[..., OutputT],
+        dataset: t.Any,
+        scorers: list[Scorer[OutputT]],
+        trial: Trial[CandidateT],
+    ) -> t.Any:
+        """Run the evaluation with the given task, dataset, and scorers."""
+        logger.debug(
+            f"Evaluating trial: "
+            f"trial_id={trial.id}, "
+            f"step={trial.step}, "
+            f"dataset_size={len(dataset) if isinstance(dataset, t.Sized) else '<unknown>'}, "
+            f"task={task.name}"
+        )
+        logger.trace(f"Candidate: {trial.candidate!r}")
+
+        if dataset == [{}] or (isinstance(dataset, list) and len(dataset) == 1 and not dataset[0]):
+            # Dataset is empty - this is a Study/Attack where the candidate IS the input
+            dataset = [{"message": trial.candidate}]
+            dataset_input_mapping = ["message"]
+        else:
+            dataset_input_mapping = None
+
+        evaluator = Eval(
+            task=task,
+            dataset=dataset,
+            dataset_input_mapping=dataset_input_mapping,
+            scorers=scorers,
+            hooks=self.hooks,
+            max_consecutive_errors=self.max_consecutive_errors,
+            max_errors=self.max_errors,
+            trace=False,
+        )
+
+        eval_result = await evaluator.run()
+
+        if eval_result.stop_reason in (
+            "max_errors_reached",
+            "max_consecutive_errors_reached",
+        ) or all(sample.failed for sample in eval_result.samples):
+            first_error = next(sample.error for sample in eval_result.samples if sample.failed)
+            raise RuntimeError(first_error)
+
+        return eval_result
+
+    def _extract_trial_scores(self, trial: Trial[CandidateT]) -> None:
+        """Extract and calculate final scores for the trial."""
+        for i, name in enumerate(self.objective_names):
+            direction = self.directions[i]
+            raw_score = trial.all_scores.get(name, -float("inf"))
+            directional_score = raw_score if direction == "maximize" else -raw_score
+            trial.scores[name] = raw_score
+            trial.directional_scores[name] = directional_score
+
+        trial.score = (
+            sum(trial.directional_scores.values()) / len(trial.directional_scores)
+            if trial.directional_scores
+            else 0.0
+        )
 
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
         """

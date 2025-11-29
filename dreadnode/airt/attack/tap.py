@@ -2,15 +2,17 @@ import typing as t
 
 from dreadnode.airt.attack import Attack
 from dreadnode.airt.attack.prompt import prompt_attack
+from dreadnode.data_types.message import Message as DnMessage
 from dreadnode.scorers.judge import llm_judge
 
 if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
+    from dreadnode.eval.hooks.base import EvalHook
 
 
 def tap_attack(
     goal: str,
-    target: "Target[str, str]",
+    target: "Target[DnMessage, DnMessage]",
     attacker_model: str,
     evaluator_model: str,
     *,
@@ -18,7 +20,8 @@ def tap_attack(
     beam_width: int = 10,
     branching_factor: int = 3,
     context_depth: int = 5,
-) -> Attack[str, str]:
+    hooks: list["EvalHook"] | None = None,
+) -> Attack[DnMessage, DnMessage]:
     """
     Creates a generative jailbreak attack in the Tree of Attacks (TAP) pattern,
     using LLMs for both refinement (attacker) and scoring (evaluator/objective).
@@ -37,6 +40,7 @@ def tap_attack(
         beam_width: The number of candidate prompts to maintain at each step of the search.
         branching_factor: The number of new candidates to generate from each existing candidate.
         context_depth: The number of previous attempts to include as context for each refinement step.
+        hooks: Custom hooks for the attack lifecycle (e.g., transforms, logging, custom logic).
     """
 
     topic_constraint = llm_judge(evaluator_model, ON_TOPIC_RUBRIC.format(goal=goal))
@@ -53,6 +57,7 @@ def tap_attack(
         beam_width=beam_width,
         branching_factor=branching_factor,
         context_depth=context_depth,
+        hooks=hooks or [],
     ).with_(constraints={"on_topic": topic_constraint})
 
 
