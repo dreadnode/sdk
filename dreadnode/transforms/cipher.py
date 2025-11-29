@@ -321,7 +321,7 @@ def playfair_cipher(
         key_clean = "".join(dict.fromkeys(key.upper().replace("J", "I")))
         key_clean = "".join(c for c in key_clean if c.isalpha())
 
-        alphabet = "ABCDEFGHIKLMNOPQRSTUVWXYZ"  # No J
+        alphabet = "ABCDEFGHIKLMNOPQRSTUVWXYZ"  # pragma: allowlist secret
         matrix_str = key_clean + "".join(c for c in alphabet if c not in key_clean)
 
         return [list(matrix_str[i : i + 5]) for i in range(0, 25, 5)]

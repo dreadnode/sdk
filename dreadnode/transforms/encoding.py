@@ -185,7 +185,9 @@ def base58_encode(*, name: str = "base58") -> Transform[str, str]:
     Tests handling of alternative encoding schemes.
     """
     # Base58 alphabet (Bitcoin variant)
-    alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    alphabet = (
+        "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"  # pragma: allowlist secret
+    )
 
     def transform(text: str) -> str:
         # Convert text to integer
@@ -273,7 +275,7 @@ def html_entity_encode(
             elif encoding_type == "hex":
                 result.append(f"&#x{ord(char):x};")
             else:  # mixed
-                choice = random.choice(["named", "decimal", "hex"])
+                choice = random.choice(["named", "decimal", "hex"])  # noqa: S311 # nosec B311
                 if choice == "named":
                     result.append(html.escape(char, quote=True))
                 elif choice == "decimal":
@@ -380,7 +382,7 @@ def mixed_case_hex(*, name: str = "mixed_case_hex") -> Transform[str, str]:
         for char in text:
             hex_val = f"{ord(char):02x}"
             # Randomly capitalize each hex digit
-            mixed = "".join(c.upper() if random.random() < 0.5 else c.lower() for c in hex_val)
+            mixed = "".join(c.upper() if random.random() < 0.5 else c.lower() for c in hex_val)  # noqa: S311 # nosec B311
             result.append(mixed)
         return "".join(result)
 
@@ -475,7 +477,7 @@ def zero_width_encode(
 def leetspeak_encoding(
     *,
     intensity: float = 0.5,
-    include_numbers: bool = True,
+    include_numbers: bool = True,  # noqa: ARG001
     seed: int | None = None,
     name: str = "leetspeak_encoding",
 ) -> Transform[str, str]:
