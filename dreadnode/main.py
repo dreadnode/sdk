@@ -32,6 +32,7 @@ from dreadnode.common_types import (
 )
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
+    DEFAULT_PROJECT_KEY,
     DEFAULT_PROJECT_NAME,
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
@@ -348,8 +349,8 @@ class Dreadnode:
         """
         Resolve the project to use based on configuration.
 
-        If a project is specified by name and doesn't exist, it will be created.
-        If no project is specified, it will use or create one named 'default'.
+        If a project is specified by key and doesn't exist, it will be created.
+        If no project is specified, it will use or create one with key 'default'.
 
         Raises:
             RuntimeError: If the API client is not initialized.
@@ -366,7 +367,7 @@ class Dreadnode:
         found_project: Project | None = None
         try:
             found_project = self._api.get_project(
-                project_identifier=self.project or DEFAULT_PROJECT_NAME,
+                project_identifier=self.project or DEFAULT_PROJECT_KEY,
                 workspace_id=self._workspace.id,
             )
         except RuntimeError as e:
@@ -378,7 +379,9 @@ class Dreadnode:
         if not found_project:
             # create it in the workspace
             found_project = self._api.create_project(
-                name=self.project or DEFAULT_PROJECT_NAME, workspace_id=self._workspace.id
+                name=self.project or DEFAULT_PROJECT_NAME,
+                key=self.project or DEFAULT_PROJECT_KEY,
+                workspace_id=self._workspace.id,
             )
         # This is what's used in all of the Traces/Spans/Runs
         self._project = found_project
@@ -687,8 +690,11 @@ class Dreadnode:
             if self._api is not None:
                 api = self._api
                 self._credential_manager = CredentialManager(
-                    credential_fetcher=lambda: api.get_user_data_credentials()
+                    credential_fetcher=lambda: api.get_user_data_credentials(
+                        self._organization.id, self._workspace.id
+                    )
                 )
+
                 self._credential_manager.initialize()
 
                 self._fs = self._credential_manager.get_filesystem()
