@@ -1,14 +1,16 @@
-import fsspec
+from fsspec import AbstractFileSystem, register_implementation
 
-from dreadnode.dataset import Dataset
-from dreadnode.storage.datasets.metadata import DatasetMetadata
-from dreadnode.storage.dnfs import DreadnodeFS
+from dreadnode.dataset import Dataset, load_dataset
+
+
+class DreadnodeFS(AbstractFileSystem):
+    protocol = ("dn", "dreadnode")
+
+
+register_implementation("dreadnode", DreadnodeFS)
+register_implementation("dn", DreadnodeFS)
 
 __all__ = [
     "Dataset",
-    "DatasetMetadata",
     "load_dataset",
 ]
-
-fsspec.register_implementation("dn", DreadnodeFS)
-fsspec.register_implementation("dreadnode", DreadnodeFS)

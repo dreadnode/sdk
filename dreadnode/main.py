@@ -64,7 +64,7 @@ from dreadnode.metric import (
 from dreadnode.scorers import Scorer, ScorerCallable
 from dreadnode.scorers.base import ScorersLike
 from dreadnode.storage.base import CredentialManager
-from dreadnode.storage.datasets.core import FilesystemManager
+from dreadnode.storage.datasets.manager import FilesystemManager
 from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.tracing.exporters import (
     FileExportConfig,
@@ -723,7 +723,7 @@ class Dreadnode:
         self._logfire.config.ignore_no_config = True
 
         self._fs_manager = FilesystemManager().configure(
-            credential_fetcher=lambda: self._api.get_user_data_credentials(),  # type: ignore[return-value]
+            api=self._api,  # type: ignore[return-value]
             organization=self._organization.key,
         )
 
@@ -1326,7 +1326,6 @@ class Dreadnode:
         return dataset.load_dataset(
             uri=path,
             version=version,
-            repo="datasets",
             materialize=materialize,
             fsm=self._fs_manager,
         )
@@ -1345,10 +1344,10 @@ class Dreadnode:
             uri = dreadnode.save_dataset(my_dataset)
             ```
         """
-        return dataset.save_dataset(
+
+        dataset.save_dataset(
             dataset=ds,
             to_cache=to_cache,
-            repo="datasets",
             fsm=self._fs_manager,
         )
 

@@ -585,7 +585,7 @@ def initialize(self) -> None:
     self._logfire.config.ignore_no_config = True
 
     self._fs_manager = FilesystemManager().configure(
-        credential_fetcher=lambda: self._api.get_user_data_credentials(),  # type: ignore[return-value]
+        api=self._api,  # type: ignore[return-value]
         organization=self._organization.key,
     )
 
@@ -720,7 +720,6 @@ def load_dataset(
     return dataset.load_dataset(
         uri=path,
         version=version,
-        repo="datasets",
         materialize=materialize,
         fsm=self._fs_manager,
     )
@@ -1997,10 +1996,10 @@ def save_dataset(
         uri = dreadnode.save_dataset(my_dataset)
         ~~~
     """
-    return dataset.save_dataset(
+
+    dataset.save_dataset(
         dataset=ds,
         to_cache=to_cache,
-        repo="datasets",
         fsm=self._fs_manager,
     )
 ```

@@ -113,52 +113,6 @@ def __init__(
 
 </Accordion>
 
-### create\_dataset
-
-```python
-create_dataset(
-    dataset: DatasetCreateRequest,
-) -> DatasetMetadata
-```
-
-Creates a new dataset.
-
-**Parameters:**
-
-* **`dataset`**
-  (`DatasetCreateRequest`)
-  –The dataset creation request object.
-
-**Returns:**
-
-* **`Dataset`** ( `DatasetMetadata`
-  ) –The created Dataset object.
-
-<Accordion title="Source code in dreadnode/api/client.py" icon="code">
-```python
-def create_dataset(
-    self,
-    dataset: DatasetCreateRequest,
-) -> DatasetMetadata:
-    """
-    Creates a new dataset.
-
-    Args:
-        dataset (DatasetCreateRequest): The dataset creation request object.
-
-    Returns:
-        Dataset: The created Dataset object.
-    """
-
-    payload: dict[str, t.Any] = dataset.model_dump()
-
-    response = self.request("POST", "/datasets", json_data=payload)
-    return DatasetMetadata(**response.json())
-```
-
-
-</Accordion>
-
 ### create\_project
 
 ```python
@@ -313,6 +267,50 @@ def delete_workspace(self, workspace_id: str | UUID) -> None:
     """
 
     self.request("DELETE", f"/workspaces/{workspace_id!s}")
+```
+
+
+</Accordion>
+
+### download\_dataset
+
+```python
+download_dataset(
+    request: DatasetDownloadRequest,
+) -> DatasetDownloadResponse
+```
+
+Downloads the dataset content.
+
+**Parameters:**
+
+* **`request`**
+  (`DatasetDownloadRequest`)
+  –The dataset download request object.
+
+**Returns:**
+
+* **`bytes`** ( `DatasetDownloadResponse`
+  ) –The dataset content as bytes.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def download_dataset(self, request: DatasetDownloadRequest) -> DatasetDownloadResponse:
+    """
+    Downloads the dataset content.
+
+    Args:
+        request (DatasetDownloadRequest): The dataset download request object.
+
+    Returns:
+        bytes: The dataset content as bytes.
+    """
+    response = self.request(
+        "GET",
+        f"/datasets/{request.dataset_uri}/download/?version={request.version}",
+    )
+
+    return DatasetDownloadResponse.model_validate(response.json())
 ```
 
 
@@ -721,6 +719,49 @@ def export_timeseries(
         },
     )
     return pd.read_parquet(io.BytesIO(response.content))
+```
+
+
+</Accordion>
+
+### get\_dataset
+
+```python
+get_dataset(
+    dataset_id_or_key: str | UUID,
+) -> DatasetMetadata
+```
+
+Retrieves details of a specific dataset.
+
+**Parameters:**
+
+* **`dataset_id_or_key`**
+  (`str | UUID`)
+  –The dataset identifier.
+
+**Returns:**
+
+* **`DatasetMetadata`** ( `DatasetMetadata`
+  ) –The DatasetMetadata object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_dataset(
+    self,
+    dataset_id_or_key: str | UUID,
+) -> DatasetMetadata:
+    """
+    Retrieves details of a specific dataset.
+
+    Args:
+        dataset_id_or_key (str | UUID): The dataset identifier.
+
+    Returns:
+        DatasetMetadata: The DatasetMetadata object.
+    """
+    response = self.request("GET", f"/datasets/{dataset_id_or_key}")
+    return DatasetMetadata(**response.json())
 ```
 
 
@@ -1468,6 +1509,137 @@ def request(
 
 </Accordion>
 
+### update\_dataset
+
+```python
+update_dataset(
+    dataset_id_or_key: str | UUID,
+    dataset: DatasetUploadRequest,
+) -> DatasetMetadata
+```
+
+Updates an existing dataset.
+
+**Parameters:**
+
+* **`dataset_id_or_key`**
+  (`str | UUID`)
+  –The dataset identifier.
+* **`dataset`**
+  (`DatasetCreateRequest`)
+  –The dataset update request object.
+
+**Returns:**
+
+* **`DatasetMetadata`** ( `DatasetMetadata`
+  ) –The updated DatasetMetadata object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def update_dataset(
+    self,
+    dataset_id_or_key: str | UUID,
+    dataset: DatasetUploadRequest,
+) -> DatasetMetadata:
+    """
+    Updates an existing dataset.
+
+    Args:
+        dataset_id_or_key (str | UUID): The dataset identifier.
+        dataset (DatasetCreateRequest): The dataset update request object.
+
+    Returns:
+        DatasetMetadata: The updated DatasetMetadata object.
+    """
+
+    payload: dict[str, t.Any] = dataset.model_dump()
+
+    response = self.request("PUT", f"/datasets/{dataset_id_or_key}", json_data=payload)
+    return DatasetMetadata(**response.json())
+```
+
+
+</Accordion>
+
+### upload\_complete
+
+```python
+upload_complete(request: DatasetUploadComplete) -> None
+```
+
+Marks a dataset upload as complete.
+
+**Parameters:**
+
+* **`request`**
+  (`DatasetUploadComplete`)
+  –The dataset upload completion request object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def upload_complete(self, request: DatasetUploadComplete) -> None:
+    """
+    Marks a dataset upload as complete.
+
+    Args:
+        request (DatasetUploadComplete): The dataset upload completion request object.
+    """
+
+    payload: dict[str, t.Any] = request
+
+    self.request("POST", "/datasets/upload/complete", json_data=payload)
+```
+
+
+</Accordion>
+
+### upload\_dataset\_request
+
+```python
+upload_dataset_request(
+    request: DatasetUploadRequest,
+) -> DatasetUploadResponse
+```
+
+Creates a new dataset.
+
+**Parameters:**
+
+* **`request`**
+  (`DatasetUploadRequest`)
+  –The dataset upload request object.
+
+**Returns:**
+
+* **`DatasetUploadResponse`** ( `DatasetUploadResponse`
+  ) –The dataset upload response object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def upload_dataset_request(
+    self,
+    request: DatasetUploadRequest,
+) -> DatasetUploadResponse:
+    """
+    Creates a new dataset.
+
+    Args:
+        request (DatasetUploadRequest): The dataset upload request object.
+
+    Returns:
+        DatasetUploadResponse: The dataset upload response object.
+    """
+
+    payload: dict[str, t.Any] = request.model_dump()
+
+    response = self.request("POST", "/datasets/upload", json_data=payload)
+
+    return DatasetUploadResponse.model_validate(response.json())
+```
+
+
+</Accordion>
+
 ### url\_for\_user\_code
 
 ```python
@@ -1626,100 +1798,23 @@ uri: str
 
 URI where the file is stored (e.g. s3://...).
 
-DatasetCreateRequest
---------------------
-
-A data model representing the request body for creating a new dataset.
-
-### description
-
-```python
-description: str | None = None
-```
-
-Description of the dataset.
-
-### ds\_schema
-
-```python
-ds_schema: dict[str, Any] | None = None
-```
-
-Schema of the dataset.
-
-### file\_pointers
-
-```python
-file_pointers: list[str] | None = None
-```
-
-List of file pointers for the dataset files.
-
-### license
-
-```python
-license: str | None = None
-```
-
-License of the dataset.
-
-### name
-
-```python
-name: str
-```
-
-Name of the dataset.
-
-### org\_id
-
-```python
-org_id: UUID
-```
-
-Unique identifier for the organization owning the dataset.
-
-### tags
-
-```python
-tags: list[str] | None = None
-```
-
-Tags associated with the dataset.
-
-### version
-
-```python
-version: str | None = None
-```
-
-Version of the dataset.
-
-### workspace\_id
-
-```python
-workspace_id: UUID | None = None
-```
-
-Unique identifier for the workspace to create the dataset in.
-
 DatasetDownloadRequest
 ----------------------
 
 A data model representing the request body for downloading a dataset.
 
-### dataset\_id
+### dataset\_uri
 
 ```python
-dataset_id: UUID
+dataset_uri: str
 ```
 
-Unique identifier for the dataset to download.
+Name of the dataset to download.
 
 ### version
 
 ```python
-version: str | None = None
+version: str | None = 'latest'
 ```
 
 Version of the dataset to download. If None, the latest version is downloaded.
@@ -1729,10 +1824,10 @@ DatasetDownloadResponse
 
 A data model representing the response for downloading a dataset.
 
-### download\_url
+### download\_uri
 
 ```python
-download_url: str
+download_uri: str
 ```
 
 URL to download the dataset.
@@ -1821,6 +1916,214 @@ version: str | None = None
 ```
 
 Version of the dataset.
+
+DatasetUploadComplete
+---------------------
+
+A data model representing the request body for completing a dataset upload.
+
+### id
+
+```python
+id: str
+```
+
+Unique identifier for the dataset.
+
+### success
+
+```python
+success: bool
+```
+
+Status code indicating the result of the upload.
+
+DatasetUploadCompleteResponse
+-----------------------------
+
+A data model representing the response after completing a dataset upload.
+
+### status\_code
+
+```python
+status_code: int
+```
+
+HTTP status code of the upload completion request.
+
+DatasetUploadRequest
+--------------------
+
+A data model representing the request body for creating a new dataset.
+
+### created\_at
+
+```python
+created_at: str
+```
+
+Creation timestamp.
+
+### custom\_metadata
+
+```python
+custom_metadata: dict[str, str] | None
+```
+
+Custom metadata associated with the dataset.
+
+### ds\_schema
+
+```python
+ds_schema: dict | None
+```
+
+Schema of the dataset.
+
+### files
+
+```python
+files: list[str] | None
+```
+
+List of file pointers for the dataset files.
+
+### format
+
+```python
+format: str | None
+```
+
+Format of the dataset files.
+
+### id
+
+```python
+id: str | None
+```
+
+Unique identifier for the dataset.
+
+### license
+
+```python
+license: str | None
+```
+
+License of the dataset.
+
+### name
+
+```python
+name: str | None
+```
+
+Name of the dataset.
+
+### organization
+
+```python
+organization: str | None
+```
+
+Organization owning the dataset.
+
+### readme
+
+```python
+readme: str | None
+```
+
+README content for the dataset.
+
+### row\_count
+
+```python
+row_count: int | None
+```
+
+Total number of rows in the dataset.
+
+### size\_bytes
+
+```python
+size_bytes: int | None
+```
+
+Total size of the dataset in bytes.
+
+### tags
+
+```python
+tags: list[str] | None
+```
+
+Tags associated with the dataset.
+
+### updated\_at
+
+```python
+updated_at: str
+```
+
+Last update timestamp.
+
+### uri
+
+```python
+uri: str | None
+```
+
+URI where the dataset files are located.
+
+### version
+
+```python
+version: str | None
+```
+
+Version of the dataset.
+
+DatasetUploadResponse
+---------------------
+
+A data model representing the response after creating a new dataset.
+
+**Attributes:**
+
+* **`id`**
+  (`str`)
+  –Unique identifier for the dataset.
+* **`upload_uri`**
+  (`str`)
+  –URI to upload the dataset files.
+* **`status_code`**
+  (`int`)
+  –HTTP status code of the upload request.
+
+### id
+
+```python
+id: str
+```
+
+Unique identifier for the dataset.
+
+### status\_code
+
+```python
+status_code: int
+```
+
+HTTP status code of the upload request.
+
+### upload\_uri
+
+```python
+upload_uri: str
+```
+
+URI to upload the dataset files.
 
 Metric
 ------

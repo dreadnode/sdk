@@ -16,8 +16,12 @@ from ulid import ULID
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
     ContainerRegistryCredentials,
-    DatasetCreateRequest,
+    DatasetDownloadRequest,
+    DatasetDownloadResponse,
     DatasetMetadata,
+    DatasetUploadComplete,
+    DatasetUploadRequest,
+    DatasetUploadResponse,
     DeviceCodeResponse,
     ExportFormat,
     GithubTokenResponse,
@@ -899,27 +903,6 @@ class ApiClient:
         response = self.request("POST", "/workspaces", json_data=payload)
         return Workspace(**response.json())
 
-    # Dataset
-
-    def create_dataset(
-        self,
-        dataset: DatasetCreateRequest,
-    ) -> DatasetMetadata:
-        """
-        Creates a new dataset.
-
-        Args:
-            dataset (DatasetCreateRequest): The dataset creation request object.
-
-        Returns:
-            Dataset: The created Dataset object.
-        """
-
-        payload: dict[str, t.Any] = dataset.model_dump()
-
-        response = self.request("POST", "/datasets", json_data=payload)
-        return DatasetMetadata(**response.json())
-
     def delete_workspace(self, workspace_id: str | UUID) -> None:
         """
         Deletes a specific workspace.
@@ -929,3 +912,91 @@ class ApiClient:
         """
 
         self.request("DELETE", f"/workspaces/{workspace_id!s}")
+
+    # Datasets
+
+    def upload_dataset_request(
+        self,
+        request: DatasetUploadRequest,
+    ) -> DatasetUploadResponse:
+        """
+        Creates a new dataset.
+
+        Args:
+            request (DatasetUploadRequest): The dataset upload request object.
+
+        Returns:
+            DatasetUploadResponse: The dataset upload response object.
+        """
+
+        payload: dict[str, t.Any] = request.model_dump()
+
+        response = self.request("POST", "/datasets/upload", json_data=payload)
+
+        return DatasetUploadResponse.model_validate(response.json())
+
+    def upload_complete(self, request: DatasetUploadComplete) -> None:
+        """
+        Marks a dataset upload as complete.
+
+        Args:
+            request (DatasetUploadComplete): The dataset upload completion request object.
+        """
+
+        payload: dict[str, t.Any] = request
+
+        self.request("POST", "/datasets/upload/complete", json_data=payload)
+
+    def download_dataset(self, request: DatasetDownloadRequest) -> DatasetDownloadResponse:
+        """
+        Downloads the dataset content.
+
+        Args:
+            request (DatasetDownloadRequest): The dataset download request object.
+
+        Returns:
+            bytes: The dataset content as bytes.
+        """
+        response = self.request(
+            "GET",
+            f"/datasets/{request.dataset_uri}/download/?version={request.version}",
+        )
+
+        return DatasetDownloadResponse.model_validate(response.json())
+
+    def get_dataset(
+        self,
+        dataset_id_or_key: str | UUID,
+    ) -> DatasetMetadata:
+        """
+        Retrieves details of a specific dataset.
+
+        Args:
+            dataset_id_or_key (str | UUID): The dataset identifier.
+
+        Returns:
+            DatasetMetadata: The DatasetMetadata object.
+        """
+        response = self.request("GET", f"/datasets/{dataset_id_or_key}")
+        return DatasetMetadata(**response.json())
+
+    def update_dataset(
+        self,
+        dataset_id_or_key: str | UUID,
+        dataset: DatasetUploadRequest,
+    ) -> DatasetMetadata:
+        """
+        Updates an existing dataset.
+
+        Args:
+            dataset_id_or_key (str | UUID): The dataset identifier.
+            dataset (DatasetCreateRequest): The dataset update request object.
+
+        Returns:
+            DatasetMetadata: The updated DatasetMetadata object.
+        """
+
+        payload: dict[str, t.Any] = dataset.model_dump()
+
+        response = self.request("PUT", f"/datasets/{dataset_id_or_key}", json_data=payload)
+        return DatasetMetadata(**response.json())

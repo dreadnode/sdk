@@ -599,29 +599,81 @@ class PaginatedDatasets(BaseModel):
     """Indicates if there is a previous page available."""
 
 
-class DatasetCreateRequest(BaseModel):
+class DatasetUploadRequest(BaseModel):
     """
     A data model representing the request body for creating a new dataset.
     """
 
-    name: str
+    id: str | None
+    """Unique identifier for the dataset."""
+    name: str | None
     """Name of the dataset."""
-    org_id: UUID
-    """Unique identifier for the organization owning the dataset."""
-    workspace_id: UUID | None = None
-    """Unique identifier for the workspace to create the dataset in."""
-    description: str | None = None
-    """Description of the dataset."""
-    version: str | None = None
+    version: str | None
     """Version of the dataset."""
-    license: str | None = None
+    license: str | None
     """License of the dataset."""
-    tags: list[str] | None = None
+    organization: str | None
+    """Organization owning the dataset."""
+    tags: list[str] | None
     """Tags associated with the dataset."""
-    ds_schema: dict[str, t.Any] | None = None
+    uri: str | None
+    """URI where the dataset files are located."""
+    readme: str | None
+    """README content for the dataset."""
+    format: str | None
+    """Format of the dataset files."""
+    ds_schema: dict | None
     """Schema of the dataset."""
-    file_pointers: list[str] | None = None
+    files: list[str] | None
     """List of file pointers for the dataset files."""
+    size_bytes: int | None
+    """Total size of the dataset in bytes."""
+    row_count: int | None
+    """Total number of rows in the dataset."""
+    created_at: str
+    """Creation timestamp."""
+    updated_at: str
+    """Last update timestamp."""
+    custom_metadata: dict[str, str] | None
+    """Custom metadata associated with the dataset."""
+
+
+class DatasetUploadResponse(BaseModel):
+    """
+    A data model representing the response after creating a new dataset.
+
+    Attributes:
+        id (str): Unique identifier for the dataset.
+        upload_uri (str): URI to upload the dataset files.
+        status_code (int): HTTP status code of the upload request.
+    """
+
+    id: str
+    """Unique identifier for the dataset."""
+    upload_uri: str
+    """URI to upload the dataset files."""
+    status_code: int
+    """HTTP status code of the upload request."""
+
+
+class DatasetUploadComplete(BaseModel):
+    """
+    A data model representing the request body for completing a dataset upload.
+    """
+
+    id: str
+    """Unique identifier for the dataset."""
+    success: bool
+    """Status code indicating the result of the upload."""
+
+
+class DatasetUploadCompleteResponse(BaseModel):
+    """
+    A data model representing the response after completing a dataset upload.
+    """
+
+    status_code: int
+    """HTTP status code of the upload completion request."""
 
 
 class DatasetDownloadRequest(BaseModel):
@@ -629,9 +681,9 @@ class DatasetDownloadRequest(BaseModel):
     A data model representing the request body for downloading a dataset.
     """
 
-    dataset_id: UUID
-    """Unique identifier for the dataset to download."""
-    version: str | None = None
+    dataset_uri: str
+    """Name of the dataset to download."""
+    version: str | None = "latest"
     """Version of the dataset to download. If None, the latest version is downloaded."""
 
 
@@ -640,5 +692,5 @@ class DatasetDownloadResponse(BaseModel):
     A data model representing the response for downloading a dataset.
     """
 
-    download_url: str
+    download_uri: str
     """URL to download the dataset."""
