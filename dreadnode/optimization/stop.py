@@ -63,10 +63,11 @@ def score_value(
     """
 
     def stop(trials: list[Trial]) -> bool:  # noqa: PLR0911
-        if not trials:
+        finished_trials = [t for t in trials if t.status == "finished"]
+        if not finished_trials:
             return False
 
-        trial = trials[-1]
+        trial = finished_trials[-1]
         value_to_check = trial.scores.get(metric_name) if metric_name else trial.score
         if value_to_check is None:
             return False
