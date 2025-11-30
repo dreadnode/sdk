@@ -343,6 +343,7 @@ class Agent(Model):
         events: list[AgentEvent] = []
         stop_conditions = self.stop_conditions
         session_id = ULID()
+        from dreadnode import log_input, log_output, task_and_run
 
         logger.info(
             f"Starting Agent '{self.name}' ({session_id}): "
@@ -586,27 +587,37 @@ class Agent(Model):
 
                 # Generation
 
-                step_chat = await self._generate(messages)
-                if step_chat.failed and step_chat.error:
-                    async for event in _dispatch(
-                        AgentError(
-                            session_id=session_id,
-                            agent=self,
-                            thread=thread,
-                            messages=messages,
-                            events=events,
-                            error=t.cast("Exception", step_chat.error),
-                        )
-                    ):
-                        yield event
+                with task_and_run(
+                    name="LLM generation",
+                    tags=["generation"],
+                ):
+                    log_input("Generation input", messages[-1])
+                    step_chat = await self._generate(messages)
+                    if step_chat.failed and step_chat.error:
+                        async for event in _dispatch(
+                            AgentError(
+                                session_id=session_id,
+                                agent=self,
+                                thread=thread,
+                                messages=messages,
+                                events=events,
+                                error=t.cast("Exception", step_chat.error),
+                            )
+                        ):
+                            yield event
 
-                    error = t.cast("Exception", step_chat.error)  # Should be Exception in rigging
-                    break
+                        error = t.cast(
+                            "Exception", step_chat.error
+                        )  # Should be Exception in rigging
+                        break
+                    log_output("Generation output", step_chat.last)
 
-                # Sync extra fields to metadata for storage
-                step_chat.generated[-1].metadata.update(step_chat.extra)
+                    # Sync extra fields to metadata for storage
+                    step_chat.generated[-1].metadata.update(step_chat.extra)
 
-                messages.extend(step_chat.generated)
+                    messages.extend(step_chat.generated)
+
+                    log_output("Generation", list(messages[-2:]))
 
                 async for event in _dispatch(
                     GenerationEnd(
