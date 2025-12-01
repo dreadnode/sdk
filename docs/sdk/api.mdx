@@ -113,6 +113,53 @@ def __init__(
 
 </Accordion>
 
+### create\_dataset
+
+```python
+create_dataset(
+    request: DatasetUploadRequest,
+) -> DatasetUploadResponse
+```
+
+Creates a new dataset.
+
+**Parameters:**
+
+* **`request`**
+  (`DatasetUploadRequest`)
+  –The dataset upload request object.
+
+**Returns:**
+
+* **`DatasetUploadResponse`** ( `DatasetUploadResponse`
+  ) –The dataset upload response object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def create_dataset(
+    self,
+    request: DatasetUploadRequest,
+) -> DatasetUploadResponse:
+    """
+    Creates a new dataset.
+
+    Args:
+        request (DatasetUploadRequest): The dataset upload request object.
+
+    Returns:
+        DatasetUploadResponse: The dataset upload response object.
+    """
+
+    payload: dict[str, t.Any] = request.model_dump()
+
+    response = self.request("POST", "/datasets/upload", json_data=payload)
+
+    return DatasetUploadResponse.model_validate(response.json())
+```
+
+
+</Accordion>
+
 ### create\_project
 
 ```python
@@ -1593,53 +1640,6 @@ def upload_complete(self, request: DatasetUploadComplete) -> None:
 
 </Accordion>
 
-### upload\_dataset\_request
-
-```python
-upload_dataset_request(
-    request: DatasetUploadRequest,
-) -> DatasetUploadResponse
-```
-
-Creates a new dataset.
-
-**Parameters:**
-
-* **`request`**
-  (`DatasetUploadRequest`)
-  –The dataset upload request object.
-
-**Returns:**
-
-* **`DatasetUploadResponse`** ( `DatasetUploadResponse`
-  ) –The dataset upload response object.
-
-<Accordion title="Source code in dreadnode/api/client.py" icon="code">
-```python
-def upload_dataset_request(
-    self,
-    request: DatasetUploadRequest,
-) -> DatasetUploadResponse:
-    """
-    Creates a new dataset.
-
-    Args:
-        request (DatasetUploadRequest): The dataset upload request object.
-
-    Returns:
-        DatasetUploadResponse: The dataset upload response object.
-    """
-
-    payload: dict[str, t.Any] = request.model_dump()
-
-    response = self.request("POST", "/datasets/upload", json_data=payload)
-
-    return DatasetUploadResponse.model_validate(response.json())
-```
-
-
-</Accordion>
-
 ### url\_for\_user\_code
 
 ```python
@@ -1956,46 +1956,6 @@ DatasetUploadRequest
 
 A data model representing the request body for creating a new dataset.
 
-### created\_at
-
-```python
-created_at: str
-```
-
-Creation timestamp.
-
-### custom\_metadata
-
-```python
-custom_metadata: dict[str, str] | None
-```
-
-Custom metadata associated with the dataset.
-
-### ds\_schema
-
-```python
-ds_schema: dict | None
-```
-
-Schema of the dataset.
-
-### files
-
-```python
-files: list[str] | None
-```
-
-List of file pointers for the dataset files.
-
-### format
-
-```python
-format: str | None
-```
-
-Format of the dataset files.
-
 ### id
 
 ```python
@@ -2004,13 +1964,13 @@ id: str | None
 
 Unique identifier for the dataset.
 
-### license
+### manifest
 
 ```python
-license: str | None
+manifest: dict[str, Any] | None = None
 ```
 
-License of the dataset.
+Manifest of the dataset.
 
 ### name
 
@@ -2019,70 +1979,6 @@ name: str | None
 ```
 
 Name of the dataset.
-
-### organization
-
-```python
-organization: str | None
-```
-
-Organization owning the dataset.
-
-### readme
-
-```python
-readme: str | None
-```
-
-README content for the dataset.
-
-### row\_count
-
-```python
-row_count: int | None
-```
-
-Total number of rows in the dataset.
-
-### size\_bytes
-
-```python
-size_bytes: int | None
-```
-
-Total size of the dataset in bytes.
-
-### tags
-
-```python
-tags: list[str] | None
-```
-
-Tags associated with the dataset.
-
-### updated\_at
-
-```python
-updated_at: str
-```
-
-Last update timestamp.
-
-### uri
-
-```python
-uri: str | None
-```
-
-URI where the dataset files are located.
-
-### version
-
-```python
-version: str | None
-```
-
-Version of the dataset.
 
 DatasetUploadResponse
 ---------------------
@@ -2387,67 +2283,6 @@ updated_at: datetime
 ```
 
 Last update timestamp.
-
-PaginatedDatasets
------------------
-
-A data model representing a paginated list of datasets.
-
-### datasets
-
-```python
-datasets: list[DatasetMetadata]
-```
-
-List of dataset metadata objects.
-
-### has\_next
-
-```python
-has_next: bool
-```
-
-Indicates if there is a next page available.
-
-### has\_previous
-
-```python
-has_previous: bool
-```
-
-Indicates if there is a previous page available.
-
-### limit
-
-```python
-limit: int
-```
-
-Number of datasets per page.
-
-### page
-
-```python
-page: int
-```
-
-Current page number.
-
-### total
-
-```python
-total: int
-```
-
-Total number of datasets available.
-
-### total\_pages
-
-```python
-total_pages: int
-```
-
-Total number of pages available.
 
 PaginatedWorkspaces
 -------------------

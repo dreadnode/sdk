@@ -584,7 +584,7 @@ def initialize(self) -> None:
     )
     self._logfire.config.ignore_no_config = True
 
-    self._fs_manager = FilesystemManager().configure(
+    self._fs_manager = DatasetManager().configure(
         api=self._api,  # type: ignore[return-value]
         organization=self._organization.key,
     )

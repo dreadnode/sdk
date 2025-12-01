@@ -50,7 +50,7 @@ class VersionInfo(BaseModel):
 
 
 class DatasetMetadata(BaseModel):
-    id: str | None = Field(default=uuid.uuid4().hex)
+    id: str = Field(default=uuid.uuid4().hex)
     organization: str | None = None
     uri: str | None = None
     name: str | None = Field(default=coolname.generate_slug(2))

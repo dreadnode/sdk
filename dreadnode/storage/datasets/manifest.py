@@ -9,7 +9,7 @@ from pyarrow.fs import FileSelector, FileSystem, FileType
 from pydantic import BaseModel, Field
 from tqdm import tqdm
 
-from dreadnode.constants import CHUNK_SIZE, MANIFEST_FILE
+from dreadnode.constants import MANIFEST_FILE
 from dreadnode.logging_ import console as logging_console
 
 
@@ -129,14 +129,10 @@ def compute_file_hash(
     file_path: str,
     fs: FileSystem,
     algorithm: str = "sha256",
-    chunk_size: int = CHUNK_SIZE,
 ) -> str:
-    hasher = hashlib.new(algorithm)
     try:
         with fs.open_input_stream(file_path) as f:
-            while chunk := f.read(chunk_size):
-                hasher.update(chunk)
-        return hasher.hexdigest()
+            return hashlib.file_digest(f, algorithm)
     except Exception as e:
         logging_console.print(f"Failed to hash {file_path}: {e}")
         return ""

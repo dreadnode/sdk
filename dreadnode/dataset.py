@@ -26,7 +26,7 @@ class Dataset:
     def __init__(
         self,
         ds: ds.Dataset,
-        metadata: DatasetMetadata | None = None,
+        metadata: DatasetMetadata,
         manifest: DatasetManifest | None = None,
         *,
         materialize: bool = True,
@@ -179,7 +179,7 @@ def load_dataset(
     *,
     materialize: bool = True,
     fsm: DatasetManager,
-    **kwargs,
+    **kwargs: dict,
 ) -> Dataset:
     """
     Loads a dataset from the given URI.
@@ -259,6 +259,12 @@ def load_dataset(
         info = fs.get_file_info(f"{fs_path}/{MANIFEST_FILE}")
         if info.is_file:
             manifest = DatasetManifest.load(path=f"{fs_path}/{MANIFEST_FILE}", fs=fs)
+
+            # validate manifest
+            is_valid = manifest.validate(fs_path, fs)
+            if not is_valid:
+                # invalid manifest, sync from remote
+                print("[!] Remote dataset manifest validation failed.")
 
         # load dataset
         dataset = ds.dataset(f"{fs_path}/data", format=format, filesystem=fs, **kwargs)

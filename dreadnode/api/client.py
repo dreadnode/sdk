@@ -915,7 +915,7 @@ class ApiClient:
 
     # Datasets
 
-    def upload_dataset_request(
+    def create_dataset(
         self,
         request: DatasetUploadRequest,
     ) -> DatasetUploadResponse:

@@ -578,27 +578,6 @@ class DatasetMetadata(BaseModel):
     """List of file pointers for the dataset files."""
 
 
-class PaginatedDatasets(BaseModel):
-    """
-    A data model representing a paginated list of datasets.
-    """
-
-    datasets: list[DatasetMetadata]
-    """List of dataset metadata objects."""
-    total: int
-    """Total number of datasets available."""
-    page: int
-    """Current page number."""
-    limit: int
-    """Number of datasets per page."""
-    total_pages: int
-    """Total number of pages available."""
-    has_next: bool
-    """Indicates if there is a next page available."""
-    has_previous: bool
-    """Indicates if there is a previous page available."""
-
-
 class DatasetUploadRequest(BaseModel):
     """
     A data model representing the request body for creating a new dataset.
@@ -608,34 +587,8 @@ class DatasetUploadRequest(BaseModel):
     """Unique identifier for the dataset."""
     name: str | None
     """Name of the dataset."""
-    version: str | None
-    """Version of the dataset."""
-    license: str | None
-    """License of the dataset."""
-    organization: str | None
-    """Organization owning the dataset."""
-    tags: list[str] | None
-    """Tags associated with the dataset."""
-    uri: str | None
-    """URI where the dataset files are located."""
-    readme: str | None
-    """README content for the dataset."""
-    format: str | None
-    """Format of the dataset files."""
-    ds_schema: dict | None
-    """Schema of the dataset."""
-    files: list[str] | None
-    """List of file pointers for the dataset files."""
-    size_bytes: int | None
-    """Total size of the dataset in bytes."""
-    row_count: int | None
-    """Total number of rows in the dataset."""
-    created_at: str
-    """Creation timestamp."""
-    updated_at: str
-    """Last update timestamp."""
-    custom_metadata: dict[str, str] | None
-    """Custom metadata associated with the dataset."""
+    manifest: dict[str, t.Any] | None = None
+    """Manifest of the dataset."""
 
 
 class DatasetUploadResponse(BaseModel):

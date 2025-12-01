@@ -26,7 +26,14 @@ from dreadnode.util import resolve_endpoint
 
 class DatasetManager:
     """
-    DatasetManager manager that manages dataset storage and retrieval.
+    DatasetManager manages dataset storage and retrieval for remote and local files.
+
+    It is responsible for:
+    - Caching datasets locally
+    - Interfacing with remote storage (e.g., S3)
+    - Making sure paths are resolved correctly and the correct filesystem is used
+    - Handling authentication for remote storage access
+    - Communicating with the Dreadnode API for dataset uploads/downloads
     """
 
     organization: str | None = None
