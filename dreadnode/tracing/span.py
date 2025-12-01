@@ -219,7 +219,7 @@ class Span(ReadableSpan):
     def exception(self) -> BaseException | None:
         """Get the exception recorded in the span, if any."""
         return self._exception
-    
+
     @property
     def duration(self) -> float:
         """Get the duration of the span in seconds."""
