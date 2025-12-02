@@ -88,3 +88,5 @@ CRESCENDO_VARIANT_5 = CRESCENDO_VARIANTS_PATH / "variant_5.yaml"
 ADVERSARIAL_BENCHMARK_DATASET_PATH = (
     pathlib.Path(__file__).parent / "data" / "assets" / "adversarial_benchmark_subset.csv"
 )
+
+ASSETS_PATH = pathlib.Path(__file__).parent / "data" / "assets"
