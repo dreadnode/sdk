@@ -225,8 +225,10 @@ class Span(ReadableSpan):
         """Get the duration of the span in seconds."""
         if self._span is None:
             return 0.0
-        end_time = self.end_time or time.time()
-        return (end_time - self.start_time) if self.start_time else 0.0
+        end_time = self.end_time or time.time_ns()
+        if not self.start_time:
+            return 0.0
+        return (end_time - self.start_time) / 1e9
 
     def set_tags(self, tags: t.Sequence[str]) -> None:
         tags = [tags] if isinstance(tags, str) else list(tags)
