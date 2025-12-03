@@ -1,6 +1,7 @@
 import contextlib
 import contextvars
 from enum import Enum
+from functools import wraps
 import inspect
 import itertools
 import json
@@ -85,24 +86,33 @@ class EvalFixtureType(str, Enum):
 class EvalFixture:
     """ """
 
-    def __init__(self, fixture_type: EvalFixtureType, fixture: t.Callable, priority: int = 10):
+    def __init__(self, fixture: t.Callable, fixture_type: EvalFixtureType, priority: int = 10, *args, **kwargs):
         self.fixture_type = fixture_type
         self.fixture = fixture
         self.priority = min(abs(priority), 10)
+        self.args = args
+        self.kwargs = kwargs
         self.__name__ = fixture.__name__
         self.__doc__ = fixture.__doc__
 
-    async def __call__(self, *args, **kwargs):
-        return await self.fixture(*args, **kwargs)
+    async def __call__(self):
+        return await self.fixture(*self.args, **self.kwargs)
 
     def __repr__(self):
         return f"EvalFixture(func={self.fixture.__name__}, type={self.fixture_type})"
 
 
 def eval_fixture(fixture_type: str, priority: int = 10):
-    """ """
     def decorator(func):
-        return EvalFixture(fixture=func, fixture_type=fixture_type, priority=priority)
+        @wraps(func)
+        def wrapper(**kwargs):
+            return EvalFixture(
+                fixture=func,
+                fixture_type=fixture_type,
+                priority=priority,
+                **kwargs
+            )
+        return wrapper
     return decorator
 
 
@@ -533,6 +543,8 @@ class Eval(Model, t.Generic[In, Out]):
                     yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
                     scenario_result.iterations.append(iteration_result)
 
+                    await self._run_fixtures(EvalFixtureType.AFTER_ITERATION)
+
                 logger.info(
                     f"Finished scenario: pass_rate={scenario_result.pass_rate:.2%}, "
                     f"passed={scenario_result.passed_count}, failed={scenario_result.failed_count}, "
@@ -542,7 +554,7 @@ class Eval(Model, t.Generic[In, Out]):
                 yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
 
-                await self._run_fixtures(EvalFixtureType.AFTER_ITERATION)
+                await self._run_fixtures(EvalFixtureType.AFTER_SCENARIO)
 
         eval_result.stop_reason = "finished"
 
