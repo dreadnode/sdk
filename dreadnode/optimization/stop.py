@@ -63,7 +63,8 @@ def score_value(
     """
 
     def stop(trials: list[Trial]) -> bool:  # noqa: PLR0911
-        if not trials:
+        finished_trials = [t for t in trials if t.status == "finished"]
+        if not finished_trials:
             return False
 
         finished_trials = [t for t in trials if t.status == "finished"]
