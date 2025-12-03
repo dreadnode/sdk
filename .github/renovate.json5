@@ -38,7 +38,7 @@
     {
       matchManagers: ["poetry", "pip_requirements"],
       matchDepTypes: ["python"],
-      allowedVersions: "^3.8",
+      allowedVersions: "<=3.13",
       enabled: true,
     },
     {
@@ -47,6 +47,13 @@
       automerge: true,
       automergeType: "pr",
     },
+    {
+      description: "Auto merge GitHub Actions",
+      matchManagers: ["github-actions"],
+      matchUpdateTypes: ["minor", "patch", "pin", "digest"],
+      automerge: true,
+      automergeType: "pr",
+    }
   ],
   ignorePaths: [],
 }
