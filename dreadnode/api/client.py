@@ -294,7 +294,7 @@ class ApiClient:
         """Retrieves details of a specific project.
 
         Args:
-            project_identifier (str | UUID): The project identifier. ID, name, or slug.
+            project_identifier (str | UUID): The project identifier. ID or key.
 
         Returns:
             Project: The Project object.
@@ -308,7 +308,8 @@ class ApiClient:
 
     def create_project(
         self,
-        name: str | UUID | None = None,
+        name: str,
+        key: str,
         workspace_id: UUID | None = None,
         organization_id: UUID | None = None,
     ) -> Project:
@@ -323,8 +324,8 @@ class ApiClient:
             Project: The created Project object.
         """
         payload: dict[str, t.Any] = {}
-        if name is not None:
-            payload["name"] = name
+        payload["name"] = name
+        payload["key"] = key
         if workspace_id is not None:
             payload["workspace_id"] = str(workspace_id)
         if organization_id is not None:
@@ -759,14 +760,17 @@ class ApiClient:
 
     # User data access
 
-    def get_user_data_credentials(self) -> UserDataCredentials:
+    def get_user_data_credentials(
+        self, organization_id: UUID, workspace_id: UUID
+    ) -> UserDataCredentials:
         """
         Retrieves user data credentials for secondary storage access.
 
         Returns:
             The user data credentials object.
         """
-        response = self._request("GET", "/user-data/credentials")
+        params = {"org_id": str(organization_id), "workspace_id": str(workspace_id)}
+        response = self._request("GET", "/user-data/credentials", params=params)
         return UserDataCredentials(**response.json())
 
     # Container registry access
