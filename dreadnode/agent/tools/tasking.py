@@ -1,7 +1,9 @@
 from loguru import logger
+from pydantic import PrivateAttr
+import typing as t
 
 from dreadnode.agent.reactions import Fail, Finish
-from dreadnode.agent.tools.base import tool
+from dreadnode.agent.tools.base import tool, Toolset, tool_method
 
 
 @tool
@@ -56,3 +58,28 @@ async def give_up_on_task(reason: str) -> None:
     log_metric("task_give_up", 1)
 
     raise Fail("Agent gave up on the task.")
+
+
+class TaskOutput(Toolset):
+    """
+    Provides a stateful output buffer for accumulating task results.
+
+    This toolset allows the agent to incrementally build up output across multiple
+    steps and tool calls, storing strings that can be retrieved later.
+    """
+
+    _outputs: list[str] = PrivateAttr(default_factory=list)
+
+    @tool_method(catch=True, variants=["all"])
+    async def output(
+        self,
+        content: t.Annotated[str, "The content to add to the output buffer."],
+    ) -> str:
+        """Adds content to the output buffer."""
+        self._outputs.append(content)
+        return f"Output saved (total outputs: {len(self._outputs)})"
+
+    @tool_method(catch=True, variants=["all"])
+    async def get_output(self) -> list[str]:
+        """Lists all previously saved outputs in order."""
+        return self._outputs
