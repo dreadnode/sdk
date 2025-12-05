@@ -74,6 +74,16 @@ description: str = Config(default='')
 
 A brief description of the eval's purpose.
 
+### hooks
+
+```python
+hooks: list[EvalHook] = Field(
+    default_factory=list, exclude=True, repr=False
+)
+```
+
+Hooks to run at various points in the evaluation lifecycle.
+
 ### iterations
 
 ```python
@@ -319,6 +329,37 @@ SampleComplete(
 ```
 
 Signals that a single sample has completed processing.
+
+SamplePostProcess
+-----------------
+
+```python
+SamplePostProcess(
+    eval: Eval[In, Out],
+    run_id: str,
+    index: int,
+    output: Out | None,
+    error: Exception | None,
+)
+```
+
+Event after sample processing (hook point for output transforms).
+
+SamplePreProcess
+----------------
+
+```python
+SamplePreProcess(
+    eval: Eval[In, Out],
+    run_id: str,
+    index: int,
+    dataset_row: dict[str, Any],
+    task_kwargs: dict[str, Any],
+    original_input: In,
+)
+```
+
+Event before sample processing (hook point for input transforms).
 
 ScenarioEnd
 -----------
@@ -749,6 +790,14 @@ task: TaskSpan[Out] | None = Field(default=None, repr=False)
 ```
 
 Associated task span.
+
+### transformed\_input
+
+```python
+transformed_input: In | None = None
+```
+
+The input after transforms were applied (if any).
 
 ### get\_average\_metric\_value
 

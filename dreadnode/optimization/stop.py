@@ -67,19 +67,23 @@ def score_value(
         if not finished_trials:
             return False
 
-        trial = finished_trials[-1]
-        value_to_check = trial.scores.get(metric_name) if metric_name else trial.score
-        if value_to_check is None:
-            return False
+        finished_trials = [t for t in trials if t.status == "finished"]
 
-        if gt is not None and value_to_check > gt:
-            return True
-        if gte is not None and value_to_check >= gte:
-            return True
-        if lt is not None and value_to_check < lt:
-            return True
-        if lte is not None and value_to_check <= lte:  # noqa: SIM103
-            return True
+        if not finished_trials:
+            return False
+        for trial in finished_trials:
+            value_to_check = trial.scores.get(metric_name) if metric_name else trial.score
+            if value_to_check is None:
+                continue
+
+            if gt is not None and value_to_check > gt:
+                return True
+            if gte is not None and value_to_check >= gte:
+                return True
+            if lt is not None and value_to_check < lt:
+                return True
+            if lte is not None and value_to_check <= lte:
+                return True
 
         return False
 
