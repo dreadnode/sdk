@@ -38,6 +38,7 @@ from dreadnode.common_types import (
 )
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
+    DEFAULT_PROJECT_KEY,
     DEFAULT_PROJECT_NAME,
     DEFAULT_SERVER_URL,
     ENV_API_KEY,
@@ -254,7 +255,7 @@ class Dreadnode:
 
             if len(organizations) > 1:
                 # We should not presume to choose an organization
-                org_list = "\t\n".join([f"- {o.name}" for o in organizations])
+                org_list = "\t\n".join([f"- {o.key}" for o in organizations])
                 raise RuntimeError(
                     f"You are part of multiple organizations. Please specify an organization from:\n{org_list}"
                 )
@@ -360,8 +361,8 @@ class Dreadnode:
         """
         Resolve the project to use based on configuration.
 
-        If a project is specified by name and doesn't exist, it will be created.
-        If no project is specified, it will use or create one named 'default'.
+        If a project is specified by key and doesn't exist, it will be created.
+        If no project is specified, it will use or create one with key 'default'.
 
         Raises:
             RuntimeError: If the API client is not initialized.
@@ -378,7 +379,7 @@ class Dreadnode:
         found_project: Project | None = None
         try:
             found_project = self._api.get_project(
-                project_identifier=self.project or DEFAULT_PROJECT_NAME,
+                project_identifier=self.project or DEFAULT_PROJECT_KEY,
                 workspace_id=self._workspace.id,
             )
         except RuntimeError as e:
@@ -391,6 +392,7 @@ class Dreadnode:
             # create it in the workspace
             found_project = self._api.create_project(
                 name=self.project or DEFAULT_PROJECT_NAME,
+                key=self.project or DEFAULT_PROJECT_KEY,
                 workspace_id=self._workspace.id,
             )
         # This is what's used in all of the Traces/Spans/Runs
@@ -701,8 +703,11 @@ class Dreadnode:
             if self._api is not None:
                 api = self._api
                 self._credential_manager = CredentialManager(
-                    credential_fetcher=lambda: api.get_user_data_credentials()
+                    credential_fetcher=lambda: api.get_user_data_credentials(
+                        organization_id=self._organization.id, workspace_id=self._workspace.id
+                    )
                 )
+
                 self._credential_manager.initialize()
 
                 self._fs = self._credential_manager.get_filesystem()
@@ -725,6 +730,7 @@ class Dreadnode:
         self._fs_manager = DatasetManager().configure(
             api=self._api,  # type: ignore[return-value]
             organization=self._organization.key,
+            organization_id=self._organization.id,
         )
 
         self._initialized = True
@@ -1330,24 +1336,39 @@ class Dreadnode:
             fsm=self._fs_manager,
         )
 
-    def save_dataset(
+    def save_dataset_to_disk(
         self,
         ds: dataset.Dataset,
-        *,
-        to_cache: bool = False,
-    ) -> str:
+    ) -> None:
         """
-        Save a dataset to the local cache and optionally to the Dreadnode server.
+        Save a dataset to the local cache.
 
         Example:
             ```
-            uri = dreadnode.save_dataset(my_dataset)
+            dreadnode.save_dataset_to_disk(my_dataset)
             ```
         """
 
-        dataset.save_dataset(
+        dataset.save_dataset_to_disk(
             dataset=ds,
-            to_cache=to_cache,
+            fsm=self._fs_manager,
+        )
+
+    def push_dataset(
+        self,
+        ds: dataset.Dataset,
+    ) -> None:
+        """
+        Push a dataset to the Dreadnode server.
+
+        Example:
+            ```
+            dreadnode.push_dataset(my_dataset)
+            ```
+        """
+
+        dataset.push_dataset(
+            dataset=ds,
             fsm=self._fs_manager,
         )
 

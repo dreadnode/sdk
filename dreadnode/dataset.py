@@ -8,6 +8,7 @@ from fsspec.utils import get_protocol
 from pyarrow.fs import FileSystem
 
 from dreadnode.constants import MANIFEST_FILE, METADATA_FILE
+from dreadnode.logging_ import print_info
 from dreadnode.storage.datasets.manager import DatasetManager
 from dreadnode.storage.datasets.manifest import DatasetManifest, create_manifest
 from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
@@ -39,7 +40,7 @@ class Dataset:
             self.ds = ds.to_table()
 
         if not metadata:
-            print("[*] No metadata provided, check your dataset!")
+            print_info("[*] No metadata provided, check your dataset!")
 
     def update_metadata(self, metadata: DatasetMetadata) -> None:
         self.metadata = metadata
@@ -110,7 +111,7 @@ class Dataset:
         path: str,
         fs: FileSystem,
         *,
-        to_cache: bool = False,
+        create_dir: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -123,53 +124,118 @@ class Dataset:
             format="parquet",
             filesystem=fs,
             existing_data_behavior="overwrite_or_ignore",
-            create_dir=to_cache,
+            create_dir=create_dir,
             **kwargs,
         )
 
 
-def save_dataset(
+def _persist_dataset(
     dataset: Dataset,
+    path_str: str,
     *,
-    to_cache: bool = False,
+    create_dir: bool = False,
     fsm: DatasetManager,
     **kwargs: Any,
 ) -> None:
-    if to_cache:
-        path_str = fsm.get_cache_save_uri(metadata=dataset.metadata)
-        print("[*] Saving dataset to local cache")
-    else:
-        path_str = fsm.get_remote_save_uri(metadata=dataset.metadata)
-        print("[*] Saving dataset to remote storage")
+    """Persists a dataset to the given path.
 
+    Args:
+        dataset: The Dataset to persist.
+        path_str: The path to persist the dataset to.
+        create_dir: Whether to create the directory if it doesn't exist. Defaults to False.
+        fsm: The DatasetManager instance.
+        kwargs: Additional arguments to pass to pyarrow.dataset.write_dataset.
+    """
     fs, base_path = fsm.get_fs_and_path(path_str)
 
-    try:
-        fsm.ensure_dir(fs, base_path)
+    fsm.ensure_dir(fs, base_path)
+    data_path = f"{base_path}/data"
+    fsm.ensure_dir(fs, data_path)
 
-        dataset.save_dataset(path=f"{base_path}/data", fs=fs, to_cache=to_cache, **kwargs)
+    dataset.save_dataset(path=data_path, fs=fs, create_dir=create_dir, **kwargs)
 
-        dataset.save_metadata(path=f"{base_path}/{METADATA_FILE}", fs=fs)
+    dataset.save_metadata(path=f"{base_path}/{METADATA_FILE}", fs=fs)
 
-        manifest = create_manifest(
-            path=base_path,
-            version=dataset.metadata.version,
-            previous_manifest=dataset.manifest if dataset.manifest else None,
-            fs=fs,
+    manifest = create_manifest(
+        path=base_path,
+        version=dataset.metadata.version,
+        previous_manifest=dataset.manifest if dataset.manifest else None,
+        fs=fs,
+    )
+    manifest.save(f"{base_path}/{MANIFEST_FILE}", fs=fs)
+
+    print_info("[+] Saved dataset successfully")
+
+
+def save_dataset_to_disk(
+    dataset: Dataset,
+    *,
+    fsm: DatasetManager,
+    **kwargs: Any,
+) -> None:
+    """Saves a dataset to local disk cache.
+
+    Args:
+        dataset: The Dataset to save.
+        fsm: The DatasetManager instance.
+        kwargs: Additional arguments to pass to pyarrow.dataset.write_dataset.
+
+    Returns:
+        None
+
+    """
+    path_str = fsm.get_cache_save_uri(metadata=dataset.metadata)
+    print_info("[*] Saving dataset to local cache")
+
+    _persist_dataset(
+        dataset=dataset,
+        path_str=path_str,
+        create_dir=True,
+        fsm=fsm,
+        **kwargs,
+    )
+
+
+def push_dataset(
+    dataset: Dataset,
+    *,
+    to_cache: bool = True,
+    fsm: DatasetManager,
+    **kwargs: Any,
+) -> None:
+    """Pushes a dataset to remote storage.
+
+    Args:
+        dataset: The Dataset to push.
+        to_cache: Whether to save to local cache first. Defaults to True.
+        fsm: The DatasetManager instance.
+        kwargs: Additional arguments to pass to pyarrow.dataset.write_dataset.
+
+    Returns:
+        None
+    """
+    if to_cache:
+        save_dataset_to_disk(
+            dataset=dataset,
+            fsm=fsm,
+            **kwargs,
         )
-        manifest.save(f"{base_path}/{MANIFEST_FILE}", fs=fs)
-    except Exception as e:
-        # if remote save failed, notify API
-        if not to_cache:
-            fsm.remote_save_complete(success=False, dataset_id=dataset.metadata.id)
-        print(f"[!] Failed to save dataset: {e}")
+
+    dataset_id, path_str = fsm.get_remote_save_uri(metadata=dataset.metadata)
+    dataset.metadata.id = dataset_id
+    print_info("[*] Saving dataset to remote storage")
+    try:
+        _persist_dataset(
+            dataset=dataset,
+            path_str=path_str,
+            fsm=fsm,
+            **kwargs,
+        )
+        fsm.remote_save_complete(complete=True, dataset_id=dataset.metadata.id)
+    except Exception:
+        # if remote save failed, remove the record from API
+        fsm.delete_remote_dataset_record(dataset_id_or_key=dataset.metadata.id)
         raise
-
-    # if remote save succeeded, notify API
-    if not to_cache:
-        fsm.remote_save_complete(success=True, dataset_id=dataset.metadata.id)
-
-    print("[+] Saved dataset successfully")
 
 
 def load_dataset(
@@ -203,7 +269,7 @@ def load_dataset(
     if protocol in ("file", "local", ""):
         # check cache first
         if not fsm.check_cache(uri, version):
-            print("[+] Dataset not found in cache. Loading dataset from local path...")
+            print_info("[+] Dataset not found in cache. Loading dataset from local path...")
 
             # load directly from local path
             fs, fs_path = fsm.get_fs_and_path(uri)
@@ -220,7 +286,7 @@ def load_dataset(
             return Dataset(ds=dataset, metadata=metadata, materialize=materialize)
 
         # if in cache, load from cache
-        print("[+] Loading dataset from cache...")
+        print_info("[+] Loading dataset from cache...")
 
         # get the filesystem and path
         fs, fs_path = fsm.get_fs_and_path(uri)
@@ -242,7 +308,7 @@ def load_dataset(
         return Dataset(ds=dataset, materialize=materialize, metadata=metadata, manifest=manifest)
 
     # if not local path, and not in cache, load from remote
-    print("[+] Loading from remote storage...")
+    print_info("[+] Loading from remote storage...")
     try:
         # get remote URI
         remote_uri = fsm.get_remote_load_uri(uri=strip_protocol(uri), version=version)
@@ -264,13 +330,13 @@ def load_dataset(
             is_valid = manifest.validate(fs_path, fs)
             if not is_valid:
                 # invalid manifest, sync from remote
-                print("[!] Remote dataset manifest validation failed.")
+                print_info("[!] Remote dataset manifest validation failed.")
 
         # load dataset
         dataset = ds.dataset(f"{fs_path}/data", format=format, filesystem=fs, **kwargs)
 
         return Dataset(ds=dataset, metadata=metadata, manifest=manifest, materialize=materialize)
     except Exception as e:
-        print(f"[!] Failed to load dataset from remote: {e}")
+        print_info(f"[!] Failed to load dataset from remote: {e}")
 
     raise FileNotFoundError(f"[!] Dataset not found: {uri}")

@@ -164,7 +164,8 @@ def create_dataset(
 
 ```python
 create_project(
-    name: str | UUID | None = None,
+    name: str,
+    key: str,
     workspace_id: UUID | None = None,
     organization_id: UUID | None = None,
 ) -> Project
@@ -175,9 +176,7 @@ Creates a new project.
 **Parameters:**
 
 * **`name`**
-  (`str | UUID | None`, default:
-  `None`
-  )
+  (`str`)
   –The name of the project. If None, a default name will be used.
 * **`workspace_id`**
   (`UUID | None`, default:
@@ -199,7 +198,8 @@ Creates a new project.
 ```python
 def create_project(
     self,
-    name: str | UUID | None = None,
+    name: str,
+    key: str,
     workspace_id: UUID | None = None,
     organization_id: UUID | None = None,
 ) -> Project:
@@ -214,8 +214,8 @@ def create_project(
         Project: The created Project object.
     """
     payload: dict[str, t.Any] = {}
-    if name is not None:
-        payload["name"] = name
+    payload["name"] = name
+    payload["key"] = key
     if workspace_id is not None:
         payload["workspace_id"] = str(workspace_id)
     if organization_id is not None:
@@ -995,7 +995,7 @@ Retrieves details of a specific project.
 
 * **`project_identifier`**
   (`str | UUID`)
-  –The project identifier. ID, name, or slug.
+  –The project identifier. ID or key.
 
 **Returns:**
 
@@ -1008,7 +1008,7 @@ def get_project(self, project_identifier: str | UUID, workspace_id: UUID) -> Pro
     """Retrieves details of a specific project.
 
     Args:
-        project_identifier (str | UUID): The project identifier. ID, name, or slug.
+        project_identifier (str | UUID): The project identifier. ID or key.
 
     Returns:
         Project: The Project object.
