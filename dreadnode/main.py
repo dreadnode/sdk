@@ -255,7 +255,7 @@ class Dreadnode:
 
             if len(organizations) > 1:
                 # We should not presume to choose an organization
-                org_list = "\t\n".join([f"- {o.name}" for o in organizations])
+                org_list = "\t\n".join([f"- {o.key}" for o in organizations])
                 raise RuntimeError(
                     f"You are part of multiple organizations. Please specify an organization from:\n{org_list}"
                 )
@@ -704,7 +704,7 @@ class Dreadnode:
                 api = self._api
                 self._credential_manager = CredentialManager(
                     credential_fetcher=lambda: api.get_user_data_credentials(
-                        self._organization.id, self._workspace.id
+                        organization_id=self._organization.id, workspace_id=self._workspace.id
                     )
                 )
 
@@ -730,6 +730,7 @@ class Dreadnode:
         self._fs_manager = DatasetManager().configure(
             api=self._api,  # type: ignore[return-value]
             organization=self._organization.key,
+            organization_id=self._organization.id,
         )
 
         self._initialized = True
@@ -1335,24 +1336,39 @@ class Dreadnode:
             fsm=self._fs_manager,
         )
 
-    def save_dataset(
+    def save_dataset_to_disk(
         self,
         ds: dataset.Dataset,
-        *,
-        to_cache: bool = False,
-    ) -> str:
+    ) -> None:
         """
-        Save a dataset to the local cache and optionally to the Dreadnode server.
+        Save a dataset to the local cache.
 
         Example:
             ```
-            uri = dreadnode.save_dataset(my_dataset)
+            dreadnode.save_dataset_to_disk(my_dataset)
             ```
         """
 
-        dataset.save_dataset(
+        dataset.save_dataset_to_disk(
             dataset=ds,
-            to_cache=to_cache,
+            fsm=self._fs_manager,
+        )
+
+    def push_dataset(
+        self,
+        ds: dataset.Dataset,
+    ) -> None:
+        """
+        Push a dataset to the Dreadnode server.
+
+        Example:
+            ```
+            dreadnode.push_dataset(my_dataset)
+            ```
+        """
+
+        dataset.push_dataset(
+            dataset=ds,
             fsm=self._fs_manager,
         )
 

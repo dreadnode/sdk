@@ -132,7 +132,8 @@ def compute_file_hash(
 ) -> str:
     try:
         with fs.open_input_stream(file_path) as f:
-            return hashlib.file_digest(f, algorithm)
+            digest = hashlib.file_digest(f, algorithm)
+        return digest.hexdigest()
     except Exception as e:
         logging_console.print(f"Failed to hash {file_path}: {e}")
         return ""

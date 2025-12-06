@@ -16,12 +16,12 @@ from ulid import ULID
 from dreadnode.api.models import (
     AccessRefreshTokenResponse,
     ContainerRegistryCredentials,
+    CreateDatasetRequest,
+    CreateDatasetResponse,
     DatasetDownloadRequest,
     DatasetDownloadResponse,
     DatasetMetadata,
-    DatasetUploadComplete,
-    DatasetUploadRequest,
-    DatasetUploadResponse,
+    DatasetUploadCompleteRequest,
     DeviceCodeResponse,
     ExportFormat,
     GithubTokenResponse,
@@ -761,7 +761,10 @@ class ApiClient:
     # User data access
 
     def get_user_data_credentials(
-        self, organization_id: UUID, workspace_id: UUID
+        self,
+        organization_id: UUID | None = None,
+        workspace_id: UUID | None = None,
+        dataset_id: UUID | None = None,
     ) -> UserDataCredentials:
         """
         Retrieves user data credentials for secondary storage access.
@@ -769,8 +772,14 @@ class ApiClient:
         Returns:
             The user data credentials object.
         """
-        params = {"org_id": str(organization_id), "workspace_id": str(workspace_id)}
-        response = self._request("GET", "/user-data/credentials", params=params)
+        params: dict[str, str] = {}
+        if organization_id:
+            params["org_id"] = str(organization_id)
+        if workspace_id:
+            params["workspace_id"] = str(workspace_id)
+        if dataset_id:
+            params["dataset_id"] = str(dataset_id)
+        response = self.request("GET", "/user-data/credentials", params=params)
         return UserDataCredentials(**response.json())
 
     # Container registry access
@@ -921,8 +930,8 @@ class ApiClient:
 
     def create_dataset(
         self,
-        request: DatasetUploadRequest,
-    ) -> DatasetUploadResponse:
+        request: CreateDatasetRequest,
+    ) -> CreateDatasetResponse:
         """
         Creates a new dataset.
 
@@ -933,13 +942,11 @@ class ApiClient:
             DatasetUploadResponse: The dataset upload response object.
         """
 
-        payload: dict[str, t.Any] = request.model_dump()
+        response = self.request("POST", "/datasets", json_data=request.model_dump())
 
-        response = self.request("POST", "/datasets/upload", json_data=payload)
+        return CreateDatasetResponse(**response.json())
 
-        return DatasetUploadResponse.model_validate(response.json())
-
-    def upload_complete(self, request: DatasetUploadComplete) -> None:
+    def upload_complete(self, request: DatasetUploadCompleteRequest) -> DatasetMetadata:
         """
         Marks a dataset upload as complete.
 
@@ -947,9 +954,10 @@ class ApiClient:
             request (DatasetUploadComplete): The dataset upload completion request object.
         """
 
-        payload: dict[str, t.Any] = request
-
-        self.request("POST", "/datasets/upload/complete", json_data=payload)
+        response = self.request(
+            "POST", "/datasets/upload-complete", json_data=request.model_dump(mode="json")
+        )
+        return DatasetMetadata(**response.json())
 
     def download_dataset(self, request: DatasetDownloadRequest) -> DatasetDownloadResponse:
         """
@@ -963,7 +971,7 @@ class ApiClient:
         """
         response = self.request(
             "GET",
-            f"/datasets/{request.dataset_uri}/download/?version={request.version}",
+            f"/datasets/{request.dataset_uri}/download?version={request.version}",
         )
 
         return DatasetDownloadResponse.model_validate(response.json())
@@ -987,7 +995,7 @@ class ApiClient:
     def update_dataset(
         self,
         dataset_id_or_key: str | UUID,
-        dataset: DatasetUploadRequest,
+        dataset: CreateDatasetRequest,
     ) -> DatasetMetadata:
         """
         Updates an existing dataset.
@@ -1004,3 +1012,13 @@ class ApiClient:
 
         response = self.request("PUT", f"/datasets/{dataset_id_or_key}", json_data=payload)
         return DatasetMetadata(**response.json())
+
+    def delete_dataset(self, dataset_id_or_key: str | UUID) -> None:
+        """
+        Deletes a specific dataset.
+
+        Args:
+            dataset_id_or_key (str | UUID): The dataset identifier.
+        """
+
+        self.request("DELETE", f"/datasets/{dataset_id_or_key}")

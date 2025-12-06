@@ -2,15 +2,16 @@ import contextlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pyarrow.fs as pafs  # The Native FS
 from pyarrow.fs import FileSystem, FileType
 
 from dreadnode.api import ApiClient
 from dreadnode.api.models import (
+    CreateDatasetRequest,
     DatasetDownloadRequest,
-    DatasetUploadComplete,
-    DatasetUploadRequest,
+    DatasetUploadCompleteRequest,
 )
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
@@ -20,6 +21,7 @@ from dreadnode.constants import (
     METADATA_FILE,
 )
 from dreadnode.logging_ import console as logging_console
+from dreadnode.logging_ import print_info
 from dreadnode.storage.datasets.metadata import DatasetMetadata
 from dreadnode.util import resolve_endpoint
 
@@ -37,6 +39,7 @@ class DatasetManager:
     """
 
     organization: str | None = None
+    organization_id: UUID | None = None
     _instance: "DatasetManager | None" = None
     _api: ApiClient | None = None
 
@@ -57,10 +60,12 @@ class DatasetManager:
         cls,
         api: ApiClient | None = None,
         organization: str | None = None,
+        organization_id: UUID | None = None,
     ) -> "DatasetManager":
         instance = cls()
         instance._api = api
         instance.organization = organization
+        instance.organization_id = organization_id
         return instance
 
     def metadata_exists(self, path: str) -> bool:
@@ -128,7 +133,7 @@ class DatasetManager:
 
         return str(dataset_uri / latest)
 
-    def get_remote_save_uri(self, metadata: DatasetMetadata) -> str:
+    def get_remote_save_uri(self, metadata: DatasetMetadata) -> tuple[UUID, str]:
         """
         Constructs the full remote storage URI.
         Example: dreadnode://datasets/main/my-dataset
@@ -137,13 +142,15 @@ class DatasetManager:
         if not self._api:
             raise ValueError("No client configured")
 
-        upload_request = DatasetUploadRequest.model_validate(metadata.model_dump())
+        upload_request = CreateDatasetRequest(
+            org_key=metadata.organization,
+            key=metadata.name,
+        )
 
-        response = self._api.upload_dataset_request(request=upload_request)
+        response = self._api.create_dataset(request=upload_request)
+        return response.dataset_id, response.user_data_access_response.upload_uri
 
-        return response.upload_uri
-
-    def remote_save_complete(self, dataset_id: str, *, success: bool) -> None:
+    def remote_save_complete(self, dataset_id: str, *, complete: bool) -> None:
         """
         Notifies the API that the remote upload is complete.
         """
@@ -151,9 +158,9 @@ class DatasetManager:
         if not self._api:
             raise ValueError("No client configured")
 
-        request = DatasetUploadComplete(id=dataset_id, success=success)
+        request = DatasetUploadCompleteRequest(dataset_id=dataset_id, complete=complete)
 
-        self._api.upload_complete(request=request.model_dump())
+        self._api.upload_complete(request=request)
 
     def get_remote_load_uri(self, uri: str, version: str | None = "latest") -> str:
         """
@@ -167,17 +174,19 @@ class DatasetManager:
 
         response = self._api.download_dataset(request)
 
-        print(f"[*] Download URI: {response.download_uri}")
+        print_info(f"[*] Download URI: {response.download_uri}")
         return response.download_uri
 
-    def get_s3_config(self) -> dict[str, Any]:
+    def get_s3_config(self, dataset_id: UUID) -> dict[str, Any]:
         """
         Translates your UserDataCredentials into PyArrow S3 arguments.
         """
         if not self._api:
             raise ValueError("No client configured")
 
-        creds = self._api.get_user_data_credentials()
+        creds = self._api.get_user_data_credentials(
+            organization_id=self.organization_id, dataset_id=dataset_id
+        )
         self._credentials_expiry = creds.expiration
         resolved_endpoint = resolve_endpoint(creds.endpoint)
 
@@ -220,9 +229,13 @@ class DatasetManager:
 
         if self._cached_s3_fs is None or self.needs_refresh():
             try:
-                config = self.get_s3_config()
+                # Try to extract dataset ID from URI which expect is of the form dn://<org_id>/datasets/<dataset_id>
+                dataset_id = UUID(path_body.split("/")[-1])
+                config = self.get_s3_config(dataset_id=dataset_id)
                 self._cached_s3_fs = pafs.S3FileSystem(**config)
-
+            except ValueError:
+                logging_console.print(f"[red]Invalid dataset ID in URI: [green]{uri}[/green][/red]")
+                raise
             except Exception as e:
                 logging_console.print(f"Auth failed: {e}")
                 raise
@@ -244,7 +257,7 @@ class DatasetManager:
         ]
 
         latest = sorted(versions, reverse=True)[0]
-        print(f"[*] Resolved latest version {latest}")
+        print_info(f"[*] Resolved latest version {latest}")
         return latest
 
     def ensure_dir(self, fs: FileSystem, path: str) -> None:
@@ -255,3 +268,13 @@ class DatasetManager:
             return
         with contextlib.suppress(OSError):
             fs.create_dir(path, recursive=True)
+
+    def delete_remote_dataset_record(self, dataset_id_or_key: UUID | str) -> None:
+        """
+        Deletes a remote dataset via the API.
+        """
+
+        if not self._api:
+            raise ValueError("No client configured")
+
+        self._api.delete_dataset(dataset_id_or_key=dataset_id_or_key)

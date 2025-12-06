@@ -1,4 +1,5 @@
 import contextlib
+import re
 import typing as t
 from datetime import datetime
 from functools import cached_property
@@ -7,6 +8,7 @@ from uuid import UUID
 import requests
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     PrivateAttr,
@@ -17,6 +19,17 @@ from pydantic import (
 from ulid import ULID
 
 AnyDict = dict[str, t.Any]
+
+
+def _validate_key(key: str) -> str:
+    """Validate that a key only contains alphanumeric characters and dashes."""
+    pattern = r"^(?=.{3,100}$)[a-z0-9]+(?:-[a-z0-9]+)*$"
+    if not bool(re.match(pattern, key)):
+        raise ValidationError(
+            detail="Key can only contain lowercase alphanumeric characters and dashes."
+        )
+    return key
+
 
 # User
 
@@ -41,6 +54,10 @@ class UserDataCredentials(BaseModel):
     bucket: str
     prefix: str
     endpoint: str | None
+
+    @property
+    def upload_uri(self) -> str:
+        return f"dn://{self.bucket}/{self.prefix}"
 
 
 class ContainerRegistryCredentials(BaseModel):
@@ -556,42 +573,29 @@ class DatasetMetadata(BaseModel):
     A data model representing the metadata of a dataset.
     """
 
-    id: UUID
-    """Unique identifier for the dataset."""
-    org_id: UUID
-    """Unique identifier for the organization owning the dataset."""
-    repo_id: UUID
-    """Unique identifier for the repository containing the dataset."""
-    name: str
-    """Name of the dataset."""
-    description: str | None = None
-    """Description of the dataset."""
-    version: str | None = None
-    """Version of the dataset."""
-    license: str | None = None
-    """License of the dataset."""
-    tags: list[str] | None = None
-    """Tags associated with the dataset."""
-    ds_schema: dict[str, t.Any] | None = None
-    """Schema of the dataset."""
-    file_pointers: list[str] | None = None
-    """List of file pointers for the dataset files."""
+    id: UUID = Field(..., description="Dataset ID")
+    key: t.Annotated[str, BeforeValidator(_validate_key)] = Field(..., description="Dataset name")
+    tags: list[str] | None = Field(None, description="Dataset tags")
+    download_count: int | None = Field(
+        None, description="Number of times dataset has been downloaded"
+    )
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    is_public: bool = Field(..., description="Whether the dataset is public")
 
 
-class DatasetUploadRequest(BaseModel):
+class CreateDatasetRequest(BaseModel):
     """
     A data model representing the request body for creating a new dataset.
     """
 
-    id: str | None
-    """Unique identifier for the dataset."""
-    name: str | None
-    """Name of the dataset."""
-    manifest: dict[str, t.Any] | None = None
-    """Manifest of the dataset."""
+    org_key: t.Annotated[str, BeforeValidator(_validate_key)]
+    """Unique identifier for the organization owning the dataset."""
+    key: t.Annotated[str, BeforeValidator(_validate_key)]
+    """Unique identifier of the dataset."""
 
 
-class DatasetUploadResponse(BaseModel):
+class CreateDatasetResponse(BaseModel):
     """
     A data model representing the response after creating a new dataset.
 
@@ -601,32 +605,21 @@ class DatasetUploadResponse(BaseModel):
         status_code (int): HTTP status code of the upload request.
     """
 
-    id: str
+    dataset_id: str
     """Unique identifier for the dataset."""
-    upload_uri: str
+    user_data_access_response: UserDataCredentials
     """URI to upload the dataset files."""
-    status_code: int
-    """HTTP status code of the upload request."""
 
 
-class DatasetUploadComplete(BaseModel):
+class DatasetUploadCompleteRequest(BaseModel):
     """
     A data model representing the request body for completing a dataset upload.
     """
 
-    id: str
+    dataset_id: str
     """Unique identifier for the dataset."""
-    success: bool
+    complete: bool
     """Status code indicating the result of the upload."""
-
-
-class DatasetUploadCompleteResponse(BaseModel):
-    """
-    A data model representing the response after completing a dataset upload.
-    """
-
-    status_code: int
-    """HTTP status code of the upload completion request."""
 
 
 class DatasetDownloadRequest(BaseModel):
