@@ -56,7 +56,7 @@ class UserDataCredentials(BaseModel):
     endpoint: str | None
 
     @property
-    def upload_uri(self) -> str:
+    def uri(self) -> str:
         return f"dn://{self.bucket}/{self.prefix}"
 
 
@@ -631,12 +631,3 @@ class DatasetDownloadRequest(BaseModel):
     """Name of the dataset to download."""
     version: str | None = "latest"
     """Version of the dataset to download. If None, the latest version is downloaded."""
-
-
-class DatasetDownloadResponse(BaseModel):
-    """
-    A data model representing the response for downloading a dataset.
-    """
-
-    download_uri: str
-    """URL to download the dataset."""

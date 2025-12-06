@@ -19,7 +19,6 @@ from dreadnode.api.models import (
     CreateDatasetRequest,
     CreateDatasetResponse,
     DatasetDownloadRequest,
-    DatasetDownloadResponse,
     DatasetMetadata,
     DatasetUploadCompleteRequest,
     DeviceCodeResponse,
@@ -959,7 +958,7 @@ class ApiClient:
         )
         return DatasetMetadata(**response.json())
 
-    def download_dataset(self, request: DatasetDownloadRequest) -> DatasetDownloadResponse:
+    def download_dataset(self, request: DatasetDownloadRequest) -> UserDataCredentials:
         """
         Downloads the dataset content.
 
@@ -974,7 +973,7 @@ class ApiClient:
             f"/datasets/{request.dataset_uri}/download?version={request.version}",
         )
 
-        return DatasetDownloadResponse.model_validate(response.json())
+        return UserDataCredentials(**response.json())
 
     def get_dataset(
         self,

@@ -148,7 +148,7 @@ class DatasetManager:
         )
 
         response = self._api.create_dataset(request=upload_request)
-        return response.dataset_id, response.user_data_access_response.upload_uri
+        return response.dataset_id, response.user_data_access_response.uri
 
     def remote_save_complete(self, dataset_id: str, *, complete: bool) -> None:
         """
@@ -174,8 +174,8 @@ class DatasetManager:
 
         response = self._api.download_dataset(request)
 
-        print_info(f"[*] Download URI: {response.download_uri}")
-        return response.download_uri
+        print_info(f"[*] Download URI: {response.uri}")
+        return response.uri
 
     def get_s3_config(self, dataset_id: UUID) -> dict[str, Any]:
         """
