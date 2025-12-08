@@ -2,7 +2,7 @@
 exclude: "^(data/|dreadnode/data/)"
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
         args: [--maxkb=10240]
@@ -82,10 +82,10 @@ repos:
         stages: [post-merge]
         always_run: true
 
-      # Pre-push hook to run typing and linting
+      # Run typing and linting on every commit
       - id: typing-and-linting
         name: Typing and Linting
         entry: .hooks/typing_and_linting.sh
         language: script
-        stages: [pre-push]
-        always_run: true
+        types: [python]
+        pass_filenames: false
