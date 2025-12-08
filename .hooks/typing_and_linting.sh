@@ -5,7 +5,7 @@ set -e
 echo
 
 echo "📝 Running type checking with mypy ..."
-uv run mypy dreadnode
+uv run mypy .
 echo "✅ Type checking passed!"
 echo
 
