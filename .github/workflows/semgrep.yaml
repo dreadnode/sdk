@@ -16,8 +16,8 @@ on:
     - cron: "0 0 * * *" # Run daily at midnight UTC
 
 concurrency:
-  group: pre-commit-${{ github.run_id }}
   cancel-in-progress: true
+  group: semgrep-${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   actions: read
@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Set up git repository
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
