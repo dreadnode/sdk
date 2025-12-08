@@ -18,8 +18,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: pre-commit-${{ github.run_id }}
   cancel-in-progress: true
+  group: pre-commit-${{ github.workflow }}-${{ github.ref }}
 
 env:
   PYTHON_VERSION: 3.12.6
