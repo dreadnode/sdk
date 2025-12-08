@@ -114,7 +114,7 @@ module = [
     "dreadnode.scorers.*",
     "dreadnode.transforms.*",
 ]
-disable_error_code = ["unused-ignore", "import-untyped"]
+disable_error_code = ["unused-ignore", "import-untyped", "import-not-found"]
 
 [tool.pyright]
 typeCheckingMode = "off" # we prefer mypy and don't want to deal with small differences
