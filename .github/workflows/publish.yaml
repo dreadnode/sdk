@@ -10,7 +10,7 @@ jobs:
     name: Build and Publish
     environment: protected
     permissions:
-      contents: read
+      contents: write
       id-token: write
     runs-on: ubuntu-latest
     steps:
@@ -38,3 +38,13 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+
+      - name: Create GitHub Release
+        run: |
+          if ! gh release view ${{ github.ref_name }} &>/dev/null; then
+            gh release create ${{ github.ref_name }} --generate-notes
+          else
+            echo "Release already exists, skipping creation"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
