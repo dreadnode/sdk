@@ -1083,7 +1083,9 @@ def get_user(self) -> UserResponse:
 ### get\_user\_data\_credentials
 
 ```python
-get_user_data_credentials() -> UserDataCredentials
+get_user_data_credentials(
+    organization_id: UUID, workspace_id: UUID
+) -> UserDataCredentials
 ```
 
 Retrieves user data credentials for secondary storage access.
@@ -1095,14 +1097,17 @@ Retrieves user data credentials for secondary storage access.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def get_user_data_credentials(self) -> UserDataCredentials:
+def get_user_data_credentials(
+    self, organization_id: UUID, workspace_id: UUID
+) -> UserDataCredentials:
     """
     Retrieves user data credentials for secondary storage access.
 
     Returns:
         The user data credentials object.
     """
-    response = self._request("GET", "/user-data/credentials")
+    params = {"org_id": str(organization_id), "workspace_id": str(workspace_id)}
+    response = self._request("GET", "/user-data/credentials", params=params)
     return UserDataCredentials(**response.json())
 ```
 
