@@ -16,7 +16,7 @@ Dreadnode Strikes SDK
     <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/dreadnode">
     <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/dreadnode">
     <img alt="GitHub License" src="https://img.shields.io/github/license/dreadnode/sdk">
-    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/tests.yaml">
+    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/test.yaml">
     <img alt="Pre-Commit" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/pre-commit.yaml">
     <img alt="Renovate" src="https://img.shields.io/github/actions/workflow/status/dreadnode/sdk/renovate.yaml">
 </h4>
