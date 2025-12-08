@@ -175,6 +175,15 @@ class Trial(BaseModel, t.Generic[CandidateT]):
 
         return {k: v for k, v in self.eval_result.metrics.items() if k in self.scores}
 
+    @property
+    def transformed_input(self) -> CandidateT | None:
+        """Returns the transformed input if available from the eval result."""
+        if self.eval_result and self.eval_result.samples:
+            first_sample = self.eval_result.samples[0]
+            if hasattr(first_sample, "transformed_input"):
+                return first_sample.transformed_input
+        return None
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cost(self) -> int:

@@ -79,3 +79,22 @@ class EvalEnd(EvalEvent[In, Out]):
     """Signals the end of the entire evaluation, containing the final result."""
 
     result: "EvalResult[In, Out]"
+
+
+@dataclass
+class SamplePreProcess(EvalEventInRun[In, Out]):
+    """Event before sample processing (hook point for input transforms)."""
+
+    index: int
+    dataset_row: dict[str, t.Any]
+    task_kwargs: dict[str, t.Any]
+    original_input: In
+
+
+@dataclass
+class SamplePostProcess(EvalEventInRun[In, Out]):
+    """Event after sample processing (hook point for output transforms)."""
+
+    index: int
+    output: Out | None
+    error: Exception | None
