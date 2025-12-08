@@ -3,6 +3,7 @@ import typing as t
 from pydantic import ConfigDict, Field, SkipValidation
 
 from dreadnode.airt.target.base import Target
+from dreadnode.eval.hooks.base import EvalHook
 from dreadnode.meta import Config
 from dreadnode.optimization.study import OutputT as Out
 from dreadnode.optimization.study import Study
@@ -22,6 +23,8 @@ class Attack(Study[In, Out]):
 
     tags: list[str] = Config(default_factory=lambda: ["attack"])
     """A list of tags associated with the attack for logging."""
+    hooks: list[EvalHook] = Field(default_factory=list, exclude=True, repr=False)
+    """Hooks to run at various points in the attack lifecycle."""
 
     # Override the task factory as the target will replace it.
     task_factory: t.Callable[[In], Task[..., Out]] = Field(  # type: ignore[assignment]

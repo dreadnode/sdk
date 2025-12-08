@@ -1,4 +1,8 @@
+import typing as t
+
 import numpy as np
+from PIL import Image as PILImage
+from PIL import ImageDraw, ImageFont
 
 from dreadnode.data_types import Image
 from dreadnode.scorers.image import Norm
@@ -105,3 +109,94 @@ def interpolate_images(
         return Image(interpolated_np)
 
     return Transform(transform, name="interpolate")
+
+
+def add_text_overlay(
+    text: str,
+    *,
+    position: tuple[int, int] | t.Literal["top", "bottom", "center"] = "bottom",
+    font_size: int = 20,
+    color: tuple[int, int, int] = (255, 0, 0),  # Red by default
+    background_color: tuple[int, int, int, int] | None = (0, 0, 0, 128),  # Semi-transparent black
+) -> Transform[Image, Image]:
+    """
+    Add text overlay to an image using Pillow.
+
+    Args:
+        text: The text to add to the image
+        position: Either a tuple (x, y) or 'top', 'bottom', 'center'
+        font_size: Size of the font
+        color: RGB color tuple for text
+        background_color: RGBA color tuple for text background (None for no background)
+
+    Returns:
+        Transform object that adds text overlay to an Image
+
+    Example:
+        >>> transform = add_text_overlay("CONFIDENTIAL", position="top", color=(255, 0, 0))
+        >>> modified_image = transform(original_image)
+    """
+
+    def transform_func(image: Image) -> Image:
+        # Convert to PIL
+        pil_img = image.to_pil().convert("RGBA")
+
+        # Create a transparent overlay
+        overlay = PILImage.new("RGBA", pil_img.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # Try to load a font, fallback to default
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
+            )
+        except Exception:  # noqa: BLE001
+            try:
+                # Try alternative font paths
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except Exception:  # noqa: BLE001
+                # Fallback to default
+                font = t.cast("ImageFont.FreeTypeFont", ImageFont.load_default())
+
+        # Get text bounding box
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        # Calculate position
+        if isinstance(position, str):
+            img_width, img_height = pil_img.size
+            if position == "top":
+                x = (img_width - text_width) // 2
+                y = 10
+            elif position == "bottom":
+                x = (img_width - text_width) // 2
+                y = int(img_height - text_height - 10)
+            elif position == "center":
+                x = (img_width - text_width) // 2
+                y = int(img_height - text_height) // 2
+            else:
+                x, y = 10, 10
+        else:
+            x, y = position
+
+        # Draw background rectangle if specified
+        if background_color:
+            padding = 5
+            draw.rectangle(
+                [x - padding, y - padding, x + text_width + padding, y + text_height + padding],
+                fill=background_color,
+            )
+
+        # Draw text
+        draw.text((x, y), text, font=font, fill=(*color, 255))
+
+        # Composite overlay onto original image
+        result = PILImage.alpha_composite(pil_img, overlay)
+
+        if image.mode == "RGB":
+            result = result.convert("RGB")
+
+        return Image(result, mode=image.mode, format=image._format)  # noqa: SLF001
+
+    return Transform(transform_func, name=f"add_text_overlay({text})")

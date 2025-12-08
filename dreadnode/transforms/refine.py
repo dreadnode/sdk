@@ -5,6 +5,7 @@ from textwrap import dedent, indent
 import rigging as rg
 
 from dreadnode.common_types import AnyDict
+from dreadnode.data_types.message import Message as DnMessage
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 
@@ -75,31 +76,55 @@ def llm_refine(
     return Transform(transform, name=name)
 
 
-def adapt_prompt_trials(trials: "list[Trial[str]]") -> str:
+def adapt_prompt_trials(trials: "list[Trial[DnMessage]]") -> str:
     """
-    Adapter which can be used to create attempt context from a set of prompt/response trials.
+    Adapter which creates attempt context from a set of Message trials.
 
-    Trials are assumed to be a str candidate holding the prompt, and an output object
-    that is (or includes) the model's response to the prompt.
+    Extracts text from DnMessage candidates and outputs, formats them as XML
+    context for the refinement LLM.
 
     The list is assumed to be ordered by relevancy, and is reversed when
     formatting so the context is presented in ascending order of relevancy to the model.
+
+    Args:
+        trials: List of trials with DnMessage candidates
+
+    Returns:
+        Formatted XML string with trial history
     """
-    context_parts = [
-        dedent(f"""
-        <attempt score={trial.score:.2f}>
-            <prompt>{trial.candidate}</prompt>
-            <response>{trial.output}</response>
-        </attempt>
-        """)
-        for trial in reversed(trials)
-    ]
+    context_parts = []
+
+    for trial in reversed(trials):
+        # Extract text from Message candidate
+        if isinstance(trial.candidate, DnMessage):
+            prompt_text = trial.candidate.text
+        else:
+            prompt_text = str(trial.candidate)
+
+        # Extract text from Message output
+        if hasattr(trial, "output") and trial.output:
+            if isinstance(trial.output, DnMessage):
+                response_text = trial.output.text
+            else:
+                response_text = str(trial.output)
+        else:
+            response_text = ""
+
+        context_parts.append(
+            dedent(f"""
+            <attempt score={trial.score:.2f}>
+                <prompt>[user]: {prompt_text}</prompt>
+                <response>[assistant]: {response_text}</response>
+            </attempt>
+            """).strip()
+        )
+
     return "\n".join(context_parts)
 
 
-def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
+def adapt_prompt_trials_as_graph(trials: "list[Trial[DnMessage]]") -> str:
     """
-    Builds a clean, nested XML graph string from a list of Trials for an LLM prompt.
+    Builds a clean, nested XML graph string from a list of Message Trials for an LLM prompt.
 
     This should be used in contexts where you want to provide the model with
     a clear view of the trial graph structure, including parent-child relationships.
@@ -108,6 +133,7 @@ def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
     - Maps noisy ULIDs to clean, zero-indexed integers for prompt clarity.
     - Represents the graph structure directly through nested XML tags.
     - Handles multiple root nodes and disconnected subgraphs gracefully.
+    - Extracts text from DnMessage candidates and outputs
     """
     if not trials:
         return ""
@@ -125,12 +151,27 @@ def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
 
     root_nodes.sort(key=lambda t: ulid_to_int_map[t.id])
 
-    def _format_node(trial: "Trial") -> str:
+    def _format_node(trial: "Trial[DnMessage]") -> str:
         int_id = ulid_to_int_map[trial.id]
         parent_attr = ""
         if trial.parent_id and trial.parent_id in ulid_to_int_map:
             parent_int_id = ulid_to_int_map[trial.parent_id]
             parent_attr = f" parent_id={parent_int_id}"
+
+        # Extract text from Message candidate
+        if isinstance(trial.candidate, DnMessage):
+            prompt_text = trial.candidate.text
+        else:
+            prompt_text = str(trial.candidate)
+
+        # Extract text from Message output
+        if hasattr(trial, "output") and trial.output:
+            if isinstance(trial.output, DnMessage):
+                response_text = trial.output.text
+            else:
+                response_text = str(trial.output)
+        else:
+            response_text = ""
 
         children = sorted(children_map.get(trial.id, []), key=lambda t: ulid_to_int_map[t.id])
 
@@ -140,8 +181,8 @@ def adapt_prompt_trials_as_graph(trials: "list[Trial[str]]") -> str:
 
         return dedent(f"""
         <attempt id={int_id}{parent_attr} score={trial.score:.2f}>
-            <prompt>{trial.candidate}</prompt>
-            <response>{trial.output}</response>{formatted_children}
+            <prompt>[user]: {prompt_text}</prompt>
+            <response>[assistant]: {response_text}</response>{formatted_children}
         </attempt>
         """).strip()
 

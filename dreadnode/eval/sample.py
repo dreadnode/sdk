@@ -33,7 +33,8 @@ class Sample(BaseModel, t.Generic[In, Out]):
     """The sample input value."""
     output: Out | None = None
     """The sample output value."""
-
+    transformed_input: In | None = None
+    """The input after transforms were applied (if any)."""
     index: int = 0
     """The index of the sample in the dataset."""
     iteration: int = 0

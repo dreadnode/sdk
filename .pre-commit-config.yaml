@@ -1,5 +1,5 @@
 ---
-exclude: "^data/"
+exclude: "^(data/|dreadnode/data/)"
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -32,7 +32,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        entry: codespell -q 3 -f --skip=".git,.github,README.md,poetry.lock,uv.lock" -L astroid,braket,te,ROUGE,lief,punctuations,asend
+        entry: codespell -q 3 -f --skip=".git,.github,README.md,poetry.lock,uv.lock" -L astroid,braket,te,ROUGE,lief,punctuations,asend,beng,teh,hte,adn,yuo,fro,ofr
 
   # Python code security
   - repo: https://github.com/PyCQA/bandit
