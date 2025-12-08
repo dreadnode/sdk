@@ -15,7 +15,6 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: ^docs/
       - id: trailing-whitespace
 
   - repo: https://github.com/rhysd/actionlint
@@ -89,12 +88,4 @@ repos:
         entry: .hooks/typing_and_linting.sh
         language: script
         stages: [pre-push]
-        always_run: true
-
-      # Generate documentation
-      - id: generate-docs
-        name: Generate docs
-        entry: uv run python .hooks/generate_docs.py
-        language: system
-        pass_filenames: false
         always_run: true
