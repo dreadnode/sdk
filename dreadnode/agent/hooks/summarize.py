@@ -49,6 +49,7 @@ def summarize_when_long(
     model: str | rg.Generator | None = None,
     max_tokens: int = 100_000,
     min_messages_to_keep: int = 5,
+    guidance: str = "",
 ) -> "Hook":
     """
     Creates a hook to manage the agent's context window by summarizing the conversation history.
@@ -64,6 +65,7 @@ def summarize_when_long(
         max_tokens: The maximum number of tokens allowed in the context window before summarization is triggered
             (default is None, meaning no proactive summarization).
         min_messages_to_keep: The minimum number of messages to retain after summarization (default is 5).
+        guidance: Additional guidance for the summarization process (default is "").
     """
 
     if min_messages_to_keep < 2:
@@ -84,6 +86,10 @@ def summarize_when_long(
         ),
         min_messages_to_keep: int = Config(
             5, help="Minimum number of messages to retain after summarization"
+        ),
+        guidance: str = Config(
+            guidance,
+            help="Additional guidance for the summarization process",
         ),
     ) -> Reaction | None:
         should_summarize = False
@@ -149,7 +155,7 @@ def summarize_when_long(
 
         # Generate the summary and rebuild the messages
         summary = await summarize_conversation.bind(summarizer_model)(
-            "\n".join(str(msg) for msg in messages_to_summarize)
+            "\n".join(str(msg) for msg in messages_to_summarize), guidance=guidance
         )
         summary_content = (
             f"<conversation-summary messages={len(messages_to_summarize)}>\n"
