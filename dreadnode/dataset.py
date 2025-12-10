@@ -93,7 +93,7 @@ class Dataset:
 
         try:
             self.row_count = self.ds.count_rows()
-        except Exception:
+        except pa.ArrowException:
             self.row_count = 0
 
     def save_metadata(self, path: str, fs: FileSystem) -> None:
@@ -338,5 +338,4 @@ def load_dataset(
         return Dataset(ds=dataset, metadata=metadata, manifest=manifest, materialize=materialize)
     except Exception as e:
         print_info(f"[!] Failed to load dataset from remote: {e}")
-
-    raise FileNotFoundError(f"[!] Dataset not found: {uri}")
+        raise FileNotFoundError(f"[!] Dataset not found: {uri}") from e

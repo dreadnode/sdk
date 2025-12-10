@@ -69,3 +69,8 @@ class SupportsLt(t.Protocol):
 
 class SupportsLe(t.Protocol):
     def __le__(self, __other: te.Self) -> bool: ...  # noqa: PYI063
+
+
+# Versioning
+
+VersionStrategy = t.Literal["major", "minor", "patch"]

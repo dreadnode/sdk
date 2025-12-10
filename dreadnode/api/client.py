@@ -781,6 +781,22 @@ class ApiClient:
         response = self.request("GET", "/user-data/credentials", params=params)
         return UserDataCredentials(**response.json())
 
+    def get_dataset_access_credentials(
+        self,
+        dataset_id: UUID,
+    ) -> UserDataCredentials:
+        """
+        Retrieves dataset access credentials for a specific dataset.
+
+        Args:
+            dataset_id (UUID): The dataset identifier.
+        Returns:
+            The user data credentials object.
+        """
+        params: dict[str, str] = {"dataset_id": str(dataset_id)}
+        response = self.request("GET", f"/datasets/{dataset_id!s}/credentials", params=params)
+        return UserDataCredentials(**response.json())
+
     # Container registry access
 
     def get_platform_registry_credentials(self) -> ContainerRegistryCredentials:
@@ -989,27 +1005,6 @@ class ApiClient:
             DatasetMetadata: The DatasetMetadata object.
         """
         response = self.request("GET", f"/datasets/{dataset_id_or_key}")
-        return DatasetMetadata(**response.json())
-
-    def update_dataset(
-        self,
-        dataset_id_or_key: str | UUID,
-        dataset: CreateDatasetRequest,
-    ) -> DatasetMetadata:
-        """
-        Updates an existing dataset.
-
-        Args:
-            dataset_id_or_key (str | UUID): The dataset identifier.
-            dataset (DatasetCreateRequest): The dataset update request object.
-
-        Returns:
-            DatasetMetadata: The updated DatasetMetadata object.
-        """
-
-        payload: dict[str, t.Any] = dataset.model_dump()
-
-        response = self.request("PUT", f"/datasets/{dataset_id_or_key}", json_data=payload)
         return DatasetMetadata(**response.json())
 
     def delete_dataset(self, dataset_id_or_key: str | UUID) -> None:

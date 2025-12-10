@@ -18,6 +18,8 @@ from pydantic import (
 )
 from ulid import ULID
 
+from dreadnode.util import valid_version
+
 AnyDict = dict[str, t.Any]
 
 
@@ -27,6 +29,12 @@ def _validate_key(key: str) -> str:
     if not bool(re.match(pattern, key)):
         raise ValidationError("Key can only contain lowercase alphanumeric characters and dashes.")
     return key
+
+
+def _validate_version(version: str) -> str:
+    if not valid_version(version):
+        raise ValidationError("Version must follow semantic versioning (e.g., '1.0.0').")
+    return version
 
 
 # User
@@ -590,6 +598,9 @@ class CreateDatasetRequest(BaseModel):
     """Unique identifier for the organization owning the dataset."""
     key: t.Annotated[str, BeforeValidator(_validate_key)]
     """Unique identifier of the dataset."""
+    version: t.Annotated[str, BeforeValidator(_validate_version)]
+    tags: list[str] | None = None
+    """Optional list of tags associated with the dataset."""
 
 
 class CreateDatasetResponse(BaseModel):

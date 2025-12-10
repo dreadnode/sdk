@@ -20,6 +20,8 @@ from logfire._internal.exporters.remove_pending import RemovePendingSpansExporte
 from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from packaging.version import InvalidVersion
+from packaging.version import parse as parse_version
 
 from dreadnode import dataset
 from dreadnode.api.client import ApiClient
@@ -35,6 +37,7 @@ from dreadnode.common_types import (
     AnyDict,
     Inherited,
     JsonValue,
+    VersionStrategy,
 )
 from dreadnode.constants import (
     DEFAULT_LOCAL_STORAGE_DIR,
@@ -82,6 +85,7 @@ from dreadnode.tracing.span import (
 )
 from dreadnode.user_config import UserConfig
 from dreadnode.util import (
+    bump_version,
     clean_str,
     create_key_from_name,
     handle_internal_errors,
@@ -1339,15 +1343,35 @@ class Dreadnode:
     def save_dataset_to_disk(
         self,
         ds: dataset.Dataset,
+        version: str | None = None,
+        strategy: VersionStrategy | None = None,
     ) -> None:
         """
         Save a dataset to the local cache.
+
+        If a `version` or `strategy` is provided, the dataset's version will be
+        updated before saving.
 
         Example:
             ```
             dreadnode.save_dataset_to_disk(my_dataset)
             ```
+
+        Args:
+            ds: The dataset to save.
+            version: A specific version string to set for the dataset.
+            strategy: A versioning strategy to automatically bump the version
+                (e.g., 'major', 'minor', 'patch').
         """
+        if version is not None:
+            try:
+                parse_version(version)
+            except InvalidVersion as e:
+                raise ValueError(f"Invalid version string: {version}") from e
+            ds.metadata.version = version
+        elif strategy is not None:
+            new_version = bump_version(ds.metadata.version, strategy)
+            ds.metadata.version = new_version
 
         dataset.save_dataset_to_disk(
             dataset=ds,
@@ -1357,15 +1381,36 @@ class Dreadnode:
     def push_dataset(
         self,
         ds: dataset.Dataset,
+        version: str | None = None,
+        strategy: VersionStrategy | None = None,
     ) -> None:
         """
         Push a dataset to the Dreadnode server.
+
+        This will first save the dataset to the local cache and then upload it.
+        If a `version` or `strategy` is provided, the dataset's version will be
+        updated before pushing.
 
         Example:
             ```
             dreadnode.push_dataset(my_dataset)
             ```
+
+        Args:
+            ds: The dataset to push.
+            version: A specific version string to set for the dataset.
+            strategy: A versioning strategy to automatically bump the version
+                (e.g., 'major', 'minor', 'patch').
         """
+        if version is not None:
+            try:
+                parse_version(version)
+            except InvalidVersion as e:
+                raise ValueError(f"Invalid version string: {version}") from e
+            ds.metadata.version = version
+        elif strategy is not None:
+            new_version = bump_version(ds.metadata.version, strategy)
+            ds.metadata.version = new_version
 
         dataset.push_dataset(
             dataset=ds,

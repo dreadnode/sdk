@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
 from pyarrow.fs import FileSelector, FileSystem, FileType
 from pydantic import BaseModel, Field
 from tqdm import tqdm
@@ -134,7 +135,7 @@ def compute_file_hash(
         with fs.open_input_stream(file_path) as f:
             digest = hashlib.file_digest(f, algorithm)
         return digest.hexdigest()
-    except Exception as e:
+    except (OSError, pa.ArrowException) as e:
         logging_console.print(f"Failed to hash {file_path}: {e}")
         return ""
 
