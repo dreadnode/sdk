@@ -155,8 +155,7 @@ def summarize_when_long(
 
         # Generate the summary and rebuild the messages
         summary = await summarize_conversation.bind(summarizer_model)(
-            "\n".join(str(msg) for msg in messages_to_summarize),
-            guidance=guidance
+            "\n".join(str(msg) for msg in messages_to_summarize), guidance=guidance
         )
         summary_content = (
             f"<conversation-summary messages={len(messages_to_summarize)}>\n"
