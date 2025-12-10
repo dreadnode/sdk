@@ -25,9 +25,7 @@ def _validate_key(key: str) -> str:
     """Validate that a key only contains alphanumeric characters and dashes."""
     pattern = r"^(?=.{3,100}$)[a-z0-9]+(?:-[a-z0-9]+)*$"
     if not bool(re.match(pattern, key)):
-        raise ValidationError(
-            detail="Key can only contain lowercase alphanumeric characters and dashes."
-        )
+        raise ValidationError("Key can only contain lowercase alphanumeric characters and dashes.")
     return key
 
 
@@ -581,7 +579,6 @@ class DatasetMetadata(BaseModel):
     )
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    is_public: bool = Field(..., description="Whether the dataset is public")
 
 
 class CreateDatasetRequest(BaseModel):
