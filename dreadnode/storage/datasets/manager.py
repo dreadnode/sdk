@@ -145,10 +145,23 @@ class DatasetManager:
         upload_request = CreateDatasetRequest(
             org_key=metadata.organization,
             key=metadata.name,
+            version=metadata.version,
+            tags=metadata.tags,
         )
 
         response = self._api.create_dataset(request=upload_request)
-        return response.dataset_id, response.user_data_access_response.uri
+        dataset_id = response.dataset_id
+        user_data_access_response = response.user_data_access_response
+        self._cached_s3_fs = pafs.S3FileSystem(
+            access_key=user_data_access_response.access_key_id,
+            secret_key=user_data_access_response.secret_access_key,
+            session_token=user_data_access_response.session_token,
+            endpoint_override=resolve_endpoint(user_data_access_response.endpoint),
+            region=user_data_access_response.region,
+            check_directory_existence_before_creation=True,
+        )
+        self._credentials_expiry = user_data_access_response.expiration
+        return dataset_id, user_data_access_response.uri
 
     def remote_save_complete(self, dataset_id: str, *, complete: bool) -> None:
         """
@@ -184,9 +197,7 @@ class DatasetManager:
         if not self._api:
             raise ValueError("No client configured")
 
-        creds = self._api.get_user_data_credentials(
-            organization_id=self.organization_id, dataset_id=dataset_id
-        )
+        creds = self._api.get_dataset_access_credentials(dataset_id=dataset_id)
         self._credentials_expiry = creds.expiration
         resolved_endpoint = resolve_endpoint(creds.endpoint)
 
@@ -224,13 +235,14 @@ class DatasetManager:
 
         try:
             _, path_body = uri.split("://", 1)
+            path_body = path_body.rstrip("/")
         except ValueError:
             return pafs.LocalFileSystem(), uri
 
         if self._cached_s3_fs is None or self.needs_refresh():
             try:
-                # Try to extract dataset ID from URI which expect is of the form dn://<org_id>/datasets/<dataset_id>
-                dataset_id = UUID(path_body.split("/")[-1])
+                # Try to extract dataset ID from URI which expect is of the form dn://<user bucket>/<org_id>/datasets/<dataset_id>/<version>
+                dataset_id = UUID(path_body.split("/")[3])
                 config = self.get_s3_config(dataset_id=dataset_id)
                 self._cached_s3_fs = pafs.S3FileSystem(**config)
             except ValueError:

@@ -35,6 +35,9 @@ from logfire._internal.stack_info import (
     warn_at_user_stacklevel as _warn_at_user_stacklevel,
 )
 from loguru import logger
+from packaging.version import InvalidVersion, Version, parse
+
+from dreadnode.common_types import VersionStrategy
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -174,6 +177,17 @@ def valid_key(key: str) -> bool:
     Check if the key is valid (only contains lowercase letters, numbers, and hyphens).
     """
     return bool(re.fullmatch(r"[a-z0-9-]+", key))
+
+
+def valid_version(version: str) -> bool:
+    """
+    Check if the version is valid (semantic versioning format).
+    """
+    try:
+        parsed = parse(version)
+        return isinstance(parsed, Version)
+    except InvalidVersion:
+        return False
 
 
 # Imports
@@ -901,3 +915,45 @@ def _factory(func: Callable[P, R]) -> Callable[P, R]:
 def is_path_remote(uri: str) -> bool:
     scheme = fsspec.utils.get_protocol(uri)
     return scheme not in ("file", None, "")
+
+
+# Versioning
+
+
+def bump_version(version_str: str, strategy: VersionStrategy) -> str:
+    """
+    Increments a version string based on the strategy.
+
+    Args:
+        version_str: The version string (e.g., "1.0.1", "2.3")
+        strategy: One of "major", "minor", "patch"
+
+    Returns:
+        The incremented version string.
+    """
+    parsed = parse(version_str)
+
+    # Ensure it's a valid version object that has a release segment
+    if not isinstance(parsed, Version):
+        raise TypeError(f"Invalid version: {version_str}")
+
+    # properties: parsed.major, parsed.minor, parsed.micro
+    # Note: parsed.micro returns 0 even if not explicitly in the string (e.g. "1.2" -> micro=0)
+    major = parsed.major
+    minor = parsed.minor
+    micro = parsed.micro
+
+    if strategy == "major":
+        major += 1
+        minor = 0
+        micro = 0
+    elif strategy == "minor":
+        minor += 1
+        micro = 0
+    elif strategy == "patch":
+        micro += 1
+    else:
+        raise ValueError("Strategy must be 'major', 'minor', or 'patch'")
+
+    # Reconstruct the version string
+    return f"{major}.{minor}.{micro}"
