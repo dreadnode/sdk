@@ -1,0 +1,19 @@
+Check to see if there is not a version specified.
+No version:
+Check to see if the dataset already exists
+if it does
+check to see if a manifest exists
+if it does
+hash the files from the current dataset
+get the hashes from the manifest
+Compare hashes
+If they are different
+increment the version
+If they are the same
+do nothing
+Version provided
+Check to see if the dataset and version already exist
+if they do
+throw error (don't overwrite)
+if they don't
+proceed as normal to create a new version

@@ -582,9 +582,14 @@ class DatasetMetadata(BaseModel):
     id: UUID = Field(..., description="Dataset ID")
     key: t.Annotated[str, BeforeValidator(_validate_key)] = Field(..., description="Dataset name")
     tags: list[str] | None = Field(None, description="Dataset tags")
+    version: t.Annotated[str, BeforeValidator(_validate_version)] = Field(
+        ..., description="Dataset version"
+    )
+    """Version of the dataset following semantic versioning."""
     download_count: int | None = Field(
         None, description="Number of times dataset has been downloaded"
     )
+    """Number of times dataset has been downloaded."""
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
@@ -599,6 +604,7 @@ class CreateDatasetRequest(BaseModel):
     key: t.Annotated[str, BeforeValidator(_validate_key)]
     """Unique identifier of the dataset."""
     version: t.Annotated[str, BeforeValidator(_validate_version)]
+    """Version of the dataset following semantic versioning."""
     tags: list[str] | None = None
     """Optional list of tags associated with the dataset."""
 

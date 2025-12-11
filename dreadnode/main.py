@@ -85,7 +85,6 @@ from dreadnode.tracing.span import (
 )
 from dreadnode.user_config import UserConfig
 from dreadnode.util import (
-    bump_version,
     clean_str,
     create_key_from_name,
     handle_internal_errors,
@@ -1355,6 +1354,8 @@ class Dreadnode:
         Example:
             ```
             dreadnode.save_dataset_to_disk(my_dataset)
+            dreadnode.push_dataset(my_dataset, version="1.0.0")
+            dreadnode.push_dataset(my_dataset, strategy="minor")
             ```
 
         Args:
@@ -1369,18 +1370,21 @@ class Dreadnode:
             except InvalidVersion as e:
                 raise ValueError(f"Invalid version string: {version}") from e
             ds.metadata.version = version
+            ds.metadata.auto_version = False
         elif strategy is not None:
-            new_version = bump_version(ds.metadata.version, strategy)
-            ds.metadata.version = new_version
+            ds.metadata.auto_version = True
+            ds.metadata.auto_version_strategy = strategy
 
         dataset.save_dataset_to_disk(
             dataset=ds,
-            fsm=self._fs_manager,
+            dataset_manager=self._fs_manager,
         )
 
     def push_dataset(
         self,
         ds: dataset.Dataset,
+        *,
+        to_cache: bool = True,
         version: str | None = None,
         strategy: VersionStrategy | None = None,
     ) -> None:
@@ -1391,9 +1395,11 @@ class Dreadnode:
         If a `version` or `strategy` is provided, the dataset's version will be
         updated before pushing.
 
-        Example:
+        Examples:
             ```
             dreadnode.push_dataset(my_dataset)
+            dreadnode.push_dataset(my_dataset, version="1.0.0")
+            dreadnode.push_dataset(my_dataset, strategy="minor")
             ```
 
         Args:
@@ -1408,13 +1414,15 @@ class Dreadnode:
             except InvalidVersion as e:
                 raise ValueError(f"Invalid version string: {version}") from e
             ds.metadata.version = version
+            ds.metadata.auto_version = False
         elif strategy is not None:
-            new_version = bump_version(ds.metadata.version, strategy)
-            ds.metadata.version = new_version
+            ds.metadata.auto_version = True
+            ds.metadata.auto_version_strategy = strategy
 
         dataset.push_dataset(
             dataset=ds,
-            fsm=self._fs_manager,
+            to_cache=to_cache,
+            dataset_manager=self._fs_manager,
         )
 
     @handle_internal_errors()

@@ -8,6 +8,8 @@ import coolname
 from pyarrow.fs import FileSystem
 from pydantic import BaseModel, Field, field_validator
 
+from dreadnode.common_types import VersionStrategy
+
 
 class VersionInfo(BaseModel):
     major: int
@@ -48,6 +50,13 @@ class VersionInfo(BaseModel):
             patch=int(parts[2]),
         )
 
+    def __gt__(self, other: "VersionInfo") -> bool:
+        if self.major != other.major:
+            return self.major > other.major
+        if self.minor != other.minor:
+            return self.minor > other.minor
+        return self.patch > other.patch
+
 
 class DatasetMetadata(BaseModel):
     id: str = Field(default=uuid.uuid4().hex)
@@ -64,6 +73,9 @@ class DatasetMetadata(BaseModel):
     size_bytes: int | None = None
     row_count: int | None = None
     custom_metadata: dict[str, Any] = Field(default_factory=dict)
+    auto_version: bool = Field(default=True)
+    auto_version_strategy: VersionStrategy | None = Field(default="patch")
+    fingerprint: str | None = None
 
     created_at: str = Field(default=datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default=datetime.now(timezone.utc).isoformat())
@@ -107,16 +119,17 @@ class DatasetMetadata(BaseModel):
     def set_version(self, version: VersionInfo) -> None:
         self.version = version.to_string()
 
-    def update_version(self, part: str) -> None:
-        version = VersionInfo.from_string(self.version)
-        if part == "major":
-            version.increment_major()
-        elif part == "minor":
-            version.increment_minor()
-        elif part == "patch":
-            version.increment_patch()
+    def update_version(self, version: str) -> None:
+        version_info = VersionInfo.from_string(version)
+        if self.auto_version_strategy == "major":
+            version_info.increment_major()
+        elif self.auto_version_strategy == "minor":
+            version_info.increment_minor()
+        elif self.auto_version_strategy == "patch":
+            version_info.increment_patch()
         else:
             raise ValueError("part must be 'major', 'minor', or 'patch'")
+        self.version = version_info.to_string()
 
     def set_license(self, license_content: str | Path) -> None:
         """
