@@ -581,7 +581,7 @@ class DatasetMetadata(BaseModel):
 
     id: UUID = Field(..., description="Dataset ID")
     key: t.Annotated[str, BeforeValidator(_validate_key)] = Field(..., description="Dataset name")
-    tags: list[str] | None = Field(None, description="Dataset tags")
+    tags: list[str] = Field(default_factory=list, description="Dataset tags")
     version: t.Annotated[str, BeforeValidator(_validate_version)] = Field(
         ..., description="Dataset version"
     )
@@ -605,7 +605,9 @@ class CreateDatasetRequest(BaseModel):
     """Unique identifier of the dataset."""
     version: t.Annotated[str, BeforeValidator(_validate_version)]
     """Version of the dataset following semantic versioning."""
-    tags: list[str] | None = None
+    tags: list[str] = Field(
+        default_factory=list, description="Optional list of tags associated with the dataset."
+    )
     """Optional list of tags associated with the dataset."""
 
 

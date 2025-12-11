@@ -327,6 +327,7 @@ class DatasetManager:
 
         selector = pafs.FileSelector(uri, recursive=False)
         fs = pafs.LocalFileSystem()
+        self.ensure_dir(fs, uri)
         entries = fs.get_file_info(selector)
 
         versions = [
