@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +36,49 @@ class Dataset:
         self.ds = ds
         self.metadata = metadata
         self.manifest = manifest
+        self.row_count: int = 0
 
         if materialize:
             self.ds = ds.to_table()
 
         if not metadata:
             print_info("[*] No metadata provided, check your dataset!")
+
+    def compute_dataset_fingerprint(self) -> str:
+        """
+        Computes a deterministic hash of the dataset content without writing to disk.
+        Handles both pyarrow.Table and pyarrow.dataset.Dataset.
+
+        Returns:
+            str: The SHA256 hash of the dataset content.
+        """
+        hasher = hashlib.sha256()
+
+        # 1. Hash Metadata (Schema & Row Count)
+        # This catches structural changes instantly
+        schema_str = self.ds.schema.to_string(show_field_metadata=True)
+        hasher.update(schema_str.encode("utf-8"))
+
+        if self.row_count is not None:
+            hasher.update(str(self.row_count).encode("utf-8"))
+
+        # 2. Get the Batch Iterator
+        # pyarrow.Table uses to_batches(), pyarrow.dataset.Dataset uses scanner()
+        if isinstance(self.ds, pa.Table):
+            # max_chunksize ensures we don't try to hash 10GB in one go if it's a single chunk
+            batch_iter = self.ds.to_batches(max_chunksize=64 * 1024)
+        else:
+            batch_iter = self.ds.scanner(batch_size=64 * 1024).to_batches()
+
+        # 3. Hash Content (Streaming)
+        for batch in batch_iter:
+            for column in batch.columns:
+                # Hash the validity bitmap (null positions) and the value buffers
+                for buffer in column.buffers():
+                    if buffer:
+                        hasher.update(buffer)
+
+        return hasher.hexdigest()
 
     def update_metadata(self, metadata: DatasetMetadata) -> None:
         self.metadata = metadata
@@ -103,6 +141,10 @@ class Dataset:
         if self.metadata is None:
             raise ValueError("Dataset metadata is not set")
 
+        # auto-versioning but only if enabled
+        if self.metadata.auto_version:
+            self.metadata.fingerprint = self.get_content_fingerprint()
+
         # update metadata fields before saving
         self.metadata.save(path, fs)
 
@@ -128,13 +170,81 @@ class Dataset:
             **kwargs,
         )
 
+    def get_content_fingerprint(self) -> str:
+        """
+        Generates a unique hash of the current in-memory content (schema + data).
+        """
+        # Reuse the optimized logic we discussed previously
+        return self.compute_dataset_fingerprint()
+
+
+def _ensure_version_bump(
+    dataset: Dataset, dataset_manager: DatasetManager, latest_path: str | None = None
+) -> bool:
+    """Ensures that the dataset version is bumped if content has changed.
+
+    Args:
+        dataset: The Dataset to check.
+        dataset_manager: The DatasetManager instance.
+        latest_path: The path to the latest saved dataset version.
+
+    Returns:
+        bool: True if the dataset should be saved (version bumped or new), False otherwise.
+    """
+
+    if not latest_path:
+        print_info("[*] No previous version found. Saving new dataset.")
+        return True
+
+    latest_version = dataset_manager.get_version_from_path(latest_path)
+
+    fs, clean_path = dataset_manager.get_fs_and_path(latest_path)
+
+    # 1. New dataset (no history) -> Always save
+    manifest_exists = dataset_manager.manifest_exists(clean_path, fs)
+    if dataset.manifest is None and not manifest_exists:
+        return True
+
+    print_info("[*] Checking for changes against previous version...")
+
+    # Load previous metadata to get the old fingerprint
+
+    latest_metadata = DatasetMetadata.load(path=f"{clean_path}/{METADATA_FILE}", fs=fs)
+    latest_fingerprint = latest_metadata.fingerprint
+
+    if dataset.metadata.version > latest_version:
+        print_info("[*] Dataset version is already higher than previous. Skipping version check.")
+        return True
+
+    # 2. Compute New Fingerprint
+    dataset.metadata.fingerprint = dataset.get_content_fingerprint()
+
+    # 3. Compare
+    if latest_fingerprint and dataset.metadata.fingerprint == latest_fingerprint:
+        print_info("[!] No content changes detected (Fingerprint match).")
+        print_info("[!] Save skipped.")
+        return False
+
+    # 4. Fallback for Legacy Datasets (No old fingerprint)
+    # If the old dataset exists but has no fingerprint, we technically
+    # should read IT to compute its fingerprint, or just assume "Modified" to be safe.
+    # For enormous datasets, it is safer/faster to assume "Modified" than to read the old one.
+    if latest_fingerprint is None:
+        print_info("[*] No previous fingerprint found. forcing update to establish baseline.")
+        return True
+
+    # 5. Data Changed: Bump Version
+    dataset.metadata.update_version(latest_version)
+    print_info(f"[+] Changes detected. Auto-bumping version to {dataset.metadata.version}")
+    return True
+
 
 def _persist_dataset(
     dataset: Dataset,
     path_str: str,
     *,
     create_dir: bool = False,
-    fsm: DatasetManager,
+    dataset_manager: DatasetManager,
     **kwargs: Any,
 ) -> None:
     """Persists a dataset to the given path.
@@ -143,14 +253,14 @@ def _persist_dataset(
         dataset: The Dataset to persist.
         path_str: The path to persist the dataset to.
         create_dir: Whether to create the directory if it doesn't exist. Defaults to False.
-        fsm: The DatasetManager instance.
+        dataset_manager: The DatasetManager instance.
         kwargs: Additional arguments to pass to pyarrow.dataset.write_dataset.
     """
-    fs, base_path = fsm.get_fs_and_path(path_str)
+    fs, base_path = dataset_manager.get_fs_and_path(path_str)
 
-    fsm.ensure_dir(fs, base_path)
+    dataset_manager.ensure_dir(fs, base_path)
     data_path = f"{base_path}/data"
-    fsm.ensure_dir(fs, data_path)
+    dataset_manager.ensure_dir(fs, data_path)
 
     dataset.save_dataset(path=data_path, fs=fs, create_dir=create_dir, **kwargs)
 
@@ -170,7 +280,7 @@ def _persist_dataset(
 def save_dataset_to_disk(
     dataset: Dataset,
     *,
-    fsm: DatasetManager,
+    dataset_manager: DatasetManager,
     **kwargs: Any,
 ) -> None:
     """Saves a dataset to local disk cache.
@@ -184,14 +294,19 @@ def save_dataset_to_disk(
         None
 
     """
-    path_str = fsm.get_cache_save_uri(metadata=dataset.metadata)
+
+    if dataset.metadata.auto_version:
+        latest_path = dataset_manager.get_latest_cache_save_uri(metadata=dataset.metadata)
+        should_save = _ensure_version_bump(dataset, dataset_manager, latest_path)
+        if not should_save:
+            return
     print_info("[*] Saving dataset to local cache")
 
     _persist_dataset(
         dataset=dataset,
-        path_str=path_str,
+        path_str=dataset_manager.get_cache_save_uri(metadata=dataset.metadata),
         create_dir=True,
-        fsm=fsm,
+        dataset_manager=dataset_manager,
         **kwargs,
     )
 
@@ -200,7 +315,7 @@ def push_dataset(
     dataset: Dataset,
     *,
     to_cache: bool = True,
-    fsm: DatasetManager,
+    dataset_manager: DatasetManager,
     **kwargs: Any,
 ) -> None:
     """Pushes a dataset to remote storage.
@@ -208,33 +323,42 @@ def push_dataset(
     Args:
         dataset: The Dataset to push.
         to_cache: Whether to save to local cache first. Defaults to True.
-        fsm: The DatasetManager instance.
+        dataset_manager: The DatasetManager instance.
         kwargs: Additional arguments to pass to pyarrow.dataset.write_dataset.
 
     Returns:
         None
     """
+    if dataset.metadata.auto_version:
+        latest_path = dataset_manager.get_remote_load_uri(
+            uri=f"{dataset.metadata.organization}/{dataset.metadata.name}", version="latest"
+        )
+        should_save = _ensure_version_bump(dataset, dataset_manager, latest_path)
+        if not should_save:
+            return
+
+    dataset_id, path_str = dataset_manager.get_remote_save_uri(metadata=dataset.metadata)
+    dataset.metadata.id = dataset_id
+
     if to_cache:
         save_dataset_to_disk(
             dataset=dataset,
-            fsm=fsm,
+            dataset_manager=dataset_manager,
             **kwargs,
         )
 
-    dataset_id, path_str = fsm.get_remote_save_uri(metadata=dataset.metadata)
-    dataset.metadata.id = dataset_id
     print_info("[*] Saving dataset to remote storage")
     try:
         _persist_dataset(
             dataset=dataset,
             path_str=path_str,
-            fsm=fsm,
+            dataset_manager=dataset_manager,
             **kwargs,
         )
-        fsm.remote_save_complete(complete=True, dataset_id=dataset.metadata.id)
+        dataset_manager.remote_save_complete(complete=True, dataset_id=dataset.metadata.id)
     except Exception:
         # if remote save failed, remove the record from API
-        fsm.delete_remote_dataset_record(dataset_id_or_key=dataset.metadata.id)
+        dataset_manager.delete_remote_dataset_record(dataset_id_or_key=dataset.metadata.id)
         raise
 
 

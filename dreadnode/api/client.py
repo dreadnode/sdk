@@ -986,7 +986,7 @@ class ApiClient:
         """
         response = self.request(
             "GET",
-            f"/datasets/{request.dataset_uri}/download?version={request.version}",
+            f"/datasets/{request.dataset_uri}/credentials?version={request.version}",
         )
 
         return UserDataCredentials(**response.json())
