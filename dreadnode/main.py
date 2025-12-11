@@ -1336,7 +1336,7 @@ class Dreadnode:
             uri=path,
             version=version,
             materialize=materialize,
-            fsm=self._fs_manager,
+            dataset_manager=self._fs_manager,
         )
 
     def save_dataset_to_disk(

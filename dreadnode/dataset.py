@@ -9,7 +9,7 @@ from fsspec.utils import get_protocol
 from pyarrow.fs import FileSystem
 
 from dreadnode.constants import MANIFEST_FILE, METADATA_FILE
-from dreadnode.logging_ import print_info
+from dreadnode.logging_ import print_info, print_warning
 from dreadnode.storage.datasets.manager import DatasetManager
 from dreadnode.storage.datasets.manifest import DatasetManifest, create_manifest
 from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
@@ -235,7 +235,7 @@ def _ensure_version_bump(
 
     # 5. Data Changed: Bump Version
     dataset.metadata.update_version(latest_version)
-    print_info(f"[+] Changes detected. Auto-bumping version to {dataset.metadata.version}")
+    print_warning(f"[+] Changes detected. Auto-bumping version to {dataset.metadata.version}")
     return True
 
 
@@ -368,7 +368,7 @@ def load_dataset(
     format: str = "parquet",
     *,
     materialize: bool = True,
-    fsm: DatasetManager,
+    dataset_manager: DatasetManager,
     **kwargs: dict,
 ) -> Dataset:
     """
@@ -392,11 +392,11 @@ def load_dataset(
     # if local path
     if protocol in ("file", "local", ""):
         # check cache first
-        if not fsm.check_cache(uri, version):
+        if not dataset_manager.check_cache(uri, version):
             print_info("[+] Dataset not found in cache. Loading dataset from local path...")
 
             # load directly from local path
-            fs, fs_path = fsm.get_fs_and_path(uri)
+            fs, fs_path = dataset_manager.get_fs_and_path(uri)
 
             if not Path(fs_path).exists():
                 raise FileNotFoundError(f"[!] Dataset not found at local path: {uri}")
@@ -405,7 +405,7 @@ def load_dataset(
             dataset = ds.dataset(fs_path, format=format, filesystem=fs, **kwargs)
 
             # metadata and manifest files are not expected in local path
-            metadata = DatasetMetadata(organization=fsm.organization, format=format)
+            metadata = DatasetMetadata(organization=dataset_manager.organization, format=format)
 
             return Dataset(ds=dataset, metadata=metadata, materialize=materialize)
 
@@ -413,17 +413,17 @@ def load_dataset(
         print_info("[+] Loading dataset from cache...")
 
         # get the filesystem and path
-        fs, fs_path = fsm.get_fs_and_path(uri)
+        fs, fs_path = dataset_manager.get_fs_and_path(uri)
 
         # resolve versioned cache path
-        cache_path = fsm.get_cache_load_uri(fs_path, version, fs)
+        cache_path = dataset_manager.get_cache_load_uri(fs_path, version, fs)
 
         # metadata and manifest files are expected in cache
-        if fsm.metadata_exists(path=cache_path):
+        if dataset_manager.metadata_exists(path=cache_path):
             metadata = DatasetMetadata.load(path=f"{cache_path}/{METADATA_FILE}", fs=fs)
 
         # the manifest will be compared on save
-        if fsm.manifest_exists(path=cache_path):
+        if dataset_manager.manifest_exists(path=cache_path):
             manifest = DatasetManifest.load(path=f"{cache_path}/{MANIFEST_FILE}", fs=fs)
 
         # load dataset
@@ -435,10 +435,10 @@ def load_dataset(
     print_info("[+] Loading from remote storage...")
     try:
         # get remote URI
-        remote_uri = fsm.get_remote_load_uri(uri=strip_protocol(uri), version=version)
+        remote_uri = dataset_manager.get_remote_load_uri(strip_protocol(uri), version)
 
         # get the filesystem and path
-        fs, fs_path = fsm.get_fs_and_path(remote_uri)
+        fs, fs_path = dataset_manager.get_fs_and_path(remote_uri)
 
         # metadata and manifest files are expected in remote storage
         info = fs.get_file_info(f"{fs_path}/{METADATA_FILE}")

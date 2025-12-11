@@ -223,14 +223,14 @@ class DatasetManager:
 
         self._api.upload_complete(request=request)
 
-    def get_remote_load_uri(self, uri: str, version: str | None = "latest") -> str | None:
+    def get_remote_load_uri(self, uri: str, version: str | None = None) -> str | None:
         """
         Requests the download URI for a dataset from the API.
         """
 
         request = DatasetDownloadRequest(
             dataset_uri=uri,
-            version=version,
+            version=version or "latest",
         )
         try:
             response = self._api.download_dataset(request)
@@ -242,16 +242,27 @@ class DatasetManager:
                 return None
             raise
 
+        self._cached_s3_fs = pafs.S3FileSystem(
+            access_key=response.access_key_id,
+            secret_key=response.secret_access_key,
+            session_token=response.session_token,
+            endpoint_override=resolve_endpoint(response.endpoint),
+            region=response.region,
+            check_directory_existence_before_creation=True,
+        )
+        self._credentials_expiry = response.expiration
         return response.uri
 
-    def get_s3_config(self, dataset_id: UUID) -> dict[str, Any]:
+    def get_s3_config(self, dataset_id: UUID, version: str | None = None) -> dict[str, Any]:
         """
         Translates your UserDataCredentials into PyArrow S3 arguments.
         """
         if not self._api:
             raise ValueError("No client configured")
 
-        creds = self._api.get_dataset_access_credentials(dataset_id=dataset_id)
+        creds = self._api.get_dataset_access_credentials(
+            dataset_id=dataset_id, version=version or "latest"
+        )
         self._credentials_expiry = creds.expiration
         resolved_endpoint = resolve_endpoint(creds.endpoint)
 

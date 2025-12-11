@@ -784,6 +784,7 @@ class ApiClient:
     def get_dataset_access_credentials(
         self,
         dataset_id: UUID,
+        version: str,
     ) -> UserDataCredentials:
         """
         Retrieves dataset access credentials for a specific dataset.
@@ -793,7 +794,7 @@ class ApiClient:
         Returns:
             The user data credentials object.
         """
-        params: dict[str, str] = {"dataset_id": str(dataset_id)}
+        params: dict[str, str] = {"version": version}
         response = self.request("GET", f"/datasets/{dataset_id!s}/credentials", params=params)
         return UserDataCredentials(**response.json())
 
@@ -986,7 +987,10 @@ class ApiClient:
         """
         response = self.request(
             "GET",
-            f"/datasets/{request.dataset_uri}/credentials?version={request.version}",
+            f"/datasets/{request.dataset_uri}/credentials",
+            params={
+                "version": request.version,
+            },
         )
 
         return UserDataCredentials(**response.json())
