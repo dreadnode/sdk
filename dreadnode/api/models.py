@@ -643,5 +643,5 @@ class DatasetDownloadRequest(BaseModel):
 
     dataset_uri: str
     """Name of the dataset to download."""
-    version: str | None = "latest"
+    version: str
     """Version of the dataset to download. If None, the latest version is downloaded."""
