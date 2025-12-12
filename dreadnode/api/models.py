@@ -621,7 +621,7 @@ class CreateDatasetResponse(BaseModel):
         status_code (int): HTTP status code of the upload request.
     """
 
-    dataset_id: str
+    dataset_id: UUID
     """Unique identifier for the dataset."""
     user_data_access_response: UserDataCredentials
     """URI to upload the dataset files."""
@@ -632,7 +632,7 @@ class DatasetUploadCompleteRequest(BaseModel):
     A data model representing the request body for completing a dataset upload.
     """
 
-    dataset_id: str
+    dataset_id: UUID
     """Unique identifier for the dataset."""
     complete: bool
     """Status code indicating the result of the upload."""
@@ -647,3 +647,13 @@ class DatasetDownloadRequest(BaseModel):
     """Name of the dataset to download."""
     version: str
     """Version of the dataset to download. If None, the latest version is downloaded."""
+
+
+class UpdateDatasetVersionResponse(BaseModel):
+    """
+    A data model representing the response after updating a dataset version.
+    """
+
+    dataset: DatasetMetadata
+    """Updated dataset metadata."""
+    credentials: UserDataCredentials

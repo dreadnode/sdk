@@ -40,6 +40,7 @@ from dreadnode.api.models import (
     TimeAxisType,
     TraceSpan,
     TraceTree,
+    UpdateDatasetVersionResponse,
     UserDataCredentials,
     UserResponse,
     Workspace,
@@ -1010,6 +1011,23 @@ class ApiClient:
         """
         response = self.request("GET", f"/datasets/{dataset_id_or_key}")
         return DatasetMetadata(**response.json())
+
+    def update_dataset_version(
+        self, dataset_id: UUID, new_version: str
+    ) -> UpdateDatasetVersionResponse:
+        """
+        Updates the version of a specific dataset.
+
+        Args:
+            dataset_id (UUID): The dataset identifier.
+            new_version (str): The new version string.
+
+        Returns:
+            UpdateDatasetVersionResponse: The response containing updated dataset metadata and credentials.
+        """
+        payload = {"version": new_version}
+        response = self.request("PATCH", f"/datasets/{dataset_id}/version", json_data=payload)
+        return UpdateDatasetVersionResponse(**response.json())
 
     def delete_dataset(self, dataset_id_or_key: str | UUID) -> None:
         """
