@@ -190,16 +190,32 @@ class DatasetManager:
         if not self._api:
             raise ValueError("No client configured")
 
-        upload_request = CreateDatasetRequest(
-            org_key=metadata.organization,
-            key=metadata.name,
-            version=metadata.version,
-            tags=metadata.tags,
-        )
+        # check if the dataset already exists remotely
+        try:
+            existing_dataset = self._api.get_dataset(
+                dataset_id_or_key=f"{metadata.organization}/{metadata.name}"
+            )
+        except RuntimeError as e:
+            if "404: Dataset not found" not in str(e):
+                raise
+            existing_dataset = None
 
-        response = self._api.create_dataset(request=upload_request)
-        dataset_id = response.dataset_id
-        user_data_access_response = response.user_data_access_response
+        if not existing_dataset:
+            upload_request = CreateDatasetRequest(
+                org_key=metadata.organization,
+                key=metadata.name,
+                version=metadata.version,
+                tags=metadata.tags,
+            )
+
+            response = self._api.create_dataset(request=upload_request)
+            dataset_id = response.dataset_id
+            user_data_access_response = response.user_data_access_response
+        else:
+            response = self._api.update_dataset_version(existing_dataset.id, metadata.version)
+            dataset_id = response.dataset.id
+            user_data_access_response = response.credentials
+
         self._cached_s3_fs = pafs.S3FileSystem(
             access_key=user_data_access_response.access_key_id,
             secret_key=user_data_access_response.secret_access_key,
@@ -211,7 +227,7 @@ class DatasetManager:
         self._credentials_expiry = user_data_access_response.expiration
         return dataset_id, user_data_access_response.uri
 
-    def remote_save_complete(self, dataset_id: str, *, complete: bool) -> None:
+    def remote_save_complete(self, dataset_id: UUID, *, complete: bool) -> None:
         """
         Notifies the API that the remote upload is complete.
         """
