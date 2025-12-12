@@ -9,7 +9,7 @@ from fsspec.utils import get_protocol
 from pyarrow.fs import FileSystem
 
 from dreadnode.constants import MANIFEST_FILE, METADATA_FILE
-from dreadnode.logging_ import print_info, print_warning
+from dreadnode.logging_ import print_info, print_success, print_warning
 from dreadnode.storage.datasets.manager import DatasetManager
 from dreadnode.storage.datasets.manifest import DatasetManifest, create_manifest
 from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
@@ -148,6 +148,16 @@ class Dataset:
         # update metadata fields before saving
         self.metadata.save(path, fs)
 
+    def save_readme(self, path: str, fs: FileSystem) -> None:
+        """
+        Helper to write README content to native binary streams.
+        """
+        if self.metadata is None or self.metadata.readme is None:
+            print_info("[*] No README content to save.")
+        else:
+            with fs.open_output_stream(path) as f:
+                f.write(self.metadata.readme.encode("utf-8"))
+
     def save_dataset(
         self,
         path: str,
@@ -266,6 +276,8 @@ def _persist_dataset(
 
     dataset.save_metadata(path=f"{base_path}/{METADATA_FILE}", fs=fs)
 
+    dataset.save_readme(path=f"{base_path}/README.md", fs=fs)
+
     manifest = create_manifest(
         path=base_path,
         version=dataset.metadata.version,
@@ -355,10 +367,14 @@ def push_dataset(
             dataset_manager=dataset_manager,
             **kwargs,
         )
+        print_info("[*] Dataset saved to remote storage successfully. Updating remote record...")
         dataset_manager.remote_save_complete(complete=True, dataset_id=dataset.metadata.id)
+        print_success("[+] Dataset push complete.")
     except Exception:
         # if remote save failed, remove the record from API
+        print_info("[!] Remote dataset save failed. Cleaning up remote record...")
         dataset_manager.delete_remote_dataset_record(dataset_id_or_key=dataset.metadata.id)
+        print_info("[*] Remote record cleaned up.")
         raise
 
 
