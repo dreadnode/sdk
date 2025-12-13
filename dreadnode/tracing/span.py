@@ -650,7 +650,7 @@ class RunSpan(Span):
 
             return str(filesystem.unstrip_protocol(full_path))
 
-        return self._storage_manager.execute_with_retry(store_operation)
+        return self._credential_manager.execute_with_retry(store_operation)
 
     def _create_object_by_hash(self, serialized: Serialized, object_hash: str) -> Object:
         """Create an ObjectVal or ObjectUri depending on size with a specific hash."""
@@ -675,7 +675,7 @@ class RunSpan(Span):
         # Offload to file system (e.g., S3)
         # For storage efficiency, still use just the data_hash for the file path
         # This ensures we don't duplicate storage for the same data
-        prefix = self._storage_manager.get_prefix()
+        prefix = self._credential_manager.get_prefix()
         full_path = f"{prefix.rstrip('/')}/{data_hash}"
         object_uri = self._store_file_by_hash(data_bytes, full_path)
 
