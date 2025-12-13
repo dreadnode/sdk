@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import coolname
+from packaging.version import Version
 from pyarrow.fs import FileSystem
 from pydantic import BaseModel, Field, field_validator
 
@@ -41,7 +42,8 @@ class VersionInfo(BaseModel):
 
     @staticmethod
     def from_string(version_str: str) -> "VersionInfo":
-        parts = version_str.split(".")
+        version = Version(version_str)
+        parts = [version.major, version.minor, version.micro]
         if len(parts) != 3:
             raise ValueError("Version string must be in the format 'major.minor.patch'")
         return VersionInfo(

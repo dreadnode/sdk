@@ -141,9 +141,7 @@ class Dataset:
         if self.metadata is None:
             raise ValueError("Dataset metadata is not set")
 
-        # auto-versioning but only if enabled
-        if self.metadata.auto_version:
-            self.metadata.fingerprint = self.get_content_fingerprint()
+        self.metadata.fingerprint = self.get_content_fingerprint()
 
         # update metadata fields before saving
         self.metadata.save(path, fs)

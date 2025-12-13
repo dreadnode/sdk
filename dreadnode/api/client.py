@@ -760,11 +760,9 @@ class ApiClient:
 
     # User data access
 
-    def get_user_data_credentials(
+    def get_workspace_data_credentials(
         self,
-        organization_id: UUID | None = None,
         workspace_id: UUID | None = None,
-        dataset_id: UUID | None = None,
     ) -> UserDataCredentials:
         """
         Retrieves user data credentials for secondary storage access.
@@ -773,12 +771,8 @@ class ApiClient:
             The user data credentials object.
         """
         params: dict[str, str] = {}
-        if organization_id:
-            params["org_id"] = str(organization_id)
         if workspace_id:
             params["workspace_id"] = str(workspace_id)
-        if dataset_id:
-            params["dataset_id"] = str(dataset_id)
         response = self.request("GET", "/user-data/credentials", params=params)
         return UserDataCredentials(**response.json())
 

@@ -706,8 +706,8 @@ class Dreadnode:
             if self._api is not None:
                 api = self._api
                 self._credential_manager = CredentialManager(
-                    credential_fetcher=lambda: api.get_user_data_credentials(
-                        organization_id=self._organization.id, workspace_id=self._workspace.id
+                    credential_fetcher=lambda: api.get_workspace_data_credentials(
+                        workspace_id=self._workspace.id
                     )
                 )
 
