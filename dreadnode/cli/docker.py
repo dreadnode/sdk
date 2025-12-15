@@ -195,8 +195,8 @@ def docker_run(
         FileNotFoundError: If docker/docker-compose not found.
     """
     try:
-        result = subprocess.run(  # noqa: S603 # nosec
-            ["docker", *args],  # noqa: S607
+        result = subprocess.run(  # nosec
+            ["docker", *args],
             check=True,
             text=True,
             timeout=timeout,

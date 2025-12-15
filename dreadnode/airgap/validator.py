@@ -1,9 +1,8 @@
 """Pre-flight validation for air-gapped deployments."""
 
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
-from typing import Optional
 
 from loguru import logger
 
@@ -13,8 +12,6 @@ from dreadnode.airgap.ecr_helper import ECRHelper
 class ValidationError(Exception):
     """Raised when pre-flight validation fails."""
 
-    pass
-
 
 class PreFlightValidator:
     """Validates environment for air-gapped deployment."""
@@ -22,15 +19,16 @@ class PreFlightValidator:
     MIN_DISK_SPACE_GB = 20
     MIN_MEMORY_GB = 4
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize pre-flight validator."""
         self.errors: list[str] = []
         self.warnings: list[str] = []
 
     def validate_all(
         self,
-        ecr_helper: Optional[ECRHelper] = None,
-        bundle_path: Optional[Path] = None,
+        ecr_helper: ECRHelper | None = None,
+        bundle_path: Path | None = None,
+        *,
         skip_k8s: bool = False,
     ) -> None:
         """
@@ -75,13 +73,15 @@ class PreFlightValidator:
 
         logger.info("✅ All pre-flight validation checks passed")
 
-    def check_disk_space(self, path: Path = Path.cwd()) -> None:
+    def check_disk_space(self, path: Path | None = None) -> None:
         """
         Check available disk space.
 
         Args:
             path: Path to check disk space for
         """
+        if path is None:
+            path = Path.cwd()
         try:
             stat = shutil.disk_usage(path)
             available_gb = stat.free / (1024**3)
@@ -93,7 +93,7 @@ class PreFlightValidator:
                 )
             else:
                 logger.debug(f"Disk space check passed: {available_gb:.1f}GB available")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.warnings.append(f"Could not check disk space: {e}")
 
     def check_required_tools(self) -> None:
@@ -116,7 +116,7 @@ class PreFlightValidator:
             return
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "version", "--client", "--output=json"],
                 capture_output=True,
                 text=True,
@@ -130,7 +130,7 @@ class PreFlightValidator:
     def check_kubernetes_connectivity(self) -> None:
         """Check connectivity to Kubernetes cluster."""
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "cluster-info"],
                 capture_output=True,
                 text=True,
@@ -167,10 +167,10 @@ class PreFlightValidator:
 
         # Check file is readable
         try:
-            with open(bundle_path, "rb") as f:
+            with bundle_path.open("rb") as f:
                 f.read(1)
             logger.debug(f"Bundle file is readable: {bundle_path}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.errors.append(f"Bundle file is not readable: {e}")
 
         # Check file size is reasonable (not empty, not too small)
@@ -218,8 +218,9 @@ class PreFlightValidator:
             namespace: Namespace to check
         """
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "get", "namespace", namespace],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -241,8 +242,9 @@ class PreFlightValidator:
             storage_class: Storage class name to check
         """
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "get", "storageclass", storage_class],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=10,

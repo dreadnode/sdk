@@ -29,7 +29,7 @@ class TestZarfWrapper:
         """Test that initialization raises error if Zarf not found."""
         mock_which.return_value = None
 
-        with pytest.raises(RuntimeError, match="Zarf binary.*not found"):
+        with pytest.raises(RuntimeError, match=r"Zarf binary.*not found"):
             ZarfWrapper()
 
     @patch("shutil.which")

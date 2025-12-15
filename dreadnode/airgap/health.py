@@ -1,17 +1,15 @@
 """Post-installation health checks for air-gapped deployments."""
 
 import json
-import subprocess
+import subprocess  # nosec B404
 import time
-from typing import Optional
+from typing import Any
 
 from loguru import logger
 
 
 class HealthCheckError(Exception):
     """Raised when health checks fail."""
-
-    pass
 
 
 class HealthChecker:
@@ -30,7 +28,7 @@ class HealthChecker:
         self,
         timeout: int = 600,
         check_interval: int = 10,
-        required_pods: Optional[list[str]] = None,
+        required_pods: list[str] | None = None,  # noqa: ARG002
     ) -> None:
         """
         Wait for all pods to reach Ready state.
@@ -78,7 +76,7 @@ class HealthChecker:
 
                 time.sleep(check_interval)
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(f"Error checking pod status: {e}")
                 time.sleep(check_interval)
 
@@ -89,7 +87,7 @@ class HealthChecker:
             f"Status: {pod_status['ready']}/{pod_status['total']} ready"
         )
 
-    def _get_pod_status(self) -> dict:
+    def _get_pod_status(self) -> dict[str, int]:
         """
         Get status of all pods in namespace.
 
@@ -97,7 +95,7 @@ class HealthChecker:
             Dictionary with pod status counts
         """
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 [
                     "kubectl",
                     "get",
@@ -140,15 +138,14 @@ class HealthChecker:
                     if condition.get("type") == "Ready" and condition.get("status") == "True":
                         status["ready"] += 1
                         break
-
-            return status
-
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get pod status: {e.stderr}")
             raise
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse pod status JSON: {e}")
             raise
+        else:
+            return status
 
     def _get_failed_pods(self) -> list[str]:
         """
@@ -158,7 +155,7 @@ class HealthChecker:
             List of failed pod names
         """
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 [
                     "kubectl",
                     "get",
@@ -182,13 +179,12 @@ class HealthChecker:
                 phase = pod.get("status", {}).get("phase", "Unknown")
                 if phase in ["Failed", "CrashLoopBackOff", "Error"]:
                     failed_pods.append(pod.get("metadata", {}).get("name", "unknown"))
-
+        except Exception:  # noqa: BLE001
+            return []
+        else:
             return failed_pods
 
-        except Exception:
-            return []
-
-    def verify_api_health(self, api_endpoint: Optional[str] = None) -> bool:
+    def verify_api_health(self, api_endpoint: str | None = None) -> bool:  # noqa: ARG002
         """
         Verify platform API is healthy and responding.
 
@@ -207,7 +203,7 @@ class HealthChecker:
 
         try:
             # Check for API pods
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 [
                     "kubectl",
                     "get",
@@ -244,17 +240,16 @@ class HealthChecker:
             if ready_pods > 0:
                 logger.info(f"✅ Platform API is healthy ({ready_pods} pod(s) ready)")
                 return True
-            else:
-                raise HealthCheckError("No API pods are in ready state")
+            raise HealthCheckError("No API pods are in ready state")
 
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to verify API health: {e.stderr}")
-            raise HealthCheckError(f"API health check failed: {e.stderr}")
+            raise HealthCheckError(f"API health check failed: {e.stderr}") from e
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse API pod JSON: {e}")
-            raise HealthCheckError(f"API health check failed: {e}")
+            raise HealthCheckError(f"API health check failed: {e}") from e
 
-    def get_deployment_summary(self) -> dict:
+    def get_deployment_summary(self) -> dict[str, Any]:
         """
         Get summary of deployed resources.
 
@@ -270,7 +265,7 @@ class HealthChecker:
 
         try:
             # Get pods summary
-            pod_result = subprocess.run(
+            pod_result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "get", "pods", "-n", self.namespace, "-o", "json"],
                 capture_output=True,
                 text=True,
@@ -281,7 +276,7 @@ class HealthChecker:
             summary["pods"] = self._summarize_pods(pods_data.get("items", []))
 
             # Get services summary
-            svc_result = subprocess.run(
+            svc_result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "get", "services", "-n", self.namespace, "-o", "json"],
                 capture_output=True,
                 text=True,
@@ -292,7 +287,7 @@ class HealthChecker:
             summary["services"] = self._summarize_services(svc_data.get("items", []))
 
             # Get deployments summary
-            deploy_result = subprocess.run(
+            deploy_result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "get", "deployments", "-n", self.namespace, "-o", "json"],
                 capture_output=True,
                 text=True,
@@ -302,33 +297,33 @@ class HealthChecker:
             deploy_data = json.loads(deploy_result.stdout)
             summary["deployments"] = self._summarize_deployments(deploy_data.get("items", []))
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Could not get complete deployment summary: {e}")
 
         return summary
 
-    def _summarize_pods(self, pods: list) -> dict:
+    def _summarize_pods(self, pods: list[dict[str, Any]]) -> dict[str, Any]:
         """Summarize pod information."""
         return {
             "total": len(pods),
             "names": [pod.get("metadata", {}).get("name", "unknown") for pod in pods],
         }
 
-    def _summarize_services(self, services: list) -> dict:
+    def _summarize_services(self, services: list[dict[str, Any]]) -> dict[str, Any]:
         """Summarize service information."""
         return {
             "total": len(services),
             "names": [svc.get("metadata", {}).get("name", "unknown") for svc in services],
         }
 
-    def _summarize_deployments(self, deployments: list) -> dict:
+    def _summarize_deployments(self, deployments: list[dict[str, Any]]) -> dict[str, Any]:
         """Summarize deployment information."""
         return {
             "total": len(deployments),
             "names": [deploy.get("metadata", {}).get("name", "unknown") for deploy in deployments],
         }
 
-    def check_persistent_volumes(self) -> dict:
+    def check_persistent_volumes(self) -> dict[str, Any]:
         """
         Check status of persistent volumes.
 
@@ -336,7 +331,7 @@ class HealthChecker:
             Dictionary with PV/PVC status
         """
         try:
-            pvc_result = subprocess.run(
+            pvc_result = subprocess.run(  # nosec B603, B607
                 ["kubectl", "get", "pvc", "-n", self.namespace, "-o", "json"],
                 capture_output=True,
                 text=True,
@@ -347,9 +342,7 @@ class HealthChecker:
             pvc_data = json.loads(pvc_result.stdout)
             pvcs = pvc_data.get("items", [])
 
-            bound_pvcs = sum(
-                1 for pvc in pvcs if pvc.get("status", {}).get("phase") == "Bound"
-            )
+            bound_pvcs = sum(1 for pvc in pvcs if pvc.get("status", {}).get("phase") == "Bound")
 
             return {
                 "total": len(pvcs),
@@ -357,6 +350,6 @@ class HealthChecker:
                 "names": [pvc.get("metadata", {}).get("name", "unknown") for pvc in pvcs],
             }
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Could not check persistent volumes: {e}")
             return {"total": 0, "bound": 0, "names": []}

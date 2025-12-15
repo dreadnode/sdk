@@ -290,7 +290,7 @@ def open_env_file(filename: Path) -> None:
     else:
         cmd = ["xdg-open", filename.as_posix()]
     try:
-        subprocess.run(cmd, check=False)  # noqa: S603 # nosec
+        subprocess.run(cmd, check=False)  # nosec
         print_info("Opened environment file.")
     except subprocess.CalledProcessError as e:
         print_error(f"Failed to open environment file: {e}")

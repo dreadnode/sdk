@@ -172,6 +172,8 @@ ignore = [
     "PLC0415", # import should be at the top of the file
     "TD003",   # missing issue link on todos
     "PLR2004", # magic values - too many false positives
+    "S603",    # subprocess call without shell=True (intentional for airgap CLI tools)
+    "S607",    # partial executable path (intentional for kubectl/zarf)
 ]
 
 [tool.ruff.format]

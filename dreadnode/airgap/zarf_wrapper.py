@@ -2,9 +2,9 @@
 
 import json
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 from loguru import logger
 
@@ -35,7 +35,7 @@ class ZarfWrapper:
 
         # Verify Zarf is executable and get version
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 [self.zarf_binary, "version"],
                 capture_output=True,
                 text=True,
@@ -44,17 +44,18 @@ class ZarfWrapper:
             )
             logger.debug(f"Using Zarf: {result.stdout.strip()}")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to execute Zarf: {e.stderr}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Zarf command timed out")
+            raise RuntimeError(f"Failed to execute Zarf: {e.stderr}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Zarf command timed out") from e
 
     def create_package(
         self,
         source_dir: Path,
         output_dir: Path,
-        version: Optional[str] = None,
+        version: str | None = None,
+        *,
         confirm: bool = True,
-        set_variables: Optional[dict[str, str]] = None,
+        set_variables: dict[str, str] | None = None,
     ) -> Path:
         """
         Create Zarf package from source directory.
@@ -96,7 +97,7 @@ class ZarfWrapper:
         logger.debug(f"Command: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 cmd,
                 capture_output=True,
                 text=True,
@@ -106,9 +107,9 @@ class ZarfWrapper:
             logger.debug(f"Zarf output: {result.stdout}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Zarf package creation failed: {e.stderr}")
-            raise RuntimeError(f"Zarf package creation failed: {e.stderr}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Zarf package creation timed out after 10 minutes")
+            raise RuntimeError(f"Zarf package creation failed: {e.stderr}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Zarf package creation timed out after 10 minutes") from e
 
         # Find created package
         return self._find_package(output_dir)
@@ -116,8 +117,9 @@ class ZarfWrapper:
     def deploy_package(
         self,
         package_path: Path,
-        components: Optional[list[str]] = None,
-        set_variables: Optional[dict[str, str]] = None,
+        components: list[str] | None = None,
+        set_variables: dict[str, str] | None = None,
+        *,
         confirm: bool = True,
     ) -> None:
         """
@@ -138,8 +140,7 @@ class ZarfWrapper:
         cmd = [self.zarf_binary, "package", "deploy", str(package_path)]
 
         if components:
-            for component in components:
-                cmd.append(f"--components={component}")
+            cmd.extend(f"--components={component}" for component in components)
 
         if set_variables:
             for key, value in set_variables.items():
@@ -152,7 +153,7 @@ class ZarfWrapper:
         logger.debug(f"Command: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 cmd,
                 capture_output=True,
                 text=True,
@@ -163,15 +164,15 @@ class ZarfWrapper:
             logger.info("Package deployed successfully")
         except subprocess.CalledProcessError as e:
             logger.error(f"Zarf package deployment failed: {e.stderr}")
-            raise RuntimeError(f"Zarf package deployment failed: {e.stderr}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Zarf package deployment timed out after 30 minutes")
+            raise RuntimeError(f"Zarf package deployment failed: {e.stderr}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Zarf package deployment timed out after 30 minutes") from e
 
     def inspect_package(
         self,
         package_path: Path,
-        sbom_output: Optional[Path] = None,
-    ) -> dict:
+        sbom_output: Path | None = None,
+    ) -> dict[str, Any]:
         """
         Inspect Zarf package and extract metadata.
 
@@ -203,22 +204,22 @@ class ZarfWrapper:
         logger.debug(f"Inspecting package: {package_path.name}")
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 cmd,
                 capture_output=True,
                 text=True,
                 check=True,
                 timeout=60,
             )
-            return json.loads(result.stdout)
+            return json.loads(result.stdout)  # type: ignore[no-any-return]
         except subprocess.CalledProcessError as e:
             logger.error(f"Zarf package inspection failed: {e.stderr}")
-            raise RuntimeError(f"Zarf package inspection failed: {e.stderr}")
+            raise RuntimeError(f"Zarf package inspection failed: {e.stderr}") from e
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse Zarf output: {e}")
-            raise RuntimeError(f"Failed to parse Zarf output: {e}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Zarf package inspection timed out")
+            raise RuntimeError(f"Failed to parse Zarf output: {e}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Zarf package inspection timed out") from e
 
     def list_packages(self, directory: Path) -> list[Path]:
         """
@@ -258,8 +259,9 @@ class ZarfWrapper:
 
     def init_cluster(
         self,
-        components: Optional[list[str]] = None,
+        components: list[str] | None = None,
         storage_class: str = "local-path",
+        *,
         confirm: bool = True,
     ) -> None:
         """
@@ -280,8 +282,7 @@ class ZarfWrapper:
         ]
 
         if components:
-            for component in components:
-                cmd.append(f"--components={component}")
+            cmd.extend(f"--components={component}" for component in components)
 
         if confirm:
             cmd.append("--confirm")
@@ -290,7 +291,7 @@ class ZarfWrapper:
         logger.debug(f"Command: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 cmd,
                 capture_output=True,
                 text=True,
@@ -301,6 +302,6 @@ class ZarfWrapper:
             logger.info("Zarf initialized successfully")
         except subprocess.CalledProcessError as e:
             logger.error(f"Zarf initialization failed: {e.stderr}")
-            raise RuntimeError(f"Zarf initialization failed: {e.stderr}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Zarf initialization timed out")
+            raise RuntimeError(f"Zarf initialization failed: {e.stderr}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Zarf initialization timed out") from e

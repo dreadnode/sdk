@@ -4,7 +4,6 @@ import typing as t
 from pathlib import Path
 
 import cyclopts
-from rich.console import Console
 from rich.table import Table
 
 from dreadnode.airgap.ecr_helper import ECRHelper
@@ -72,10 +71,10 @@ def package_create(
 
     except RuntimeError as e:
         print_error(f"Package creation failed: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         print_error(f"Unexpected error: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command
@@ -85,7 +84,7 @@ def package_inspect(
         cyclopts.Parameter(help="Path to Zarf package bundle"),
     ],
     sbom_out: t.Annotated[
-        t.Optional[Path],
+        Path | None,
         cyclopts.Parameter(help="Directory to extract SBOMs to"),
     ] = None,
 ) -> None:
@@ -137,10 +136,10 @@ def package_inspect(
 
     except RuntimeError as e:
         print_error(f"Package inspection failed: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         print_error(f"Unexpected error: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command
@@ -158,9 +157,10 @@ def install(
         cyclopts.Parameter(help="Kubernetes namespace for deployment"),
     ] = "dreadnode",
     region: t.Annotated[
-        t.Optional[str],
+        str | None,
         cyclopts.Parameter(help="AWS region (auto-detected if not provided)"),
     ] = None,
+    *,
     skip_preflight: t.Annotated[
         bool,
         cyclopts.Parameter(help="Skip pre-flight validation checks"),
@@ -195,13 +195,13 @@ def install(
 
     except ValidationError as e:
         # Validation errors are already formatted nicely
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except RuntimeError as e:
         print_error(f"Installation failed: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         print_error(f"Unexpected error: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command
@@ -245,19 +245,20 @@ def health_check(
 
     except Exception as e:
         print_error(f"Health check failed: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command
 def validate(
     bundle: t.Annotated[
-        t.Optional[Path],
+        Path | None,
         cyclopts.Parameter(help="Path to bundle to validate"),
     ] = None,
     ecr_registry: t.Annotated[
-        t.Optional[str],
+        str | None,
         cyclopts.Parameter(help="ECR registry URL to validate connectivity"),
     ] = None,
+    *,
     skip_k8s: t.Annotated[
         bool,
         cyclopts.Parameter(help="Skip Kubernetes connectivity checks"),
@@ -287,7 +288,7 @@ def validate(
 
     except ValidationError as e:
         # Validation errors are already formatted
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         print_error(f"Validation failed: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e

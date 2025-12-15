@@ -21,7 +21,7 @@ class TestECRHelper:
 
     def test_init_extracts_account_id_and_region(self, mock_boto3):
         """Test that initialization extracts account ID and region."""
-        mock_boto, _ = mock_boto3
+        _mock_boto, _ = mock_boto3
 
         helper = ECRHelper("123456789.dkr.ecr.us-east-1.amazonaws.com")
 
@@ -29,7 +29,7 @@ class TestECRHelper:
         assert helper.region == "us-east-1"
         assert helper.registry_url == "123456789.dkr.ecr.us-east-1.amazonaws.com"
 
-    def test_init_invalid_registry_url(self, mock_boto3):
+    def test_init_invalid_registry_url(self, mock_boto3):  # noqa: ARG002
         """Test that invalid registry URL raises error."""
         with pytest.raises(ValueError, match="Invalid ECR registry URL"):
             ECRHelper("invalid-url")
@@ -64,7 +64,7 @@ class TestECRHelper:
 
         assert repos == ["repo1", "repo2"]
 
-    def test_extract_repo_name(self, mock_boto3):
+    def test_extract_repo_name(self, mock_boto3):  # noqa: ARG002
         """Test extracting repository name from image string."""
         helper = ECRHelper("123456789.dkr.ecr.us-east-1.amazonaws.com")
 
@@ -72,9 +72,7 @@ class TestECRHelper:
         assert helper._extract_repo_name("platform-api:v1.0.0") == "platform-api"
         assert helper._extract_repo_name("platform-api") == "platform-api"
         assert helper._extract_repo_name("org/platform-api:latest") == "org/platform-api"
-        assert (
-            helper._extract_repo_name("platform-api@sha256:abc123") == "platform-api"
-        )
+        assert helper._extract_repo_name("platform-api@sha256:abc123") == "platform-api"
 
     def test_ensure_repositories_creates_missing(self, mock_boto3):
         """Test that ensure_repositories creates missing repos."""
@@ -97,7 +95,7 @@ class TestECRHelper:
         assert "another-new-repo" in created
         assert mock_client.create_repository.call_count == 2
 
-    def test_get_repository_uri(self, mock_boto3):
+    def test_get_repository_uri(self, mock_boto3):  # noqa: ARG002
         """Test getting repository URI."""
         helper = ECRHelper("123456789.dkr.ecr.us-east-1.amazonaws.com")
 

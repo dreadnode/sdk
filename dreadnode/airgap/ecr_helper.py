@@ -1,26 +1,25 @@
 """AWS ECR helper for air-gapped deployments."""
 
 import re
-from typing import Optional
 
 from loguru import logger
 
 try:
-    import boto3
-    from botocore.exceptions import ClientError, NoCredentialsError
+    import boto3  # type: ignore[import-not-found]
+    from botocore.exceptions import ClientError, NoCredentialsError  # type: ignore[import-untyped]
 
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
-    boto3 = None  # type: ignore
-    ClientError = Exception  # type: ignore
-    NoCredentialsError = Exception  # type: ignore
+    boto3 = None
+    ClientError = Exception
+    NoCredentialsError = Exception
 
 
 class ECRHelper:
     """Manages ECR operations for air-gapped deployments."""
 
-    def __init__(self, registry_url: str, region: Optional[str] = None):
+    def __init__(self, registry_url: str, region: str | None = None):
         """
         Initialize ECR helper.
 
@@ -33,8 +32,7 @@ class ECRHelper:
         """
         if not BOTO3_AVAILABLE:
             raise RuntimeError(
-                "boto3 is required for ECR operations. "
-                "Install it with: pip install boto3"
+                "boto3 is required for ECR operations. Install it with: pip install boto3"
             )
 
         self.registry_url = registry_url
@@ -43,11 +41,11 @@ class ECRHelper:
 
         try:
             self.ecr_client = boto3.client("ecr", region_name=self.region)
-        except NoCredentialsError:
+        except NoCredentialsError as e:
             raise RuntimeError(
                 "AWS credentials not found. "
                 "Configure credentials using AWS CLI or environment variables."
-            )
+            ) from e
 
         logger.debug(
             f"Initialized ECR helper for account {self.account_id} in region {self.region}"
@@ -83,17 +81,18 @@ class ECRHelper:
         try:
             # Simple API call to verify credentials and connectivity
             self.ecr_client.describe_repositories(maxResults=1)
-            logger.debug("ECR connectivity verified")
-            return True
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             logger.warning(f"ECR connectivity check failed: {error_code}")
             return False
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"ECR connectivity check failed: {e}")
             return False
+        else:
+            logger.debug("ECR connectivity verified")
+            return True
 
-    def verify_credentials(self) -> tuple[bool, Optional[str]]:
+    def verify_credentials(self) -> tuple[bool, str | None]:
         """
         Verify AWS credentials are valid and have necessary ECR permissions.
 
@@ -116,9 +115,6 @@ class ECRHelper:
 
             # Try to get authorization token to verify push access
             self.ecr_client.get_authorization_token()
-
-            logger.debug("AWS credentials verified with necessary permissions")
-            return True, None
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             error_msg = e.response.get("Error", {}).get("Message", str(e))
@@ -129,8 +125,11 @@ class ECRHelper:
                     f"AWS credentials lack required permissions: {', '.join(required_permissions)}",
                 )
             return False, f"AWS credential verification failed: {error_msg}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return False, f"Unexpected error during credential verification: {e}"
+        else:
+            logger.debug("AWS credentials verified with necessary permissions")
+            return True, None
 
     def list_repositories(self) -> list[str]:
         """
@@ -140,18 +139,17 @@ class ECRHelper:
             List of repository names
         """
         try:
-            repositories = []
+            repositories: list[str] = []
             paginator = self.ecr_client.get_paginator("describe_repositories")
 
             for page in paginator.paginate():
-                for repo in page["repositories"]:
-                    repositories.append(repo["repositoryName"])
-
-            logger.debug(f"Found {len(repositories)} ECR repositories")
-            return repositories
+                repositories.extend(repo["repositoryName"] for repo in page["repositories"])
         except ClientError as e:
             logger.error(f"Failed to list ECR repositories: {e}")
-            raise RuntimeError(f"Failed to list ECR repositories: {e}")
+            raise RuntimeError(f"Failed to list ECR repositories: {e}") from e
+        else:
+            logger.debug(f"Found {len(repositories)} ECR repositories")
+            return repositories
 
     def ensure_repositories(self, image_list: list[str]) -> list[str]:
         """
@@ -237,9 +235,9 @@ class ECRHelper:
                 return
 
             logger.error(f"Failed to create repository {repo_name}: {e}")
-            raise RuntimeError(f"Failed to create ECR repository: {e}")
+            raise RuntimeError(f"Failed to create ECR repository: {e}") from e
 
-    def delete_repository(self, repo_name: str, force: bool = False) -> None:
+    def delete_repository(self, repo_name: str, *, force: bool = False) -> None:
         """
         Delete ECR repository.
 
@@ -261,7 +259,7 @@ class ECRHelper:
                 return
 
             logger.error(f"Failed to delete repository {repo_name}: {e}")
-            raise RuntimeError(f"Failed to delete ECR repository: {e}")
+            raise RuntimeError(f"Failed to delete ECR repository: {e}") from e
 
     def get_repository_uri(self, repo_name: str) -> str:
         """

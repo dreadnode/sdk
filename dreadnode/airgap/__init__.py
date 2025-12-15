@@ -7,9 +7,9 @@ from dreadnode.airgap.validator import PreFlightValidator
 from dreadnode.airgap.zarf_wrapper import ZarfWrapper
 
 __all__ = [
+    "AirGapInstaller",
     "ECRHelper",
     "HealthChecker",
-    "AirGapInstaller",
     "PreFlightValidator",
     "ZarfWrapper",
 ]

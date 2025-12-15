@@ -1,7 +1,7 @@
 """Orchestrates air-gapped installation workflow."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 from loguru import logger
 from rich.console import Console
@@ -23,7 +23,7 @@ class AirGapInstaller:
         bundle_path: Path,
         ecr_registry: str,
         namespace: str = "dreadnode",
-        region: Optional[str] = None,
+        region: str | None = None,
     ):
         """
         Initialize air-gap installer.
@@ -46,9 +46,10 @@ class AirGapInstaller:
 
     def install(
         self,
+        *,
         skip_preflight: bool = False,
         skip_health_check: bool = False,
-        components: Optional[list[str]] = None,
+        components: list[str] | None = None,
     ) -> None:
         """
         Execute complete installation workflow.
@@ -128,16 +129,14 @@ class AirGapInstaller:
 
             console.print(f"  Package: [cyan]{self.metadata.get('name', 'unknown')}[/cyan]")
             console.print(f"  Version: [cyan]{self.metadata.get('version', 'unknown')}[/cyan]")
-            console.print(
-                f"  Components: [cyan]{len(self.metadata.get('components', []))}[/cyan]"
-            )
+            console.print(f"  Components: [cyan]{len(self.metadata.get('components', []))}[/cyan]")
             console.print(f"  Images: [cyan]{len(self.images)}[/cyan]")
 
         except Exception as e:
             console.print(f"[red]Failed to inspect package: {e}[/red]")
-            raise RuntimeError(f"Package inspection failed: {e}")
+            raise RuntimeError(f"Package inspection failed: {e}") from e
 
-    def _extract_images_from_metadata(self, metadata: dict) -> list[str]:
+    def _extract_images_from_metadata(self, metadata: dict[str, Any]) -> list[str]:
         """
         Extract list of images from Zarf package metadata.
 
@@ -182,9 +181,9 @@ class AirGapInstaller:
 
         except Exception as e:
             console.print(f"[red]Failed to prepare ECR repositories: {e}[/red]")
-            raise RuntimeError(f"ECR preparation failed: {e}")
+            raise RuntimeError(f"ECR preparation failed: {e}") from e
 
-    def _deploy_package(self, components: Optional[list[str]] = None) -> None:
+    def _deploy_package(self, components: list[str] | None = None) -> None:
         """
         Deploy Zarf package to Kubernetes cluster.
 
@@ -214,7 +213,7 @@ class AirGapInstaller:
 
         except Exception as e:
             console.print(f"\n  [red]❌ Deployment failed: {e}[/red]")
-            raise RuntimeError(f"Package deployment failed: {e}")
+            raise RuntimeError(f"Package deployment failed: {e}") from e
 
     def _verify_deployment(self) -> None:
         """Verify deployment health."""
@@ -240,10 +239,10 @@ class AirGapInstaller:
             try:
                 self.health.verify_api_health()
                 console.print("  ✅ Platform API is healthy")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 console.print(f"  ⚠️  API health check warning: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             console.print(f"[yellow]Warning: Health verification had issues: {e}[/yellow]")
             console.print(
                 "[yellow]The platform may still be functional. "
@@ -273,14 +272,12 @@ class AirGapInstaller:
                     f"  Persistent Volume Claims: [cyan]{pv_status['bound']}/{pv_status['total']}[/cyan] bound"
                 )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.debug(f"Could not get complete summary: {e}")
 
         console.print("\n[bold]Next Steps:[/bold]")
         console.print(f"  1. Verify deployment: [cyan]kubectl get pods -n {self.namespace}[/cyan]")
-        console.print(
-            f"  2. Check services: [cyan]kubectl get services -n {self.namespace}[/cyan]"
-        )
+        console.print(f"  2. Check services: [cyan]kubectl get services -n {self.namespace}[/cyan]")
         console.print(f"  3. View logs: [cyan]kubectl logs -n {self.namespace} <pod-name>[/cyan]")
         console.print(
             f"  4. Access platform: [cyan]kubectl port-forward -n {self.namespace} svc/<service-name> 8080:80[/cyan]"
