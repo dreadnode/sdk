@@ -14,6 +14,7 @@ from rich.panel import Panel
 
 from dreadnode.api.client import ApiClient
 from dreadnode.cli.agent import cli as agent_cli
+from dreadnode.cli.airgap import cli as airgap_cli
 from dreadnode.cli.api import create_api_client
 from dreadnode.cli.attack import cli as attack_cli
 from dreadnode.cli.docker import DockerImage, docker_login, docker_pull, docker_tag, get_registry
@@ -52,6 +53,7 @@ cli.command(rbac_organizations_cli)
 cli.command(rbac_workspaces_cli)
 cli.command(platform_cli)
 cli.command(profile_cli)
+cli.command(airgap_cli)
 
 
 @cli.meta.default

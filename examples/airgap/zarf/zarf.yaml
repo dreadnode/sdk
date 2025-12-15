@@ -1,0 +1,113 @@
+# Zarf Package Configuration for Dreadnode Platform
+# This is an example configuration for packaging the Dreadnode platform
+# for air-gapped deployment.
+
+kind: ZarfPackageConfig
+metadata:
+  name: dreadnode-platform
+  version: "###ZARF_PKG_TMPL_VERSION###"
+  description: "Dreadnode Platform - Complete air-gapped deployment package"
+  url: https://dreadnode.io
+  authors: "Dreadnode Engineering Team"
+
+# Variables that can be set during package creation or deployment
+variables:
+  - name: VERSION
+    description: "Platform version to deploy"
+    default: "0.6.9"
+
+  - name: NAMESPACE
+    description: "Kubernetes namespace for deployment"
+    default: "dreadnode"
+
+  - name: REGISTRY
+    description: "Target container registry (set automatically during install)"
+    prompt: false
+
+# Components define what gets packaged and deployed
+components:
+  # Core platform infrastructure
+  - name: platform-infrastructure
+    description: "Core Dreadnode platform components"
+    required: true
+
+    # Helm charts to deploy
+    charts:
+      - name: platform
+        version: "###ZARF_PKG_TMPL_VERSION###"
+        localPath: charts/platform  # Path to local Helm chart
+        namespace: "###ZARF_VAR_NAMESPACE###"
+        valuesFiles:
+          - values-airgap.yaml
+
+    # Container images (Zarf will auto-discover from Helm charts,
+    # but you can also list them explicitly)
+    images:
+      - "ghcr.io/dreadnode/platform-api:###ZARF_PKG_TMPL_VERSION###"
+      - "ghcr.io/dreadnode/platform-ui:###ZARF_PKG_TMPL_VERSION###"
+      - "ghcr.io/dreadnode/platform-worker:###ZARF_PKG_TMPL_VERSION###"
+
+    # Actions to run during deployment
+    actions:
+      onDeploy:
+        after:
+          - cmd: kubectl wait --for=condition=ready pod -l app=platform-api -n ${ZARF_VAR_NAMESPACE} --timeout=300s
+            description: "Wait for platform API to be ready"
+
+  # Third-party dependencies
+  - name: platform-dependencies
+    description: "Required third-party services (PostgreSQL, Redis, etc.)"
+    required: true
+
+    charts:
+      # PostgreSQL database
+      - name: postgresql
+        version: "12.x"
+        url: https://charts.bitnami.com/bitnami
+        namespace: "###ZARF_VAR_NAMESPACE###"
+        valuesFiles:
+          - postgresql-values.yaml
+
+      # Redis cache
+      - name: redis
+        version: "17.x"
+        url: https://charts.bitnami.com/bitnami
+        namespace: "###ZARF_VAR_NAMESPACE###"
+        valuesFiles:
+          - redis-values.yaml
+
+  # Monitoring and observability (optional)
+  - name: platform-monitoring
+    description: "Monitoring and observability stack (Prometheus, Grafana)"
+    required: false
+
+    charts:
+      - name: prometheus
+        version: "15.x"
+        url: https://prometheus-community.github.io/helm-charts
+        namespace: "###ZARF_VAR_NAMESPACE###-monitoring"
+
+      - name: grafana
+        version: "6.x"
+        url: https://grafana.github.io/helm-charts
+        namespace: "###ZARF_VAR_NAMESPACE###-monitoring"
+        valuesFiles:
+          - grafana-values.yaml
+
+  # Platform utilities (optional)
+  - name: platform-utilities
+    description: "Utility tools (cert-manager, ingress-nginx, etc.)"
+    required: false
+
+    charts:
+      - name: cert-manager
+        version: "v1.12.x"
+        url: https://charts.jetstack.io
+        namespace: cert-manager
+        valuesFiles:
+          - cert-manager-values.yaml
+
+      - name: ingress-nginx
+        version: "4.x"
+        url: https://kubernetes.github.io/ingress-nginx
+        namespace: ingress-nginx
