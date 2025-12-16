@@ -35,6 +35,7 @@ from dreadnode.logging_ import console as logging_console
 from dreadnode.user_config import ServerConfig, UserConfig
 
 cli = cyclopts.App(
+    name="dreadnode",
     help="Interact with Dreadnode platforms",
     version_flags=[],
     help_on_error=True,

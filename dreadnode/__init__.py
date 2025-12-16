@@ -38,7 +38,7 @@ from dreadnode.version import VERSION
 if t.TYPE_CHECKING:
     from dreadnode import agent, airt, eval, optimization, scorers, transforms  # noqa: A004
     from dreadnode.agent import Agent, tool, tool_method
-    from dreadnode.data_types import Audio, Image, Table, Video
+    from dreadnode.data_types import Audio, Image, Message, Table, Video
 
 logger.disable("dreadnode")
 
@@ -88,6 +88,7 @@ __all__ = [
     "EnvVar",
     "Image",
     "Markdown",
+    "Message",
     "Metric",
     "MetricDict",
     "Object",
@@ -151,6 +152,7 @@ __lazy_components__: dict[str, str] = {
     "Image": "dreadnode.data_types",
     "Table": "dreadnode.data_types",
     "Video": "dreadnode.data_types",
+    "Message": "dreadnode.data_types",
     "Agent": "dreadnode.agent",
     "tool": "dreadnode.agent",
     "tool_method": "dreadnode.agent",

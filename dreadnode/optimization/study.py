@@ -379,17 +379,17 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         )
         logger.trace(f"Candidate: {trial.candidate!r}")
 
-        if dataset == [{}] or (isinstance(dataset, list) and len(dataset) == 1 and not dataset[0]):
-            # Dataset is empty - this is a Study/Attack where the candidate IS the input
-            dataset = [{"message": trial.candidate}]
-            dataset_input_mapping = ["message"]
-        else:
-            dataset_input_mapping = None
+        # if dataset == [{}] or (isinstance(dataset, list) and len(dataset) == 1 and not dataset[0]):
+        #     # Dataset is empty - this is a Study/Attack where the candidate IS the input
+        #     dataset = [{"message": trial.candidate}]
+        #     dataset_input_mapping = ["message"]
+        # else:
+        #     dataset_input_mapping = None
 
         evaluator = Eval(
             task=task,
             dataset=dataset,
-            dataset_input_mapping=dataset_input_mapping,
+            # dataset_input_mapping=dataset_input_mapping,
             scorers=scorers,
             hooks=self.hooks,
             max_consecutive_errors=self.max_consecutive_errors,
