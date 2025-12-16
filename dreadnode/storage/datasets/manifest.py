@@ -3,7 +3,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pyarrow as pa
 from pyarrow.fs import FileSelector, FileSystem, FileType
@@ -79,7 +79,7 @@ class DatasetManifest(BaseModel):
     @staticmethod
     def exists(path: str, fs: FileSystem) -> bool:
         info = fs.get_file_info(f"{path}/{MANIFEST_FILE}")
-        return info.type != FileType.NotFound
+        return cast("bool", info.type != FileType.NotFound)
 
     def diff(self, other: "DatasetManifest") -> dict[str, set[str]]:
         """
@@ -96,7 +96,7 @@ class DatasetManifest(BaseModel):
 
         return {"added": added, "removed": removed, "modified": modified}
 
-    def validate(self, base_path: str, fs: FileSystem) -> bool:
+    def is_valid(self, base_path: str, fs: FileSystem) -> bool:
         """
         Verifies that files on disk match the manifest.
         Returns True if valid, raises exception or returns False if invalid.
@@ -133,8 +133,8 @@ def compute_file_hash(
 ) -> str:
     try:
         with fs.open_input_stream(file_path) as f:
-            digest = hashlib.file_digest(f, algorithm)
-        return digest.hexdigest()
+            digest = hashlib.file_digest(f, algorithm)  # type: ignore[attr-defined]
+        return cast("str", digest.hexdigest())
     except (OSError, pa.ArrowException) as e:
         logging_console.print(f"Failed to hash {file_path}: {e}")
         return ""

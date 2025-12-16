@@ -465,7 +465,7 @@ def load_dataset(
             manifest = DatasetManifest.load(path=f"{fs_path}/{MANIFEST_FILE}", fs=fs)
 
             # validate manifest
-            is_valid = manifest.validate(fs_path, fs)
+            is_valid = manifest.is_valid(fs_path, fs)
             if not is_valid:
                 # invalid manifest, sync from remote
                 print_info("[!] Remote dataset manifest validation failed.")

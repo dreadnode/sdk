@@ -1,7 +1,7 @@
 import contextlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pyarrow.fs as pafs  # The Native FS
@@ -96,7 +96,7 @@ class DatasetManager:
 
         info = fs.get_file_info(target_path)
 
-        return info.type != FileType.NotFound
+        return cast("bool", info.type != FileType.NotFound)
 
     def manifest_exists(self, clean_path: str, fs: FileSystem) -> bool:
         """
@@ -112,7 +112,7 @@ class DatasetManager:
 
         info = fs.get_file_info(target_path)
 
-        return info.type != FileType.NotFound
+        return cast("bool", info.type != FileType.NotFound)
 
     def check_cache(self, uri: str, version: str | None = None) -> bool:
         cache_base = self.cache_root / "datasets"
@@ -353,7 +353,7 @@ class DatasetManager:
         ]
         if not versions:
             return None
-        latest = sorted(versions, reverse=True)[0]
+        latest: str = sorted(versions, reverse=True)[0]
         # ensure it's a valid version
         try:
             _ = VersionInfo.from_string(latest)
