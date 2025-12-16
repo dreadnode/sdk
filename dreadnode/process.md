@@ -1,5 +1,6 @@
 # Save to disk
 
+- metadata is set and used to dervice URI
 - Get the users intent: Are they specifying a version or versioning strategy? or, should we automatically try to determine the version?
 - If we need to determine the version, we first need to find the "latest" version. Locally, this means to scan the directory of the namespace of the dataset, and get the newest revision.
 - In order to find the latest revision, we need to find the path to the dataset

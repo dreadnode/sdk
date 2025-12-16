@@ -7,7 +7,7 @@ from typing import Any
 import coolname
 from packaging.version import Version
 from pyarrow.fs import FileSystem
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from dreadnode.common_types import VersionStrategy
 
@@ -63,8 +63,8 @@ class VersionInfo(BaseModel):
 class DatasetMetadata(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     organization: str | None = None
+    name: str = Field(default=coolname.generate_slug(2))
     uri: str | None = None
-    name: str | None = Field(default=coolname.generate_slug(2))
     version: str = Field(default=VersionInfo(major=0, minor=1, patch=0).to_string())
     license: str = Field(default="This dataset is not licensed.")
     tags: list[str] = Field(default_factory=list)
@@ -94,6 +94,35 @@ class DatasetMetadata(BaseModel):
             return [v]
         return list(v)
 
+    @model_validator(mode="before")
+    @classmethod
+    def validate_name_and_organization(cls, data: Any) -> Any:
+        # if org is not set, name should be of form org/name
+        if (
+            data.get("organization") is None
+            and data.get("name") is not None
+            and "/" in data.get("name")
+        ):
+            org, name = data["name"].split("/", 1)
+            data["organization"] = org
+            data["name"] = name
+        elif (
+            data.get("organization") is None
+            and data.get("name") is not None
+            and "/" not in data.get("name")
+        ):
+            raise ValueError("organization must be set if name does not contain '/'")
+        elif (
+            data.get("organization") is not None
+            and data.get("name") is not None
+            and "/" in data.get("name")
+        ):
+            raise ValueError("name must not contain '/' if organization is set")
+        else:
+            pass  # both are set, all good
+
+        return data
+
     @classmethod
     def load(cls, path: str, fs: FileSystem) -> "DatasetMetadata":
         """
@@ -104,6 +133,14 @@ class DatasetMetadata(BaseModel):
 
         return cls.model_validate(data)
 
+    @property
+    def ref(self) -> str:
+        return f"{self.organization}/{self.name}"
+
+    @property
+    def versioned_ref(self) -> str:
+        return f"{self.organization}/{self.name}/{self.version}"
+
     def save(self, path: str, fs: FileSystem) -> None:
         """
         Helper to write Pydantic models to native binary streams.
@@ -111,12 +148,6 @@ class DatasetMetadata(BaseModel):
         json_bytes = self.model_dump_json(indent=2).encode("utf-8")
         with fs.open_output_stream(path) as f:
             f.write(json_bytes)
-
-    def set_name(self, name: str) -> None:
-        self.name = name
-
-    def set_format(self, format: str) -> None:
-        self.format = format
 
     def set_version(self, version: VersionInfo) -> None:
         self.version = version.to_string()
@@ -142,9 +173,6 @@ class DatasetMetadata(BaseModel):
         else:
             self.license = license_content
 
-    def set_organization(self, organization: str) -> None:
-        self.organization = organization
-
     def add_tags(self, tags: list[str] | str) -> None:
         if isinstance(tags, str):
             tags = [tags]
@@ -165,6 +193,3 @@ class DatasetMetadata(BaseModel):
 
     def set_updated_at(self) -> None:
         self.updated_at = datetime.now(timezone.utc).isoformat()
-
-    def set_uri(self, uri: str) -> None:
-        self.uri = uri
