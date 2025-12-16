@@ -220,7 +220,7 @@ def _ensure_version_bump(
     latest_metadata = DatasetMetadata.load(path=f"{clean_path}/{METADATA_FILE}", fs=fs)
     latest_fingerprint = latest_metadata.fingerprint
 
-    if dataset.metadata.version > latest_version:
+    if latest_version and dataset.metadata.version > latest_version:
         print_info("[*] Dataset version is already higher than previous. Skipping version check.")
         return True
 
@@ -242,7 +242,7 @@ def _ensure_version_bump(
         return True
 
     # 5. Data Changed: Bump Version
-    dataset.metadata.update_version(latest_version)
+    dataset.metadata.update_version(latest_version or dataset.metadata.version)
     print_warning(f"[+] Changes detected. Auto-bumping version to {dataset.metadata.version}")
     return True
 
@@ -430,14 +430,14 @@ def load_dataset(
         fs, fs_path = dataset_manager.get_fs_and_path(uri)
 
         # resolve versioned cache path
-        cache_path = dataset_manager.get_cache_load_uri(fs_path, version, fs)
+        cache_path = dataset_manager.get_cache_load_uri(metadata)
 
         # metadata and manifest files are expected in cache
-        if dataset_manager.metadata_exists(path=cache_path):
+        if dataset_manager.metadata_exists(cache_path, fs):
             metadata = DatasetMetadata.load(path=f"{cache_path}/{METADATA_FILE}", fs=fs)
 
         # the manifest will be compared on save
-        if dataset_manager.manifest_exists(path=cache_path):
+        if dataset_manager.manifest_exists(cache_path, fs):
             manifest = DatasetManifest.load(path=f"{cache_path}/{MANIFEST_FILE}", fs=fs)
 
         # load dataset
@@ -447,14 +447,17 @@ def load_dataset(
 
     # if not local path, and not in cache, load from remote
     print_info("[+] Loading from remote storage...")
+    # get remote URI
+    remote_uri = dataset_manager.get_remote_load_uri(strip_protocol(uri), version=version)
+
+    if not remote_uri:
+        raise FileNotFoundError(f"[!] Dataset not found remotely: {uri}")
+
+    # get the filesystem and path
+    fs, fs_path = dataset_manager.get_fs_and_path(remote_uri)
+
+    # metadata and manifest files are expected in remote storage
     try:
-        # get remote URI
-        remote_uri = dataset_manager.get_remote_load_uri(strip_protocol(uri), version)
-
-        # get the filesystem and path
-        fs, fs_path = dataset_manager.get_fs_and_path(remote_uri)
-
-        # metadata and manifest files are expected in remote storage
         info = fs.get_file_info(f"{fs_path}/{METADATA_FILE}")
         if info.is_file:
             metadata = DatasetMetadata.load(path=f"{fs_path}/{METADATA_FILE}", fs=fs)
@@ -472,8 +475,7 @@ def load_dataset(
 
         # load dataset
         dataset = ds.dataset(f"{fs_path}/data", format=format, filesystem=fs, **kwargs)
-
-        return Dataset(ds=dataset, metadata=metadata, manifest=manifest, materialize=materialize)
     except Exception as e:
-        print_info(f"[!] Failed to load dataset from remote: {e}")
-        raise FileNotFoundError(f"[!] Dataset not found: {uri}") from e
+        raise FileNotFoundError(f"[!] Dataset not found remotely: {uri}") from e
+
+    return Dataset(ds=dataset, metadata=metadata, manifest=manifest, materialize=materialize)
