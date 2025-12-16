@@ -130,44 +130,51 @@ class DatasetManager:
 
         return target_path.exists()
 
-    def get_cache_save_uri(self, metadata: DatasetMetadata, *, with_version: bool = True) -> str:
+    def get_cache_save_uri(
+        self,
+        organization: str,
+        name: str,
+        *,
+        version: str | None = None,
+        with_version: bool = True,
+    ) -> str:
         """
         Constructs the full local cache path.
         Example: /home/user/.dreadnode/datasets/main/my-dataset/1.0.0
         """
-        dataset_uri = Path(f"{self.cache_root}/datasets/{metadata.organization}/{metadata.name}")
-        if with_version:
-            dataset_uri = dataset_uri / metadata.version
+        dataset_uri = Path(f"{self.cache_root}/datasets/{organization}/{name}")
+        if with_version and version:
+            dataset_uri = dataset_uri / version
 
         dataset_uri = dataset_uri.resolve()
 
         return str(dataset_uri)
 
-    def get_latest_cache_save_uri(self, metadata: DatasetMetadata) -> str | None:
+    def get_latest_cache_save_uri(self, organization: str, name: str) -> str | None:
         """
         Constructs the full local cache path to the latest version.
         Example: /home/user/.dreadnode/datasets/main/my-dataset/latest-version
         """
 
-        dataset_uri = Path(
-            f"{self.cache_root}/datasets/{metadata.organization}/{metadata.name}"
-        ).resolve()
+        dataset_uri = Path(f"{self.cache_root}/datasets/{organization}/{name}").resolve()
 
-        latest = self.resolve_latest_local_version(metadata)
+        latest = self.resolve_latest_local_version(str(dataset_uri))
 
         if latest is None:
             return None
 
         return str(dataset_uri / latest)
 
-    def get_cache_load_uri(self, metadata: DatasetMetadata) -> str:
+    def get_cache_load_uri(
+        self, uri: str, *, version: str | None = None, with_version: bool = True
+    ) -> str:
         """
         Constructs the full local cache path.
         Example: /home/user/.dreadnode/datasets/main/my-dataset
         """
 
-        if metadata.version:
-            uri = f"{metadata.uri}/{metadata.version}"
+        if with_version and version:
+            uri = f"{uri}/{version}"
             dataset_uri = Path(f"{self.cache_root}/datasets/{uri}").resolve()
 
             if dataset_uri.exists():
@@ -175,7 +182,7 @@ class DatasetManager:
 
         dataset_uri = Path(f"{self.cache_root}/datasets/{uri}").resolve()
 
-        latest = self.resolve_latest_local_version(metadata)
+        latest = self.resolve_latest_local_version(str(dataset_uri))
         if latest:
             return str(dataset_uri / latest)
         return str(dataset_uri)
@@ -344,12 +351,10 @@ class DatasetManager:
 
         return self._cached_s3_fs, path_body
 
-    def resolve_latest_local_version(self, metadata: DatasetMetadata) -> str | None:
+    def resolve_latest_local_version(self, uri: str) -> str | None:
         """
         PyArrow Native implementation of version resolution.
         """
-        uri = self.get_cache_save_uri(metadata, with_version=False)
-
         selector = pafs.FileSelector(uri, recursive=False)
         fs = pafs.LocalFileSystem()
         self.ensure_dir(fs, uri)

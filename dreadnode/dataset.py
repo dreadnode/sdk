@@ -306,7 +306,10 @@ def save_dataset_to_disk(
     """
 
     if dataset.metadata.auto_version:
-        latest_path = dataset_manager.get_latest_cache_save_uri(metadata=dataset.metadata)
+        latest_path = dataset_manager.get_latest_cache_save_uri(
+            organization=dataset.metadata.organization,
+            name=dataset.metadata.name,
+        )
         should_save = _ensure_version_bump(dataset, dataset_manager, latest_path)
         if not should_save:
             return
@@ -314,7 +317,12 @@ def save_dataset_to_disk(
 
     _persist_dataset(
         dataset=dataset,
-        path_str=dataset_manager.get_cache_save_uri(metadata=dataset.metadata),
+        path_str=dataset_manager.get_cache_save_uri(
+            organization=dataset.metadata.organization,
+            name=dataset.metadata.name,
+            version=dataset.metadata.version,
+            with_version=True,
+        ),
         create_dir=True,
         dataset_manager=dataset_manager,
         **kwargs,
@@ -430,7 +438,7 @@ def load_dataset(
         fs, fs_path = dataset_manager.get_fs_and_path(uri)
 
         # resolve versioned cache path
-        cache_path = dataset_manager.get_cache_load_uri(metadata)
+        cache_path = dataset_manager.get_cache_load_uri(uri, version=version)
 
         # metadata and manifest files are expected in cache
         if dataset_manager.metadata_exists(cache_path, fs):
