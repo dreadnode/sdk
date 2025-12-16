@@ -70,7 +70,7 @@ class DatasetMetadata(BaseModel):
     tags: list[str] = Field(default_factory=list)
     readme: str = Field(default="# Dataset README\n\n")
     format: str | None = None
-    ds_schema: dict | None = None
+    ds_schema: dict[str, Any] | None = None
     files: list[str] = Field(default_factory=list)
     size_bytes: int | None = None
     row_count: int | None = None

@@ -28,7 +28,6 @@ from dreadnode.api.client import ApiClient
 from dreadnode.api.models import (
     Organization,
     Project,
-    UserDataCredentials,
     Workspace,
     WorkspaceFilter,
 )
@@ -171,7 +170,7 @@ class Dreadnode:
         self._workspace: Workspace
         self._project: Project
 
-        self._credential_fetcher: t.Callable[[], UserDataCredentials]
+        self._credential_fetcher: CredentialManager | None = None
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -1283,7 +1282,7 @@ class Dreadnode:
         return RunSpan.from_context(
             context=run_context,
             tracer=self._get_tracer(),
-            credential_manager=self._credential_manager,
+            credential_fetcher=self._credential_fetcher,
         )
 
     def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> None:

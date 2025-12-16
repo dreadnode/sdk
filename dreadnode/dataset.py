@@ -383,7 +383,7 @@ def load_dataset(
     *,
     materialize: bool = True,
     dataset_manager: DatasetManager,
-    **kwargs: dict,
+    **kwargs: dict[str, Any],
 ) -> Dataset:
     """
     Loads a dataset from the given URI.

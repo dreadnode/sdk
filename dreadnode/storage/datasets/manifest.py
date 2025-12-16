@@ -44,7 +44,7 @@ class DatasetManifest(BaseModel):
         if not self.checksum:
             self.checksum = self.compute_checksum()
 
-    def add_file(self, path: str, entry: FileEntry):
+    def add_file(self, path: str, entry: FileEntry) -> None:
         self.files[path] = entry
 
     def compute_checksum(self) -> str:
