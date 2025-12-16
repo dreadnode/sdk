@@ -456,7 +456,7 @@ class RunSpan(Span):
             tracer=tracer,
             type="run_fragment",
             run_id=context["run_id"],
-            credential_fetcher=credential_fetcher,
+            credential_manager=credential_fetcher,
         )
 
         self._remote_context = context["trace_context"]

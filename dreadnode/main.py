@@ -1283,7 +1283,7 @@ class Dreadnode:
         return RunSpan.from_context(
             context=run_context,
             tracer=self._get_tracer(),
-            storage_manager=self._storage_manager,
+            credential_manager=self._credential_manager,
         )
 
     def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> None:
