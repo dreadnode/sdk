@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-from dreadnode.agent.events import AgentError, AgentEvent, StepStart
 from dreadnode.agent.reactions import Reaction, Retry
+from dreadnode.agent.trajectory import AgentError, AgentStep
 
 if t.TYPE_CHECKING:
     from ulid import ULID
@@ -57,15 +57,15 @@ def backoff_on_error(
 
     session_states: dict[ULID, BackoffState] = {}
 
-    async def backoff_hook(event: "AgentEvent") -> "Reaction | None":
-        state = session_states.setdefault(event.session_id, BackoffState())
+    async def backoff_hook(step: AgentStep) -> "Reaction | None":
+        state = session_states.setdefault(step.agent_id, BackoffState())
 
-        if isinstance(event, StepStart):
-            if event.step > state.last_step_seen:
-                state.reset(event.step)
+        if isinstance(step, AgentStep):
+            if step.step > state.last_step_seen:
+                state.reset(step.step)
             return None
 
-        if not isinstance(event, AgentError) or not isinstance(event.error, exceptions):
+        if not isinstance(step, AgentError) or not isinstance(step.error, exceptions):
             return None
 
         if state.start_time is None:
@@ -73,13 +73,13 @@ def backoff_on_error(
 
         if state.tries >= max_tries:
             logger.warning(
-                f"Backoff aborted for session {event.session_id}: maximum tries ({max_tries}) exceeded."
+                f"Backoff aborted for session {step.agent_id}: maximum tries ({max_tries}) exceeded."
             )
             return None
 
         if (time.monotonic() - state.start_time) >= max_time:
             logger.warning(
-                f"Backoff aborted for session {event.session_id}: maximum time ({max_time:.2f}s) exceeded."
+                f"Backoff aborted for session {step.agent_id}: maximum time ({max_time:.2f}s) exceeded."
             )
             return None
 
@@ -90,7 +90,7 @@ def backoff_on_error(
             seconds += random.uniform(0, base_factor)  # noqa: S311 # nosec
 
         logger.warning(
-            f"Backing off for {seconds:.2f}s (try {state.tries}/{max_tries}) on session {event.session_id} due to error: {event.error}"
+            f"Backing off for {seconds:.2f}s (try {state.tries}/{max_tries}) on session {step.agent_id} due to error: {step.error}"
         )
 
         await asyncio.sleep(seconds)

@@ -3,9 +3,9 @@ import typing as t
 
 import rigging as rg
 
-from dreadnode.agent.events import AgentError, AgentEvent, GenerationEnd, StepStart
 from dreadnode.agent.prompts import summarize_conversation
 from dreadnode.agent.reactions import Continue, Reaction, Retry
+from dreadnode.agent.trajectory import AgentError, AgentStep
 from dreadnode.meta import Config, component
 
 if t.TYPE_CHECKING:
@@ -31,17 +31,6 @@ def _is_context_length_error(error: BaseException) -> bool:
 
     error_str = str(error).lower()
     return any(pattern in error_str for pattern in CONTEXT_LENGTH_ERROR_PATTERNS)
-
-
-def _get_last_input_tokens(event: AgentEvent) -> int:
-    """
-    Finds the input token count from the most recent GenerationEnd event in the thread.
-    This represents the size of the context for the last successful model call.
-    """
-    last_generation_event = event.get_latest_event_by_type(GenerationEnd)
-    if not last_generation_event:
-        return 0
-    return last_generation_event.usage.input_tokens if last_generation_event.usage else 0
 
 
 @component
@@ -72,10 +61,10 @@ def summarize_when_long(
         raise ValueError("min_messages_to_keep must be at least 2.")
 
     @component
-    async def summarize_when_long(  # noqa: PLR0912
-        event: AgentEvent,
+    async def summarize_when_long(
+        step: AgentStep,
         *,
-        model: str | rg.Generator | None = Config(  # noqa: B008
+        model: str | rg.Generator | None = Config(
             model,
             help="Model to use for summarization - fallback to the agent model",
             expose_as=str | None,
@@ -95,24 +84,24 @@ def summarize_when_long(
         should_summarize = False
 
         # Proactive check using the last known token count
-        if max_tokens is not None and isinstance(event, StepStart):
-            last_token_count = _get_last_input_tokens(event)
+        if max_tokens is not None and isinstance(step, AgentStep):
+            last_token_count = step.usage.total_tokens
             if last_token_count > 0 and last_token_count > max_tokens:
                 should_summarize = True
 
         # Reactive check based on the error message
-        elif isinstance(event, AgentError):
-            if _is_context_length_error(event.error):
+        elif isinstance(step, AgentError):
+            if _is_context_length_error(step.error):
                 should_summarize = True
 
         if not should_summarize:
             return None
 
-        summarizer_model = model or event.agent.model
+        summarizer_model = model or step.generator
         if summarizer_model is None:
             return None
 
-        messages = list(event.messages)
+        messages = list(step.messages)
 
         # Check if we have enough messages to summarize
         if len(messages) <= min_messages_to_keep:
@@ -171,7 +160,7 @@ def summarize_when_long(
 
         return (
             Continue(messages=new_messages)
-            if isinstance(event, StepStart)
+            if isinstance(step, AgentStep)
             else Retry(messages=new_messages)
         )
 

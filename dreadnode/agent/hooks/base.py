@@ -4,10 +4,10 @@ import typing as t
 from dreadnode.agent.reactions import RetryWithFeedback
 
 if t.TYPE_CHECKING:
-    from dreadnode.agent.events import (
+    from dreadnode.agent.reactions import Reaction
+    from dreadnode.agent.trajectory import (
         AgentEvent,
     )
-    from dreadnode.agent.reactions import Reaction
 
 
 @t.runtime_checkable

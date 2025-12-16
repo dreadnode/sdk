@@ -12,23 +12,9 @@ import typing_extensions as te
 from loguru import logger
 from pydantic import AfterValidator, ConfigDict, Field, PrivateAttr, SkipValidation, field_validator
 from rigging.message import inject_system_content
-from ulid import ULID  # can't access via rg
+from ulid import ULID
 
 from dreadnode.agent.error import MaxStepsError
-from dreadnode.agent.events import (
-    AgentEnd,
-    AgentError,
-    AgentEvent,
-    AgentEventInStep,
-    AgentStalled,
-    AgentStart,
-    GenerationEnd,
-    Reacted,
-    StepStart,
-    ToolEnd,
-    ToolStart,
-    _total_usage_from_events,
-)
 from dreadnode.agent.hooks import Hook, retry_with_feedback
 from dreadnode.agent.reactions import (
     Continue,
@@ -38,13 +24,27 @@ from dreadnode.agent.reactions import (
     Retry,
     RetryWithFeedback,
 )
-from dreadnode.agent.result import AgentResult, AgentStopReason
 from dreadnode.agent.stop import StopCondition, never
-from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
 from dreadnode.agent.tools.base import ToolMode
 from dreadnode.agent.tools.planning import update_todo
 from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
+from dreadnode.agent.trajectory import (
+    AgentEnd,
+    AgentError,
+    AgentEvent,
+    AgentStalled,
+    AgentStart,
+    AgentStep,
+    AgentStopReason,
+    GenerationStep,
+    ReactStep,
+    ToolEnd,
+    ToolError,
+    ToolStart,
+    ToolStep,
+    Trajectory,
+)
 from dreadnode.meta import Component, Config, Model, component
 from dreadnode.meta.introspect import get_config_model, get_inputs_and_params_from_config_model
 from dreadnode.scorers import ScorersLike
@@ -73,6 +73,8 @@ class Agent(Model):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
 
+    agent_id: ULID = Field(default_factory=ULID)
+    """The unique identifier for this agent instance."""
     name: str
     """The name of the agent."""
     description: t.Annotated[str, AfterValidator(dedent)] = ""
@@ -102,9 +104,9 @@ class Agent(Model):
     """Hooks to run at various points in the agent's lifecycle."""
     stop_conditions: list[StopCondition] = Field(default_factory=list)
     """The logical condition for successfully stopping a run."""
-    thread: Thread = Field(default_factory=Thread, exclude=True, repr=False)
-    """Stateful thread for this agent, for when otherwise not specified during execution."""
-    scorers: ScorersLike[AgentResult] = Field(default_factory=list)
+    trajectory: Trajectory = Field(default_factory=Trajectory, exclude=True, repr=False)
+    """Stateful trajectory for this agent, for when otherwise not specified during execution."""
+    scorers: ScorersLike[Trajectory] = Field(default_factory=list)
     """Scorers to evaluate the agent output."""
     assert_scores: list[str] | t.Literal[True] = Field(default_factory=list)
     """Scores to ensure are truthy, otherwise the agent task is marked as failed."""
@@ -114,6 +116,18 @@ class Agent(Model):
     @field_validator("tools", mode="before")
     @classmethod
     def validate_tools(cls, value: t.Any) -> t.Any:
+        """
+        Validates and normalizes the input for the 'tools' field.
+
+        This validator flattens lists, extracts tools from objects (using `discover_tools_on_obj`),
+        and converts bare callables or Components into `Tool` instances.
+
+        Args:
+            value: The raw input value for the tools field.
+
+        Returns:
+            A list of validated `Tool` or `Toolset` instances.
+        """
         tools: list[AnyTool | Toolset] = []
         for tool in flatten_list(list(value)):
             if isinstance(tool, Toolset | Tool):
@@ -128,6 +142,12 @@ class Agent(Model):
         return tools
 
     def __repr__(self) -> str:
+        """
+        Returns a string representation of the Agent instance.
+
+        Includes the class name, agent name, abbreviated description, model name,
+        and summaries of instructions, tools, stop conditions, and hooks.
+        """
         description = shorten_string(self.description or "", 50)
 
         parts: list[str] = [
@@ -153,13 +173,30 @@ class Agent(Model):
 
     @property
     def model_name(self) -> str | None:
-        """The model name if specified as a string, otherwise None."""
+        """
+        Retrieves the string identifier of the model.
+
+        Returns:
+            The model identifier string if configured, otherwise None.
+        """
         if self.model is not None:
             return self.generator.to_identifier(short=True)
         return None
 
     @property
     def generator(self) -> rg.Generator:
+        """
+        Retrieves or initializes the Rigging Generator instance.
+
+        If the model is defined as a string, a new Generator is created.
+        If it is already a Generator, it is returned directly.
+
+        Returns:
+            The active `rg.Generator` instance.
+
+        Raises:
+            TypeError: If the model field is neither a string nor a Generator.
+        """
         if self._generator is not None:
             return self._generator
 
@@ -174,7 +211,15 @@ class Agent(Model):
 
     @property
     def all_tools(self) -> list[AnyTool]:
-        """Returns a flattened list of all available tools."""
+        """
+        Returns a flattened list of all available tools.
+
+        This iterates through the `tools` list and expands any `Toolset` instances
+        into their individual constituent tools.
+
+        Returns:
+            A list of all individual `Tool` instances available to the agent.
+        """
         flat_tools: list[AnyTool] = []
         for item in self.tools:
             if isinstance(item, Toolset):
@@ -185,10 +230,10 @@ class Agent(Model):
 
     def clone(self) -> te.Self:
         """
-        Clone the agent.
+        Creates a deep copy of the current agent instance.
 
         Returns:
-            A new Agent instance with the same attributes as this one.
+            A new Agent instance with identical attributes.
         """
         return self.model_copy(deep=True)
 
@@ -207,15 +252,33 @@ class Agent(Model):
         tool_mode: ToolMode | None = None,
         hooks: list[Hook] | None = None,
         stop_conditions: list[StopCondition] | None = None,
-        scorers: ScorersLike[AgentResult] | None = None,
+        scorers: ScorersLike[Trajectory] | None = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
         append: bool = False,
     ) -> te.Self:
         """
-        Clone the agent and modify its attributes.
+        Creates a modified clone of the agent with updated attributes.
+
+        Args:
+            name: New name for the agent.
+            description: New description.
+            tags: Tags to set or append.
+            label: Tracing label.
+            model: New model identifier or Generator.
+            instructions: New system instructions.
+            max_steps: New maximum step limit.
+            caching: Cache mode strategy.
+            tools: Tools to set or append.
+            tool_mode: Strategy for tool calling (e.g., 'xml', 'json').
+            hooks: Lifecycle hooks to set or append.
+            stop_conditions: Stop conditions to set or append.
+            scorers: Scorers to set or append.
+            assert_scores: Scores validation logic to set or append.
+            append: If True, list-based attributes (tags, tools, hooks, etc.)
+                will be appended to the existing lists rather than replacing them.
 
         Returns:
-            A new Agent instance with the modified attributes.
+            A new Agent instance with the specified modifications.
         """
         new = self.clone()
 
@@ -256,6 +319,15 @@ class Agent(Model):
         return new
 
     def _get_transforms(self) -> list[rg.Transform]:
+        """
+        Resolves the message transforms required for the current configuration.
+
+        Determines the appropriate transforms based on the agent's `tool_mode`
+        (e.g., converting tools to XML, JSON, or Pythonic formats).
+
+        Returns:
+            A list of `rg.Transform` callables.
+        """
         transforms = []
 
         if self.tools:
@@ -281,11 +353,28 @@ class Agent(Model):
         self,
         messages: list[rg.Message],
     ) -> rg.Chat:
+        """
+        Executes a single LLM generation step.
+
+        This method handles:
+        1. Injecting tool definitions into params.
+        2. Applying transforms (pre and post) for tool schemas.
+        3. Applying caching strategies.
+        4. Calling the underlying generator.
+        5. Wrapping the result (or error) in a `rg.Chat` object.
+
+        Args:
+            messages: The conversation history to send to the model.
+
+        Returns:
+            An `rg.Chat` object containing the generated message, usage stats, or error details.
+        """
+
         messages = list(messages)  # Ensure we have a mutable list
         params = rg.GenerateParams(
             tools=[tool.api_definition for tool in self.all_tools],
         )
-        messages = inject_system_content(messages, self.get_prompt())
+        # messages = inject_system_content(messages, self.get_prompt())
 
         if self.tool_mode == "auto" and self.tools:
             self.tool_mode = (
@@ -333,272 +422,321 @@ class Agent(Model):
 
         return chat
 
-    async def _stream(  # noqa: PLR0912, PLR0915
-        self,
-        thread: "Thread",
-        messages: list[rg.Message],
-        *,
-        commit: CommitBehavior,
-    ) -> t.AsyncGenerator[AgentEvent, None]:
-        events: list[AgentEvent] = []
-        stop_conditions = self.stop_conditions
-        session_id = ULID()
+    async def _dispatch(self, event: AgentEvent) -> t.AsyncIterator[AgentEvent]:  # noqa: PLR0912
+        """
+        The internal event bus for the agent.
 
-        logger.info(
-            f"Starting Agent '{self.name}' ({session_id}): "
-            f"model='{self.model_name}', "
-            f"max_steps={self.max_steps}, "
-            f"tools={[tool.name for tool in self.all_tools]}"
+        Dispatches an event to all registered hooks, collects reactions,
+        and resolves flow control.
+
+        Logic:
+        1. Yields the initial event.
+        2. Invokes hooks.
+        3. Collects `Reaction` objects (Finish, Retry, Continue).
+        4. Prioritizes reactions: Finish > Retry > Continue.
+        5. If a reaction occurs, recursively dispatches the `ReactStep` event.
+        6. Raises the winning reaction to be handled by the execution loop.
+
+        Args:
+            step: The event to dispatch.
+
+        Yields:
+            AgentEvents as they flow through the system.
+
+        Raises:
+            Reaction: If a hook dictates a change in control flow (Retry, Fail, Finish).
+        """
+
+        yield event
+
+        logger.debug(
+            f"Agent '{self.name}' ({self.trajectory.session_id}) dispatching '{type(event).__name__}': "
+            f"hooks={[get_callable_name(h, short=True) for h in self.hooks]}"
         )
 
-        # Event dispatcher
+        # Run all applicable hooks and collect their reactions
+        hook_reactions: dict[str, Reaction | None] = {}
+        for hook in self.hooks:
+            hook_name = getattr(hook, "__name__", getattr(hook, "__qualname__", safe_repr(hook)))
 
-        async def _dispatch(event: AgentEvent) -> t.AsyncIterator[AgentEvent]:  # noqa: PLR0912
-            nonlocal messages, events
+            reaction: Reaction | None = None
+            try:
+                reaction = hook(event)  # type: ignore[assignment]
+                if inspect.isawaitable(reaction):
+                    reaction = t.cast("Reaction", await reaction)
+            except Reaction as r:
+                reaction = r
 
-            yield event
-
-            events.append(event)
-
-            logger.debug(
-                f"Agent '{self.name}' ({session_id}) dispatching '{type(event).__name__}': "
-                f"hooks={[get_callable_name(h, short=True) for h in self.hooks]}"
-            )
-
-            # Run all applicable hooks and collect their reactions
-            hook_reactions: dict[str, Reaction | None] = {}
-            for hook in self.hooks:
-                hook_name = getattr(
-                    hook, "__name__", getattr(hook, "__qualname__", safe_repr(hook))
-                )
-
-                reaction: Reaction | None = None
-                try:
-                    reaction = hook(event)  # type: ignore[assignment]
-                    if inspect.isawaitable(reaction):
-                        reaction = t.cast("Reaction", await reaction)
-                except Reaction as r:
-                    reaction = r
-
-                if reaction is None:
-                    continue
-
-                logger.debug(
-                    f"Agent '{self.name}' ({session_id}) hook '{hook_name}' returned reaction: {reaction!r}"
-                )
-
-                if not isinstance(reaction, Reaction):
-                    warn_at_user_stacklevel(
-                        f"Hook '{hook_name}' returned {reaction}, but expected a Reaction.",
-                        AgentWarning,
-                    )
-                    continue
-
-                if isinstance(event, AgentEnd):
-                    warn_at_user_stacklevel(
-                        f"Hook '{hook_name}' returned {reaction} during AgentEnd, but reactions are ignored at this stage.",
-                        AgentWarning,
-                    )
-                    continue
-
-                if isinstance(event, Reacted):
-                    warn_at_user_stacklevel(
-                        f"Hook '{hook_name}' returned {reaction} during Reacted, but reactions are ignored at this stage.",
-                        AgentWarning,
-                    )
-                    continue
-
-                hook_reactions[hook_name] = reaction
-
-            if not hook_reactions:
-                return
-
-            # P1 - Termination
-            winning_reaction: Reaction | None = next(
-                (reaction for reaction in hook_reactions.values() if isinstance(reaction, Finish)),
-                None,
-            )
-
-            # P2 - Retries
-            winning_reaction = winning_reaction or next(
-                (
-                    reaction
-                    for reaction in hook_reactions.values()
-                    if isinstance(reaction, Retry | RetryWithFeedback)
-                ),
-                None,
-            )
-
-            # P3 - Continues
-            winning_reaction = winning_reaction or next(
-                (
-                    reaction
-                    for reaction in hook_reactions.values()
-                    if isinstance(reaction, Continue)
-                ),
-                None,
-            )
-
-            # Take the first reaction otherwise
-            winning_reaction = winning_reaction or next(
-                reaction for reaction in iter(hook_reactions.values()) if reaction is not None
-            )
-
-            # If we still don't have a winning reaction, return
-            if winning_reaction is None:
-                return
-
-            # Warn for unused reactions
-            for hook_name, reaction in hook_reactions.items():
-                if reaction is not None and reaction is not winning_reaction:
-                    warn_at_user_stacklevel(
-                        f"Hook '{hook_name}' returned {reaction}, but another hook already reacted. Only the first one will be applied.",
-                        AgentWarning,
-                    )
-
-            winning_hook_name = next(
-                (name for name, reaction in hook_reactions.items() if reaction is winning_reaction),
-                "unknown",
-            )
-            reacted_event = Reacted(
-                session_id=session_id,
-                agent=self,
-                thread=thread,
-                messages=messages,
-                events=events,
-                hook_name=winning_hook_name,
-                reaction=winning_reaction,
-            )
-            events.append(reacted_event)
-
-            async for _event in _dispatch(reacted_event):
-                yield _event
-
-            if isinstance(winning_reaction, Continue):
-                messages = winning_reaction.messages
-                return
-
-            if isinstance(winning_reaction, RetryWithFeedback):
-                logger.debug(
-                    f"Agent '{self.name}' ({session_id}) injecting feedback for retry: '{winning_reaction.feedback}'"
-                )
-                messages.append(rg.Message("user", winning_reaction.feedback))
-                raise Retry(messages=messages) from winning_reaction
-
-            raise winning_reaction
-
-        # Tool calling
-
-        async def _process_tool_call(
-            tool_call: "rg.tools.ToolCall",
-        ) -> t.AsyncGenerator[AgentEvent, None]:
-            async for event in _dispatch(
-                ToolStart(
-                    session_id=session_id,
-                    agent=self,
-                    thread=thread,
-                    messages=messages,
-                    events=events,
-                    tool_call=tool_call,
-                )
-            ):
-                yield event
+            if reaction is None:
+                continue
 
             logger.debug(
-                f"Executing tool '{tool_call.name}' with args: {tool_call.function.arguments}"
+                f"Agent '{self.name}' ({self.trajectory.session_id}) hook '{hook_name}' returned reaction: {reaction!r}"
             )
 
-            message: rg.Message
-            stop = False
-            tool = next((t for t in self.all_tools if t.name == tool_call.name), None)
+            if not isinstance(reaction, Reaction):
+                warn_at_user_stacklevel(
+                    f"Hook '{hook_name}' returned {reaction}, but expected a Reaction.",
+                    AgentWarning,
+                )
+                continue
 
-            if tool is not None:
-                try:
-                    message, stop = await tool.handle_tool_call(tool_call)
-                except Reaction:
-                    raise
-                except Exception as e:
-                    async for event in _dispatch(
-                        AgentError(
-                            session_id=session_id,
-                            agent=self,
-                            thread=thread,
-                            messages=messages,
-                            events=events,
-                            error=e,
-                        )
-                    ):
-                        yield event
-                    raise
-            else:
-                logger.warning(f"Tool '{tool_call.name}' not found.")
-                message = rg.Message.from_model(
-                    rg.model.SystemErrorModel(content=f"Tool '{tool_call.name}' not found.")
+            if isinstance(event, AgentEnd):
+                warn_at_user_stacklevel(
+                    f"Hook '{hook_name}' returned {reaction} during AgentEnd, but reactions are ignored at this stage.",
+                    AgentWarning,
+                )
+                continue
+
+            if isinstance(event, ReactStep):
+                warn_at_user_stacklevel(
+                    f"Hook '{hook_name}' returned {reaction} during Reacted, but reactions are ignored at this stage.",
+                    AgentWarning,
+                )
+                continue
+
+            hook_reactions[hook_name] = reaction
+
+        if not hook_reactions:
+            return
+
+        # P1 - Termination
+        winning_reaction: Reaction | None = next(
+            (reaction for reaction in hook_reactions.values() if isinstance(reaction, Finish)),
+            None,
+        )
+
+        # P2 - Retries
+        winning_reaction = winning_reaction or next(
+            (
+                reaction
+                for reaction in hook_reactions.values()
+                if isinstance(reaction, Retry | RetryWithFeedback)
+            ),
+            None,
+        )
+
+        # P3 - Continues
+        winning_reaction = winning_reaction or next(
+            (reaction for reaction in hook_reactions.values() if isinstance(reaction, Continue)),
+            None,
+        )
+
+        # Take the first reaction otherwise
+        winning_reaction = winning_reaction or next(
+            reaction for reaction in iter(hook_reactions.values()) if reaction is not None
+        )
+
+        # If we still don't have a winning reaction, return
+        if winning_reaction is None:
+            return
+
+        # Warn for unused reactions
+        for hook_name, reaction in hook_reactions.items():
+            if reaction is not None and reaction is not winning_reaction:
+                warn_at_user_stacklevel(
+                    f"Hook '{hook_name}' returned {reaction}, but another hook already reacted. Only the first one will be applied.",
+                    AgentWarning,
                 )
 
-            async for event in _dispatch(
-                ToolEnd(
-                    session_id=session_id,
-                    agent=self,
-                    thread=thread,
-                    messages=messages,
-                    events=events,
-                    tool_call=tool_call,
-                    message=message,
-                    stop=stop,
-                )
-            ):
-                yield event
+        winning_hook_name = next(
+            (name for name, reaction in hook_reactions.items() if reaction is winning_reaction),
+            "unknown",
+        )
+        reacted_event = ReactStep(
+            agent_id=self.agent_id,
+            hook_name=winning_hook_name,
+            reaction=winning_reaction,
+        )
 
-        # Agent start
+        async for _event in self._dispatch(reacted_event):
+            yield _event
 
-        async for event in _dispatch(
-            AgentStart(
-                session_id=session_id,
-                agent=self,
-                thread=thread,
-                messages=messages,
-                events=events,
+        if isinstance(winning_reaction, Continue):
+            messages = winning_reaction.messages
+            raise Continue(messages=messages) from winning_reaction
+
+        if isinstance(winning_reaction, RetryWithFeedback):
+            messages = winning_reaction.messages
+
+            logger.debug(
+                f"Agent '{self.name}' ({self.trajectory.session_id}) injecting feedback for retry: '{winning_reaction.feedback}'"
+            )
+            messages.extend(rg.Message("user", winning_reaction.feedback))
+            raise Retry(messages=messages) from winning_reaction
+
+        raise winning_reaction
+
+    async def _process_tool_call(
+        self, tool_call: "rg.tools.ToolCall", step_count: int
+    ) -> t.AsyncGenerator[AgentEvent, None]:
+        """
+        Executes a specific tool call requested by the model.
+
+        Manages the full lifecycle of the tool execution:
+        - Emits `ToolStart`.
+        - Locates the tool instance.
+        - Executes the tool.
+        - Emits `ToolEnd` (success) or `ToolError` (failure).
+        - Emits `ToolStep` containing the resulting message.
+
+        Args:
+            tool_call: The tool call object requested by the LLM.
+
+        Yields:
+            AgentEvents related to the tool execution.
+        """
+
+        # emit ToolStart event
+        async for event in self._dispatch(
+            ToolStart(
+                agent_id=self.agent_id,
+                agent_name=self.name,
+                status="running",
+                tool_call=tool_call,
             )
         ):
             yield event
 
-        # Core step loop
+        message: rg.Message
+        stop = False
 
-        step = 0
+        # find the tool
+        tool = next((t for t in self.all_tools if t.name == tool_call.name), None)
+
+        # tool not found
+        if tool is None:
+            error_msg = f"Tool '{tool_call.name}' not found."
+            logger.warning(error_msg)
+            async for event in self._dispatch(
+                ToolError(
+                    agent_id=self.agent_id,
+                    agent_name=self.name,
+                    tool_call=tool_call,
+                    error=NameError(error_msg),
+                )
+            ):
+                yield event
+
+            message = rg.Message.from_model(
+                rg.model.SystemErrorModel(content=f"Tool '{tool_call.name}' not found.")
+            )
+
+            # add the error to conversation
+            async for event in self._dispatch(
+                ToolStep(
+                    agent_id=self.agent_id,
+                    agent_name=self.name,
+                    status="running",
+                    step=step_count,
+                    messages=[message],
+                    error=None,
+                    stop=stop,
+                    tool_call=tool_call,
+                )
+            ):
+                yield event
+            return
+        try:
+            message, stop = await tool.handle_tool_call(tool_call)
+
+            # emit ToolEnd event
+            async for event in self._dispatch(
+                ToolEnd(
+                    agent_id=self.agent_id,
+                    agent_name=self.name,
+                    tool_call=tool_call,
+                    result=message.content,
+                )
+            ):
+                yield event
+
+            # add output message
+            async for event in self._dispatch(
+                ToolStep(
+                    agent_id=self.agent_id,
+                    agent_name=self.name,
+                    status="running",
+                    step=step_count,
+                    messages=[message],
+                    error=None,
+                    stop=stop,
+                    tool_call=tool_call,
+                )
+            ):
+                yield event
+
+        except Exception as e:
+            logger.opt(exception=True).error(f"Error executing tool '{tool_call.name}'")
+
+            # there was an error executing the tool
+            async for event in self._dispatch(
+                ToolError(
+                    agent_id=self.agent_id,
+                    agent_name=self.name,
+                    status="errored",
+                    tool_call=tool_call,
+                    error=e,
+                )
+            ):
+                yield event
+            raise
+
+    async def _stream(  # noqa: PLR0912, PLR0915
+        self,
+        messages: list[rg.Message],
+        *,
+        inputs: dict[str, t.Any] | None = None,
+        params: dict[str, t.Any] | None = None,
+    ) -> t.AsyncGenerator[AgentEvent, None]:
+        """
+        The core execution loop of the agent.
+
+        Iterates through the following cycle until `max_steps` is reached or a stop condition is met:
+        1. Generates a response from the model.
+        2. Appends the response to history.
+        3. Checks stop conditions.
+        4. Checks for stalling (no tool calls).
+        5. Processes any tool calls found in the response.
+
+        Args:
+            messages: The initial conversation history.
+            inputs: Dictionary of input values for tracing.
+            params: Dictionary of configuration parameters for tracing.
+
+        Yields:
+            AgentEvents describing the progress of the run.
+        """
+
+        step_count = 0
         error: Exception | str | None = None
 
-        while step < self.max_steps:
-            step += 1
+        # Agent start
+        async for step in self._dispatch(
+            AgentStart(
+                agent_id=self.agent_id,
+                inputs=inputs or {},
+                params=params or {},
+            )
+        ):
+            yield step
+
+        # Core AgentStep loop
+        while step_count < self.max_steps:
+            step_count += 1
 
             try:
-                async for event in _dispatch(
-                    StepStart(
-                        session_id=session_id,
-                        agent=self,
-                        thread=thread,
-                        messages=messages,
-                        events=events,
-                        step=step,
-                    )
-                ):
-                    yield event
-
                 # Generation
-
                 step_chat = await self._generate(messages)
                 if step_chat.failed and step_chat.error:
-                    async for event in _dispatch(
+                    async for step in self._dispatch(
                         AgentError(
-                            session_id=session_id,
-                            agent=self,
-                            thread=thread,
-                            messages=messages,
-                            events=events,
+                            agent_id=self.agent_id,
+                            status="errored",
                             error=t.cast("Exception", step_chat.error),
                         )
                     ):
-                        yield event
+                        yield step
 
                     error = t.cast("Exception", step_chat.error)  # Should be Exception in rigging
                     break
@@ -608,45 +746,39 @@ class Agent(Model):
 
                 messages.extend(step_chat.generated)
 
-                async for event in _dispatch(
-                    GenerationEnd(
-                        session_id=session_id,
-                        agent=self,
-                        thread=thread,
+                async for step in self._dispatch(
+                    GenerationStep(
+                        agent_id=self.agent_id,
+                        agent_name=self.name,
+                        status="running",
+                        generator=self._generator,
                         messages=messages,
-                        events=events,
-                        message=step_chat.last,
+                        step=step_count,
                         usage=step_chat.usage,
                     )
                 ):
-                    yield event
+                    yield step
 
                 # Check for stop conditions
 
-                if any(cond(events) for cond in stop_conditions):
+                if any(cond(self.trajectory.steps) for cond in self.stop_conditions):
                     logger.info("A stop condition was met. Ending run.")
                     break
 
                 # Check if stalled
 
                 if not messages[-1].tool_calls:
-                    if not stop_conditions:
+                    if not self.stop_conditions:
                         break
 
                     logger.warning(
-                        f"Agent '{self.name}' ({session_id}) stalled: No tool calls and no stop conditions met."
+                        f"Agent '{self.name}' ({self.trajectory.session_id}) stalled: No tool calls and no stop conditions met."
                     )
 
-                    async for event in _dispatch(
-                        AgentStalled(
-                            session_id=session_id,
-                            agent=self,
-                            thread=thread,
-                            messages=messages,
-                            events=events,
-                        )
+                    async for step in self._dispatch(
+                        AgentStalled(agent_id=self.agent_id, agent_name=self.name, status="stalled")
                     ):
-                        yield event
+                        yield step
 
                     # If the agent is stalled and nobody handled it, break out
                     break
@@ -655,14 +787,18 @@ class Agent(Model):
 
                 stopped_by_tool_call: rg.tools.ToolCall | None = None
 
-                async for event in join_generators(
-                    *[_process_tool_call(tool_call) for tool_call in messages[-1].tool_calls]
-                ):
-                    if isinstance(event, ToolEnd):
-                        messages.append(event.message)
+                tool_call_generators = [
+                    self._process_tool_call(tc, step_count) for tc in messages[-1].tool_calls
+                ]
+
+                async for event in join_generators(*tool_call_generators):
+                    # for every event yielded by _process_tool_call, we yield it up
+                    yield event
+
+                    if isinstance(event, ToolStep):
+                        messages.extend(event.messages)
                         if stopped_by_tool_call is None and event.stop:
                             stopped_by_tool_call = event.tool_call
-                    yield event
 
                 if stopped_by_tool_call:
                     raise Finish(  # noqa: TRY301
@@ -671,116 +807,63 @@ class Agent(Model):
                     )
 
                 # Check for stop conditions (again)
-
-                if any(cond(events) for cond in stop_conditions):
+                if any(cond(self.trajectory.steps) for cond in self.stop_conditions):
                     break
 
             except Retry as e:
                 messages = e.messages or messages
                 continue
-
             except Fail as e:
                 error = e.error
                 break
-
             except Finish:
+                break
+            except Exception as e:  # Catch tool errors re-raised from _process_tool_call
+                error = e
                 break
 
         stop_reason: AgentStopReason = "finished"
-        if step >= self.max_steps:
+        if step_count >= self.max_steps:
             error = MaxStepsError(max_steps=self.max_steps)
             stop_reason = "max_steps_reached"
         elif error is not None:
             stop_reason = "error"
-        elif events and isinstance(events[-1], AgentStalled):
+        elif self.trajectory.steps and isinstance(self.trajectory.steps[-1], AgentStalled):
             stop_reason = "stalled"
 
-        # Commit messages back to the thread
-
-        if commit == "always" or (commit == "on-success" and not error):
-            thread.messages = messages
-            thread.events.extend(events)
-
-        total_usage = _total_usage_from_events(events)
-        log_message = (
-            f"Agent '{self.name}' finished: "
-            f"reason='{stop_reason}', "
-            f"steps={step - 1}, "
-            f"total_tokens={total_usage.total_tokens}, "
-            f"in_tokens={total_usage.input_tokens}, "
-            f"out_tokens={total_usage.output_tokens}"
-        )
-
-        if stop_reason == "finished":
-            logger.success(log_message)
-        elif stop_reason == "error":
-            logger.error(f"{log_message}, error='{error!r}'")
-        else:
-            logger.warning(log_message)
-
-        async for event in _dispatch(
+        async for step in self._dispatch(
             AgentEnd(
-                session_id=session_id,
-                agent=self,
-                thread=thread,
-                messages=messages,
-                events=events,
+                agent_id=self.agent_id,
+                agent_name=self.name,
+                status="errored" if error else "finished",
                 stop_reason=stop_reason,
-                result=AgentResult(
-                    agent=self,
-                    messages=messages,
-                    stop_reason=stop_reason,
-                    usage=_total_usage_from_events(events),
-                    steps=step,
-                    failed=stop_reason != "finished",
-                    error=error,
-                ),
+                error=error,
             )
         ):
-            yield event
-
-    def _log_event_metrics(self, event: AgentEvent) -> None:
-        from dreadnode import log_metric
-
-        if isinstance(event, AgentEnd):
-            log_metric("steps_taken", max(0, event.result.steps - 1))
-            log_metric(f"stop_{event.stop_reason}", 1)
-
-        if not isinstance(event, AgentEventInStep):
-            return
-
-        if isinstance(event, GenerationEnd) and event.usage:
-            log_metric("generations", 1, step=event.step, mode="count")
-            log_metric("messages", len(event.messages) + 1, step=event.step)
-            log_metric("in_tokens", event.usage.input_tokens)
-            log_metric("out_tokens", event.usage.output_tokens)
-            log_metric("tokens", event.usage.total_tokens)
-        elif isinstance(event, ToolStart):
-            log_metric("tool_calls", 1, step=event.step, mode="count")
-        elif isinstance(event, AgentError):
-            log_metric("errors", 1, step=event.step, mode="count")
-        elif isinstance(event, AgentStalled):
-            log_metric("stalled", 1, step=event.step, mode="count")
-        elif isinstance(event, Reacted):
-            log_metric("reactions", 1, step=event.step, mode="count")
-            if isinstance(event.reaction, Retry):
-                log_metric("retries", 1, step=event.step, mode="count")
-                if event.reaction.messages:
-                    log_metric("messages", len(event.reaction.messages), step=event.step)
-            if isinstance(event.reaction, Continue):
-                log_metric("continues", 1, step=event.step, mode="count")
-                log_metric("messages", len(event.messages), step=event.step)
+            yield step
 
     async def _stream_traced(
         self,
-        thread: "Thread",
         user_input: str,
-        *,
-        commit: CommitBehavior = "on-success",
     ) -> t.AsyncGenerator[AgentEvent, None]:
-        from dreadnode import log_output, log_outputs, score, task_and_run
+        """
+        Wraps the `_stream` method with observability and logging context.
 
-        messages = [*deepcopy(thread.messages), rg.Message("user", str(user_input))]
+        Prepares configuration models, injects system prompts, and sets up
+        Dreadnode tracing spans before delegating to the main execution loop.
+        Logs summary statistics upon completion.
+
+        Args:
+            user_input: The primary input string from the user.
+
+        Yields:
+            AgentEvents from the execution loop.
+        """
+        from dreadnode import log_output, task_and_run
+
+        messages = [*deepcopy(self.trajectory.messages), rg.Message("user", str(user_input))]
+
+        messages = inject_system_content(messages, self.get_prompt())
 
         configuration = get_config_model(self)()
         trace_inputs, trace_params = get_inputs_and_params_from_config_model(configuration)
@@ -793,7 +876,7 @@ class Agent(Model):
                 "generator_params": self.generator.params.to_dict(),
                 "user_input": user_input,
                 "instructions": self.instructions,
-                "messages": messages,
+                "messages": list(messages),
                 "tool_schemas": [t.api_definition for t in self.all_tools],
             }
         )
@@ -814,68 +897,77 @@ class Agent(Model):
         for tag in self.tags:
             trace_params[f"tag:{tag}"] = True
 
-        last_event: AgentEvent | None = None
-        with task_and_run(
-            name=self.name,
-            tags=self.tags,
-            label=self.label,
-            inputs=trace_inputs,
-            params=trace_params,
-        ):
+        last_step: AgentStep | None = None
+        with task_and_run(name=self.name, tags=self.tags, label=self.label):
             try:
-                async with aclosing(self._stream(thread, messages, commit=commit)) as stream:
-                    async for event in stream:
-                        last_event = event
-                        self._log_event_metrics(event)
-                        yield event
-            finally:
-                if last_event is not None:
-                    # TODO(nick): Don't love having to inject here, but it's the most accurate in
-                    # in terms of ensuring we don't miss the system component of messages
-                    final_messages = inject_system_content(last_event.messages, self.get_prompt())
-                    log_outputs(messages=final_messages, token_usage=last_event.total_usage)
+                logger.info(
+                    f"Starting Agent '{self.name}' ({self.trajectory.session_id}): "
+                    f"model='{self.model_name}', "
+                    f"max_steps={self.max_steps}, "
+                    f"tools={[tool.name for tool in self.all_tools]}"
+                )
 
-                if isinstance(last_event, AgentEnd):
-                    log_outputs(
-                        to="both",
-                        steps_taken=max(0, last_event.result.steps - 1),
-                        reason=last_event.stop_reason,
-                        failed=last_event.result.failed,
-                    )
-                    if last_event.result.error:
-                        log_output("error", last_event.result.error, to="both")
-                    await score(
-                        last_event.result,
-                        self.scorers,
-                        assert_scores=self.assert_scores,
-                    )
+                # process agent steps
+                async with aclosing(
+                    self._stream(messages, inputs=trace_inputs, params=trace_params)
+                ) as stream:
+                    async for step in stream:
+                        last_step = step
+                        if isinstance(step, AgentStep):
+                            self.trajectory.log_step(last_step)
+
+                        yield step
+            finally:
+                if self.trajectory is not None:
+                    log_output("input_tokens", self.trajectory.usage.input_tokens)
+                    log_output("output_token", self.trajectory.usage.output_tokens)
+                    log_output("total_tokens", self.trajectory.usage.total_tokens)
 
     def get_prompt(self) -> str:
         """
-        Generates the prompt for the agent based on its instructions.
-        This can be overridden by subclasses to provide custom behavior.
+        Generates the system prompt for the agent.
+
+        Combines a base persona string with the configured `instructions`.
+
+        Returns:
+            The complete system prompt string.
         """
+
         prompt = "You are an agent that can use tools to assist with tasks."
         if self.instructions:
             prompt += f"\n\n<instructions>\n{self.instructions}\n</instructions>"
         return prompt
 
-    def reset(self) -> Thread:
-        """Reset the agent's internal thread and returns the previous thread."""
-        previous = self.thread
-        self.thread = Thread()
+    def reset(self) -> Trajectory:
+        """
+        Resets the agent's internal state.
+
+        Creates a fresh `Trajectory` for a new run.
+
+        Returns:
+            The `Trajectory` of the previous run.
+        """
+        previous = self.trajectory
+        self.trajectory = Trajectory(agent_id=self.agent_id)
         return previous
 
     @asynccontextmanager
     async def stream(
         self,
         user_input: str,
-        *,
-        thread: Thread | None = None,
-        commit: CommitBehavior = "always",
     ) -> t.AsyncIterator[t.AsyncGenerator[AgentEvent, None]]:
-        thread = thread or self.thread
+        """
+        Public context manager for streaming the agent's execution.
 
+        Ensures that any tools requiring context management (via `__aenter__`)
+        are properly initialized before execution begins.
+
+        Args:
+            user_input: The input string for the agent.
+
+        Yields:
+            An async generator yielding `AgentEvent` objects.
+        """
         async with AsyncExitStack() as stack:
             # Ensure all tools are properly entered if they
             # are context managers before we start using them
@@ -883,25 +975,37 @@ class Agent(Model):
                 if hasattr(tool_container, "__aenter__") and hasattr(tool_container, "__aexit__"):
                     await stack.enter_async_context(tool_container)
 
-            async with aclosing(self._stream_traced(thread, user_input, commit=commit)) as stream:
+            async with aclosing(self._stream_traced(user_input)) as stream:
                 yield stream
 
     async def run(
         self,
         user_input: str,
-        *,
-        thread: Thread | None = None,
-        commit: CommitBehavior = "always",
-    ) -> AgentResult:
+    ) -> Trajectory:
+        """
+        Executes the agent purely, consuming the stream until completion.
+
+        Args:
+            user_input: The input string for the agent.
+
+        Returns:
+            The final `Trajectory` object containing the run history and status.
+
+        Raises:
+            RuntimeError: If the run finishes without producing an AgentEnd event.
+        """
+        self.trajectory = Trajectory(agent_id=self.agent_id)
+
         final_event: AgentEvent | None = None
-        async with self.stream(user_input, thread=thread, commit=commit) as stream:
+
+        async with self.stream(user_input) as stream:
             async for event in stream:
                 final_event = event
 
         if not isinstance(final_event, AgentEnd):
             raise RuntimeError("Agent run finished unexpectedly.")  # noqa: TRY004
 
-        return final_event.result
+        return self.trajectory
 
 
 class TaskAgent(Agent):
@@ -956,7 +1060,7 @@ class RegexRefAgent(Agent):
     """
 
     @staticmethod
-    async def resolve_regex_ref(event: AgentEvent) -> Reaction | None:
+    async def resolve_regex_ref(event: AgentStep) -> Reaction | None:
         if not isinstance(event, ToolStart):
             return None
 

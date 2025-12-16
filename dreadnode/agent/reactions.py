@@ -11,10 +11,23 @@ class Reaction(Exception): ...  # noqa: N818
 class Continue(Reaction):
     messages: list[rg.Message] = Field(repr=False)
 
+    def log_metrics(self, step: int) -> None:
+        from dreadnode import log_metric
+
+        log_metric("continues", 1, step=step, mode="count")
+        log_metric("messages", len(self.messages), step=step)
+
 
 @dataclass
 class Retry(Reaction):
     messages: list[rg.Message] | None = Field(default=None, repr=False)
+
+    def log_metrics(self, step: int) -> None:
+        from dreadnode import log_metric
+
+        log_metric("retries", 1, step=step, mode="count")
+        if self.messages:
+            log_metric("messages", len(self.messages), step=step)
 
 
 @dataclass

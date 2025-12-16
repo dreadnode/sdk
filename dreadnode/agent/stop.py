@@ -3,7 +3,7 @@ import re
 import typing as t
 from collections.abc import Sequence
 
-from dreadnode.agent.events import AgentEvent, GenerationEnd, StepStart, ToolEnd
+from dreadnode.agent.trajectory import AgentStep, ToolEnd
 from dreadnode.meta import Config
 from dreadnode.meta.config import component
 from dreadnode.util import get_callable_name
@@ -15,7 +15,7 @@ class StopCondition:
     Conditions can be combined using & (AND) and | (OR).
     """
 
-    def __init__(self, func: t.Callable[[Sequence[AgentEvent]], bool], name: str | None = None):
+    def __init__(self, func: t.Callable[[Sequence[AgentStep]], bool], name: str | None = None):
         """
         Initializes the StopCondition.
 
@@ -36,7 +36,7 @@ class StopCondition:
     def __repr__(self) -> str:
         return f"StopCondition(name='{self.name}')"
 
-    def __call__(self, events: Sequence[AgentEvent]) -> bool:
+    def __call__(self, events: Sequence[AgentStep]) -> bool:
         return self.func(events)
 
     def __and__(self, other: "StopCondition") -> "StopCondition":
@@ -53,7 +53,7 @@ def and_(
 ) -> StopCondition:
     """Perform a logical AND with two stop conditions."""
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         return condition(events) and other(events)
 
     return StopCondition(stop, name=name or f"({condition.name}_and_{other.name})")
@@ -64,7 +64,7 @@ def or_(
 ) -> StopCondition:
     """Perform a logical OR with two stop conditions."""
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         return condition(events) or other(events)
 
     return StopCondition(stop, name=name or f"({condition.name}_or_{other.name})")
@@ -79,7 +79,7 @@ def never() -> StopCondition:
     calls, and a hook reaction will be used.
     """
 
-    def stop(_: Sequence[AgentEvent]) -> bool:
+    def stop(_: Sequence[AgentStep]) -> bool:
         return False
 
     return StopCondition(stop, name="stop_never")
@@ -98,9 +98,9 @@ def generation_count(max_generations: int) -> StopCondition:
 
     @component
     def stop(
-        events: Sequence[AgentEvent], *, max_generations: int = Config(max_generations)
+        events: Sequence[AgentStep], *, max_generations: int = Config(max_generations)
     ) -> bool:
-        generation_count = sum(1 for event in events if isinstance(event, GenerationEnd))
+        generation_count = sum(1 for event in events if isinstance(event, AgentStep))
         return generation_count >= max_generations
 
     return StopCondition(stop, name="stop_on_generation_count")
@@ -115,7 +115,7 @@ def tool_use(tool_name: str, *, count: int = 1) -> StopCondition:
         count: The number of times the tool must be used to trigger stopping. Defaults to 1.
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         tool_count = sum(
             1 for e in events if isinstance(e, ToolEnd) and e.tool_call.name == tool_name
         )
@@ -141,15 +141,15 @@ def output(
         regex: If True, treats the `pattern` string as a regular expression. Defaults to False.
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         if not events:
             return False
 
-        last_generation = next((e for e in reversed(events) if isinstance(e, GenerationEnd)), None)
+        last_generation = next((e for e in reversed(events) if isinstance(e, AgentStep)), None)
         if not last_generation:
             return False
 
-        text = last_generation.message.content
+        text = last_generation.messages[0].content
         found = False
 
         if isinstance(pattern, re.Pattern) or regex:
@@ -191,13 +191,13 @@ def tool_output(
         regex: If True, treats the `pattern` string as a regular expression. Defaults to False.
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         for event in reversed(events):
             if isinstance(event, ToolEnd):
                 if tool_name and event.tool_call.name != tool_name:
                     continue
 
-                output = event.message.content
+                output = event.messages[0].content
                 if output is None:
                     continue
 
@@ -237,7 +237,7 @@ def tool_error(tool_name: str | None = None) -> StopCondition:
         tool_name: If specified, only considers errors from this tool.
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         for event in reversed(events):
             if isinstance(event, ToolEnd):
                 if tool_name and event.tool_call.name != tool_name:
@@ -260,8 +260,8 @@ def no_new_tool_used(for_steps: int) -> StopCondition:
             before the agent should stop.
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
-        step_starts = [e for e in events if isinstance(e, StepStart)]
+    def stop(events: Sequence[AgentStep]) -> bool:
+        step_starts = [e for e in events if isinstance(e, AgentStep)]
         if len(step_starts) < for_steps:
             return False
 
@@ -292,12 +292,12 @@ def token_usage(limit: int, *, mode: t.Literal["total", "in", "out"] = "total") 
             - "out": Output tokens only
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         last_event = next((e for e in reversed(events)), None)
         if not last_event:
             return False
 
-        usage = last_event.total_usage
+        usage = last_event.usage
         token_count = (
             usage.total_tokens
             if mode == "total"
@@ -317,7 +317,7 @@ def elapsed_time(max_seconds: int) -> StopCondition:
         max_seconds: The maximum number of seconds the agent is allowed to run.
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         if len(events) < 2:
             return False
 
@@ -338,7 +338,7 @@ def estimated_cost(limit: float) -> StopCondition:
         limit: The maximum cost allowed (USD).
     """
 
-    def stop(events: Sequence[AgentEvent]) -> bool:
+    def stop(events: Sequence[AgentStep]) -> bool:
         last_event = next((e for e in reversed(events)), None)
         if not last_event:
             return False
