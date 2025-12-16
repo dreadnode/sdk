@@ -1,7 +1,7 @@
 import contextlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pyarrow.fs as pafs  # The Native FS
@@ -96,7 +96,7 @@ class DatasetManager:
 
         info = fs.get_file_info(target_path)
 
-        return info.type != FileType.NotFound
+        return cast("bool", info.type != FileType.NotFound)
 
     def manifest_exists(self, clean_path: str, fs: FileSystem) -> bool:
         """
@@ -112,7 +112,7 @@ class DatasetManager:
 
         info = fs.get_file_info(target_path)
 
-        return info.type != FileType.NotFound
+        return cast("bool", info.type != FileType.NotFound)
 
     def check_cache(self, uri: str, version: str | None = None) -> bool:
         cache_base = self.cache_root / "datasets"
@@ -130,30 +130,35 @@ class DatasetManager:
 
         return target_path.exists()
 
-    def get_cache_save_uri(self, metadata: DatasetMetadata, *, with_version: bool = True) -> str:
+    def get_cache_save_uri(
+        self,
+        organization: str,
+        name: str,
+        *,
+        version: str | None = None,
+        with_version: bool = True,
+    ) -> str:
         """
         Constructs the full local cache path.
         Example: /home/user/.dreadnode/datasets/main/my-dataset/1.0.0
         """
-        dataset_uri = Path(f"{self.cache_root}/datasets/{metadata.organization}/{metadata.name}")
-        if with_version:
-            dataset_uri = dataset_uri / metadata.version
+        dataset_uri = Path(f"{self.cache_root}/datasets/{organization}/{name}")
+        if with_version and version:
+            dataset_uri = dataset_uri / version
 
         dataset_uri = dataset_uri.resolve()
 
         return str(dataset_uri)
 
-    def get_latest_cache_save_uri(self, metadata: DatasetMetadata) -> str | None:
+    def get_latest_cache_save_uri(self, organization: str, name: str) -> str | None:
         """
         Constructs the full local cache path to the latest version.
         Example: /home/user/.dreadnode/datasets/main/my-dataset/latest-version
         """
 
-        dataset_uri = Path(
-            f"{self.cache_root}/datasets/{metadata.organization}/{metadata.name}"
-        ).resolve()
+        dataset_uri = Path(f"{self.cache_root}/datasets/{organization}/{name}").resolve()
 
-        latest = self.resolve_latest_local_version(metadata)
+        latest = self.resolve_latest_local_version(str(dataset_uri))
 
         if latest is None:
             return None
@@ -161,14 +166,14 @@ class DatasetManager:
         return str(dataset_uri / latest)
 
     def get_cache_load_uri(
-        self, uri: str, version: str | None = None, fs: FileSystem = None
+        self, uri: str, *, version: str | None = None, with_version: bool = True
     ) -> str:
         """
         Constructs the full local cache path.
         Example: /home/user/.dreadnode/datasets/main/my-dataset
         """
 
-        if version:
+        if with_version and version:
             uri = f"{uri}/{version}"
             dataset_uri = Path(f"{self.cache_root}/datasets/{uri}").resolve()
 
@@ -177,9 +182,10 @@ class DatasetManager:
 
         dataset_uri = Path(f"{self.cache_root}/datasets/{uri}").resolve()
 
-        latest = self.resolve_latest_local_version(str(dataset_uri), fs)
-
-        return str(dataset_uri / latest)
+        latest = self.resolve_latest_local_version(str(dataset_uri))
+        if latest:
+            return str(dataset_uri / latest)
+        return str(dataset_uri)
 
     def get_remote_save_uri(self, metadata: DatasetMetadata) -> tuple[UUID, str]:
         """
@@ -201,6 +207,12 @@ class DatasetManager:
             existing_dataset = None
 
         if not existing_dataset:
+            if not metadata.organization:
+                raise ValueError("Organization must be specified to create a new dataset")
+
+            if not metadata.name:
+                raise ValueError("Dataset name must be specified to create a new dataset")
+
             upload_request = CreateDatasetRequest(
                 org_key=metadata.organization,
                 key=metadata.name,
@@ -208,13 +220,15 @@ class DatasetManager:
                 tags=metadata.tags,
             )
 
-            response = self._api.create_dataset(request=upload_request)
-            dataset_id = response.dataset_id
-            user_data_access_response = response.user_data_access_response
+            create_response = self._api.create_dataset(request=upload_request)
+            dataset_id = create_response.dataset_id
+            user_data_access_response = create_response.user_data_access_response
         else:
-            response = self._api.update_dataset_version(existing_dataset.id, metadata.version)
-            dataset_id = response.dataset.id
-            user_data_access_response = response.credentials
+            update_response = self._api.update_dataset_version(
+                existing_dataset.id, metadata.version
+            )
+            dataset_id = update_response.dataset.id
+            user_data_access_response = update_response.credentials
 
         self._cached_s3_fs = pafs.S3FileSystem(
             access_key=user_data_access_response.access_key_id,
@@ -243,6 +257,8 @@ class DatasetManager:
         """
         Requests the download URI for a dataset from the API.
         """
+        if not self._api:
+            raise ValueError("No client configured")
 
         request = DatasetDownloadRequest(
             dataset_uri=uri,
@@ -335,12 +351,10 @@ class DatasetManager:
 
         return self._cached_s3_fs, path_body
 
-    def resolve_latest_local_version(self, metadata: DatasetMetadata) -> str | None:
+    def resolve_latest_local_version(self, uri: str) -> str | None:
         """
         PyArrow Native implementation of version resolution.
         """
-        uri = self.get_cache_save_uri(metadata, with_version=False)
-
         selector = pafs.FileSelector(uri, recursive=False)
         fs = pafs.LocalFileSystem()
         self.ensure_dir(fs, uri)
@@ -353,7 +367,7 @@ class DatasetManager:
         ]
         if not versions:
             return None
-        latest = sorted(versions, reverse=True)[0]
+        latest: str = sorted(versions, reverse=True)[0]
         # ensure it's a valid version
         try:
             _ = VersionInfo.from_string(latest)

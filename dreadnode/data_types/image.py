@@ -9,7 +9,7 @@ from dreadnode.data_types.base import DataType
 from dreadnode.util import catch_import_error
 
 if t.TYPE_CHECKING:
-    from PIL.Image import Image as PILImage
+    from PIL.Image import Image as PILImage  # type: ignore[import-not-found]
 
 ImageDataType: t.TypeAlias = "np.ndarray[t.Any, t.Any] | PILImage | t.Any"
 ImageDataOrPathType: t.TypeAlias = "str | Path | bytes | ImageDataType"

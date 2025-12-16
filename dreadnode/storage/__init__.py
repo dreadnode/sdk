@@ -3,7 +3,7 @@ from fsspec import AbstractFileSystem, register_implementation
 from dreadnode.dataset import Dataset, load_dataset
 
 
-class DreadnodeFS(AbstractFileSystem):
+class DreadnodeFS(AbstractFileSystem):  # type: ignore[misc]
     protocol = ("dn", "dreadnode")
 
 

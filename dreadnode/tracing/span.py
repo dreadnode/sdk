@@ -72,8 +72,6 @@ from dreadnode.version import VERSION
 if t.TYPE_CHECKING:
     import networkx as nx  # type: ignore [import-untyped]
 
-    from dreadnode.api.models import UserDataCredentials
-
 
 logger = logging.getLogger(__name__)
 
@@ -447,7 +445,7 @@ class RunSpan(Span):
         cls,
         context: RunContext,
         tracer: Tracer,
-        credential_fetcher: t.Callable[[], "UserDataCredentials"],
+        credential_fetcher: CredentialManager | None = None,
     ) -> "RunSpan":
         self = RunSpan(
             name=f"run.{context['run_id']}.fragment",
@@ -456,7 +454,7 @@ class RunSpan(Span):
             tracer=tracer,
             type="run_fragment",
             run_id=context["run_id"],
-            credential_fetcher=credential_fetcher,
+            credential_manager=credential_fetcher,
         )
 
         self._remote_context = context["trace_context"]

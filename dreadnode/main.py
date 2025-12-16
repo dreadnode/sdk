@@ -11,9 +11,9 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse, urlunparse
 from uuid import UUID
 
-import coolname  # type: ignore [import-untyped]
+import coolname
 import logfire
-from fsspec.implementations.local import (  # type: ignore [import-untyped]
+from fsspec.implementations.local import (
     LocalFileSystem,
 )
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
@@ -28,7 +28,6 @@ from dreadnode.api.client import ApiClient
 from dreadnode.api.models import (
     Organization,
     Project,
-    UserDataCredentials,
     Workspace,
     WorkspaceFilter,
 )
@@ -94,7 +93,7 @@ from dreadnode.util import (
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
-    from fsspec import AbstractFileSystem  # type: ignore [import-untyped]
+    from fsspec import AbstractFileSystem
     from opentelemetry.sdk.metrics.export import MetricReader
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
@@ -171,7 +170,7 @@ class Dreadnode:
         self._workspace: Workspace
         self._project: Project
 
-        self._credential_fetcher: t.Callable[[], UserDataCredentials]
+        self._credential_fetcher: CredentialManager | None = None
 
         self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
         self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -731,7 +730,7 @@ class Dreadnode:
         self._logfire.config.ignore_no_config = True
 
         self._fs_manager = DatasetManager().configure(
-            api=self._api,  # type: ignore[return-value]
+            api=self._api,
             organization=self._organization.key,
             organization_id=self._organization.id,
         )
@@ -1196,7 +1195,7 @@ class Dreadnode:
             tracer=_tracer or self._get_tracer(),
             params=params,
             tags=tags,
-            credential_manager=self._credential_manager,  # type: ignore[return-value]
+            credential_manager=self._credential_manager,
             autolog=autolog,
         )
 
@@ -1283,7 +1282,7 @@ class Dreadnode:
         return RunSpan.from_context(
             context=run_context,
             tracer=self._get_tracer(),
-            storage_manager=self._storage_manager,  # type: ignore[arg-type]
+            credential_fetcher=self._credential_fetcher,
         )
 
     def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> None:
