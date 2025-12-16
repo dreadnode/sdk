@@ -55,6 +55,40 @@ class DatasetManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    def _get_s3_config(self, dataset_id: UUID, version: str | None = None) -> dict[str, Any]:
+        """
+        Translates your UserDataCredentials into PyArrow S3 arguments.
+        """
+        if not self._api:
+            raise ValueError("No client configured")
+
+        creds = self._api.get_dataset_access_credentials(
+            dataset_id=dataset_id, version=version or "latest"
+        )
+        self._credentials_expiry = creds.expiration
+        resolved_endpoint = resolve_endpoint(creds.endpoint)
+
+        # Mapping UserDataCredentials -> PyArrow S3FileSystem kwargs
+        return {
+            "access_key": creds.access_key_id,
+            "secret_key": creds.secret_access_key,
+            "session_token": creds.session_token,
+            "endpoint_override": resolved_endpoint,
+            "region": creds.region,
+            "check_directory_existence_before_creation": True,
+        }
+
+    def _needs_refresh(self) -> bool:
+        if not self._credentials_expiry:
+            return True
+        now = datetime.now(timezone.utc)
+        expiry = (
+            self._credentials_expiry.replace(tzinfo=timezone.utc)
+            if self._credentials_expiry.tzinfo is None
+            else self._credentials_expiry
+        )
+        return (expiry - now).total_seconds() < FS_CREDENTIAL_REFRESH_BUFFER
+
     @staticmethod
     def get_version_from_path(path: str) -> str | None:
         """
@@ -87,33 +121,6 @@ class DatasetManager:
         instance.organization_id = organization_id
         return instance
 
-    def metadata_exists(self, clean_path: str, fs: FileSystem) -> bool:
-        """
-        Checks if metadata file exists in the local cache.
-        """
-
-        target_path = f"{clean_path}/{METADATA_FILE}"
-
-        info = fs.get_file_info(target_path)
-
-        return cast("bool", info.type != FileType.NotFound)
-
-    def manifest_exists(self, clean_path: str, fs: FileSystem) -> bool:
-        """
-        Checks if manifest file exists in the local cache.
-        """
-        # if "://" not in path or path.startswith("file://"):
-        #     target_path = Path(f"{path}/{MANIFEST_FILE}").resolve()
-
-        #     return target_path.exists()
-
-        # fs, clean_path = self.get_fs_and_path(path)
-        target_path = f"{clean_path}/{MANIFEST_FILE}"
-
-        info = fs.get_file_info(target_path)
-
-        return cast("bool", info.type != FileType.NotFound)
-
     def check_cache(self, uri: str, version: str | None = None) -> bool:
         cache_base = self.cache_root / "datasets"
         cache_base = cache_base.resolve()
@@ -130,10 +137,71 @@ class DatasetManager:
 
         return target_path.exists()
 
+    def compare_versions(self, specified_version: str, local_version: str) -> int:
+        """
+        Compares two version strings.
+        Returns:
+            1 if specified_version > local_version
+            -1 if specified_version < local_version
+            0 if equal
+        """
+
+        specified_ver = VersionInfo.from_string(specified_version)
+        local_ver = VersionInfo.from_string(local_version)
+
+        if specified_ver > local_ver:
+            return 1
+        if local_ver > specified_ver:
+            return -1
+        return 0
+
+    def compare_versions_from_paths(self, remote_path: str, local_path: str) -> int | None:
+        """
+        Compares versions extracted from remote and local paths.
+        Returns:
+            1 if remote version > local version
+            -1 if remote version < local version
+            0 if equal
+            None if versions cannot be determined
+        """
+
+        remote_version_str = self.get_version_from_path(remote_path)
+        local_version_str = self.get_version_from_path(local_path)
+
+        if not remote_version_str or not local_version_str:
+            return None
+
+        remote_version = VersionInfo.from_string(remote_version_str)
+        local_version = VersionInfo.from_string(local_version_str)
+
+        if remote_version > local_version:
+            return 1
+        if local_version > remote_version:
+            return -1
+        return 0
+
+    def ensure_dir(self, fs: FileSystem, path: str) -> None:
+        """
+        Creates directory if local. Skips if S3.
+        """
+        if fs.type_name == "s3":
+            return
+        with contextlib.suppress(OSError):
+            fs.create_dir(path, recursive=True)
+
+    def delete_remote_dataset_record(self, dataset_id_or_key: UUID | str) -> None:
+        """
+        Deletes a remote dataset via the API.
+        """
+
+        if not self._api:
+            raise ValueError("No client configured")
+
+        self._api.delete_dataset(dataset_id_or_key=dataset_id_or_key)
+
     def get_cache_save_uri(
         self,
-        organization: str,
-        name: str,
+        ref: str,
         *,
         version: str | None = None,
         with_version: bool = True,
@@ -142,28 +210,13 @@ class DatasetManager:
         Constructs the full local cache path.
         Example: /home/user/.dreadnode/datasets/main/my-dataset/1.0.0
         """
-        dataset_uri = Path(f"{self.cache_root}/datasets/{organization}/{name}")
+        dataset_uri = Path(f"{self.cache_root}/datasets/{ref}")
         if with_version and version:
             dataset_uri = dataset_uri / version
 
         dataset_uri = dataset_uri.resolve()
 
         return str(dataset_uri)
-
-    def get_latest_cache_save_uri(self, organization: str, name: str) -> str | None:
-        """
-        Constructs the full local cache path to the latest version.
-        Example: /home/user/.dreadnode/datasets/main/my-dataset/latest-version
-        """
-
-        dataset_uri = Path(f"{self.cache_root}/datasets/{organization}/{name}").resolve()
-
-        latest = self.resolve_latest_local_version(str(dataset_uri))
-
-        if latest is None:
-            return None
-
-        return str(dataset_uri / latest)
 
     def get_cache_load_uri(
         self, uri: str, *, version: str | None = None, with_version: bool = True
@@ -186,6 +239,70 @@ class DatasetManager:
         if latest:
             return str(dataset_uri / latest)
         return str(dataset_uri)
+
+    def get_fs_and_path(self, uri: str) -> tuple[FileSystem, str]:
+        """
+        The Master Resolver.
+        Returns: (NativeFileSystem, clean_path_string)
+        """
+
+        if "://" not in uri or uri.startswith("file://"):
+            fs = pafs.LocalFileSystem()
+            path = uri.replace("file://", "")
+            return fs, path
+
+        try:
+            _, path_body = uri.split("://", 1)
+            path_body = path_body.rstrip("/")
+        except ValueError:
+            return pafs.LocalFileSystem(), uri
+
+        if self._cached_s3_fs is None or self._needs_refresh():
+            try:
+                # Try to extract dataset ID from URI which expect is of the form dn://<user bucket>/<org_id>/datasets/<dataset_id>/<version>
+                dataset_id = UUID(path_body.split("/")[3])
+                config = self._get_s3_config(dataset_id=dataset_id)
+                self._cached_s3_fs = pafs.S3FileSystem(**config)
+            except ValueError:
+                logging_console.print(f"[red]Invalid dataset ID in URI: [green]{uri}[/green][/red]")
+                raise
+            except Exception as e:
+                logging_console.print(f"Auth failed: {e}")
+                raise
+
+        return self._cached_s3_fs, path_body
+
+    def get_remote_load_uri(self, uri: str, version: str | None = None) -> str | None:
+        """
+        Requests the download URI for a dataset from the API.
+        """
+        if not self._api:
+            raise ValueError("No client configured")
+
+        request = DatasetDownloadRequest(
+            dataset_uri=uri,
+            version=version or "latest",
+        )
+        try:
+            response = self._api.download_dataset(request)
+
+            print_info(f"[*] Download URI: {response.uri}")
+        except RuntimeError as e:
+            if "404: Dataset not found" in str(e):
+                logging_console.print(f"[*] Dataset not found: [green]{uri}[/green]")
+                return None
+            raise
+
+        self._cached_s3_fs = pafs.S3FileSystem(
+            access_key=response.access_key_id,
+            secret_key=response.secret_access_key,
+            session_token=response.session_token,
+            endpoint_override=resolve_endpoint(response.endpoint),
+            region=response.region,
+            check_directory_existence_before_creation=True,
+        )
+        self._credentials_expiry = response.expiration
+        return response.uri
 
     def get_remote_save_uri(self, metadata: DatasetMetadata) -> tuple[UUID, str]:
         """
@@ -241,6 +358,48 @@ class DatasetManager:
         self._credentials_expiry = user_data_access_response.expiration
         return dataset_id, user_data_access_response.uri
 
+    def get_latest_cache_save_uri(self, ref: str) -> str | None:
+        """
+        Constructs the full local cache path to the latest version.
+        Example: /home/user/.dreadnode/datasets/main/my-dataset/latest-version
+        """
+
+        dataset_uri = Path(f"{self.cache_root}/datasets/{ref}").resolve()
+
+        latest = self.resolve_latest_local_version(str(dataset_uri))
+
+        if latest is None:
+            return None
+
+        return str(dataset_uri / latest)
+
+    def metadata_exists(self, clean_path: str, fs: FileSystem) -> bool:
+        """
+        Checks if metadata file exists in the local cache.
+        """
+
+        target_path = f"{clean_path}/{METADATA_FILE}"
+
+        info = fs.get_file_info(target_path)
+
+        return cast("bool", info.type != FileType.NotFound)
+
+    def manifest_exists(self, clean_path: str, fs: FileSystem) -> bool:
+        """
+        Checks if manifest file exists in the local cache.
+        """
+        # if "://" not in path or path.startswith("file://"):
+        #     target_path = Path(f"{path}/{MANIFEST_FILE}").resolve()
+
+        #     return target_path.exists()
+
+        # fs, clean_path = self.get_fs_and_path(path)
+        target_path = f"{clean_path}/{MANIFEST_FILE}"
+
+        info = fs.get_file_info(target_path)
+
+        return cast("bool", info.type != FileType.NotFound)
+
     def remote_save_complete(self, dataset_id: UUID, *, complete: bool) -> None:
         """
         Notifies the API that the remote upload is complete.
@@ -252,104 +411,6 @@ class DatasetManager:
         request = DatasetUploadCompleteRequest(dataset_id=dataset_id, complete=complete)
 
         self._api.upload_complete(request=request)
-
-    def get_remote_load_uri(self, uri: str, version: str | None = None) -> str | None:
-        """
-        Requests the download URI for a dataset from the API.
-        """
-        if not self._api:
-            raise ValueError("No client configured")
-
-        request = DatasetDownloadRequest(
-            dataset_uri=uri,
-            version=version or "latest",
-        )
-        try:
-            response = self._api.download_dataset(request)
-
-            print_info(f"[*] Download URI: {response.uri}")
-        except RuntimeError as e:
-            if "404: Dataset not found" in str(e):
-                logging_console.print(f"[*] Dataset not found: [green]{uri}[/green]")
-                return None
-            raise
-
-        self._cached_s3_fs = pafs.S3FileSystem(
-            access_key=response.access_key_id,
-            secret_key=response.secret_access_key,
-            session_token=response.session_token,
-            endpoint_override=resolve_endpoint(response.endpoint),
-            region=response.region,
-            check_directory_existence_before_creation=True,
-        )
-        self._credentials_expiry = response.expiration
-        return response.uri
-
-    def get_s3_config(self, dataset_id: UUID, version: str | None = None) -> dict[str, Any]:
-        """
-        Translates your UserDataCredentials into PyArrow S3 arguments.
-        """
-        if not self._api:
-            raise ValueError("No client configured")
-
-        creds = self._api.get_dataset_access_credentials(
-            dataset_id=dataset_id, version=version or "latest"
-        )
-        self._credentials_expiry = creds.expiration
-        resolved_endpoint = resolve_endpoint(creds.endpoint)
-
-        # Mapping UserDataCredentials -> PyArrow S3FileSystem kwargs
-        return {
-            "access_key": creds.access_key_id,
-            "secret_key": creds.secret_access_key,
-            "session_token": creds.session_token,
-            "endpoint_override": resolved_endpoint,
-            "region": creds.region,
-            "check_directory_existence_before_creation": True,
-        }
-
-    def needs_refresh(self) -> bool:
-        if not self._credentials_expiry:
-            return True
-        now = datetime.now(timezone.utc)
-        expiry = (
-            self._credentials_expiry.replace(tzinfo=timezone.utc)
-            if self._credentials_expiry.tzinfo is None
-            else self._credentials_expiry
-        )
-        return (expiry - now).total_seconds() < FS_CREDENTIAL_REFRESH_BUFFER
-
-    def get_fs_and_path(self, uri: str) -> tuple[FileSystem, str]:
-        """
-        The Master Resolver.
-        Returns: (NativeFileSystem, clean_path_string)
-        """
-
-        if "://" not in uri or uri.startswith("file://"):
-            fs = pafs.LocalFileSystem()
-            path = uri.replace("file://", "")
-            return fs, path
-
-        try:
-            _, path_body = uri.split("://", 1)
-            path_body = path_body.rstrip("/")
-        except ValueError:
-            return pafs.LocalFileSystem(), uri
-
-        if self._cached_s3_fs is None or self.needs_refresh():
-            try:
-                # Try to extract dataset ID from URI which expect is of the form dn://<user bucket>/<org_id>/datasets/<dataset_id>/<version>
-                dataset_id = UUID(path_body.split("/")[3])
-                config = self.get_s3_config(dataset_id=dataset_id)
-                self._cached_s3_fs = pafs.S3FileSystem(**config)
-            except ValueError:
-                logging_console.print(f"[red]Invalid dataset ID in URI: [green]{uri}[/green][/red]")
-                raise
-            except Exception as e:
-                logging_console.print(f"Auth failed: {e}")
-                raise
-
-        return self._cached_s3_fs, path_body
 
     def resolve_latest_local_version(self, uri: str) -> str | None:
         """
@@ -374,22 +435,3 @@ class DatasetManager:
         except ValueError as e:
             raise ValueError(f"No valid versions found in {uri}") from e
         return latest
-
-    def ensure_dir(self, fs: FileSystem, path: str) -> None:
-        """
-        Creates directory if local. Skips if S3.
-        """
-        if fs.type_name == "s3":
-            return
-        with contextlib.suppress(OSError):
-            fs.create_dir(path, recursive=True)
-
-    def delete_remote_dataset_record(self, dataset_id_or_key: UUID | str) -> None:
-        """
-        Deletes a remote dataset via the API.
-        """
-
-        if not self._api:
-            raise ValueError("No client configured")
-
-        self._api.delete_dataset(dataset_id_or_key=dataset_id_or_key)

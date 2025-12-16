@@ -1341,8 +1341,10 @@ class Dreadnode:
     def save_dataset_to_disk(
         self,
         ds: dataset.Dataset,
+        *,
         version: str | None = None,
         strategy: VersionStrategy | None = None,
+        overwrite: bool = False,
     ) -> None:
         """
         Save a dataset to the local cache.
@@ -1362,6 +1364,7 @@ class Dreadnode:
             version: A specific version string to set for the dataset.
             strategy: A versioning strategy to automatically bump the version
                 (e.g., 'major', 'minor', 'patch').
+            overwrite: Whether to overwrite an existing dataset version at the same path.
         """
         if version is not None:
             try:
@@ -1377,6 +1380,7 @@ class Dreadnode:
         dataset.save_dataset_to_disk(
             dataset=ds,
             dataset_manager=self._fs_manager,
+            overwrite=overwrite,
         )
 
     def push_dataset(

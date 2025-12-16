@@ -290,6 +290,7 @@ def _persist_dataset(
 def save_dataset_to_disk(
     dataset: Dataset,
     *,
+    overwrite: bool,
     dataset_manager: DatasetManager,
     **kwargs: Any,
 ) -> None:
@@ -304,22 +305,33 @@ def save_dataset_to_disk(
         None
 
     """
+    latest_path = dataset_manager.get_latest_cache_save_uri(dataset.metadata.ref)
 
     if dataset.metadata.auto_version:
-        latest_path = dataset_manager.get_latest_cache_save_uri(
-            organization=dataset.metadata.organization,
-            name=dataset.metadata.name,
-        )
         should_save = _ensure_version_bump(dataset, dataset_manager, latest_path)
         if not should_save:
             return
+    elif latest_path is not None:
+        latest_version = dataset_manager.get_version_from_path(latest_path)
+        if not latest_version:
+            raise ValueError(f"Could not determine latest version from path: {latest_path}")
+        if dataset_manager.compare_versions(dataset.metadata.version, latest_version) <= 0:
+            if overwrite:
+                print_warning(
+                    "[!] Overwrite enabled: Proceeding to overwrite existing dataset version."
+                )
+            else:
+                raise ValueError(
+                    f"Dataset version {dataset.metadata.version} is not higher than the latest "
+                    f"saved version {latest_version}. Use overwrite=True to overwrite."
+                )
+
     print_info("[*] Saving dataset to local cache")
 
     _persist_dataset(
         dataset=dataset,
         path_str=dataset_manager.get_cache_save_uri(
-            organization=dataset.metadata.organization,
-            name=dataset.metadata.name,
+            ref=dataset.metadata.ref,
             version=dataset.metadata.version,
             with_version=True,
         ),
@@ -348,9 +360,20 @@ def push_dataset(
         None
     """
     if dataset.metadata.auto_version:
-        latest_path = dataset_manager.get_remote_load_uri(
+        latest_path: str | None = None
+        latest_remote_path = dataset_manager.get_remote_load_uri(
             uri=f"{dataset.metadata.organization}/{dataset.metadata.name}", version="latest"
         )
+        latest_local_path = dataset_manager.get_latest_cache_save_uri(dataset.metadata.ref)
+        if latest_remote_path and latest_local_path:
+            compared = dataset_manager.compare_versions_from_paths(
+                remote_path=latest_remote_path,
+                local_path=latest_local_path,
+            )
+            latest_path = latest_remote_path if compared == 1 else latest_local_path
+        else:
+            latest_path = latest_remote_path or latest_local_path
+
         should_save = _ensure_version_bump(dataset, dataset_manager, latest_path)
         if not should_save:
             return
@@ -362,6 +385,7 @@ def push_dataset(
         save_dataset_to_disk(
             dataset=dataset,
             dataset_manager=dataset_manager,
+            overwrite=False,
             **kwargs,
         )
 
