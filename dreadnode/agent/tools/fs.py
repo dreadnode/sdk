@@ -9,7 +9,7 @@ from pathlib import Path
 import aiofiles  # type: ignore[import-untyped]
 import rigging as rg
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import-untyped]
-from fsspec import AbstractFileSystem  # type: ignore[import-untyped]
+from fsspec import AbstractFileSystem
 from loguru import logger
 from pydantic import PrivateAttr
 from upath import UPath
