@@ -26,7 +26,7 @@ def lineage(
     trials: list[Trial[CandidateT]] = []
     parent = get_parent(current_trial)
     while parent:
-        trials.insert(0, parent)
+        trials.append(parent)
         parent = get_parent(parent)
 
     return trials[:depth]
