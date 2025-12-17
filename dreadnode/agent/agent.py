@@ -299,6 +299,8 @@ class Agent(Model):
             post_transforms.append(post_transform)
 
         try:
+            from dreadnode import log_output, task_and_run
+
             messages = rg.caching.apply_cache_mode_to_messages(self.caching, [messages])[0]
 
             logger.trace(f"Generating with model '{self.generator.model}'. Messages: {messages!r}")
@@ -306,6 +308,13 @@ class Agent(Model):
             generated = (await self.generator.generate_messages([messages], [params]))[0]
             if isinstance(generated, BaseException):
                 raise generated  # noqa: TRY301
+
+            with task_and_run(
+                name="Chat completion",
+                tags=["completion"],
+                label="Chat completion",
+            ):
+                log_output("messages", [messages[-1], generated.message])
 
             chat = rg.Chat(
                 messages,
