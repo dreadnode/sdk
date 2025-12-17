@@ -490,10 +490,17 @@ class Agent(Model):
             raise winning_reaction
 
         # Tool calling
-
+        tool_calls = 0
+        
         async def _process_tool_call(
             tool_call: "rg.tools.ToolCall",
         ) -> t.AsyncGenerator[AgentEvent, None]:
+            
+            nonlocal tool_calls
+            
+            if self.max_tool_calls != -1 and tool_calls >= self.max_tool_calls:
+                raise Finish("Reached maximum allowed tool calls.")
+
             async for event in _dispatch(
                 ToolStart(
                     session_id=session_id,
@@ -515,6 +522,7 @@ class Agent(Model):
             tool = next((t for t in self.all_tools if t.name == tool_call.name), None)
 
             if tool is not None:
+                tool_calls += 1
                 try:
                     message, stop = await tool.handle_tool_call(tool_call)
                 except Reaction:
@@ -568,7 +576,6 @@ class Agent(Model):
         # Core step loop
 
         step = 0
-        tool_calls = 0
         error: Exception | str | None = None
 
         while step < self.max_steps:
@@ -665,7 +672,6 @@ class Agent(Model):
                         messages.append(event.message)
                         if stopped_by_tool_call is None and event.stop:
                             stopped_by_tool_call = event.tool_call
-                        tool_calls += 1
                     yield event
 
                 if stopped_by_tool_call:
@@ -673,9 +679,6 @@ class Agent(Model):
                         f"Tool '{stopped_by_tool_call.name}' handling "
                         f"{stopped_by_tool_call.id} requested to stop the agent."
                     )
-
-                if self.max_tool_calls != -1 and tool_calls >= self.max_tool_calls:
-                    raise Finish("Reached maximum allowed tool calls.")
 
                 # Check for stop conditions (again)
 
