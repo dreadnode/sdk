@@ -1331,6 +1331,9 @@ class Dreadnode:
             dataset = dreadnode.load_dataset("dn://org/my_dataset")
             ```
         """
+        if not self._initialized:
+            raise RuntimeError("Call .configure() before loading datasets")
+
         return dataset.load_dataset(
             uri=path,
             version=version,
@@ -1366,6 +1369,9 @@ class Dreadnode:
                 (e.g., 'major', 'minor', 'patch').
             overwrite: Whether to overwrite an existing dataset version at the same path.
         """
+        if not self._initialized:
+            raise RuntimeError("Call .configure() before saving datasets")
+
         if version is not None:
             try:
                 parse_version(version)
@@ -1376,6 +1382,9 @@ class Dreadnode:
         elif strategy is not None:
             ds.metadata.auto_version = True
             ds.metadata.auto_version_strategy = strategy
+
+        if ds.metadata.organization is None:
+            ds.metadata.organization = self._organization.key
 
         dataset.save_dataset_to_disk(
             dataset=ds,
@@ -1411,6 +1420,9 @@ class Dreadnode:
             strategy: A versioning strategy to automatically bump the version
                 (e.g., 'major', 'minor', 'patch').
         """
+        if not self._initialized:
+            raise RuntimeError("Call .configure() before saving datasets")
+
         if version is not None:
             try:
                 parse_version(version)
@@ -1421,6 +1433,9 @@ class Dreadnode:
         elif strategy is not None:
             ds.metadata.auto_version = True
             ds.metadata.auto_version_strategy = strategy
+
+        if ds.metadata.organization is None:
+            ds.metadata.organization = self._organization.key
 
         dataset.push_dataset(
             dataset=ds,
