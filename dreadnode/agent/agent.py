@@ -491,13 +491,13 @@ class Agent(Model):
 
         # Tool calling
         tool_calls = 0
-        
+
         async def _process_tool_call(
             tool_call: "rg.tools.ToolCall",
         ) -> t.AsyncGenerator[AgentEvent, None]:
-            
+
             nonlocal tool_calls
-            
+
             if self.max_tool_calls != -1 and tool_calls >= self.max_tool_calls:
                 raise Finish("Reached maximum allowed tool calls.")
 
