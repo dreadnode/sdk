@@ -12,14 +12,14 @@ async def finish_task(success: bool, summary: str) -> None:  # noqa: ARG001, FBT
     """
     Concludes the task by reporting a final status and a comprehensive summary.
 
-    This is the **final tool** to call when your planned sequence of actions is complete,
-    regardless of whether the outcome was successful. Use it when you have no more
+    This is the **final tool** to call when your planned sequence of actions is complete, \
+    regardless of whether the outcome was successful. Use it when you have no more \
     steps to take and are ready to present a final report.
 
     ## Best Practices
-    - Honest Status: The `success` flag must accurately reflect the final outcome.
+    - Honest Status: The `success` flag must accurately reflect the final outcome. \
     If any part of the task failed or objectives were not met, it must be `False`.
-    - Comprehensive Summary: The `summary` is your final report. It must be a complete,
+    - Comprehensive Summary: The `summary` is your final report. It must be a complete, \
     markdown-formatted document detailing all actions taken, tools used, and the results.
 
     Args:
@@ -40,14 +40,14 @@ async def give_up_on_task(reason: str) -> None:
     """
     Aborts the task when you are irrecoverably stuck and cannot make progress.
 
-    This tool is a last resort and should only be used when you have exhausted all
-    possible strategies and alternative approaches. It signals that you were unable
+    This tool is a last resort and should only be used when you have exhausted all \
+    possible strategies and alternative approaches. It signals that you were unable \
     to complete your assigned process.
 
     ## Best Practices
-    - **Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures.
+    - **Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures. \
     This tool is strictly for when you cannot *finish* your work.
-    - **Provide a Clear Justification**: The `reason` must clearly explain why you are stuck.
+    - **Provide a Clear Justification**: The `reason` must clearly explain why you are stuck. \
     Detail the final obstacle you could not overcome and the approaches you already tried.
 
     Args:
