@@ -3,7 +3,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pyarrow as pa
 from pyarrow.fs import FileSelector, FileSystem, FileType
@@ -38,11 +38,14 @@ class DatasetManifest(BaseModel):
     checksum: str | None = None
     parent_version: str | None = None
 
-    def model_post_init(self, _context: Any) -> None:
+    def _sync_metadata(self) -> None:
+        """
+        Refreshes the file count, total size, and checksum based on the current
+        state of the 'files' dictionary.
+        """
         self.file_count = len(self.files)
         self.total_size_bytes = sum(f.size_bytes for f in self.files.values())
-        if not self.checksum:
-            self.checksum = self.compute_checksum()
+        self.checksum = self.compute_checksum()
 
     def add_file(self, path: str, entry: FileEntry) -> None:
         self.files[path] = entry
@@ -62,6 +65,7 @@ class DatasetManifest(BaseModel):
         """
         Helper to write Pydantic models to native binary streams.
         """
+        self._sync_metadata()
         json_bytes = self.model_dump_json(indent=2).encode("utf-8")
         with fs.open_output_stream(path) as f:
             f.write(json_bytes)
