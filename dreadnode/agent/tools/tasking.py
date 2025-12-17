@@ -61,7 +61,7 @@ async def give_up_on_task(reason: str) -> None:
     raise Fail("Agent gave up on the task.")
 
 
-class TaskOutput(Toolset):
+class TaskOutputBuffer(Toolset):
     """
     Provides a stateful output buffer for accumulating task results.
 
