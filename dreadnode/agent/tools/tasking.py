@@ -77,7 +77,18 @@ class TaskOutputBuffer(Toolset):
         self,
         content: t.Annotated[str, "The content to add to the output buffer."],
     ) -> str:
-        """Adds content to the output buffer."""
+        """
+        Appends new content to the task's stateful output buffer.
+
+        Use this method when you want to build up a longer or multi-part result
+        over several steps or tool calls, instead of returning everything at once.
+        Each call adds the provided `content` string to the existing buffer;
+        previously saved outputs are never overwritten or cleared by this method.
+
+        The return value is a short confirmation message that includes the current
+        number of saved output entries, which can help you track how much content
+        has been accumulated so far.
+        """
         self._outputs.append(content)
         return f"Output saved (total outputs: {len(self._outputs)})"
 
