@@ -28,12 +28,14 @@ class Dataset:
     def __init__(
         self,
         ds: ds.Dataset,
-        metadata: DatasetMetadata,
+        metadata: DatasetMetadata | None = None,
         manifest: DatasetManifest | None = None,
         *,
         materialize: bool = True,
     ) -> None:
         self.ds = ds
+        if metadata is None:
+            metadata = DatasetMetadata()
         self.metadata = metadata
         self.manifest = manifest
         self.row_count: int = 0
