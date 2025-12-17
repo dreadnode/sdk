@@ -14,7 +14,7 @@ from pydantic import AfterValidator, ConfigDict, Field, PrivateAttr, SkipValidat
 from rigging.message import inject_system_content
 from ulid import ULID  # can't access via rg
 
-from dreadnode.agent.error import MaxStepsError
+from dreadnode.agent.error import MaxStepsError, MaxToolCallsError
 from dreadnode.agent.events import (
     AgentEnd,
     AgentError,
@@ -89,7 +89,9 @@ class Agent(Model):
     )
     """The agent's core instructions."""
     max_steps: int = Config(default=10)
-    """The maximum number of steps (generation + tool calls)."""
+    """The maximum number of steps (generations)."""
+    max_tool_calls: int = Config(default=-1)
+    """The maximum number of tool calls. Defaults to infinite."""
     caching: rg.caching.CacheMode | None = Config(default=None, repr=False)
     """How to handle cache_control entries on inference messages."""
 
@@ -566,6 +568,7 @@ class Agent(Model):
         # Core step loop
 
         step = 0
+        tool_calls = 0
         error: Exception | str | None = None
 
         while step < self.max_steps:
@@ -662,12 +665,18 @@ class Agent(Model):
                         messages.append(event.message)
                         if stopped_by_tool_call is None and event.stop:
                             stopped_by_tool_call = event.tool_call
+                        tool_calls += 1
                     yield event
 
                 if stopped_by_tool_call:
                     raise Finish(  # noqa: TRY301
                         f"Tool '{stopped_by_tool_call.name}' handling "
                         f"{stopped_by_tool_call.id} requested to stop the agent."
+                    )
+
+                if self.max_tool_calls != -1 and tool_calls >= self.max_tool_calls:
+                    raise Finish(
+                        reason="Reached maximum allowed tool calls."
                     )
 
                 # Check for stop conditions (again)
@@ -690,6 +699,9 @@ class Agent(Model):
         if step >= self.max_steps:
             error = MaxStepsError(max_steps=self.max_steps)
             stop_reason = "max_steps_reached"
+        elif tool_calls >= self.max_tool_calls:
+            error = MaxToolCallsError(max_tool_calls=self.max_tool_calls)
+            stop_reason = "max_tool_calls_reached"
         elif error is not None:
             stop_reason = "error"
         elif events and isinstance(events[-1], AgentStalled):
