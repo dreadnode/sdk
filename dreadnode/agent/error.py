@@ -5,6 +5,7 @@ class MaxStepsError(Exception):
         super().__init__(f"Maximum steps reached ({max_steps}).")
         self.max_steps = max_steps
 
+
 class MaxToolCallsError(Exception):
     """Raise from a hook to stop the agent's run due to reaching the maximum number of tool calls."""
 
