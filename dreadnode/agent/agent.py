@@ -675,9 +675,7 @@ class Agent(Model):
                     )
 
                 if self.max_tool_calls != -1 and tool_calls >= self.max_tool_calls:
-                    raise Finish(
-                        reason="Reached maximum allowed tool calls."
-                    )
+                    raise Finish("Reached maximum allowed tool calls.")
 
                 # Check for stop conditions (again)
 
@@ -699,7 +697,7 @@ class Agent(Model):
         if step >= self.max_steps:
             error = MaxStepsError(max_steps=self.max_steps)
             stop_reason = "max_steps_reached"
-        elif tool_calls >= self.max_tool_calls:
+        elif self.max_tool_calls != -1 and tool_calls >= self.max_tool_calls:
             error = MaxToolCallsError(max_tool_calls=self.max_tool_calls)
             stop_reason = "max_tool_calls_reached"
         elif error is not None:
