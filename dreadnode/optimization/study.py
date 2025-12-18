@@ -1,16 +1,20 @@
 import asyncio
 import contextlib
 import contextvars
+import inspect
 import typing as t
+from pathlib import Path
 
 import typing_extensions as te
 from loguru import logger
 from pydantic import ConfigDict, Field, FilePath, SkipValidation, computed_field
 
+from dreadnode import log_inputs, log_metrics, log_outputs, task_span
 from dreadnode.common_types import AnyDict
 from dreadnode.data_types.message import Message
 from dreadnode.error import AssertionFailedError
 from dreadnode.eval import InputDataset
+from dreadnode.eval.dataset import load_dataset
 from dreadnode.eval.eval import Eval
 from dreadnode.eval.hooks.base import EvalHook
 from dreadnode.meta import Config, Model
@@ -66,13 +70,14 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
     search_strategy: SkipValidation[Search[CandidateT]]
     """The search strategy to use for suggesting new trials."""
-    task_factory: SkipValidation[t.Callable[[CandidateT], Task[..., OutputT]]]
-    """A function that accepts a trial candidate and returns a configured Task ready for evaluation."""
-    probe_task_factory: SkipValidation[t.Callable[[CandidateT], Task[..., OutputT]] | None] = None
-    """
-    An optional function that accepts a probe candidate and returns a Task.
 
-    Otherwise the main task_factory will be used for both full evaluation Trials and probe Trials.
+    task: SkipValidation[Task[..., OutputT]] | None = None
+    """The task to evaluate with optimized candidates."""
+
+    candidate_param: str | None = None
+    """
+    Task parameter name for candidate injection.
+    If None, inferred from task signature or candidate type.
     """
     objectives: t.Annotated[ObjectivesLike[OutputT], Config(expose_as=None)]
     """
@@ -166,7 +171,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         description: str | None = None,
         tags: list[str] | None = None,
         search_strategy: Search[CandidateT] | None = None,
-        task_factory: t.Callable[[CandidateT], Task[..., OutputT]] | None = None,
+        task: Task[..., OutputT] | None = None,
         objectives: ObjectivesLike[OutputT] | None = None,
         directions: list[Direction] | None = None,
         dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = None,
@@ -187,7 +192,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         new.name_ = name or new.name
         new.description = description or new.description
         new.search_strategy = search_strategy or new.search_strategy
-        new.task_factory = task_factory or new.task_factory
+        new.task = task or new.task
         new.dataset = dataset if dataset is not None else new.dataset
         new.concurrency = concurrency or new.concurrency
         new.max_evals = max_trials or new.max_evals
@@ -241,23 +246,83 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         self.stop_conditions.append(condition)
         return self
 
+    def _resolve_dataset(self, dataset: t.Any) -> list[AnyDict]:
+        """
+        Resolve dataset to a list in memory.
+        Handles list, file path, or callable datasets.
+        """
+        if dataset is None:
+            return [{}]
+
+        # Already a list
+        if isinstance(dataset, list):
+            return dataset
+
+        # File path
+        if isinstance(dataset, (Path, str, FilePath)):
+            return load_dataset(dataset)
+
+        # Callable
+        if callable(dataset):
+            result = dataset()
+            if inspect.isawaitable(result):
+                raise ValueError(
+                    "Async dataset callables not supported with COA 1 "
+                    "(requires eager materialization)"
+                )
+            return list(result) if not isinstance(result, list) else result
+
+        return [{}]
+
+    def _infer_candidate_param(self, task: Task[..., OutputT], candidate: CandidateT) -> str:
+        """
+        Infer task parameter name for candidate injection.
+
+        Priority:
+        1. Explicit self.candidate_param if set
+        2. "message" if candidate is Message type
+        3. First non-config param from task signature
+        4. Fallback to "input"
+        """
+
+        # Priority 1: Explicit override
+        if self.candidate_param:
+            return self.candidate_param
+
+        # Priority 2: Type-based convention
+        if isinstance(candidate, Message):
+            return "message"
+
+        # Priority 3: Signature inspection
+        try:
+            for param_name, param in task.signature.parameters.items():
+                # Skip config params (those with defaults)
+                if param.default == inspect.Parameter.empty:
+                    logger.debug(f"Inferred candidate parameter: {param_name}")
+                    return param_name
+        except Exception as e:  # noqa: BLE001
+            logger.trace(f"Could not infer parameter from signature: {e}")
+
+        # Priority 4: Universal fallback
+        logger.debug("Using fallback candidate parameter: input")
+        return "input"
+
     async def _process_trial(
         self, trial: Trial[CandidateT]
     ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
         """
         Checks constraints and evaluates a single trial, returning a list of events.
         """
-        from dreadnode import log_inputs, log_metrics, log_outputs, task_span
 
-        logger.debug(
-            f"Processing trial: id={trial.id}, step={trial.step}, is_probe={trial.is_probe}"
-        )
+        task = self.task
 
-        task_factory = (
-            self.probe_task_factory
-            if trial.is_probe and self.probe_task_factory
-            else self.task_factory
-        )
+        if task is None:
+            raise ValueError(
+                "Study.task is required but was not set. "
+                "For Attack, this should be set automatically from target. "
+                "For Study, pass task explicitly."
+            )
+
         dataset = trial.dataset or self.dataset or [{}]
         probe_or_trial = "probe" if trial.is_probe else "trial"
 
@@ -303,9 +368,6 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 # Check constraints
                 await self._check_constraints(trial.candidate, trial)
 
-                # Create task
-                task = task_factory(trial.candidate)
-
                 # Get base scorers
                 scorers: list[Scorer[OutputT]] = [
                     scorer
@@ -313,7 +375,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     if isinstance(scorer, Scorer)
                 ]
 
-                # Run evaluation (transforms are applied inside Eval now)
+                # Run evaluation (candidate injected via dataset augmentation)
                 trial.eval_result = await self._run_evaluation(task, dataset, scorers, trial)
 
                 # Extract final scores
@@ -371,25 +433,28 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         trial: Trial[CandidateT],
     ) -> t.Any:
         """Run the evaluation with the given task, dataset, and scorers."""
-        logger.debug(
-            f"Evaluating trial: "
-            f"trial_id={trial.id}, "
-            f"step={trial.step}, "
-            f"dataset_size={len(dataset) if isinstance(dataset, t.Sized) else '<unknown>'}, "
-            f"task={task.name}"
-        )
-        logger.trace(f"Candidate: {trial.candidate!r}")
+        resolved_dataset = self._resolve_dataset(dataset)
+        param_name = self._infer_candidate_param(task, trial.candidate)
 
-        dataset_input_mapping = None
-        # If dataset is empty and candidate is a Message, this is an airt attack scenario
-        if dataset == [{}] and isinstance(trial.candidate, Message):
-            dataset = [{"message": trial.candidate}]
-            dataset_input_mapping = ["message"]
+        logger.debug(
+            f"Augmenting {len(resolved_dataset)} dataset rows with candidate "
+            f"as parameter: {param_name}"
+        )
+
+        # Augment every row with the candidate
+        augmented_dataset = [{**row, param_name: trial.candidate} for row in resolved_dataset]
+
+        # Warn on collisions
+        if resolved_dataset and param_name in resolved_dataset[0]:
+            logger.warning(
+                f"Parameter '{param_name}' already exists in dataset - "
+                f"candidate will override existing values"
+            )
 
         evaluator = Eval(
             task=task,
-            dataset=dataset,
-            dataset_input_mapping=dataset_input_mapping,
+            dataset=augmented_dataset,
+            dataset_input_mapping=[param_name],
             scorers=scorers,
             hooks=self.hooks,
             max_consecutive_errors=self.max_consecutive_errors,

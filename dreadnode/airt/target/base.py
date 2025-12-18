@@ -19,7 +19,8 @@ class Target(Model, abc.ABC, t.Generic[In, Out]):
         """Returns the name of the target."""
         raise NotImplementedError
 
+    @property
     @abc.abstractmethod
-    def task_factory(self, input: In) -> Task[..., Out]:
-        """Creates a Task that will run the given input against the target."""
+    def task(self) -> Task[..., Out]:
+        """Returns the task for this target."""
         raise NotImplementedError
