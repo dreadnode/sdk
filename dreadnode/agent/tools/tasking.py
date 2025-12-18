@@ -73,7 +73,7 @@ class TaskOutputBuffer(Toolset):
     """Internal buffer storing accumulated output strings."""
 
     @tool_method(catch=True, variants=["all"])
-    async def output(
+    async def add_output(
         self,
         content: t.Annotated[str, "The content to add to the output buffer."],
     ) -> str:
@@ -96,3 +96,9 @@ class TaskOutputBuffer(Toolset):
     async def get_output(self) -> list[str]:
         """Lists all previously saved outputs in order."""
         return self._outputs
+    
+    @tool_method(catch=True, variants=["all"])
+    async def clear_output(self) -> list[str]:
+        """Clears (deletes) all previously stored output. Warning, any cleared previously stored output is not recoverable once cleared."""
+        self._outputs = []
+        return "Output buffer cleared."
