@@ -98,7 +98,7 @@ class TaskOutputBuffer(Toolset):
         return self._outputs
     
     @tool_method(catch=True, variants=["all"])
-    async def clear_output(self) -> list[str]:
-        """Clears (deletes) all previously stored output. Warning, any cleared previously stored output is not recoverable once cleared."""
+    async def clear_output(self) -> str:
+        """Clears (deletes) all previously stored output. Warning, any cleared stored output is not recoverable once cleared."""
         self._outputs = []
         return "Output buffer cleared."
