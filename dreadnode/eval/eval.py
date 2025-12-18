@@ -1,5 +1,6 @@
 import contextlib
 import contextvars
+from functools import wraps
 import inspect
 import itertools
 import json
@@ -66,6 +67,26 @@ DatasetOrProducer = DatasetLike | DatasetProducer
 current_dataset_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
     "current_dataset_row", default=None
 )
+
+
+def hook(on: EvalEvent | t.List[EvalEvent] | None = None, off: EvalEvent | t.List[EvalEvent] | None = None):
+    def decorator(hook_func):
+        @wraps(hook_func)
+        async def wrapper(event):
+            if not all(on, off):
+                return await hook_func(event)
+            elif on:
+                if isinstance(on, list) and type(event) in on:
+                    return await hook_func(event)
+                elif isinstance(on, EvalEvent) and type(on) == type(event):
+                    return await hook_func(event) 
+            elif off:
+                if isinstance(off, list) and type(event) not in off:
+                    return await hook_func(event)
+                elif isinstance(off, EvalEvent) and type(off) != type(event):
+                    return await hook_func(event) 
+        return wrapper
+    return decorator
 
 
 class EvalWarning(UserWarning):
@@ -458,13 +479,18 @@ class Eval(Model, t.Generic[In, Out]):
             f"iterations={self.iterations}"
         )
 
-        yield EvalStart(
+        eval_start_event = EvalStart(
             eval=self,
             dataset_size=len(dataset),
             scenario_count=len(param_combinations),
             total_iterations=total_iterations,
             total_samples=total_samples,
         )
+        yield eval_start_event
+        reaction = await self._dispatch_hooks(eval_start_event)
+        
+        if isinstance(reaction, StopEval):
+            raise reaction
 
         eval_result = EvalResult[In, Out](scenarios=[])
         for scenario_params in param_combinations:
@@ -510,13 +536,19 @@ class Eval(Model, t.Generic[In, Out]):
                 logger.debug(f"Starting scenario: params={scenario_params}")
 
                 run_id = task.run_id if task else ""
-                yield ScenarioStart(
+                scen_start_event = ScenarioStart(
                     eval=self,
                     run_id=run_id,
                     scenario_params=scenario_params,
                     iteration_count=self.iterations,
                     sample_count=self.iterations * len(dataset),
                 )
+
+                yield scen_start_event
+
+                reaction = await self._dispatch_hooks(scen_start_event)
+                if isinstance(reaction, StopEval):
+                    raise
 
                 configured_task = base_task.with_(
                     scorers=scorers,
@@ -527,12 +559,18 @@ class Eval(Model, t.Generic[In, Out]):
                 for iteration in range(1, self.iterations + 1):
                     logger.debug(f"Starting iteration: {iteration}/{self.iterations}")
 
-                    yield IterationStart(
+                    itr_start_event = IterationStart(
                         eval=self,
                         run_id=run_id,
                         scenario_params=scenario_params,
                         iteration=iteration,
                     )
+
+                    yield itr_start_event
+
+                    reaction = await self._dispatch_hooks(itr_start_event)
+                    if isinstance(reaction, StopEval):
+                        raise
 
                     iteration_result = IterationResult[In, Out](iteration=iteration)
 
@@ -540,8 +578,14 @@ class Eval(Model, t.Generic[In, Out]):
                         configured_task, dataset, scenario_params, iteration
                     ) as sample_stream:
                         async for sample in sample_stream:
-                            yield SampleComplete(eval=self, run_id=run_id, sample=sample)
                             iteration_result.samples.append(sample)
+                            sample_comp_event = SampleComplete(eval=self, run_id=run_id, sample=sample)
+
+                            yield sample_comp_event
+
+                            reaction = await self._dispatch_hooks(sample_comp_event)
+                            if isinstance(reaction, StopEval):
+                                raise
 
                             if not sample.failed:
                                 consecutive_errors = 0
@@ -571,11 +615,24 @@ class Eval(Model, t.Generic[In, Out]):
                                 f"consecutive_errors={consecutive_errors}, total_errors={total_errors}"
                             )
 
-                            yield EvalEnd(eval=self, result=eval_result)
+                            eval_end_event = EvalEnd(eval=self, result=eval_result)
+
+                            yield eval_end_event
+
+                            reaction = await self._dispatch_hooks(eval_end_event)
+                            if isinstance(reaction, StopEval):
+                                raise
+
                             return
 
-                    yield IterationEnd(eval=self, run_id=run_id, result=iteration_result)
                     scenario_result.iterations.append(iteration_result)
+                    itr_end_event = IterationEnd(eval=self, run_id=run_id, result=iteration_result)
+
+                    yield itr_end_event
+
+                    reaction = await self._dispatch_hooks(itr_end_event)
+                    if isinstance(reaction, StopEval):
+                        raise
 
                 logger.info(
                     f"Finished scenario: pass_rate={scenario_result.pass_rate:.2%}, "
@@ -583,8 +640,14 @@ class Eval(Model, t.Generic[In, Out]):
                     f"params={scenario_params}"
                 )
 
-                yield ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
                 eval_result.scenarios.append(scenario_result)
+                scen_end_event = ScenarioEnd(eval=self, run_id=run_id, result=scenario_result)
+
+                yield scen_end_event
+
+                reaction = await self._dispatch_hooks(scen_end_event)
+                if isinstance(reaction, StopEval):
+                    raise
 
         eval_result.stop_reason = "finished"
 
@@ -593,7 +656,11 @@ class Eval(Model, t.Generic[In, Out]):
             f"passed={eval_result.passed_count}, failed={eval_result.failed_count}"
         )
 
-        yield EvalEnd(eval=self, result=eval_result)
+        eval_end_event = EvalEnd(eval=self, result=eval_result)
+
+        yield eval_end_event
+
+        reaction = await self._dispatch_hooks(eval_end_event)
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
