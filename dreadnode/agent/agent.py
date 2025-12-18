@@ -130,14 +130,14 @@ class Agent(Model):
 
         return tools
 
-    def model_post_init(self, context: t.Any) -> None:
+    def model_post_init(self, _context: t.Any) -> None:
         """Initialize the agent and inject default tools."""
         if (
             not any(isinstance(t, Skills) for t in self.tools)
             and not any(t.name == "view_skill" for t in self.all_tools)
             and Skills.load("skills")
         ):
-            self.tools.append(Skills(skills_dir="skills"))
+            self.tools.append(Skills())
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)

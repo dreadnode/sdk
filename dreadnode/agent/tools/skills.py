@@ -62,7 +62,8 @@ class Skill(Model):
 class Skills(Toolset):
     """Tools for interacting with agent skills."""
 
-    skills_dir: str = Config("skills")
+    skills_dir: str = Config(default="skills", expose_as=str)
+    """The directory where the skills are stored."""
 
     @tool_method
     def view_skill(self, name: str) -> str:
