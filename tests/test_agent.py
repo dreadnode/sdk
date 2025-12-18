@@ -8,7 +8,7 @@ from pydantic import PrivateAttr, ValidationError
 from rigging.generator.base import GeneratedMessage
 
 from dreadnode.agent.agent import Agent, TaskAgent
-from dreadnode.agent.error import MaxStepsError
+from dreadnode.agent.error import MaxStepsError, MaxToolCallsError
 from dreadnode.agent.events import AgentEnd, AgentEvent, AgentStalled, Reacted, ToolStart
 from dreadnode.agent.hooks.base import retry_with_feedback
 from dreadnode.agent.reactions import RetryWithFeedback
@@ -296,6 +296,31 @@ async def test_run_stops_on_max_steps(mock_generator: MockGenerator, simple_tool
     assert result.stop_reason == "max_steps_reached"
     assert isinstance(result.error, MaxStepsError)
     assert result.steps == 1
+
+
+@pytest.mark.asyncio
+async def test_run_stops_on_max_tool_calls(
+    mock_generator: MockGenerator, simple_tool: AnyTool
+) -> None:
+    """Ensure the agent run terminates with a MaxToolCallsError when exceeding max_tool_calls."""
+    # The agent will just keep calling the tool.
+    mock_generator._responses = [
+        MockGenerator.tool_response("get_weather", {"city": "A"}),
+        MockGenerator.tool_response("get_weather", {"city": "B"}),
+        MockGenerator.tool_response("get_weather", {"city": "C"}),
+    ]
+
+    agent = Agent(
+        name="MaxToolCallsAgent",
+        model=mock_generator,
+        tools=[simple_tool],
+        max_tool_calls=2,
+    )
+    result = await agent.run("...")
+
+    assert result.failed
+    assert result.stop_reason == "max_tool_calls_reached"
+    assert isinstance(result.error, MaxToolCallsError)
 
 
 @pytest.mark.asyncio
