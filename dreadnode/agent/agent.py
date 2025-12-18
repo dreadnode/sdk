@@ -118,14 +118,14 @@ class Agent(Model):
     @classmethod
     def validate_tools(cls, value: t.Any) -> t.Any:
         tools: list[AnyTool | Toolset] = []
-        for item in flatten_list(list(value)):
-            if isinstance(item, Toolset | Tool):
-                tools.append(item)
-            elif interior_tools := discover_tools_on_obj(item):
+        for tool in flatten_list(list(value)):
+            if isinstance(tool, Toolset | Tool):
+                tools.append(tool)
+            elif interior_tools := discover_tools_on_obj(tool):
                 tools.extend(interior_tools)
             else:
                 tools.append(
-                    Tool.from_callable(item if isinstance(item, Component) else component(item))
+                    Tool.from_callable(tool if isinstance(tool, Component) else component(tool))
                 )
 
         return tools
@@ -894,16 +894,8 @@ class Agent(Model):
                 all_skills.extend(Skills.load(toolset.skills_dir))
 
         if all_skills:
-            # Deduplicate by name, keeping the first one found
-            seen_names = set()
-            unique_skills = []
-            for skill in all_skills:
-                if skill.name not in seen_names:
-                    unique_skills.append(skill)
-                    seen_names.add(skill.name)
-
             skills_xml = ["<available_skills>"]
-            for skill in unique_skills:
+            for skill in all_skills:
                 skills_xml.append("<skill>")
                 skills_xml.append(f"<name>{skill.name}</name>")
                 skills_xml.append(f"<description>{skill.description}</description>")
