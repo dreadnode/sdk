@@ -4,7 +4,6 @@ import typing as t
 import typing_extensions as te
 
 from dreadnode.meta import Model
-from dreadnode.task import Task
 
 In = te.TypeVar("In", default=t.Any)
 Out = te.TypeVar("Out", default=t.Any)
@@ -17,10 +16,4 @@ class Target(Model, abc.ABC, t.Generic[In, Out]):
     @abc.abstractmethod
     def name(self) -> str:
         """Returns the name of the target."""
-        raise NotImplementedError
-
-    @property
-    @abc.abstractmethod
-    def task(self) -> Task[..., Out]:
-        """Returns the task for this target."""
         raise NotImplementedError
