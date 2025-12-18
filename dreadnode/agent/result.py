@@ -8,7 +8,9 @@ from rigging.message import Message
 if t.TYPE_CHECKING:
     from dreadnode.agent.agent import Agent
 
-AgentStopReason = t.Literal["finished", "max_steps_reached", "error", "stalled"]
+AgentStopReason = t.Literal[
+    "finished", "max_steps_reached", "max_tool_calls_reached", "error", "stalled"
+]
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
