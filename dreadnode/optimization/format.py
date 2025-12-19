@@ -58,9 +58,7 @@ def format_study(study: "Study") -> RenderableType:
     if isinstance(study, Attack):
         details.add_row(Text("Target", justify="right"), repr(study.target))
     else:
-        details.add_row(
-            Text("Task Factory", justify="right"), get_callable_name(study.task_factory)
-        )
+        details.add_row(Text("Task Factory", justify="right"), get_callable_name(study.task))
 
     details.add_row(Text("Search Strategy", justify="right"), study.search_strategy.name)
 
