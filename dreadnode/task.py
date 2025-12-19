@@ -2,6 +2,7 @@ import contextlib
 import inspect
 import typing as t
 from pathlib import Path
+from pydantic import Field
 
 import typing_extensions as te
 from opentelemetry.trace import Tracer
@@ -11,6 +12,7 @@ from dreadnode.meta import Component, ConfigInfo, Context
 from dreadnode.scorers import Scorer, ScorerCallable, ScorersLike
 from dreadnode.serialization import seems_useful_to_serialize
 from dreadnode.tracing.span import TaskSpan, current_run_span
+
 from dreadnode.util import (
     clean_str,
     concurrent_gen,
@@ -393,6 +395,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         preprocessor: "InputDatasetProcessor | None" = None,
         scorers: "ScorersLike[R] | None" = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
+        hooks: list["EvalHook"] = Field(default_factory=list, exclude=True, repr=False)
     ) -> "Eval[t.Any, R]":
         from dreadnode.eval.eval import Eval
 
@@ -412,6 +415,7 @@ class Task(Component[P, R], t.Generic[P, R]):
             preprocessor=preprocessor,
             scorers=scorers or [],
             assert_scores=assert_scores or [],
+            hooks=hooks or []
         )
 
     def as_target(
