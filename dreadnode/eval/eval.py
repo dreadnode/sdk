@@ -1,12 +1,11 @@
 import contextlib
 import contextvars
-from functools import wraps
 import inspect
 import itertools
 import json
 import typing as t
 from contextlib import asynccontextmanager
-from functools import cached_property
+from functools import cached_property, wraps
 
 import typing_extensions as te
 from loguru import logger
@@ -69,23 +68,66 @@ current_dataset_row = contextvars.ContextVar[t.Mapping[str, t.Any] | None](
 )
 
 
-def hook(on: EvalEvent | t.List[EvalEvent] | None = None, off: EvalEvent | t.List[EvalEvent] | None = None):
-    def decorator(hook_func):
+def eval_hook(
+    on: type[EvalEvent] | list[type[EvalEvent]] | None = None,
+    off: type[EvalEvent] | list[type[EvalEvent]] | None = None,
+) -> t.Callable[[EvalHook], EvalHook]:
+    """
+    Decorator to filter which eval events a hook function responds to.
+
+    Use this decorator to selectively trigger your hook only for specific event types,
+    rather than receiving all events and filtering manually inside the function.
+
+    Args:
+        on: Event type(s) to trigger the hook on. If provided, the hook will ONLY
+            be called for these event types. Can be a single event type or a list.
+        off: Event type(s) to exclude from triggering the hook. If provided, the hook
+            will be called for all events EXCEPT these types. Can be a single event
+            type or a list.
+
+    Note:
+        - If neither `on` nor `off` is provided, the hook receives all events.
+        - `on` and `off` are mutually exclusive; if both are provided, `on` takes precedence.
+
+    Examples:
+        ```python
+        # Only trigger on EvalStart events
+        @eval_hook(on=EvalStart)
+        async def on_eval_start(event: EvalStart):
+            print("Evaluation started!")
+
+        # Trigger on multiple event types
+        @eval_hook(on=[ScenarioStart, ScenarioEnd])
+        async def on_scenario_events(event):
+            print(f"Scenario event: {type(event).__name__}")
+
+        # Trigger on all events except SampleComplete
+        @eval_hook(off=SampleComplete)
+        async def on_non_sample_events(event):
+            print(f"Event: {type(event).__name__}")
+        ```
+    """
+
+    def decorator(hook_func: EvalHook) -> EvalHook:
         @wraps(hook_func)
-        async def wrapper(event):
-            if not all(on, off):
+        async def wrapper(event: EvalEvent) -> EvalReaction | None:
+            # If no filter specified, run hook for all events
+            if on is None and off is None:
                 return await hook_func(event)
-            elif on:
+            elif on is not None:
                 if isinstance(on, list) and type(event) in on:
                     return await hook_func(event)
-                elif isinstance(on, EvalEvent) and type(on) == type(event):
-                    return await hook_func(event) 
-            elif off:
+                elif not isinstance(on, list) and type(event) == on:
+                    return await hook_func(event)
+            elif off is not None:
                 if isinstance(off, list) and type(event) not in off:
                     return await hook_func(event)
-                elif isinstance(off, EvalEvent) and type(off) != type(event):
-                    return await hook_func(event) 
-        return wrapper
+                elif not isinstance(off, list) and type(event) != off:
+                    return await hook_func(event)
+            return None
+
+        return wrapper  # type: ignore[return-value]
+
     return decorator
 
 
@@ -548,7 +590,7 @@ class Eval(Model, t.Generic[In, Out]):
 
                 reaction = await self._dispatch_hooks(scen_start_event)
                 if isinstance(reaction, StopEval):
-                    raise
+                    raise reaction
 
                 configured_task = base_task.with_(
                     scorers=scorers,
@@ -570,7 +612,7 @@ class Eval(Model, t.Generic[In, Out]):
 
                     reaction = await self._dispatch_hooks(itr_start_event)
                     if isinstance(reaction, StopEval):
-                        raise
+                        raise reaction
 
                     iteration_result = IterationResult[In, Out](iteration=iteration)
 
@@ -585,7 +627,7 @@ class Eval(Model, t.Generic[In, Out]):
 
                             reaction = await self._dispatch_hooks(sample_comp_event)
                             if isinstance(reaction, StopEval):
-                                raise
+                                raise reaction
 
                             if not sample.failed:
                                 consecutive_errors = 0
@@ -621,7 +663,7 @@ class Eval(Model, t.Generic[In, Out]):
 
                             reaction = await self._dispatch_hooks(eval_end_event)
                             if isinstance(reaction, StopEval):
-                                raise
+                                raise reaction
 
                             return
 
@@ -632,7 +674,7 @@ class Eval(Model, t.Generic[In, Out]):
 
                     reaction = await self._dispatch_hooks(itr_end_event)
                     if isinstance(reaction, StopEval):
-                        raise
+                        raise reaction
 
                 logger.info(
                     f"Finished scenario: pass_rate={scenario_result.pass_rate:.2%}, "
@@ -647,7 +689,7 @@ class Eval(Model, t.Generic[In, Out]):
 
                 reaction = await self._dispatch_hooks(scen_end_event)
                 if isinstance(reaction, StopEval):
-                    raise
+                    raise reaction
 
         eval_result.stop_reason = "finished"
 
@@ -660,7 +702,7 @@ class Eval(Model, t.Generic[In, Out]):
 
         yield eval_end_event
 
-        reaction = await self._dispatch_hooks(eval_end_event)
+        reaction = await self._dispatch_hooks(eval_end_event) # TODO: do we need to process reactions here? Bc its end of eval anyways?
 
     @asynccontextmanager
     async def stream(self) -> t.AsyncIterator[t.AsyncGenerator[EvalEvent[In, Out], None]]:
