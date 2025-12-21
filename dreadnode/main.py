@@ -1374,10 +1374,10 @@ class Dreadnode:
 
         if version is not None:
             try:
-                parse_version(version)
+                parsed = parse_version(version)
             except InvalidVersion as e:
                 raise ValueError(f"Invalid version string: {version}") from e
-            ds.metadata.version = version
+            ds.metadata.version = parsed
             ds.metadata.auto_version = False
         elif strategy is not None:
             ds.metadata.auto_version = True
@@ -1425,10 +1425,10 @@ class Dreadnode:
 
         if version is not None:
             try:
-                parse_version(version)
+                parsed = parse_version(version)
             except InvalidVersion as e:
                 raise ValueError(f"Invalid version string: {version}") from e
-            ds.metadata.version = version
+            ds.metadata.version = parsed
             ds.metadata.auto_version = False
         elif strategy is not None:
             ds.metadata.auto_version = True

@@ -12,7 +12,8 @@ from dreadnode.constants import MANIFEST_FILE, METADATA_FILE
 from dreadnode.logging_ import print_info, print_success, print_warning
 from dreadnode.storage.datasets.manager import DatasetManager
 from dreadnode.storage.datasets.manifest import DatasetManifest, create_manifest
-from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
+from dreadnode.storage.datasets.metadata import DatasetMetadata
+from dreadnode.util import valid_version
 
 
 class Dataset:
@@ -244,7 +245,7 @@ def _ensure_version_bump(
         return True
 
     # 5. Data Changed: Bump Version
-    dataset.metadata.update_version(latest_version or dataset.metadata.version)
+    dataset.metadata.version = dataset.metadata.bump_patch_version(latest_version)
     print_warning(f"[+] Changes detected. Auto-bumping version to {dataset.metadata.version}")
     return True
 
@@ -317,7 +318,8 @@ def save_dataset_to_disk(
         latest_version = dataset_manager.get_version_from_path(latest_path)
         if not latest_version:
             raise ValueError(f"Could not determine latest version from path: {latest_path}")
-        if dataset_manager.compare_versions(dataset.metadata.version, latest_version) <= 0:
+
+        if dataset.metadata.version <= latest_version:
             if overwrite:
                 print_warning(
                     "[!] Overwrite enabled: Proceeding to overwrite existing dataset version."
@@ -333,9 +335,9 @@ def save_dataset_to_disk(
     _persist_dataset(
         dataset=dataset,
         path_str=dataset_manager.get_cache_save_uri(
-            ref=dataset.metadata.ref,
-            version=dataset.metadata.version,
-            with_version=True,
+            ref=dataset.metadata.versioned_ref,
+            # version=dataset.metadata.version,
+            # with_version=True,
         ),
         create_dir=True,
         dataset_manager=dataset_manager,
@@ -368,11 +370,17 @@ def push_dataset(
         )
         latest_local_path = dataset_manager.get_latest_cache_save_uri(dataset.metadata.ref)
         if latest_remote_path and latest_local_path:
-            compared = dataset_manager.compare_versions_from_paths(
-                remote_path=latest_remote_path,
-                local_path=latest_local_path,
-            )
-            latest_path = latest_remote_path if compared == 1 else latest_local_path
+            remote_latest = dataset_manager.get_version_from_path(latest_remote_path)
+            local_latest = dataset_manager.get_version_from_path(latest_local_path)
+            if remote_latest and local_latest:
+                if remote_latest > local_latest:
+                    latest_path = latest_remote_path
+                else:
+                    latest_path = latest_local_path
+            elif remote_latest:
+                latest_path = latest_remote_path
+            elif local_latest:
+                latest_path = latest_local_path
         else:
             latest_path = latest_remote_path or latest_local_path
 
@@ -432,8 +440,8 @@ def load_dataset(
         fsm: The DatasetManager instance.
         kwargs: Additional arguments to pass to pyarrow.dataset.load_dataset.
     """
-    if version is not None:
-        VersionInfo.from_string(version)
+    if version and not valid_version(version):
+        raise ValueError(f"Invalid version string: {version}")
 
     protocol = get_protocol(uri)
 

@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from dreadnode.constants import MANIFEST_FILE
 from dreadnode.logging_ import console as logging_console
+from dreadnode.storage.datasets.metadata import DatasetVersion
 
 
 class FileEntry(BaseModel):
@@ -146,8 +147,8 @@ def compute_file_hash(
 
 def create_manifest(
     path: str,
-    version: str,
-    parent_version: str | None = None,
+    version: DatasetVersion,
+    parent_version: DatasetVersion | None = None,
     previous_manifest: DatasetManifest | None = None,
     exclude_patterns: list[str] | None = None,
     algorithm: str = "sha256",
@@ -156,7 +157,9 @@ def create_manifest(
     if fs is None:
         raise ValueError("FileSystem must be provided")
 
-    manifest = DatasetManifest(version=version, parent_version=parent_version)
+    manifest = DatasetManifest(
+        version=version.public, parent_version=parent_version.public if parent_version else None
+    )
     exclude_patterns = exclude_patterns or []
 
     selector = FileSelector(path, recursive=True)

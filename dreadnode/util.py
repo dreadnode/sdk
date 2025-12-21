@@ -179,10 +179,12 @@ def valid_key(key: str) -> bool:
     return bool(re.fullmatch(r"[a-z0-9-]+", key))
 
 
-def valid_version(version: str) -> bool:
+def valid_version(version: str | Version) -> bool:
     """
     Check if the version is valid (semantic versioning format).
     """
+    if isinstance(version, Version):
+        return True
     try:
         parsed = parse(version)
         return isinstance(parsed, Version)
@@ -957,3 +959,24 @@ def bump_version(version_str: str, strategy: VersionStrategy) -> str:
 
     # Reconstruct the version string
     return f"{major}.{minor}.{micro}"
+
+
+def parse_version(version: str | Version) -> Version:
+    """
+    Parse a version string into a Version object.
+
+    Args:
+        version_str: The version string (e.g., "1.0.1", "2.3")
+
+    Returns:
+        The parsed Version object.
+    """
+    if isinstance(version, Version):
+        return version
+
+    try:
+        parsed = parse(version)
+    except Exception as e:
+        raise TypeError(f"Invalid version: {version}") from e
+
+    return parsed
