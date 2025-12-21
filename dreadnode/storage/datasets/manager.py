@@ -22,8 +22,8 @@ from dreadnode.constants import (
 )
 from dreadnode.logging_ import console as logging_console
 from dreadnode.logging_ import print_info
-from dreadnode.storage.datasets.metadata import DatasetMetadata, VersionInfo
-from dreadnode.util import resolve_endpoint
+from dreadnode.storage.datasets.metadata import DatasetMetadata, DatasetVersion
+from dreadnode.util import parse_version, resolve_endpoint, valid_version
 
 
 class DatasetManager:
@@ -90,7 +90,7 @@ class DatasetManager:
         return (expiry - now).total_seconds() < FS_CREDENTIAL_REFRESH_BUFFER
 
     @staticmethod
-    def get_version_from_path(path: str) -> str | None:
+    def get_version_from_path(path: str) -> DatasetVersion | None:
         """
         Extracts version string from a given path.
         Assumes version is the last part of the path.
@@ -100,13 +100,10 @@ class DatasetManager:
         resolved_path = Path(path).resolve()
         version_candidate = resolved_path.name
 
-        try:
-            _ = VersionInfo.from_string(version_candidate)
-
-        except ValueError:
+        if not valid_version(version_candidate):
             return None
 
-        return version_candidate
+        return parse_version(version_candidate)
 
     @classmethod
     def configure(
@@ -137,49 +134,6 @@ class DatasetManager:
 
         return target_path.exists()
 
-    def compare_versions(self, specified_version: str, local_version: str) -> int:
-        """
-        Compares two version strings.
-        Returns:
-            1 if specified_version > local_version
-            -1 if specified_version < local_version
-            0 if equal
-        """
-
-        specified_ver = VersionInfo.from_string(specified_version)
-        local_ver = VersionInfo.from_string(local_version)
-
-        if specified_ver > local_ver:
-            return 1
-        if local_ver > specified_ver:
-            return -1
-        return 0
-
-    def compare_versions_from_paths(self, remote_path: str, local_path: str) -> int | None:
-        """
-        Compares versions extracted from remote and local paths.
-        Returns:
-            1 if remote version > local version
-            -1 if remote version < local version
-            0 if equal
-            None if versions cannot be determined
-        """
-
-        remote_version_str = self.get_version_from_path(remote_path)
-        local_version_str = self.get_version_from_path(local_path)
-
-        if not remote_version_str or not local_version_str:
-            return None
-
-        remote_version = VersionInfo.from_string(remote_version_str)
-        local_version = VersionInfo.from_string(local_version_str)
-
-        if remote_version > local_version:
-            return 1
-        if local_version > remote_version:
-            return -1
-        return 0
-
     def ensure_dir(self, fs: FileSystem, path: str) -> None:
         """
         Creates directory if local. Skips if S3.
@@ -202,17 +156,15 @@ class DatasetManager:
     def get_cache_save_uri(
         self,
         ref: str,
-        *,
-        version: str | None = None,
-        with_version: bool = True,
+        # *,
+        # version: DatasetVersion | None = None,
+        # with_version: bool = True,
     ) -> str:
         """
         Constructs the full local cache path.
         Example: /home/user/.dreadnode/datasets/main/my-dataset/1.0.0
         """
         dataset_uri = Path(f"{self.cache_root}/datasets/{ref}")
-        if with_version and version:
-            dataset_uri = dataset_uri / version
 
         dataset_uri = dataset_uri.resolve()
 
@@ -333,7 +285,7 @@ class DatasetManager:
             upload_request = CreateDatasetRequest(
                 org_key=metadata.organization,
                 key=metadata.name,
-                version=metadata.version,
+                version=metadata.version.public,
                 tags=metadata.tags,
             )
 
@@ -342,7 +294,7 @@ class DatasetManager:
             user_data_access_response = create_response.user_data_access_response
         else:
             update_response = self._api.update_dataset_version(
-                existing_dataset.id, metadata.version
+                existing_dataset.id, str(metadata.version)
             )
             dataset_id = update_response.dataset.id
             user_data_access_response = update_response.credentials
@@ -430,8 +382,6 @@ class DatasetManager:
             return None
         latest: str = sorted(versions, reverse=True)[0]
         # ensure it's a valid version
-        try:
-            _ = VersionInfo.from_string(latest)
-        except ValueError as e:
-            raise ValueError(f"No valid versions found in {uri}") from e
+        if not valid_version(latest):
+            return None
         return latest

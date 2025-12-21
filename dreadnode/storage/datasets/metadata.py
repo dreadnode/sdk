@@ -2,62 +2,30 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import coolname
 from packaging.version import Version
 from pyarrow.fs import FileSystem
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    PlainSerializer,
+    WithJsonSchema,
+    field_validator,
+    model_validator,
+)
 
 from dreadnode.common_types import VersionStrategy
+from dreadnode.util import parse_version
 
-
-class VersionInfo(BaseModel):
-    major: int
-    minor: int
-    patch: int
-
-    @field_validator("major", "minor", "patch", mode="before")
-    @classmethod
-    def validate_non_negative(cls, v: Any) -> int:
-        iv = int(v)
-        if iv < 0:
-            raise ValueError("Version numbers must be non-negative integers")
-        return iv
-
-    def to_string(self) -> str:
-        return f"{self.major}.{self.minor}.{self.patch}"
-
-    def increment_major(self) -> None:
-        self.major += 1
-        self.minor = 0
-        self.patch = 0
-
-    def increment_minor(self) -> None:
-        self.minor += 1
-        self.patch = 0
-
-    def increment_patch(self) -> None:
-        self.patch += 1
-
-    @staticmethod
-    def from_string(version_str: str) -> "VersionInfo":
-        version = Version(version_str)
-        parts = [version.major, version.minor, version.micro]
-        if len(parts) != 3:
-            raise ValueError("Version string must be in the format 'major.minor.patch'")
-        return VersionInfo(
-            major=int(parts[0]),
-            minor=int(parts[1]),
-            patch=int(parts[2]),
-        )
-
-    def __gt__(self, other: "VersionInfo") -> bool:
-        if self.major != other.major:
-            return self.major > other.major
-        if self.minor != other.minor:
-            return self.minor > other.minor
-        return self.patch > other.patch
+DatasetVersion = Annotated[
+    Version,
+    BeforeValidator(parse_version),
+    PlainSerializer(lambda v: str(v), return_type=str),
+    WithJsonSchema({"type": "string"}),
+]
 
 
 class DatasetMetadata(BaseModel):
@@ -65,7 +33,7 @@ class DatasetMetadata(BaseModel):
     organization: str | None = None
     name: str = Field(default=coolname.generate_slug(2))
     uri: str | None = None
-    version: str = Field(default=VersionInfo(major=0, minor=1, patch=0).to_string())
+    version: DatasetVersion = Field(default=Version("0.1.0"))
     license: str = Field(default="This dataset is not licensed.")
     tags: list[str] = Field(default_factory=list)
     readme: str = Field(default="# Dataset README\n\n")
@@ -131,7 +99,11 @@ class DatasetMetadata(BaseModel):
         with fs.open_input_stream(path) as f:
             data = json.load(f)
 
-        return cls.model_validate(data)
+        return cls(**data)
+
+    @staticmethod
+    def bump_patch_version(version: DatasetVersion) -> DatasetVersion:
+        return Version(f"{version.major}.{version.minor}.{version.micro + 1}")
 
     @property
     def ref(self) -> str:
@@ -148,21 +120,6 @@ class DatasetMetadata(BaseModel):
         json_bytes = self.model_dump_json(indent=2).encode("utf-8")
         with fs.open_output_stream(path) as f:
             f.write(json_bytes)
-
-    def set_version(self, version: VersionInfo) -> None:
-        self.version = version.to_string()
-
-    def update_version(self, version: str) -> None:
-        version_info = VersionInfo.from_string(version)
-        if self.auto_version_strategy == "major":
-            version_info.increment_major()
-        elif self.auto_version_strategy == "minor":
-            version_info.increment_minor()
-        elif self.auto_version_strategy == "patch":
-            version_info.increment_patch()
-        else:
-            raise ValueError("part must be 'major', 'minor', or 'patch'")
-        self.version = version_info.to_string()
 
     def set_license(self, license_content: str | Path) -> None:
         """
