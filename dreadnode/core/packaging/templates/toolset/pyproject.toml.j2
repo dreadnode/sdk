@@ -1,0 +1,13 @@
+[project]
+name = "{{ package_name }}"
+version = "0.1.0"
+description = "{{ description }}"
+requires-python = ">=3.11"
+dependencies = ["dreadnode"]
+
+[project.entry-points."dreadnode.models"]
+"{{ entry_point_name }}" = "{{ module_name }}"
+
+[build-system]
+requires = ["uv_build>=0.6,<0.7"]
+build-backend = "uv_build"

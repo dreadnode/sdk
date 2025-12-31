@@ -2,8 +2,8 @@ import typing as t
 
 import jsonpath
 
-from dreadnode.metric import Metric
-from dreadnode.scorers.base import Scorer
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 
 
 def json_path(

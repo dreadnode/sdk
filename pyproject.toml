@@ -25,6 +25,9 @@ dependencies = [
     "aiofiles>=24.1.0,<25.0.0",
     "rigging>=3.3.4",
     "pyarrow>=22.0.0",
+    "tomlkit>=0.13.3",
+    "transformers>=4.57.1",
+    "jsonref>=1.1.0",
 ]
 
 [project.optional-dependencies]
@@ -112,7 +115,7 @@ exclude = "tests"
 
 [[tool.mypy.overrides]]
 module = [
-    "dreadnode.data_types.*",
+    "dreadnode.core.types.*",
     "dreadnode.scorers.*",
     "dreadnode.transforms.*",
 ]
@@ -125,7 +128,6 @@ module = [
     "pyarrow.*"
 ]
 ignore_missing_imports = true
-
 
 [tool.pyright]
 typeCheckingMode = "off" # we prefer mypy and don't want to deal with small differences

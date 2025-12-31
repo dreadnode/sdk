@@ -1,0 +1,285 @@
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="dreadnode.storage.tree_builder"></a>
+    <div class="doc doc-contents first">
+
+        <p>Tree structure builder for artifacts with directory hierarchy preservation.
+Provides efficient uploads and tree construction for frontend to consume.</p>
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="dreadnode.storage.tree_builder.ArtifactTreeBuilder" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">ArtifactTreeBuilder</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">ArtifactTreeBuilder</span><span class="p">(</span>
+    <span class="n">storage</span><span class="p">:</span> <span class="n">ArtifactStorage</span><span class="p">,</span> <span class="n">prefix_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Builds a hierarchical tree structure for artifacts while uploading them to storage.
+Preserves directory structure and handles efficient uploads.</p>
+
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="dreadnode.storage.tree_builder.ArtifactTreeBuilder.process_artifact" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">process_artifact</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">process_artifact</span><span class="p">(</span><span class="n">local_uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DirectoryNode</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Process an artifact (file or directory) and build its tree representation.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <ul>
+        <li class="doc-section-item field-body">
+            <b><code>local_uri</code></b>
+              (<code><autoref identifier="str" backlink-type="used-by" backlink-anchor="dreadnode.storage.tree_builder.ArtifactTreeBuilder.process_artifact" optional>str</autoref> | <autoref identifier="pathlib.Path" backlink-type="used-by" backlink-anchor="dreadnode.storage.tree_builder.ArtifactTreeBuilder.process_artifact" optional hover>Path</autoref></code>)
+          –
+          <div class="doc-md-description">
+            <p>Path to the local file or directory</p>
+          </div>
+        </li>
+    </ul>
+
+
+<p><span class="doc-section-title">Returns:</span></p>
+    <ul>
+        <li class="doc-section-item field-body">
+              <code><autoref identifier="dreadnode.storage.tree_builder.DirectoryNode" backlink-type="returned-by" backlink-anchor="dreadnode.storage.tree_builder.ArtifactTreeBuilder.process_artifact" optional hover>DirectoryNode</autoref></code>
+          –
+          <div class="doc-md-description">
+            <p>Directory tree structure representing the artifact</p>
+          </div>
+        </li>
+    </ul>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <ul>
+        <li class="doc-section-item field-body">
+              <code><autoref identifier="FileNotFoundError" backlink-type="raised-by" backlink-anchor="dreadnode.storage.tree_builder.ArtifactTreeBuilder.process_artifact" optional>FileNotFoundError</autoref></code>
+            –
+          <div class="doc-md-description">
+            <p>If the path doesn't exist</p>
+          </div>
+        </li>
+    </ul>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>dreadnode/storage/tree_builder.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">process_artifact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">local_uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DirectoryNode</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Process an artifact (file or directory) and build its tree representation.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        local_uri: Path to the local file or directory</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Directory tree structure representing the artifact</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        FileNotFoundError: If the path doesn&#39;t exist</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">local_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">local_uri</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">local_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">local_path</span><span class="si">}</span><span class="s2"> does not exist&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">local_path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_directory</span><span class="p">(</span><span class="n">local_path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_single_file</span><span class="p">(</span><span class="n">local_path</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="dreadnode.storage.tree_builder.DirectoryNode" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">DirectoryNode</span>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Represents a directory node in the artifact tree.
+Contains metadata about the directory, including its dir_path, hash, and children nodes.</p>
+
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="dreadnode.storage.tree_builder.FileNode" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">FileNode</span>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Represents a file node in the artifact tree.
+Contains metadata about the file, including its name, uri, size_bytes, and final_real_path.</p>
+
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>

@@ -2,11 +2,11 @@ import functools
 import typing as t
 from difflib import SequenceMatcher
 
-from dreadnode.meta import Config
-from dreadnode.metric import Metric
-from dreadnode.scorers.base import Scorer
-from dreadnode.scorers.util import cosine_similarity
-from dreadnode.util import catch_import_error
+from dreadnode.core.exceptions import catch_import_error
+from dreadnode.core.meta import Config
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
+from dreadnode.scorers.cosine_sim import cosine_similarity
 
 if t.TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]

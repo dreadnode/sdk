@@ -1,8 +1,8 @@
 import typing as t
 
-from dreadnode.metric import Metric
-from dreadnode.scorers.base import Scorer
-from dreadnode.util import catch_import_error
+from dreadnode.core.exceptions import catch_import_error
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 
 
 def readability(

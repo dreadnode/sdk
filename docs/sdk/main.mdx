@@ -70,7 +70,7 @@ def __init__(
     self._workspace: Workspace
     self._project: Project
 
-    self._credential_fetcher: t.Callable[[], UserDataCredentials]
+    self._credential_fetcher: CredentialManager | None = None
 
     self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
     self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
@@ -414,7 +414,7 @@ def continue_run(self, run_context: RunContext) -> RunSpan:
     return RunSpan.from_context(
         context=run_context,
         tracer=self._get_tracer(),
-        storage_manager=self._storage_manager,  # type: ignore[arg-type]
+        credential_fetcher=self._credential_fetcher,
     )
 ```
 
@@ -563,8 +563,11 @@ def initialize(self) -> None:
         if self._api is not None:
             api = self._api
             self._credential_manager = CredentialManager(
-                credential_fetcher=lambda: api.get_user_data_credentials()
+                credential_fetcher=lambda: api.get_workspace_data_credentials(
+                    workspace_id=self._workspace.id
+                )
             )
+
             self._credential_manager.initialize()
 
             self._fs = self._credential_manager.get_filesystem()
@@ -585,8 +588,9 @@ def initialize(self) -> None:
     self._logfire.config.ignore_no_config = True
 
     self._fs_manager = DatasetManager().configure(
-        api=self._api,  # type: ignore[return-value]
+        api=self._api,
         organization=self._organization.key,
+        organization_id=self._organization.id,
     )
 
     self._initialized = True
@@ -717,11 +721,14 @@ def load_dataset(
         dataset = dreadnode.load_dataset("dn://org/my_dataset")
         ~~~
     """
+    if not self._initialized:
+        raise RuntimeError("Call .configure() before loading datasets")
+
     return dataset.load_dataset(
         uri=path,
         version=version,
         materialize=materialize,
-        fsm=self._fs_manager,
+        dataset_manager=self._fs_manager,
     )
 ```
 
@@ -1768,6 +1775,106 @@ def log_samples(
 
 </Accordion>
 
+### push\_dataset
+
+```python
+push_dataset(
+    ds: Dataset,
+    *,
+    to_cache: bool = True,
+    version: str | None = None,
+    strategy: VersionStrategy | None = None,
+) -> None
+```
+
+Push a dataset to the Dreadnode server.
+
+This will first save the dataset to the local cache and then upload it.
+If a `version` or `strategy` is provided, the dataset's version will be
+updated before pushing.
+
+**Examples:**
+
+```python
+dreadnode.push_dataset(my_dataset)
+dreadnode.push_dataset(my_dataset, version="1.0.0")
+dreadnode.push_dataset(my_dataset, strategy="minor")
+```
+
+**Parameters:**
+
+* **`ds`**
+  (`Dataset`)
+  –The dataset to push.
+* **`version`**
+  (`str | None`, default:
+  `None`
+  )
+  –A specific version string to set for the dataset.
+* **`strategy`**
+  (`VersionStrategy | None`, default:
+  `None`
+  )
+  –A versioning strategy to automatically bump the version
+  (e.g., 'major', 'minor', 'patch').
+
+<Accordion title="Source code in dreadnode/main.py" icon="code">
+```python
+def push_dataset(
+    self,
+    ds: dataset.Dataset,
+    *,
+    to_cache: bool = True,
+    version: str | None = None,
+    strategy: VersionStrategy | None = None,
+) -> None:
+    """
+    Push a dataset to the Dreadnode server.
+
+    This will first save the dataset to the local cache and then upload it.
+    If a `version` or `strategy` is provided, the dataset's version will be
+    updated before pushing.
+
+    Examples:
+        ~~~
+        dreadnode.push_dataset(my_dataset)
+        dreadnode.push_dataset(my_dataset, version="1.0.0")
+        dreadnode.push_dataset(my_dataset, strategy="minor")
+        ~~~
+
+    Args:
+        ds: The dataset to push.
+        version: A specific version string to set for the dataset.
+        strategy: A versioning strategy to automatically bump the version
+            (e.g., 'major', 'minor', 'patch').
+    """
+    if not self._initialized:
+        raise RuntimeError("Call .configure() before saving datasets")
+
+    if version is not None:
+        try:
+            parse_version(version)
+        except InvalidVersion as e:
+            raise ValueError(f"Invalid version string: {version}") from e
+        ds.metadata.version = version
+        ds.metadata.auto_version = False
+    elif strategy is not None:
+        ds.metadata.auto_version = True
+        ds.metadata.auto_version_strategy = strategy
+
+    if ds.metadata.organization is None:
+        ds.metadata.organization = self._organization.key
+
+    dataset.push_dataset(
+        dataset=ds,
+        to_cache=to_cache,
+        dataset_manager=self._fs_manager,
+    )
+```
+
+
+</Accordion>
+
 ### push\_update
 
 ```python
@@ -1957,7 +2064,7 @@ def run(
         tracer=_tracer or self._get_tracer(),
         params=params,
         tags=tags,
-        credential_manager=self._credential_manager,  # type: ignore[return-value]
+        credential_manager=self._credential_manager,
         autolog=autolog,
     )
 ```
@@ -1965,42 +2072,104 @@ def run(
 
 </Accordion>
 
-### save\_dataset
+### save\_dataset\_to\_disk
 
 ```python
-save_dataset(ds: Dataset, *, to_cache: bool = False) -> str
+save_dataset_to_disk(
+    ds: Dataset,
+    *,
+    version: str | None = None,
+    strategy: VersionStrategy | None = None,
+    overwrite: bool = False,
+) -> None
 ```
 
-Save a dataset to the local cache and optionally to the Dreadnode server.
+Save a dataset to the local cache.
+
+If a `version` or `strategy` is provided, the dataset's version will be
+updated before saving.
 
 Example
 
 ```python
-uri = dreadnode.save_dataset(my_dataset)
+dreadnode.save_dataset_to_disk(my_dataset)
+dreadnode.push_dataset(my_dataset, version="1.0.0")
+dreadnode.push_dataset(my_dataset, strategy="minor")
 ```
 
+**Parameters:**
+
+* **`ds`**
+  (`Dataset`)
+  –The dataset to save.
+* **`version`**
+  (`str | None`, default:
+  `None`
+  )
+  –A specific version string to set for the dataset.
+* **`strategy`**
+  (`VersionStrategy | None`, default:
+  `None`
+  )
+  –A versioning strategy to automatically bump the version
+  (e.g., 'major', 'minor', 'patch').
+* **`overwrite`**
+  (`bool`, default:
+  `False`
+  )
+  –Whether to overwrite an existing dataset version at the same path.
 
 <Accordion title="Source code in dreadnode/main.py" icon="code">
 ```python
-def save_dataset(
+def save_dataset_to_disk(
     self,
     ds: dataset.Dataset,
     *,
-    to_cache: bool = False,
-) -> str:
+    version: str | None = None,
+    strategy: VersionStrategy | None = None,
+    overwrite: bool = False,
+) -> None:
     """
-    Save a dataset to the local cache and optionally to the Dreadnode server.
+    Save a dataset to the local cache.
+
+    If a `version` or `strategy` is provided, the dataset's version will be
+    updated before saving.
 
     Example:
         ~~~
-        uri = dreadnode.save_dataset(my_dataset)
+        dreadnode.save_dataset_to_disk(my_dataset)
+        dreadnode.push_dataset(my_dataset, version="1.0.0")
+        dreadnode.push_dataset(my_dataset, strategy="minor")
         ~~~
-    """
 
-    dataset.save_dataset(
+    Args:
+        ds: The dataset to save.
+        version: A specific version string to set for the dataset.
+        strategy: A versioning strategy to automatically bump the version
+            (e.g., 'major', 'minor', 'patch').
+        overwrite: Whether to overwrite an existing dataset version at the same path.
+    """
+    if not self._initialized:
+        raise RuntimeError("Call .configure() before saving datasets")
+
+    if version is not None:
+        try:
+            parse_version(version)
+        except InvalidVersion as e:
+            raise ValueError(f"Invalid version string: {version}") from e
+        ds.metadata.version = version
+        ds.metadata.auto_version = False
+    elif strategy is not None:
+        ds.metadata.auto_version = True
+        ds.metadata.auto_version_strategy = strategy
+
+    if ds.metadata.organization is None:
+        ds.metadata.organization = self._organization.key
+
+    dataset.save_dataset_to_disk(
         dataset=ds,
-        to_cache=to_cache,
-        fsm=self._fs_manager,
+        dataset_manager=self._fs_manager,
+        overwrite=overwrite,
     )
 ```
 

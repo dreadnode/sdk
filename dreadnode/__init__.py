@@ -3,16 +3,10 @@ import typing as t
 
 from loguru import logger
 
-from dreadnode import (
-    convert,
-    meta,
-)
-from dreadnode import logging_ as logging
-from dreadnode.data_types import Code, Markdown, Object3D, Text
-from dreadnode.dataset import Dataset
-from dreadnode.logging_ import configure_logging
-from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
-from dreadnode.meta import (
+from dreadnode.core import log as logging
+from dreadnode.core import meta
+from dreadnode.core.log import configure_logging
+from dreadnode.core.meta import (
     Config,
     CurrentRun,
     CurrentTask,
@@ -29,35 +23,46 @@ from dreadnode.meta import (
     TrialOutput,
     TrialScore,
 )
-from dreadnode.metric import Metric, MetricDict
-from dreadnode.object import Object
-from dreadnode.scorers import Scorer
-from dreadnode.task import Task
-from dreadnode.tracing.span import RunSpan, Span, TaskSpan
+from dreadnode.core.metric import Metric, MetricDict
+from dreadnode.core.object import Object
+from dreadnode.core.scorer import Scorer
+from dreadnode.core.task import Task
+from dreadnode.core.tools import tool, tool_method
+from dreadnode.core.tracing import convert
+from dreadnode.core.tracing.span import RunSpan, Span, TaskSpan
+from dreadnode.core.transforms import Transform
+from dreadnode.core.types import Code, Markdown, Object3D, Text
+from dreadnode.datasets.dataset import Dataset
+from dreadnode.evaluations import Evaluation
+from dreadnode.main import DEFAULT_INSTANCE, Dreadnode
 from dreadnode.version import VERSION
 
+# Rebuild models to resolve forward references after all imports
+Evaluation.model_rebuild()
+
 if t.TYPE_CHECKING:
-    from dreadnode import agent, airt, eval, optimization, scorers, transforms  # noqa: A004
-    from dreadnode.agent import Agent, tool, tool_method
-    from dreadnode.data_types import Audio, Image, Table, Video
+    from dreadnode.core.agents import Agent
+    from dreadnode.core.types import Audio, Image, Table, Video
 
 logger.disable("dreadnode")
 
 configure = DEFAULT_INSTANCE.configure
 shutdown = DEFAULT_INSTANCE.shutdown
-api = DEFAULT_INSTANCE.api
 span = DEFAULT_INSTANCE.span
 task = DEFAULT_INSTANCE.task
 task_span = DEFAULT_INSTANCE.task_span
 run = DEFAULT_INSTANCE.run
 task_and_run = DEFAULT_INSTANCE.task_and_run
 scorer = DEFAULT_INSTANCE.scorer
-score = DEFAULT_INSTANCE.score
+agent = DEFAULT_INSTANCE.agent
+evaluation = DEFAULT_INSTANCE.evaluation
+study = DEFAULT_INSTANCE.study
 push_update = DEFAULT_INSTANCE.push_update
+init_repo = DEFAULT_INSTANCE.init_package
+push_repo = DEFAULT_INSTANCE.push_package
+pull_repo = DEFAULT_INSTANCE.pull_package
+build_repo = DEFAULT_INSTANCE.build_package
 tag = DEFAULT_INSTANCE.tag
-load_dataset = DEFAULT_INSTANCE.load_dataset
-save_dataset_to_disk = DEFAULT_INSTANCE.save_dataset_to_disk
-push_dataset = DEFAULT_INSTANCE.push_dataset
 get_run_context = DEFAULT_INSTANCE.get_run_context
 continue_run = DEFAULT_INSTANCE.continue_run
 log_metric = DEFAULT_INSTANCE.log_metric
@@ -90,6 +95,7 @@ __all__ = [
     "DatasetField",
     "Dreadnode",
     "EnvVar",
+    "Evaluation",
     "Image",
     "Markdown",
     "Metric",
@@ -109,6 +115,7 @@ __all__ = [
     "TaskOutput",
     "TaskSpan",
     "Text",
+    "Transform",
     "TrialCandidate",
     "TrialOutput",
     "TrialScore",
@@ -121,7 +128,7 @@ __all__ = [
     "configure_logging",
     "continue_run",
     "convert",
-    "eval",
+    "evaluation",
     "get_run_context",
     "link_objects",
     "load_dataset",
@@ -134,15 +141,14 @@ __all__ = [
     "log_params",
     "logging",
     "meta",
-    "optimization",
     "push_dataset",
     "push_update",
     "run",
-    "save_dataset_to_disk",
     "scorer",
     "scorers",
     "shutdown",
     "span",
+    "study",
     "tag",
     "task",
     "task_and_run",
@@ -152,15 +158,15 @@ __all__ = [
     "transforms",
 ]
 
-__lazy_submodules__: list[str] = ["scorers", "agent", "airt", "eval", "transforms", "optimization"]
+__lazy_submodules__: list[str] = ["scorers", "agents", "airt", "eval", "transforms"]
 __lazy_components__: dict[str, str] = {
-    "Audio": "dreadnode.data_types",
-    "Image": "dreadnode.data_types",
-    "Table": "dreadnode.data_types",
-    "Video": "dreadnode.data_types",
-    "Agent": "dreadnode.agent",
-    "tool": "dreadnode.agent",
-    "tool_method": "dreadnode.agent",
+    "Audio": "dreadnode.core.types",
+    "Image": "dreadnode.core.types",
+    "Table": "dreadnode.core.types",
+    "Video": "dreadnode.core.types",
+    "Agent": "dreadnode.agents",
+    "tool": "dreadnode.tools",
+    "tool_method": "dreadnode.tools.tool_method",
 }
 
 

@@ -4,9 +4,9 @@ import pytest
 from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 from pydantic_core import PydanticUndefined
 
-from dreadnode.meta.config import Component, Config, ConfigInfo, Model, component
-from dreadnode.meta.hydrate import hydrate
-from dreadnode.meta.introspect import get_config_model, get_config_schema
+from dreadnode.core.meta.config import Component, Config, ConfigInfo, Model, component
+from dreadnode.core.meta.hydrate import hydrate
+from dreadnode.core.meta.introspect import get_config_model, get_config_schema
 
 # ruff: noqa: N806
 

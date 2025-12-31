@@ -1,6 +1,5 @@
-from dreadnode.airt import attack, search
-from dreadnode.airt.attack import (
-    Attack,
+from dreadnode.airt import attacks, search
+from dreadnode.airt.attacks import (
     goat_attack,
     hop_skip_jump_attack,
     nes_attack,
@@ -16,7 +15,7 @@ __all__ = [
     "CustomTarget",
     "LLMTarget",
     "Target",
-    "attack",
+    "attacks",
     "goat_attack",
     "hop_skip_jump_attack",
     "nes_attack",

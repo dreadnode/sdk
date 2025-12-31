@@ -1,31 +1,32 @@
 import typing as t
 
-import rigging as rg
-
-from dreadnode.common_types import AnyDict
-from dreadnode.meta import Config
-from dreadnode.metric import Metric
-from dreadnode.scorers import Scorer
-
-
-class JudgeInput(rg.Model):
-    input: str | None = rg.element(default=None)
-    expected_output: str | None = rg.element(default=None)
-    output: str = rg.element()
-    rubric: str = rg.element()
+from dreadnode.core.generators.generator import GenerateParams, Generator, get_generator
+from dreadnode.core.generators.models import XMLModel as Model, element
+from dreadnode.core.generators.prompts import prompt
+from dreadnode.core.meta import Config
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
+from dreadnode.core.types.common import AnyDict
 
 
-class Judgement(rg.Model):
-    reason: str = rg.element(description="The reason for the judgement.")
-    passing: bool = rg.element(
+class JudgeInput(Model):
+    input: str | None = element(default=None)
+    expected_output: str | None = element(default=None)
+    output: str = element()
+    rubric: str = element()
+
+
+class Judgement(Model):
+    reason: str = element(description="The reason for the judgement.")
+    passing: bool = element(
         description="Whether the output passed based on the rubric (true/false)."
     )
-    score: float = rg.element(
+    score: float = element(
         description="The float score assigned to the output based on the rubric."
     )
 
 
-@rg.prompt()
+@prompt()
 def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
     """
     You are grading output according to a user-specified rubric.
@@ -36,12 +37,12 @@ def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
 
 
 def llm_judge(
-    model: str | rg.Generator,
+    model: str | Generator,
     rubric: str,
     *,
     input: t.Any | None = None,
     expected_output: t.Any | None = None,
-    model_params: rg.GenerateParams | AnyDict | None = None,
+    model_params: GenerateParams | AnyDict | None = None,
     passing: t.Callable[[float], bool] | None = None,
     min_score: float | None = None,
     max_score: float | None = None,
@@ -65,27 +66,27 @@ def llm_judge(
     async def evaluate(
         data: t.Any,
         *,
-        model: str | rg.Generator = Config(  # noqa: B008
+        model: str | Generator = Config(  # noqa: B008
             model, help="The model to use for judging.", expose_as=str
         ),
         rubric: str = rubric,
         input: t.Any | None = input,
         expected_output: t.Any | None = expected_output,
-        model_params: rg.GenerateParams | AnyDict | None = model_params,
+        model_params: GenerateParams | AnyDict | None = model_params,
         min_score: float | None = min_score,
         max_score: float | None = max_score,
     ) -> list[Metric]:
-        generator: rg.Generator
+        generator: Generator
         if isinstance(model, str):
-            generator = rg.get_generator(
+            generator = get_generator(
                 model,
                 params=model_params
-                if isinstance(model_params, rg.GenerateParams)
-                else rg.GenerateParams.model_validate(model_params)
+                if isinstance(model_params, GenerateParams)
+                else GenerateParams.model_validate(model_params)
                 if model_params
                 else None,
             )
-        elif isinstance(model, rg.Generator):
+        elif isinstance(model, Generator):
             generator = model
         else:
             raise TypeError("Model must be a string identifier or a Generator instance.")

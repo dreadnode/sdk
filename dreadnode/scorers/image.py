@@ -2,9 +2,9 @@ import typing as t
 
 import numpy as np
 
-from dreadnode.data_types import Image
-from dreadnode.metric import Metric
-from dreadnode.scorers.base import Scorer
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
+from dreadnode.core.types import Image
 
 Norm = t.Literal["l0", "l1", "l2", "linf"]
 

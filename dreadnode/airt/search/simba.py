@@ -4,9 +4,9 @@ import numpy as np
 from loguru import logger
 
 from dreadnode.airt.search.image_utils import clip, get_random
-from dreadnode.data_types import Image
-from dreadnode.optimization.search.base import OptimizationContext, Search
-from dreadnode.optimization.trial import Trial
+from dreadnode.core.optimization.trial import Trial
+from dreadnode.core.search import OptimizationContext, Search
+from dreadnode.core.types import Image
 from dreadnode.scorers.image import Norm
 
 

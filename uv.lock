@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <3.14"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -786,6 +786,7 @@ dependencies = [
     { name = "cyclopts" },
     { name = "fsspec", extra = ["s3"] },
     { name = "httpx" },
+    { name = "jsonref" },
     { name = "logfire" },
     { name = "loguru" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -798,6 +799,8 @@ dependencies = [
     { name = "python-ulid" },
     { name = "pyyaml" },
     { name = "rigging" },
+    { name = "tomlkit" },
+    { name = "transformers" },
     { name = "universal-pathlib" },
 ]
 
@@ -873,6 +876,7 @@ requires-dist = [
     { name = "dreadnode", extras = ["training", "multimodal", "scoring"], marker = "extra == 'all'" },
     { name = "fsspec", extras = ["s3"], specifier = ">=2025.10.0,<=2025.10.0" },
     { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
+    { name = "jsonref", specifier = ">=1.1.0" },
     { name = "logfire", specifier = ">=3.5.3,<=3.20.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "moviepy", marker = "extra == 'multimodal'", specifier = ">=2.1.2,<3.0.0" },
@@ -895,6 +899,8 @@ requires-dist = [
     { name = "soundfile", marker = "extra == 'multimodal'", specifier = ">=0.13.1,<1.0.0" },
     { name = "textblob", marker = "extra == 'scoring'", specifier = ">=0.19.0,<1.0.0" },
     { name = "textstat", marker = "extra == 'scoring'", specifier = ">=0.7.10,<1.0.0" },
+    { name = "tomlkit", specifier = ">=0.13.3" },
+    { name = "transformers", specifier = ">=4.57.1" },
     { name = "transformers", marker = "extra == 'training'", specifier = ">=4.41.0,<5.0.0" },
     { name = "universal-pathlib", specifier = ">=0.3.3,<0.4.0" },
 ]
@@ -4709,6 +4715,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/84/ef50c51b5a9472e7265ce1ffc7f24cd4023d289e109f669bdb1553f6a7c2/tomli-2.3.0-cp313-cp313-win32.whl", hash = "sha256:97d5eec30149fd3294270e889b4234023f2c69747e555a27bd708828353ab606", size = 96946, upload-time = "2025-10-08T22:01:24.893Z" },
     { url = "https://files.pythonhosted.org/packages/b2/b7/718cd1da0884f281f95ccfa3a6cc572d30053cba64603f79d431d3c9b61b/tomli-2.3.0-cp313-cp313-win_amd64.whl", hash = "sha256:0c95ca56fbe89e065c6ead5b593ee64b84a26fca063b5d71a1122bf26e533999", size = 107705, upload-time = "2025-10-08T22:01:26.153Z" },
     { url = "https://files.pythonhosted.org/packages/77/b8/0135fadc89e73be292b473cb820b4f5a08197779206b33191e801feeae40/tomli-2.3.0-py3-none-any.whl", hash = "sha256:e95b1af3c5b07d9e643909b5abbec77cd9f1217e6d0bca72b0234736b9fb1f1b", size = 14408, upload-time = "2025-10-08T22:01:46.04Z" },
+]
+
+[[package]]
+name = "tomlkit"
+version = "0.13.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/18/0bbf3884e9eaa38819ebe46a7bd25dcd56b67434402b66a58c4b8e552575/tomlkit-0.13.3.tar.gz", hash = "sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1", size = 185207, upload-time = "2025-06-05T07:13:44.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/75/8539d011f6be8e29f339c42e633aae3cb73bffa95dd0f9adec09b9c58e85/tomlkit-0.13.3-py3-none-any.whl", hash = "sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0", size = 38901, upload-time = "2025-06-05T07:13:43.546Z" },
 ]
 
 [[package]]

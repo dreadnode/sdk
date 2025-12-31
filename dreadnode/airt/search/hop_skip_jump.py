@@ -4,11 +4,11 @@ import numpy as np
 from loguru import logger
 
 from dreadnode.airt.search.image_utils import clip, get_random
-from dreadnode.data_types import Image
-from dreadnode.optimization.search import bisection_image_search, random_image_search
-from dreadnode.optimization.search.base import OptimizationContext, Search
-from dreadnode.optimization.trial import Trial
+from dreadnode.core.optimization.trial import Trial
+from dreadnode.core.search import OptimizationContext, Search
+from dreadnode.core.types import Image
 from dreadnode.scorers.image import Norm, image_distance
+from dreadnode.search import bisection_image_search, random_image_search
 
 
 def hop_skip_jump_search(  # noqa: PLR0915

@@ -3,10 +3,10 @@ import typing as t
 
 import httpx
 
-from dreadnode.meta import Config
-from dreadnode.metric import Metric
-from dreadnode.scorers.base import Scorer
-from dreadnode.util import catch_import_error, warn_at_user_stacklevel
+from dreadnode.core.exceptions import catch_import_error, warn_at_user_stacklevel
+from dreadnode.core.meta import Config
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 
 Sentiment = t.Literal["positive", "negative", "neutral"]
 

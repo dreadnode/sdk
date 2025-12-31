@@ -2,9 +2,9 @@ import typing as t
 
 import openai
 
-from dreadnode.meta import Config
-from dreadnode.metric import Metric
-from dreadnode.scorers import Scorer
+from dreadnode.core.meta import Config
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 
 
 def detect_harm_with_openai(

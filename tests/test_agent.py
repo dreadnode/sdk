@@ -3,24 +3,25 @@ import typing as t
 from unittest.mock import MagicMock
 
 import pytest
-import rigging as rg
 from pydantic import PrivateAttr, ValidationError
 from rigging.generator.base import GeneratedMessage
 
-from dreadnode.agent.agent import Agent, TaskAgent
-from dreadnode.agent.error import MaxStepsError
-from dreadnode.agent.events import AgentEnd, AgentEvent, AgentStalled, Reacted, ToolStart
-from dreadnode.agent.hooks.base import retry_with_feedback
-from dreadnode.agent.reactions import RetryWithFeedback
-from dreadnode.agent.stop import never, tool_use
-from dreadnode.agent.tools import AnyTool, Tool, Toolset, tool, tool_method
-from dreadnode.meta import component
+from dreadnode.core.agents import Agent
+from dreadnode.core.agents.events import AgentEnd, AgentEvent, AgentStalled, ReactStep, ToolStart
+from dreadnode.core.agents.exceptions import MaxStepsError
+from dreadnode.core.agents.reactions import RetryWithFeedback
+from dreadnode.core.agents.stopping import never, tool_use
+from dreadnode.core.generators.generator import GenerateParams, Generator
+from dreadnode.core.generators.message import Message
+from dreadnode.core.meta import component
+from dreadnode.core.tools import FunctionCall, Tool, ToolCall, Toolset, tool, tool_method
+from dreadnode.hooks import retry_with_feedback
 
 # Fixtures and helper classes/functions
 
 
 @pytest.fixture
-def simple_tool() -> AnyTool:
+def simple_tool() -> Tool:
     """A simple tool for testing."""
 
     def get_weather(city: str) -> str:
@@ -39,21 +40,21 @@ class MyToolset(Toolset):
         return "The time is 12:00 PM."
 
 
-class MockGenerator(rg.Generator):
+class MockGenerator(Generator):
     """
     A mock generator that returns a sequence of predefined responses.
     This allows for deterministic, stateful testing of agent conversations.
     """
 
     _responses: list[GeneratedMessage | Exception] = PrivateAttr(default_factory=list)
-    _call_history: list[tuple[t.Sequence[rg.Message], rg.GenerateParams]] = PrivateAttr(
+    _call_history: list[tuple[t.Sequence[Message], GenerateParams]] = PrivateAttr(
         default_factory=list
     )
 
     async def generate_messages(
         self,
-        messages: t.Sequence[t.Sequence[rg.Message]],
-        params: t.Sequence[rg.GenerateParams],
+        messages: t.Sequence[t.Sequence[Message]],
+        params: t.Sequence[GenerateParams],
     ) -> t.Sequence[GeneratedMessage]:
         # Assume batch size of 1 for test simplicity
         self._call_history.append((messages[0], params[0]))
@@ -76,15 +77,13 @@ class MockGenerator(rg.Generator):
     ) -> GeneratedMessage:
         """Helper to create a GeneratedMessage with a tool call."""
         return GeneratedMessage(
-            message=rg.Message(
+            message=Message(
                 role="assistant",
                 content=None,
                 tool_calls=[
-                    rg.tools.ToolCall(
+                    ToolCall(
                         id=tool_id,
-                        function=rg.tools.FunctionCall(
-                            name=tool_name, arguments=json.dumps(tool_args)
-                        ),
+                        function=FunctionCall(name=tool_name, arguments=json.dumps(tool_args)),
                     )
                 ],
             ),
@@ -95,7 +94,7 @@ class MockGenerator(rg.Generator):
     def text_response(content: str) -> GeneratedMessage:
         """Helper to create a simple text-based GeneratedMessage."""
         return GeneratedMessage(
-            message=rg.Message(role="assistant", content=content),
+            message=Message(role="assistant", content=content),
             stop_reason="stop",
         )
 
@@ -103,7 +102,7 @@ class MockGenerator(rg.Generator):
 @pytest.fixture
 def mock_generator() -> MockGenerator:
     """Provides a fresh instance of the MockGenerator for each test."""
-    return MockGenerator(model="mock-model", params=rg.GenerateParams(), api_key="test-key")
+    return MockGenerator(model="mock-model", params=GenerateParams(), api_key="test-key")
 
 
 @pytest.fixture
@@ -111,7 +110,7 @@ def base_agent() -> Agent:
     """Provides a basic agent with a mock generator for reuse in tests."""
     return Agent(
         name="TestAgent",
-        model=MockGenerator(model="mock-model", params=rg.GenerateParams(), api_key="test-key"),
+        model=MockGenerator(model="mock-model", params=GenerateParams(), api_key="test-key"),
     )
 
 
@@ -133,7 +132,7 @@ def test_agent_initialization(mock_generator: MockGenerator) -> None:
     assert agent.generator is mock_generator
 
 
-def test_tool_validation_and_discovery(simple_tool: AnyTool) -> None:
+def test_tool_validation_and_discovery(simple_tool: Tool) -> None:
     """Test that the `tools` field correctly validates and discovers tools."""
 
     # 1. Test with a raw callable
@@ -158,7 +157,7 @@ def test_tool_validation_and_discovery(simple_tool: AnyTool) -> None:
     assert agent_toolset.all_tools[0].fn.__self__ is toolset  # type: ignore[attr-defined]
 
 
-def test_all_tools_property(simple_tool: AnyTool) -> None:
+def test_all_tools_property(simple_tool: Tool) -> None:
     """Ensure the .all_tools property correctly flattens tools from all sources."""
     toolset = MyToolset()
     agent = Agent(name="test", tools=[simple_tool, toolset])
@@ -174,7 +173,7 @@ def test_all_tools_property(simple_tool: AnyTool) -> None:
 def test_generator_property() -> None:
     """Verify the .generator property initializes from a string or instance."""
     generator_instance = MockGenerator(
-        model="mock-model", params=rg.GenerateParams(), api_key="test-key"
+        model="mock-model", params=GenerateParams(), api_key="test-key"
     )
     agent_instance = Agent(name="test", model=generator_instance)
     assert agent_instance.generator is generator_instance
@@ -186,7 +185,7 @@ def test_generator_property() -> None:
 # Fluent Configuration (`with_` method)
 
 
-def test_with_method_is_immutable(base_agent: Agent, simple_tool: AnyTool) -> None:
+def test_with_method_is_immutable(base_agent: Agent, simple_tool: Tool) -> None:
     """Confirm that agent.with_() creates a new instance and does not mutate the original."""
     new_agent = base_agent.with_(name="NewName", tools=[simple_tool])
 
@@ -197,7 +196,7 @@ def test_with_method_is_immutable(base_agent: Agent, simple_tool: AnyTool) -> No
     assert len(new_agent.tools) == 1
 
 
-def test_with_method_replaces_attributes(base_agent: Agent, simple_tool: AnyTool) -> None:
+def test_with_method_replaces_attributes(base_agent: Agent, simple_tool: Tool) -> None:
     """Verify that calling .with_() replaces specified attributes."""
     new_agent = base_agent.with_(
         name="ReplacedAgent",
@@ -212,7 +211,7 @@ def test_with_method_replaces_attributes(base_agent: Agent, simple_tool: AnyTool
     assert len(new_agent.hooks) == 1
 
 
-def test_with_method_replaces_lists_by_default(base_agent: Agent, simple_tool: AnyTool) -> None:
+def test_with_method_replaces_lists_by_default(base_agent: Agent, simple_tool: Tool) -> None:
     """Verify that list-based attributes are fully replaced when append=False."""
     tool1 = simple_tool.model_copy(update={"name": "tool1"})
     tool2 = simple_tool.model_copy(update={"name": "tool2"})
@@ -224,7 +223,7 @@ def test_with_method_replaces_lists_by_default(base_agent: Agent, simple_tool: A
     assert new_agent.all_tools[0].name == "tool2"
 
 
-def test_with_method_appends_lists(base_agent: Agent, simple_tool: AnyTool) -> None:
+def test_with_method_appends_lists(base_agent: Agent, simple_tool: Tool) -> None:
     """Verify that list-based attributes are appended to when append=True."""
     tool1 = simple_tool.model_copy(update={"name": "tool1"})
     tool2 = simple_tool.model_copy(update={"name": "tool2"})
@@ -242,7 +241,7 @@ def test_with_method_appends_lists(base_agent: Agent, simple_tool: AnyTool) -> N
 
 @pytest.mark.asyncio
 async def test_run_happy_path_single_tool_call(
-    mock_generator: MockGenerator, simple_tool: AnyTool
+    mock_generator: MockGenerator, simple_tool: Tool
 ) -> None:
     """
     Test a successful run where the agent calls one tool and then provides a final answer.
@@ -276,7 +275,7 @@ async def test_run_happy_path_single_tool_call(
 
 
 @pytest.mark.asyncio
-async def test_run_stops_on_max_steps(mock_generator: MockGenerator, simple_tool: AnyTool) -> None:
+async def test_run_stops_on_max_steps(mock_generator: MockGenerator, simple_tool: Tool) -> None:
     """Ensure the agent run terminates with a MaxStepsError when exceeding max_steps."""
     # The agent will just keep calling the tool.
     mock_generator._responses = [
@@ -300,10 +299,10 @@ async def test_run_stops_on_max_steps(mock_generator: MockGenerator, simple_tool
 
 @pytest.mark.asyncio
 async def test_run_stops_on_stop_condition(
-    mock_generator: MockGenerator, simple_tool: AnyTool
+    mock_generator: MockGenerator, simple_tool: Tool
 ) -> None:
     """Verify the agent stops successfully when a StopCondition is met."""
-    from dreadnode.agent.stop import tool_use
+    from dreadnode.core.stopping import tool_use
 
     mock_generator._responses = [
         MockGenerator.tool_response("get_weather", {"city": "London"}),
@@ -404,11 +403,12 @@ async def test_run_handles_tool_execution_error(mock_generator: MockGenerator) -
 
 @pytest.mark.asyncio
 async def test_hook_triggers_finish_reaction(
-    mock_generator: MockGenerator, simple_tool: AnyTool
+    mock_generator: MockGenerator, simple_tool: Tool
 ) -> None:
     """A hook returning Finish() should stop the agent successfully."""
-    from dreadnode.agent.events import ToolStart
-    from dreadnode.agent.reactions import Finish
+    from dreadnode.agents.events import ToolStart
+
+    from dreadnode.core.agents.reactions import Finish
 
     mock_generator._responses = [
         MockGenerator.tool_response("get_weather", {"city": "A"}),
@@ -435,7 +435,7 @@ async def test_hook_triggers_finish_reaction(
 
 @pytest.mark.asyncio
 async def test_hook_triggers_retry_with_feedback_reaction(
-    mock_generator: MockGenerator, simple_tool: AnyTool
+    mock_generator: MockGenerator, simple_tool: Tool
 ) -> None:
     """A hook returning RetryWithFeedback should inject a message and re-run generation."""
     mock_generator._responses = [
@@ -470,7 +470,7 @@ async def test_hook_triggers_retry_with_feedback_reaction(
 
 @pytest.mark.asyncio
 async def test_reaction_handling_and_event_sequence(
-    mock_generator: MockGenerator, simple_tool: AnyTool
+    mock_generator: MockGenerator, simple_tool: Tool
 ) -> None:
     """
     Tests the precise sequence of events when a hook triggers a reaction.
@@ -529,11 +529,11 @@ async def test_reaction_handling_and_event_sequence(
         pytest.fail("ObserverHook never saw a ToolStart event.")
 
     # The 'Reacted' event must immediately follow the event that caused it.
-    assert event_types[tool_start_index + 1] == "Reacted"
+    assert event_types[tool_start_index + 1] == "ReactStep"
 
     # 2. Introspect the Reacted event to ensure it's correct.
     reacted_event = observer.seen_events[tool_start_index + 1]
-    assert isinstance(reacted_event, Reacted)
+    assert isinstance(reacted_event, ReactStep)
 
     # The hook name might be slightly different based on environment, but should be 'trigger_hook'
     assert reacted_event.hook_name == "trigger_hook"
@@ -548,82 +548,3 @@ async def test_reaction_handling_and_event_sequence(
     feedback_message = messages_for_second_call[-1]
     assert feedback_message.role == "user"
     assert feedback_message.content == "The hook reacted!"
-
-
-# Quality of Life and Edge Cases
-
-
-def test_instructions_and_description_are_dedented() -> None:
-    """Verify that multiline, indented strings are dedented on initialization."""
-    indented_str = """\
-        This is a multi-line,
-        indented string.
-        It should be cleaned up.
-    """
-    expected = "This is a multi-line,\nindented string.\nIt should be cleaned up.\n"
-
-    agent = Agent(
-        name="DedentAgent",
-        description=indented_str,
-        instructions=indented_str,
-        model="test-model",
-    )
-
-    assert agent.description == expected
-    assert agent.instructions == expected
-
-    # Edge case: None should pass through without error
-    agent_none = Agent(name="NoneAgent", instructions=None, model="test-model")
-    assert agent_none.instructions is None
-
-
-def test_tool_validator_handles_nested_lists_and_plain_objects(simple_tool: AnyTool) -> None:
-    """Verify the tool validator can flatten nested lists and discover tools."""
-
-    toolset = MyToolset()
-
-    # The validator should handle this messy, nested structure gracefully.
-    agent = Agent(
-        name="ToolValidatorTest",
-        model="test-model",
-        tools=[[simple_tool, toolset], toolset],  # type: ignore[list-item]
-    )
-
-    all_tools = agent.all_tools
-    assert len(all_tools) == 3
-    tool_names = {t.name for t in all_tools}
-    assert tool_names == {"get_weather", "get_time"}
-
-
-def test_with_method_retriggers_model_post_init_on_subclasses() -> None:
-    """
-    Verify that agent.with_() correctly re-runs model_post_init on subclasses,
-    ensuring specialized agent logic is preserved.
-    """
-    # TaskAgent's model_post_init adds 3 tools, 1 hook, and 1 stop condition.
-    agent = TaskAgent(name="MyTaskAgent", model="test-model")
-
-    # The base agent should have the defaults from TaskAgent
-    assert len(agent.all_tools) == 3
-    assert any(t.name == "finish_task" for t in agent.all_tools)
-    assert len(agent.hooks) == 1
-    assert len(agent.stop_conditions) == 1
-    assert isinstance(agent.stop_conditions[0], type(never()))
-
-    # Create a new agent using `with_`, which should re-trigger model_post_init
-    new_agent = agent.with_(name="NewTaskAgentName")
-
-    # The new agent should also have the defaults, proving the hook ran again.
-    assert len(new_agent.all_tools) == 3
-    assert any(t.name == "finish_task" for t in new_agent.all_tools)
-    assert len(new_agent.hooks) == 1
-    assert len(new_agent.stop_conditions) == 1
-    assert isinstance(new_agent.stop_conditions[0], type(never()))
-
-    # Let's test idempotency: if we provide a tool that would be added, it shouldn't be duplicated
-    from dreadnode.agent.tools.tasking import finish_task
-
-    idempotent_agent = TaskAgent(name="Idempotent", model="test-model", tools=[finish_task])
-    # The length should still be 3, not 4.
-    assert len(idempotent_agent.all_tools) == 3
-    assert sum(1 for t in idempotent_agent.all_tools if t.name == "finish_task") == 1

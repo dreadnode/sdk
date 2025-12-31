@@ -3,7 +3,7 @@ from pathlib import Path
 import pydantic
 import pytest
 
-from dreadnode.user_config import ServerConfig, UserConfig
+from dreadnode.api.config import ServerConfig, UserConfig
 
 
 def test_server_config() -> None:

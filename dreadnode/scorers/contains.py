@@ -1,8 +1,8 @@
 import re
 import typing as t
 
-from dreadnode.metric import Metric
-from dreadnode.scorers import Scorer
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 
 
 def contains(

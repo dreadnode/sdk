@@ -1,80 +1,49 @@
-import asyncio
 import contextlib
-import os
 import random
-import re
 import sys
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urlunparse
-from uuid import UUID
 
 import coolname
 import logfire
-from fsspec.implementations.local import (
-    LocalFileSystem,
-)
 from logfire._internal.exporters.remove_pending import RemovePendingSpansExporter
 from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from packaging.version import InvalidVersion
-from packaging.version import parse as parse_version
+from ulid import ULID
 
-from dreadnode import dataset
-from dreadnode.api.client import ApiClient
-from dreadnode.api.models import (
-    Organization,
-    Project,
-    Workspace,
-    WorkspaceFilter,
+from dreadnode.core.api.client import ApiClient
+from dreadnode.core.api.models import Organization, Project, Workspace
+from dreadnode.core.api.session import Session, UserConfig
+from dreadnode.core.exceptions import (
+    DreadnodeUsageWarning,
+    handle_internal_errors,
+    warn_at_user_stacklevel,
 )
-from dreadnode.common_types import (
-    INHERITED,
-    AnyDict,
-    Inherited,
-    JsonValue,
-    VersionStrategy,
-)
-from dreadnode.constants import (
-    DEFAULT_LOCAL_STORAGE_DIR,
-    DEFAULT_PROJECT_KEY,
-    DEFAULT_PROJECT_NAME,
-    DEFAULT_SERVER_URL,
-    ENV_API_KEY,
-    ENV_API_TOKEN,
-    ENV_CONSOLE,
-    ENV_LOCAL_DIR,
-    ENV_ORGANIZATION,
-    ENV_PROFILE,
-    ENV_PROJECT,
-    ENV_SERVER,
-    ENV_SERVER_URL,
-    ENV_WORKSPACE,
-)
-from dreadnode.error import AssertionFailedError
-from dreadnode.exporter import CustomOTLPSpanExporter
-from dreadnode.logging_ import configure_logging, console
-from dreadnode.metric import (
+from dreadnode.core.log import configure_logging
+from dreadnode.core.metric import (
     Metric,
     MetricAggMode,
     MetricDict,
     MetricsLike,
-    T,
 )
-from dreadnode.scorers import Scorer, ScorerCallable
-from dreadnode.scorers.base import ScorersLike
-from dreadnode.storage.base import CredentialManager
-from dreadnode.storage.datasets.manager import DatasetManager
-from dreadnode.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
-from dreadnode.tracing.exporters import (
-    FileExportConfig,
+from dreadnode.core.packaging.package import BuildResult, Package, PackageType, PullResult, PushResult
+from dreadnode.core.scorer import ScorersLike
+from dreadnode.core.settings import (
+    settings,
+)
+from dreadnode.core.storage import Storage
+from dreadnode.core.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
+from dreadnode.core.tracing.exporter import CustomOTLPSpanExporter
+from dreadnode.core.tracing.exporters import (
     FileMetricReader,
     FileSpanExporter,
+    TraceExportConfig,
 )
-from dreadnode.tracing.span import (
+from dreadnode.core.tracing.span import (
     RunContext,
     RunSpan,
     Span,
@@ -82,32 +51,26 @@ from dreadnode.tracing.span import (
     current_run_span,
     current_task_span,
 )
-from dreadnode.user_config import UserConfig
-from dreadnode.util import (
+from dreadnode.core.types.common import (
+    INHERITED,
+    AnyDict,
+    Inherited,
+    JsonValue,
+)
+from dreadnode.core.util import (
     clean_str,
-    create_key_from_name,
-    handle_internal_errors,
-    valid_key,
-    warn_at_user_stacklevel,
 )
 from dreadnode.version import VERSION
 
 if t.TYPE_CHECKING:
-    from fsspec import AbstractFileSystem
     from opentelemetry.sdk.metrics.export import MetricReader
     from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import Tracer
 
+    from dreadnode.core.tracing.constants import SpanType
+
 
 ToObject = t.Literal["task-or-run", "run"]
-
-
-class DreadnodeConfigWarning(UserWarning):
-    """Warnings related to Dreadnode configuration."""
-
-
-class DreadnodeUsageWarning(UserWarning):
-    """Warnings related to Dreadnode usage."""
 
 
 configure_logging()
@@ -123,27 +86,16 @@ class Dreadnode:
     Otherwise, you can create your own instance and configure it with `configure()`.
     """
 
-    server: str | None
-    token: str | None
-    local_dir: str | Path | t.Literal[False]
-    organization: str | UUID | None
-    workspace: str | UUID | None
-    project: str | None
-    service_name: str | None
-    service_version: str | None
-    console: logfire.ConsoleOptions | bool
-    send_to_logfire: bool | t.Literal["if-token-present"]
-    otel_scope: str
-
     def __init__(
         self,
         *,
         server: str | None = None,
         token: str | None = None,
-        local_dir: str | Path | t.Literal[False] = False,
-        organization: str | UUID | None = None,
-        workspace: str | UUID | None = None,
+        organization: str | ULID | None = None,
+        workspace: str | ULID | None = None,
         project: str | None = None,
+        cache: str | None = None,
+        storage: str | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | bool = False,
@@ -152,10 +104,11 @@ class Dreadnode:
     ) -> None:
         self.server = server
         self.token = token
-        self.local_dir = local_dir
         self.organization = organization
         self.workspace = workspace
         self.project = project
+        self.cache = cache
+        self.storage = storage
         self.service_name = service_name
         self.service_version = service_version
         self.console = console
@@ -163,343 +116,41 @@ class Dreadnode:
         self.otel_scope = otel_scope
 
         self._api: ApiClient | None = None
+        self._session: Session | None = None
         self._logfire = logfire.DEFAULT_LOGFIRE_INSTANCE
         self._logfire.config.ignore_no_config = True
 
-        self._organization: Organization
-        self._workspace: Workspace
-        self._project: Project
-
-        self._credential_fetcher: CredentialManager | None = None
-
-        self._fs: AbstractFileSystem = LocalFileSystem(auto_mkdir=True)
-        self._fs_prefix: str = f"{DEFAULT_LOCAL_STORAGE_DIR}/storage/"
-
         self._initialized = False
 
-    def _get_profile_server(self, profile: str | None = None) -> str | None:
-        """
-        Get the server URL from the user config for a given profile.
+        self._version = VERSION
 
-        Args:
-            profile: The profile name to use. If not provided, it will use the
-                `DREADNODE_PROFILE` environment variable or the active profile.
+    @property
+    def resolved_organization(self) -> Organization:
+        """Get the resolved organization from the session."""
+        if self._session is None:
+            raise RuntimeError("Call configure() first")
+        return self._session.organization
 
-        Returns:
-            The server URL, or None if not found.
-        """
-        with contextlib.suppress(Exception):
-            user_config = UserConfig.read()
-            profile = profile or os.environ.get(ENV_PROFILE)
-            server_config = user_config.get_server_config(profile)
-            return server_config.url
+    @property
+    def resolved_workspace(self) -> Workspace:
+        """Get the resolved workspace from the session."""
+        if self._session is None:
+            raise RuntimeError("Call configure() first")
+        return self._session.workspace
 
-        # Silently fail if profile config is not available or invalid
-        return None
+    @property
+    def resolved_project(self) -> Project:
+        """Get the resolved project from the session."""
+        if self._session is None:
+            raise RuntimeError("Call configure() first")
+        return self._session.project
 
-    def _get_profile_api_key(self, profile: str | None = None) -> str | None:
-        """
-        Get the API key from the user config for a given profile.
-
-        Args:
-            profile: The profile name to use. If not provided, it will use the
-                `DREADNODE_PROFILE` environment variable or the active profile.
-
-        Returns:
-            The API key, or None if not found.
-        """
-        with contextlib.suppress(Exception):
-            user_config = UserConfig.read()
-            profile = profile or os.environ.get(ENV_PROFILE)
-            server_config = user_config.get_server_config(profile)
-            return server_config.api_key
-
-        # Silently fail if profile config is not available or invalid
-        return None
-
-    def _resolve_organization(self) -> None:
-        """
-        Resolve the organization to use based on configuration.
-
-        It will try to find the organization by ID or name if provided.
-        If not, it will list organizations and use the only one available.
-
-        Raises:
-            RuntimeError: If the API client is not initialized, the organization
-                is not found, or the user belongs to multiple organizations without
-                specifying one.
-        """
+    @property
+    def api(self) -> ApiClient:
+        """Get the API client."""
         if self._api is None:
-            raise RuntimeError("API client is not initialized.")
-
-        with contextlib.suppress(ValueError):
-            self.organization = UUID(
-                str(self.organization)
-            )  # Now, it's a UUID if possible, else str (name/slug)
-
-        if isinstance(self.organization, str) and not valid_key(self.organization):
-            raise RuntimeError(
-                f'Invalid Organization Key: "{self.organization}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your organization using the CLI or the web interface.',
-            )
-
-        if self.organization:
-            self._organization = self._api.get_organization(self.organization)
-            if not self._organization:
-                raise RuntimeError(f"Organization '{self.organization}' not found.")
-
-        else:
-            organizations = self._api.list_organizations()
-
-            if not organizations:
-                raise RuntimeError(
-                    f"You are not part of any organizations on {self.server}. You will not be able to use Strikes.",
-                )
-
-            if len(organizations) > 1:
-                # We should not presume to choose an organization
-                org_list = "\t\n".join([f"- {o.key}" for o in organizations])
-                raise RuntimeError(
-                    f"You are part of multiple organizations. Please specify an organization from:\n{org_list}"
-                )
-            self._organization = organizations[0]
-
-    def _create_workspace(self, key: str) -> Workspace:
-        """
-        Create a new workspace.
-
-        Args:
-            name: The name of the workspace to create.
-
-        Returns:
-            The created Workspace object.
-
-        Raises:
-            RuntimeError: If the API client is not initialized or if the user
-                does not have permission to create a workspace.
-        """
-        if self._api is None:
-            raise RuntimeError("API client is not initialized.")
-
-        try:
-            console.print(
-                f"[yellow]WARNING: This workspace was not found. Creating a new workspace '{key}'...[/]"
-            )
-            key = create_key_from_name(key)
-            return self._api.create_workspace(
-                name=key, key=key, organization_id=self._organization.id
-            )
-        except RuntimeError as e:
-            if "403: Forbidden" in str(e):
-                raise RuntimeError(
-                    "You do not have permission to create the specified workspace for this organization. (You must be a Contributor to create new workspaces)."
-                ) from e
-            raise
-
-    def _resolve_workspace(self) -> None:
-        """
-        Resolve the workspace to use based on configuration.
-
-        If a workspace is specified by name and doesn't exist, it will be created.
-        If no workspace is specified, it will look for a default workspace or
-        create one named 'default'.
-
-        Raises:
-            RuntimeError: If the API client is not initialized, a specified
-                workspace ID is not found, or if it fails to resolve or create a
-                workspace.
-        """
-        if self._api is None:
-            raise RuntimeError("API client is not initialized.")
-
-        with contextlib.suppress(ValueError):
-            self.workspace = UUID(
-                str(self.workspace)
-            )  # Now, it's a UUID if possible, else str (name/slug)
-
-        if isinstance(self.workspace, str) and not valid_key(self.workspace):
-            raise RuntimeError(
-                f'Invalid Workspace Key: "{self.workspace}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your workspace using the CLI or the web interface.',
-            )
-
-        found_workspace: Workspace | None = None
-        if self.workspace:
-            try:
-                found_workspace = self._api.get_workspace(
-                    self.workspace, org_id=self._organization.id
-                )
-            except RuntimeError as e:
-                if "404: Workspace not found" in str(e):
-                    pass  # do nothing, we'll create it below
-                else:
-                    raise
-
-            if not found_workspace and isinstance(self.workspace, UUID):
-                raise RuntimeError(f"Workspace with ID '{self.workspace}' not found.")
-
-            if not found_workspace and isinstance(self.workspace, str):  # specified by name/slug
-                # create the workspace (must be an org contributor)
-                found_workspace = self._create_workspace(key=self.workspace)
-
-        else:  # the user provided no workspace, attempt to find a default one
-            workspaces = self._api.list_workspaces(
-                filters=WorkspaceFilter(
-                    org_id=self._organization.id if self._organization else None
-                )
-            )
-            default_workspace = next((ws for ws in workspaces if ws.is_default is True), None)
-            if default_workspace:
-                found_workspace = default_workspace
-            else:
-                raise RuntimeError(
-                    "No default workspace found. Please specify a workspace which you have contributor access to."
-                )
-
-        if not found_workspace:
-            raise RuntimeError("Failed to resolve or create a workspace.")
-
-        self._workspace = found_workspace
-
-    def _resolve_project(self) -> None:
-        """
-        Resolve the project to use based on configuration.
-
-        If a project is specified by key and doesn't exist, it will be created.
-        If no project is specified, it will use or create one with key 'default'.
-
-        Raises:
-            RuntimeError: If the API client is not initialized.
-        """
-        if self._api is None:
-            raise RuntimeError("API client is not initialized.")
-
-        if self.project and not valid_key(self.project):
-            raise RuntimeError(
-                f'Invalid Project Key: "{self.project}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your project using the CLI or the web interface.',
-            )
-
-        # fetch the project
-        found_project: Project | None = None
-        try:
-            found_project = self._api.get_project(
-                project_identifier=self.project or DEFAULT_PROJECT_KEY,
-                workspace_id=self._workspace.id,
-            )
-        except RuntimeError as e:
-            if "404: Project not found" in str(e):
-                pass  # do nothing, we'll create it below
-            else:
-                raise
-
-        if not found_project:
-            # create it in the workspace
-            found_project = self._api.create_project(
-                name=self.project or DEFAULT_PROJECT_NAME,
-                key=self.project or DEFAULT_PROJECT_KEY,
-                workspace_id=self._workspace.id,
-            )
-        # This is what's used in all of the Traces/Spans/Runs
-        self._project = found_project
-        self.project = str(self._project.id)
-
-    def _resolve_rbac(self) -> None:
-        """
-        Resolve organization, workspace, and project for RBAC.
-
-        This is a convenience method that calls the individual resolution methods.
-
-        Raises:
-            RuntimeError: If the API client is not initialized.
-        """
-        if self._api is None:
-            raise RuntimeError("API client is not initialized.")
-        self._resolve_organization()
-        self._resolve_workspace()
-        self._resolve_project()
-
-    def _log_configuration(self, config_source: str, active_profile: str | t.Any | None) -> None:
-        """
-        Log the current Dreadnode configuration to the console.
-
-        Args:
-            config_source: A string indicating where the configuration came from.
-            active_profile: The name of the active profile, if any.
-        """
-        console.print(f"Dreadnode Configuration: (from {config_source})")
-
-        if self.server or self.token:
-            destination = self.server or DEFAULT_SERVER_URL or "local storage"
-            console.print(f" Server: [orange_red1]{destination}[/]")
-        elif self.local_dir:
-            console.print(f"Local directory: [orange_red1]{self.local_dir}[/] ({config_source})")
-
-        # Warn the user if the profile didn't resolve
-        elif active_profile and not (self.server or self.token):
-            console.print(
-                f":exclamation: Dreadnode profile [orange_red1]{active_profile}[/] appears invalid."
-            )
-        console.print(f" Organization: [green]{self._organization.name}[/]")
-        console.print(f" Workspace: [green]{self._workspace.name}[/]")
-        console.print(f" Project: [green]{self._project.name}[/]")
-
-    @staticmethod
-    def _extract_project_components(
-        path: str | None,
-    ) -> tuple[str | None, str | None, str]:
-        """
-        Extract organization, workspace, and project from a path string.
-
-        The path can be in the format `org/workspace/project`, `workspace/project`,
-        or `project`.
-
-        Args:
-            path: The path string to parse.
-
-        Returns:
-            A tuple containing (organization, workspace, project). Components that
-            are not present will be None.
-        """
-        if not path:
-            return (None, None, "")
-
-        pattern = r"^(?:([\s\w-]+?)/)?(?:([\s\w-]+?)/)?([\s\w-]+?)$"
-        match = re.match(pattern, path)
-
-        if not match:
-            raise RuntimeError(
-                f"Invalid project path format: '{path}'.\n\nExpected formats are 'org/workspace/project', 'workspace/project', or 'project'. Where each component is the key for that entity.'"
-            )
-
-        # The groups are: (Org, Workspace, Project)
-        groups = match.groups()
-
-        present_components = [c for c in groups if c is not None]
-
-        # validate each component
-        for component in present_components:
-            if not valid_key(component):
-                raise RuntimeError(
-                    f'Invalid Key: "{component}". The expected characters are lowercase letters, numbers, and hyphens (-).\n\nYou can get the keys for your organization, workspace, and project using the CLI or the web interface.',
-                )
-
-        if len(present_components) == 3:
-            org, workspace, project = groups
-        elif len(present_components) == 2:
-            org = None
-            workspace, project = groups[1], groups[2]
-        elif len(present_components) == 1:
-            org = None
-            workspace = None
-            project = groups[2]
-        else:
-            raise RuntimeError("Regex matched, but component count is unexpected.")
-
-        return (org, workspace, project)
-
-    def get_current_run(self) -> RunSpan | None:
-        return current_run_span.get()
-
-    def get_current_task(self) -> TaskSpan[t.Any] | None:
-        return current_task_span.get()
+            raise RuntimeError("Call configure() first")
+        return self._api
 
     def configure(
         self,
@@ -507,10 +158,11 @@ class Dreadnode:
         server: str | None = None,
         token: str | None = None,
         profile: str | None = None,
-        local_dir: str | Path | t.Literal[False] = False,
-        organization: str | UUID | None = None,
-        workspace: str | UUID | None = None,
+        organization: str | ULID | None = None,
+        workspace: str | ULID | None = None,
         project: str | None = None,
+        cache: str | None = None,
+        storage_provider: t.Literal["s3", "r2", "minio", "local"] | None = None,
         service_name: str | None = None,
         service_version: str | None = None,
         console: logfire.ConsoleOptions | bool | None = None,
@@ -521,6 +173,9 @@ class Dreadnode:
         Configure the Dreadnode SDK and call `initialize()`.
 
         This method should always be called before using the SDK.
+
+        For local-only operations (packaging without a server), use:
+            dn.configure(server="local")
 
         If `server` and `token` are not provided, the SDK will look for them
         in the following order:
@@ -538,13 +193,14 @@ class Dreadnode:
            - Defaults to active profile
 
         Args:
-            server: The Dreadnode server URL.
+            server: The Dreadnode server URL. Use "local" for local-only mode.
             token: The Dreadnode API token.
             profile: The Dreadnode profile name to use (only used if env vars are not set).
-            local_dir: The local directory to store data in.
             organization: The default organization name or ID to use.
             workspace: The default workspace name or ID to use.
             project: The default project name to associate all runs with. This can also be in the format `org/workspace/project` using the keys.
+            cache: The local cache directory to use.
+            storage: The storage backend to use.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
             console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
@@ -562,11 +218,11 @@ class Dreadnode:
         # Determine configuration source and active profile for logging
         config_source = "explicit parameters"
         active_profile = None
+        user_config: UserConfig | None = None
 
         if not server or not token:
-            # Check environment variables first
-            env_server = os.environ.get(ENV_SERVER_URL) or os.environ.get(ENV_SERVER)
-            env_token = os.environ.get(ENV_API_TOKEN) or os.environ.get(ENV_API_KEY)
+            env_server = settings.server_url
+            env_token = settings.token
 
             if env_server or env_token:
                 config_source = "environment vars"
@@ -575,45 +231,44 @@ class Dreadnode:
                 config_source = "profile"
                 with contextlib.suppress(Exception):
                     user_config = UserConfig.read()
-                    profile_name = profile or os.environ.get(ENV_PROFILE)
+                    profile_name = profile or settings.profile
                     active_profile = profile_name or user_config.active_profile_name
 
                     if active_profile:
                         config_source = f"profile: {active_profile}"
 
+        # Read user config if we haven't already
+        if user_config is None:
+            with contextlib.suppress(Exception):
+                user_config = UserConfig.read()
+
         self.server = (
             server
-            or os.environ.get(ENV_SERVER_URL)
-            or os.environ.get(ENV_SERVER)
-            or self._get_profile_server(profile)
+            or settings.server_url
+            or (user_config.get_profile_server(profile) if user_config else None)
         )
         self.token = (
             token
-            or os.environ.get(ENV_API_TOKEN)
-            or os.environ.get(ENV_API_KEY)
-            or self._get_profile_api_key(profile)
+            or settings.token
+            or (user_config.get_profile_api_key(profile) if user_config else None)
         )
 
-        if local_dir is False and ENV_LOCAL_DIR in os.environ:
-            env_local_dir = os.environ.get(ENV_LOCAL_DIR)
-            if env_local_dir:
-                self.local_dir = Path(env_local_dir)
-            else:
-                self.local_dir = False
+        if (cache is None and settings.cache_dir) or cache is None:
+            self.cache = settings.cache_dir
         else:
-            self.local_dir = local_dir
+            self.cache = Path(cache)
 
-        _org, _workspace, _project = self._extract_project_components(project)
-        self.organization = _org or organization or os.environ.get(ENV_ORGANIZATION)
-        self.workspace = _workspace or workspace or os.environ.get(ENV_WORKSPACE)
-        self.project = _project or project or os.environ.get(ENV_PROJECT)
+        _org, _workspace, _project = Session.extract_project_components(project)
+        self.organization = _org or organization or settings.organization
+        self.workspace = _workspace or workspace or settings.workspace
+        self.project = _project or project or settings.project
 
         self.service_name = service_name
         self.service_version = service_version
         self.console = (
             console
             if console is not None
-            else os.environ.get(ENV_CONSOLE, "false").lower()
+            else settings.console
             in [
                 "true",
                 "1",
@@ -622,16 +277,15 @@ class Dreadnode:
         )
         self.send_to_logfire = send_to_logfire
         self.otel_scope = otel_scope
+        self.storage_provider = storage_provider
 
         self.initialize()
-
-        self._log_configuration(config_source, active_profile)
 
     def initialize(self) -> None:
         """
         Initialize the Dreadnode SDK.
 
-        This method is called automatically when you call `configure()`.
+        This method is called automatically when `configure()` is called.
         """
 
         if self._initialized:
@@ -640,25 +294,10 @@ class Dreadnode:
         span_processors: list[SpanProcessor] = []
         metric_readers: list[MetricReader] = []
 
-        self.server = self.server or (DEFAULT_SERVER_URL if self.token else None)
-        if not (self.server or self.token or self.local_dir):
-            warn_at_user_stacklevel(
-                "Your current configuration won't persist run data anywhere. "
-                "Login with `dreadnode login` to set up a server and token, "
-                "Use `dreadnode.configure(server=..., token=...)`, `dreadnode.configure(profile=...)`, "
-                f"or use environment variables ({ENV_SERVER_URL}, {ENV_API_TOKEN}, {ENV_LOCAL_DIR}).",
-                category=DreadnodeConfigWarning,
-            )
+        # Local mode: skip server connection, just use local storage
+        is_local_mode = self.server == "local"
 
-        if self.local_dir:
-            config = FileExportConfig(
-                base_path=self.local_dir,
-                prefix=self.project + "-" if self.project else "",
-            )
-            span_processors.append(BatchSpanProcessor(FileSpanExporter(config)))
-            metric_readers.append(FileMetricReader(config))
-
-        if self.token and self.server:
+        if self.token and self.server and not is_local_mode:
             try:
                 parsed_url = urlparse(self.server)
                 if not parsed_url.scheme:
@@ -670,7 +309,18 @@ class Dreadnode:
                     self.server = urlunparse(parsed_new)
 
                 self._api = ApiClient(self.server, api_key=self.token)
-                self._resolve_rbac()
+
+                # Create and resolve session for RBAC
+                self._session = Session(
+                    api=self._api,
+                    organization=self.organization,
+                    workspace=self.workspace,
+                    project=self.project,
+                ).resolve()
+
+                # Update project to resolved ID for use in runs/traces
+                self.project = self._session.project_id
+
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to connect to {self.server}: {e}",
@@ -680,7 +330,7 @@ class Dreadnode:
             endpoint = "/api/otel/traces"
             span_processors.append(
                 BatchSpanProcessor(
-                    RemovePendingSpansExporter(  # This will tell Logfire to emit pending spans to us as well
+                    RemovePendingSpansExporter(
                         CustomOTLPSpanExporter(
                             endpoint=urljoin(self.server, endpoint),
                             headers=headers,
@@ -689,34 +339,29 @@ class Dreadnode:
                     ),
                 ),
             )
-            # TODO(nick): Metrics
-            # https://linear.app/dreadnode/issue/ENG-1310/sdk-add-metrics-exports
-            # metric_readers.append(
-            #     PeriodicExportingMetricReader(
-            #         OTLPMetricExporter(
-            #             endpoint=urljoin(self.server, "/v1/metrics"),
-            #             headers=headers,
-            #             compression=Compression.Gzip,
-            #             # preferred_temporality
-            #         )
-            #     )
-            # )
 
-            if self._api is not None:
-                api = self._api
-                self._credential_manager = CredentialManager(
-                    credential_fetcher=lambda: api.get_workspace_data_credentials(
-                        workspace_id=self._workspace.id
-                    )
-                )
+        # Initialize storage (works with or without session)
+        self.storage = Storage(
+            session=self._session,
+            cache=self.cache,
+            provider=self.storage_provider,
+        )
 
-                self._credential_manager.initialize()
+        # Add file exporters for local trace storage
+        if self.cache is not None:
+            from ulid import ULID
 
-                self._fs = self._credential_manager.get_filesystem()
-                self._fs_prefix = self._credential_manager.get_prefix()
+            run_id = str(ULID())
+            trace_config = TraceExportConfig(
+                storage=self.storage,
+                run_id=run_id,
+            )
+            self._trace_config = trace_config
+            span_processors.append(BatchSpanProcessor(FileSpanExporter(trace_config)))
+            metric_readers.append(FileMetricReader(trace_config))
 
         self._logfire = logfire.configure(
-            local=not self.is_default,
+            local=False,
             send_to_logfire=self.send_to_logfire,
             additional_span_processors=span_processors,
             metrics=logfire.MetricsOptions(additional_readers=metric_readers),
@@ -729,44 +374,15 @@ class Dreadnode:
         )
         self._logfire.config.ignore_no_config = True
 
-        self._fs_manager = DatasetManager().configure(
-            api=self._api,
-            organization=self._organization.key,
-            organization_id=self._organization.id,
-        )
-
         self._initialized = True
 
-    @property
-    def is_default(self) -> bool:
-        return self is DEFAULT_INSTANCE
+    def get_current_run(self) -> RunSpan | None:
+        return current_run_span.get()
 
-    def api(self, *, server: str | None = None, token: str | None = None) -> ApiClient:
-        """
-        Get an API client based on the current configuration or the provided server and token.
+    def get_current_task(self) -> TaskSpan[t.Any] | None:
+        return current_task_span.get()
 
-        If the server and token are not provided, the method will use the current configuration
-        and `configure()` needs to be called first.
-
-        Args:
-            server: The server URL to use for the API client.
-            token: The API token to use for authentication.
-
-        Returns:
-            An ApiClient instance.
-        """
-        if server is not None and token is not None:
-            return ApiClient(server, api_key=token)
-
-        if not self._initialized:
-            raise RuntimeError("Call .configure() before accessing the API")
-
-        if self._api is None:
-            raise RuntimeError("API is not available without a server configuration")
-
-        return self._api
-
-    def _get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
+    def get_tracer(self, *, is_span_tracer: bool = True) -> "Tracer":
         """
         Get an OpenTelemetry Tracer instance.
 
@@ -778,7 +394,7 @@ class Dreadnode:
         """
         return self._logfire._tracer_provider.get_tracer(  # noqa: SLF001
             self.otel_scope,
-            VERSION,
+            self._version,
             is_span_tracer=is_span_tracer,
         )
 
@@ -830,59 +446,9 @@ class Dreadnode:
         return Span(
             name=name,
             attributes=attributes,
-            tracer=self._get_tracer(),
+            tracer=self.get_tracer(),
             tags=tags,
         )
-
-    @t.overload
-    def task(
-        self,
-        func: t.Callable[P, t.Awaitable[R]],
-        /,
-    ) -> Task[P, R]: ...
-
-    @t.overload
-    def task(
-        self,
-        func: t.Callable[P, R],
-        /,
-    ) -> Task[P, R]: ...
-
-    @t.overload
-    def task(
-        self,
-        func: None = None,
-        /,
-        *,
-        scorers: None = None,
-        assert_scores: None = None,
-        name: str | None = None,
-        label: str | None = None,
-        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
-        log_output: bool | Inherited = INHERITED,
-        log_execution_metrics: bool = False,
-        tags: t.Sequence[str] | None = None,
-        attributes: AnyDict | None = None,
-        entrypoint: bool = False,
-    ) -> TaskDecorator: ...
-
-    @t.overload
-    def task(
-        self,
-        func: None = None,
-        /,
-        *,
-        scorers: ScorersLike[R],
-        assert_scores: list[str] | t.Literal[True] | None = None,
-        name: str | None = None,
-        label: str | None = None,
-        log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
-        log_output: bool | Inherited = INHERITED,
-        log_execution_metrics: bool = False,
-        tags: t.Sequence[str] | None = None,
-        attributes: AnyDict | None = None,
-        entrypoint: bool = False,
-    ) -> ScoredTaskDecorator[R]: ...
 
     def task(
         self,
@@ -890,7 +456,6 @@ class Dreadnode:
         /,
         *,
         scorers: ScorersLike[t.Any] | None = None,
-        assert_scores: list[str] | t.Literal[True] | None = None,
         name: str | None = None,
         label: str | None = None,
         log_inputs: t.Sequence[str] | bool | Inherited = INHERITED,
@@ -900,87 +465,28 @@ class Dreadnode:
         attributes: AnyDict | None = None,
         entrypoint: bool = False,
     ) -> TaskDecorator | ScoredTaskDecorator[R] | Task[P, R]:
-        """
-        Create a new task from a function.
+        """Create a new task from a function. See `task()` for details."""
+        from dreadnode.core.task import task as task_factory
 
-        Example:
-            ```
-            @dreadnode.task
-            async def my_task(x: int) -> int:
-                return x * 2
-
-            await my_task(2)
-            ```
-
-        Args:
-            scorers: A list of scorers to attach to the task. These will be called after every execution
-                of the task and will be passed the task's output.
-            assert_scores: A list of score names to ensure have truthy values, otherwise raise an AssertionFailedError.
-            name: The name of the task.
-            label: The label of the task - useful for filtering in the UI.
-            log_inputs: Log all, or specific, incoming arguments to the function as inputs.
-            log_output: Log the result of the function as an output.
-            log_execution_metrics: Log execution metrics for the task, such as success rate and run count.
-            tags: A list of tags to attach to the task span.
-            attributes: A dictionary of attributes to attach to the task span.
-            entrypoint: Indicate this task should be considered an entrypoint. All compatible arguments
-                will be treated as configurable and a run will be created automatically when called if
-                one is not already active.
-
-        Returns:
-            A new Task object.
-        """
-
-        # NOTE(nick): It would probably be cleaner to alias a `dn.entrypoint` decorator
-        # that just wraps `dn.task(..., entrypoint=True)`, but the overloads create quite
-        # a bit of duplicate code, so I'm leaving it like this for now.
-
-        if isinstance(func, Task):
-            return func
-
-        def make_task(
-            func: t.Callable[P, t.Awaitable[R]] | t.Callable[P, R],
-        ) -> Task[P, R]:
-            if isinstance(func, Task):
-                return func.with_(
-                    name=name,
-                    scorers=scorers,  # type: ignore[arg-type]
-                    assert_scores=assert_scores,
-                    label=label,
-                    log_inputs=log_inputs,
-                    log_output=log_output,
-                    log_execution_metrics=log_execution_metrics,
-                    tags=tags,
-                    attributes=attributes,
-                    entrypoint=entrypoint,
-                    append=True,
-                )
-
-            return Task(
-                func=t.cast("t.Callable[P, R]", func),
-                tracer=self._get_tracer(),
-                name=name,
-                label=label,
-                scorers=scorers,
-                assert_scores=assert_scores,
-                log_inputs=log_inputs,
-                log_output=log_output,
-                log_execution_metrics=log_execution_metrics,
-                tags=tags,
-                attributes=attributes,
-                entrypoint=entrypoint,
-            )
-
-        return (
-            t.cast("TaskDecorator | ScoredTaskDecorator[R]", make_task)
-            if func is None
-            else make_task(func)
+        return task_factory(
+            func,
+            tracer=self.get_tracer(),
+            scorers=scorers,
+            name=name,
+            label=label,
+            log_inputs=log_inputs,
+            log_output=log_output,
+            log_execution_metrics=log_execution_metrics,
+            tags=tags,
+            attributes=attributes,
+            entrypoint=entrypoint,
         )
 
     def task_span(
         self,
         name: str,
         *,
+        type: "SpanType" = "task",
         label: str | None = None,
         tags: t.Sequence[str] | None = None,
         attributes: AnyDict | None = None,
@@ -1000,6 +506,7 @@ class Dreadnode:
             ```
         Args:
             name: The name of the task.
+            type: The type of span (task, evaluation, etc.).
             label: The label of the task - useful for filtering in the UI.
             tags: A list of tags to attach to the task span.
             attributes: A dictionary of attributes to attach to the task span.
@@ -1012,133 +519,131 @@ class Dreadnode:
 
         return TaskSpan(
             name=name,
+            type=type,
             label=label,
             attributes=attributes,
             tags=tags,
             run_id=run.run_id if run else "",
-            tracer=_tracer or self._get_tracer(),
+            tracer=_tracer or self.get_tracer(),
         )
 
-    @t.overload
     def scorer(
         self,
-        func: None = None,
+        func=None,
+        *,
+        name: str | None = None,
+        assert_: bool = False,
+        attributes: AnyDict | None = None,
+    ):
+        """Create a scorer decorator. See `scorer()` for details."""
+        from dreadnode.core.scorer import scorer as scorer_factory
+
+        return scorer_factory(func, name=name, assert_=assert_, attributes=attributes)
+
+    def agent(
+        self,
+        func=None,
         /,
         *,
         name: str | None = None,
-        attributes: AnyDict | None = None,
-    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]]: ...
+        model: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        label: str | None = None,
+        max_steps: int = 10,
+        tools: list[t.Any] | None = None,
+        tool_mode: str = "auto",
+        stop_conditions: list[t.Any] | None = None,
+        hooks: list[t.Any] | None = None,
+    ):
+        """Decorator to create an Agent from a function. See `agent()` for details."""
+        from dreadnode.core.agents.agent import agent as agent_factory
 
-    @t.overload
-    def scorer(
+        return agent_factory(
+            func,
+            name=name,
+            model=model,
+            description=description,
+            tags=tags,
+            label=label,
+            max_steps=max_steps,
+            tools=tools,
+            tool_mode=tool_mode,
+            stop_conditions=stop_conditions,
+            hooks=hooks,
+        )
+
+    def evaluation(
         self,
-        func: ScorerCallable[T],
+        func=None,
         /,
-    ) -> Scorer[T]: ...
-
-    def scorer(
-        self,
-        func: ScorerCallable[T] | None = None,
         *,
+        dataset: t.Any | None = None,
+        dataset_file: str | None = None,
         name: str | None = None,
-        attributes: AnyDict | None = None,
-    ) -> t.Callable[[ScorerCallable[T]], Scorer[T]] | Scorer[T]:
-        """
-        Make a scorer from a callable function.
-
-        This is useful when you want to change the name of the scorer
-        or add additional attributes to it.
-
-        Example:
-            ```
-            @dreadnode.scorer
-            async def my_scorer(x: int) -> float:
-                return x * 2
-
-            @dreadnode.task(scorers=[my_scorer])
-            async def my_task(x: int) -> int:
-                return x * 2
-
-            await my_task(2)
-            ```
-
-        Args:
-            name: The name of the scorer.
-            attributes: A dictionary of attributes to attach to the scorer.
-
-        Returns:
-            A new Scorer object.
-        """
-
-        if isinstance(func, Scorer):
-            return func
-
-        def make_scorer(func: ScorerCallable[T]) -> Scorer[T]:
-            if isinstance(func, Scorer):
-                return func.with_(name=name, attributes=attributes)
-            return Scorer(func, name=name, attributes=attributes)
-
-        return make_scorer if func is None else make_scorer(func)
-
-    async def score(
-        self,
-        object: T,
-        scorers: ScorersLike[T],
-        step: int | None = None,
+        description: str = "",
+        tags: list[str] | None = None,
+        concurrency: int = 1,
+        iterations: int = 1,
+        max_errors: int | None = None,
+        max_consecutive_errors: int = 10,
+        dataset_input_mapping: list[str] | dict[str, str] | None = None,
+        parameters: dict[str, list[t.Any]] | None = None,
+        scorers: "ScorersLike[t.Any] | None" = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
-    ) -> dict[str, list[Metric]]:
-        """
-        Score an object using all the provided scorers.
+    ):
+        """Decorator to create an Evaluation from a function. See `evaluation()` for details."""
+        from dreadnode.core.evaluations import evaluation as evaluation_factory
 
-        Args:
-            object: The object to score.
-            scorers: A list of scorers to use for scoring the object.
-            step: An optional step value to attach to all generated metrics.
-            assert_scores: A list of score names to ensure have truthy values - otherwise raise an AssertionFailedError.
-
-        Returns:
-            A dictionary of metrics generated by the scorers.
-        """
-        if not self._initialized:
-            self.configure()
-
-        _scorers = Scorer.fit_many(scorers)
-        _assert_scores = (
-            [s.name for s in _scorers] if assert_scores is True else list(assert_scores or [])
+        return evaluation_factory(
+            func,
+            dataset=dataset,
+            dataset_file=dataset_file,
+            name=name,
+            description=description,
+            tags=tags,
+            concurrency=concurrency,
+            iterations=iterations,
+            max_errors=max_errors,
+            max_consecutive_errors=max_consecutive_errors,
+            dataset_input_mapping=dataset_input_mapping,
+            parameters=parameters,
+            scorers=scorers,
+            assert_scores=assert_scores,
         )
 
-        metrics: dict[str, list[Metric]] = {}
-        nested_metrics = await asyncio.gather(
-            *[scorer.normalize_and_score(object) for scorer in _scorers]
+    def study(
+        self,
+        func=None,
+        /,
+        *,
+        name: str | None = None,
+        search_strategy: t.Any | None = None,
+        dataset: t.Any | None = None,
+        dataset_file: str | None = None,
+        objectives: "ScorersLike[t.Any] | None" = None,
+        directions: list[str] | None = None,
+        constraints: "ScorersLike[t.Any] | None" = None,
+        max_trials: int = 100,
+        concurrency: int = 1,
+        stop_conditions: list[t.Any] | None = None,
+    ):
+        """Decorator to create a Study from a task factory. See `study()` for details."""
+        from dreadnode.core.optimization import study as study_factory
+
+        return study_factory(
+            func,
+            name=name,
+            search_strategy=search_strategy,
+            dataset=dataset,
+            dataset_file=dataset_file,
+            objectives=objectives,
+            directions=directions,
+            constraints=constraints,
+            max_trials=max_trials,
+            concurrency=concurrency,
+            stop_conditions=stop_conditions,
         )
-        for scorer, _metrics in zip(_scorers, nested_metrics, strict=True):
-            for metric in _metrics:
-                if step is not None:
-                    metric.step = step
-                metric_name = str(getattr(metric, "_scorer_name", scorer.name))
-                metric_name = clean_str(metric_name)
-                metrics.setdefault(metric_name, []).append(
-                    self.log_metric(metric_name, metric, origin=scorer.bound_obj or object)
-                )
-
-        failed_assertions: dict[str, list[Metric]] = {}
-        for name in _assert_scores:
-            if (metric_list := metrics.get(name, [])) is None:
-                for _metrics in metrics.values():
-                    if getattr(_metrics[0], "_scorer_name", None) == name:
-                        metric_list = _metrics
-                        break
-
-            if not any(m.value for m in metric_list):
-                failed_assertions[name] = metric_list
-
-        if failed_assertions:
-            raise AssertionFailedError(
-                f"{len(failed_assertions)} score assertion(s) failed: {list(failed_assertions.keys())}",
-                failures=failed_assertions,
-            )
-
-        return metrics
 
     def run(
         self,
@@ -1192,10 +697,10 @@ class Dreadnode:
             name=name,
             project=project or self.project or "default",
             attributes=attributes,
-            tracer=_tracer or self._get_tracer(),
+            tracer=_tracer or self.get_tracer(),
             params=params,
             tags=tags,
-            credential_manager=self._credential_manager,
+            storage=self.storage,
             autolog=autolog,
         )
 
@@ -1204,6 +709,8 @@ class Dreadnode:
         self,
         name: str,
         *,
+        task_name: str | None = None,
+        task_type: "SpanType" = "task",
         project: str | None = None,
         tags: t.Sequence[str] | None = None,
         params: AnyDict | None = None,
@@ -1214,6 +721,11 @@ class Dreadnode:
     ) -> t.Iterator[TaskSpan[t.Any]]:
         """
         Create a task span within a new run if one is not already active.
+
+        Args:
+            name: Name for the run (if created) and task (if task_name not specified).
+            task_name: Optional separate name for the task span. If not provided, uses name.
+            task_type: The type of span to create (task, evaluation, etc.).
         """
 
         create_run = current_run_span.get() is None
@@ -1232,7 +744,7 @@ class Dreadnode:
                 self.log_inputs(**(inputs or {}), to="run")
 
             task_span = stack.enter_context(
-                self.task_span(name, label=label, tags=tags, _tracer=_tracer)
+                self.task_span(task_name or name, type=task_type, label=label, tags=tags, _tracer=_tracer)
             )
             self.log_inputs(**(inputs or {}))
             if not create_run:
@@ -1255,7 +767,6 @@ class Dreadnode:
         if (run := current_run_span.get()) is None:
             raise RuntimeError("get_run_context() must be called within a run")
 
-        # Capture OpenTelemetry trace context
         trace_context: dict[str, str] = {}
         propagate.inject(trace_context)
 
@@ -1281,8 +792,8 @@ class Dreadnode:
 
         return RunSpan.from_context(
             context=run_context,
-            tracer=self._get_tracer(),
-            credential_fetcher=self._credential_fetcher,
+            tracer=self.get_tracer(),
+            storage=self.storage,
         )
 
     def tag(self, *tag: str, to: ToObject | t.Literal["both"] = "task-or-run") -> None:
@@ -1315,133 +826,87 @@ class Dreadnode:
         for target in [target for target in targets if target]:
             target.add_tags(tag)
 
-    #    @handle_internal_errors()
-    def load_dataset(
+    def init_package(
         self,
-        path: str,
-        version: str | None = None,
-        *,
-        materialize: bool = False,
-    ) -> dataset.Dataset:
+        name: str,
+        package_type: PackageType,
+    ) -> "Package":
         """
-        Load a dataset from the local cache or Dreadnode server.
-
-        Example:
-            ```
-            dataset = dreadnode.load_dataset("dn://org/my_dataset")
-            ```
-        """
-        if not self._initialized:
-            raise RuntimeError("Call .configure() before loading datasets")
-
-        return dataset.load_dataset(
-            uri=path,
-            version=version,
-            materialize=materialize,
-            dataset_manager=self._fs_manager,
-        )
-
-    def save_dataset_to_disk(
-        self,
-        ds: dataset.Dataset,
-        *,
-        version: str | None = None,
-        strategy: VersionStrategy | None = None,
-        overwrite: bool = False,
-    ) -> None:
-        """
-        Save a dataset to the local cache.
-
-        If a `version` or `strategy` is provided, the dataset's version will be
-        updated before saving.
-
-        Example:
-            ```
-            dreadnode.save_dataset_to_disk(my_dataset)
-            dreadnode.push_dataset(my_dataset, version="1.0.0")
-            dreadnode.push_dataset(my_dataset, strategy="minor")
-            ```
+        Initialize a new package in the local storage.
 
         Args:
-            ds: The dataset to save.
-            version: A specific version string to set for the dataset.
-            strategy: A versioning strategy to automatically bump the version
-                (e.g., 'major', 'minor', 'patch').
-            overwrite: Whether to overwrite an existing dataset version at the same path.
+            name: Package name (e.g., "my-dataset").
+            package_type: Type of package (datasets, models, toolsets, agents, environments).
+
+        Returns:
+            The initialized Package.
         """
-        if not self._initialized:
-            raise RuntimeError("Call .configure() before saving datasets")
+        return Package.init(name=name, package_type=package_type, storage=self.storage)
 
-        if version is not None:
-            try:
-                parse_version(version)
-            except InvalidVersion as e:
-                raise ValueError(f"Invalid version string: {version}") from e
-            ds.metadata.version = version
-            ds.metadata.auto_version = False
-        elif strategy is not None:
-            ds.metadata.auto_version = True
-            ds.metadata.auto_version_strategy = strategy
-
-        if ds.metadata.organization is None:
-            ds.metadata.organization = self._organization.key
-
-        dataset.save_dataset_to_disk(
-            dataset=ds,
-            dataset_manager=self._fs_manager,
-            overwrite=overwrite,
-        )
-
-    def push_dataset(
+    def build_package(
         self,
-        ds: dataset.Dataset,
-        *,
-        to_cache: bool = True,
-        version: str | None = None,
-        strategy: VersionStrategy | None = None,
-    ) -> None:
+        path: str | Path,
+    ) -> BuildResult:
         """
-        Push a dataset to the Dreadnode server.
-
-        This will first save the dataset to the local cache and then upload it.
-        If a `version` or `strategy` is provided, the dataset's version will be
-        updated before pushing.
-
-        Examples:
-            ```
-            dreadnode.push_dataset(my_dataset)
-            dreadnode.push_dataset(my_dataset, version="1.0.0")
-            dreadnode.push_dataset(my_dataset, strategy="minor")
-            ```
+        Build a local repository into a wheel.
 
         Args:
-            ds: The dataset to push.
-            version: A specific version string to set for the dataset.
-            strategy: A versioning strategy to automatically bump the version
-                (e.g., 'major', 'minor', 'patch').
+            path: Path to the package source directory.
+
+        Returns:
+            BuildResult with success status and wheel path.
         """
-        if not self._initialized:
-            raise RuntimeError("Call .configure() before saving datasets")
+        return Package(path=Path(path)).build()
 
-        if version is not None:
-            try:
-                parse_version(version)
-            except InvalidVersion as e:
-                raise ValueError(f"Invalid version string: {version}") from e
-            ds.metadata.version = version
-            ds.metadata.auto_version = False
-        elif strategy is not None:
-            ds.metadata.auto_version = True
-            ds.metadata.auto_version_strategy = strategy
+    def push_package(
+        self,
+        path: str | Path,
+        *,
+        skip_upload: bool = False,
+    ) -> "PushResult":
+        """
+        Build and Push a local package to the Dreadnode Registry.
 
-        if ds.metadata.organization is None:
-            ds.metadata.organization = self._organization.key
+        This handles artifact upload to CAS and wheel upload automatically.
 
-        dataset.push_dataset(
-            dataset=ds,
-            to_cache=to_cache,
-            dataset_manager=self._fs_manager,
-        )
+        Args:
+            path: Path to the package source directory.
+            skip_upload: Skip uploading to remote (local only).
+
+        Returns:
+            PushResult with status and details.
+        """
+        import warnings
+
+        # Auto-detect local mode and warn user
+        is_local_mode = self.server == "local" or self._session is None
+        if is_local_mode and not skip_upload:
+            warnings.warn(
+                "No remote credentials configured. Artifacts will be stored locally only. "
+                "Use dn.configure() with server credentials to enable remote upload.",
+                stacklevel=2,
+            )
+            skip_upload = True
+
+        return Package(path=Path(path)).push(storage=self.storage, skip_upload=skip_upload)
+
+    def pull_package(
+        self,
+        packages: list[str],
+        *,
+        upgrade: bool = False,
+    ) -> "PullResult":
+        """
+        Download packages from the registry.
+
+        Args:
+            packages: Package names to install.
+            upgrade: Upgrade if already installed.
+
+        Returns:
+            PullResult with status.
+        """
+        return Package.pull(*packages, upgrade=upgrade, _storage=self.storage)
 
     @handle_internal_errors()
     def push_update(self) -> None:
@@ -1534,7 +999,7 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-        mode: MetricAggMode | None = None,
+        aggregation: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> Metric:
@@ -1557,7 +1022,7 @@ class Dreadnode:
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
             timestamp: The timestamp of the metric - defaults to the current time.
-            mode: The aggregation mode to use for the metric. Helpful when you want to let
+            aggregation: The aggregation to use for the metric. Helpful when you want to let
                 the library take care of translating your raw values into better representations.
                 - direct: do not modify the value at all (default)
                 - min: the lowest observed value reported for this metric
@@ -1581,7 +1046,7 @@ class Dreadnode:
         value: Metric,
         *,
         origin: t.Any | None = None,
-        mode: MetricAggMode | None = None,
+        aggregation: MetricAggMode | None = None,
         to: ToObject = "task-or-run",
     ) -> Metric:
         """
@@ -1601,7 +1066,7 @@ class Dreadnode:
             value: The metric object.
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
-            mode: The aggregation mode to use for the metric. Helpful when you want to let
+            aggregation: The aggregation to use for the metric. Helpful when you want to let
                 the library take care of translating your raw values into better representations.
                 - min: always report the lowest ovbserved value for this metric
                 - max: always report the highest observed value for this metric
@@ -1625,7 +1090,7 @@ class Dreadnode:
         step: int = 0,
         origin: t.Any | None = None,
         timestamp: datetime | None = None,
-        mode: MetricAggMode | None = None,
+        aggregation: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
         to: ToObject = "task-or-run",
     ) -> Metric:
@@ -1640,7 +1105,7 @@ class Dreadnode:
             ```
             with dreadnode.run("my_run"):
                 dreadnode.log_metric("accuracy", 0.95, step=10)
-                dreadnode.log_metric("loss", 0.05, step=10, mode="min")
+                dreadnode.log_metric("loss", 0.05, step=10, aggregation="min")
             ```
 
             With a Metric object:
@@ -1657,7 +1122,7 @@ class Dreadnode:
             origin: The origin of the metric - can be provided any object which was logged
                 as an input or output anywhere in the run.
             timestamp: The timestamp of the metric - defaults to the current time.
-            mode: The aggregation mode to use for the metric. Helpful when you want to let
+            aggregation: The aggregation to use for the metric. Helpful when you want to let
                 the library take care of translating your raw values into better representations.
                 - direct: do not modify the value at all (default)
                 - min: the lowest observed value reported for this metric
@@ -1695,7 +1160,7 @@ class Dreadnode:
             )
             return metric
 
-        return target.log_metric(name, metric, origin=origin, mode=mode)
+        return target.log_metric(name, metric, origin=origin, aggregation=aggregation)
 
     @t.overload
     def log_metrics(
@@ -1704,7 +1169,7 @@ class Dreadnode:
         *,
         step: int = 0,
         timestamp: datetime | None = None,
-        mode: MetricAggMode | None = None,
+        aggregation: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
         origin: t.Any | None = None,
         to: ToObject = "task-or-run",
@@ -1728,7 +1193,7 @@ class Dreadnode:
             metrics: Dictionary of name/value pairs to log as metrics.
             step: Step value for all metrics.
             timestamp: Timestamp for all metrics.
-            mode: Aggregation mode for all metrics.
+            aggregation: Aggregation for all metrics.
             attributes: Attributes for all metrics.
             to: The target object to log metrics to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metrics will be logged
@@ -1745,7 +1210,7 @@ class Dreadnode:
         *,
         step: int = 0,
         timestamp: datetime | None = None,
-        mode: MetricAggMode | None = None,
+        aggregation: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
         origin: t.Any | None = None,
         to: ToObject = "task-or-run",
@@ -1758,7 +1223,7 @@ class Dreadnode:
             dreadnode.log_metrics(
                 [
                     {"name": "accuracy", "value": 0.95},
-                    {"name": "loss", "value": 0.05, "mode": "min"}
+                    {"name": "loss", "value": 0.05, "aggregation": "min"}
                 ],
                 step=10
             )
@@ -1768,7 +1233,7 @@ class Dreadnode:
             metrics: List of metric configurations to log.
             step: Default step value for metrics if not supplied.
             timestamp: Default timestamp for metrics if not supplied.
-            mode: Default aggregation mode for metrics if not supplied.
+            aggregation: Default aggregation for metrics if not supplied.
             attributes: Default attributes for metrics if not supplied.
             to: The target object to log metrics to. Can be "task-or-run" or "run".
                 Defaults to "task-or-run". If "task-or-run", the metrics will be logged
@@ -1785,7 +1250,7 @@ class Dreadnode:
         *,
         step: int = 0,
         timestamp: datetime | None = None,
-        mode: MetricAggMode | None = None,
+        aggregation: MetricAggMode | None = None,
         attributes: AnyDict | None = None,
         origin: t.Any | None = None,
         to: ToObject = "task-or-run",
@@ -1811,7 +1276,7 @@ class Dreadnode:
             dreadnode.log_metrics(
                 [
                     {"name": "accuracy", "value": 0.95},
-                    {"name": "loss", "value": 0.05, "mode": "min"}
+                    {"name": "loss", "value": 0.05, "aggregation": "min"}
                 ],
                 step=10
             )
@@ -1821,7 +1286,7 @@ class Dreadnode:
             metrics: Either a dictionary of name/value pairs or a list of MetricDicts to log.
             step: Default step value for metrics if not supplied.
             timestamp: Default timestamp for metrics if not supplied.
-            mode: Default aggregation mode for metrics if not supplied.
+            aggregation: Default aggregation for metrics if not supplied.
             attributes: Default attributes for metrics if not supplied.
             origin: The origin of the metrics - can be provided any object which was logged
             to: The target object to log metrics to. Can be "task-or-run" or "run".
@@ -1853,7 +1318,7 @@ class Dreadnode:
                     value,
                     step=step,
                     timestamp=timestamp,
-                    mode=mode,
+                    aggregation=aggregation,
                     attributes=attributes,
                     origin=origin,
                 )
@@ -1868,7 +1333,7 @@ class Dreadnode:
                     metric["value"],
                     step=metric.get("step", step),
                     timestamp=metric.get("timestamp", timestamp),
-                    mode=metric.get("mode", mode),
+                    aggregation=metric.get("aggregation", aggregation),
                     attributes=metric.get("attributes", attributes) or {},
                     origin=origin,
                 )
@@ -1881,11 +1346,14 @@ class Dreadnode:
     def log_artifact(
         self,
         local_uri: str | Path,
+        *,
+        name: str | None = None,
     ) -> None:
         """
         Log a file or directory artifact to the current run.
 
-        This method uploads a local file or directory to the artifact storage associated with the run.
+        This stores the artifact in the workspace CAS and uploads it to remote storage.
+        Artifact metadata is recorded in artifacts.jsonl for tracking.
 
         Examples:
             Log a single file:
@@ -1912,7 +1380,8 @@ class Dreadnode:
             ```
 
         Args:
-            local_uri: The local path to the file to upload.
+            local_uri: The local path to the file or directory to upload.
+            name: Optional name for the artifact (defaults to filename).
         """
         if (run := current_run_span.get()) is None:
             warn_at_user_stacklevel(
@@ -1921,7 +1390,17 @@ class Dreadnode:
             )
             return
 
-        run.log_artifact(local_uri=local_uri)
+        # Store/upload artifact and get metadata
+        artifact_metadata = run.log_artifact(local_uri=local_uri, name=name)
+
+        # Write metadata to artifacts.jsonl
+        if artifact_metadata and self._trace_config:
+            if artifact_metadata.get("type") == "directory":
+                # For directories, write each file's metadata
+                for file_meta in artifact_metadata.get("files", []):
+                    self._trace_config.write_artifact(file_meta)
+            else:
+                self._trace_config.write_artifact(artifact_metadata)
 
     @handle_internal_errors()
     def log_input(

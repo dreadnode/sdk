@@ -1,9 +1,10 @@
 import typing as t
 
-from dreadnode.meta import Config
-from dreadnode.metric import Metric
-from dreadnode.scorers import Scorer
-from dreadnode.util import catch_import_error, clean_str
+from dreadnode.core.exceptions import catch_import_error
+from dreadnode.core.meta import Config
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
+from dreadnode.core.util import clean_str
 
 # Global cache for pipelines
 g_transformer_pipeline_cache: dict[str, t.Any] = {}

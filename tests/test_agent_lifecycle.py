@@ -4,11 +4,8 @@ import typing as t
 
 import pytest
 
-from dreadnode.agent import Agent
-from dreadnode.agent.tools import Toolset, tool, tool_method
-
-if t.TYPE_CHECKING:
-    from dreadnode.agent.tools.base import AnyTool
+from dreadnode.agents import Agent
+from dreadnode.core.tools import Toolset, tool, tool_method
 
 # This is the state tracker that will record the order of events.
 event_log: list[str] = []

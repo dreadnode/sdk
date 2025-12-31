@@ -4,8 +4,8 @@ import numpy as np
 from loguru import logger
 from numpy.typing import NDArray
 
+from dreadnode.core.exceptions import catch_import_error
 from dreadnode.scorers.image import Norm
-from dreadnode.util import catch_import_error
 
 
 def normalize_for_shape(value: float, shape: tuple[int, ...], distance_method: Norm) -> float:

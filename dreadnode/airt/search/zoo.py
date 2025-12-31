@@ -8,9 +8,9 @@ from loguru import logger
 from numpy.typing import NDArray
 
 from dreadnode.airt.search.image_utils import clip, create_resizer
-from dreadnode.data_types import Image
-from dreadnode.optimization.search.base import OptimizationContext, Search
-from dreadnode.optimization.trial import Trial
+from dreadnode.core.optimization.trial import Trial
+from dreadnode.core.search import OptimizationContext, Search
+from dreadnode.core.types import Image
 
 SAMPLING_PROB_MIN_FEATURES = 12288  # 64 * 64 * 3
 

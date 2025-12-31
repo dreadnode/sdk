@@ -1,4 +1,4 @@
-from dreadnode.cli import cli
+from dreadnode.core.cli import cli
 
 
 def run() -> None:

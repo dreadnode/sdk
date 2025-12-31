@@ -1,13 +1,7 @@
 import importlib
 import typing as t
 
-from dreadnode.scorers.base import (
-    Scorer,
-    ScorerCallable,
-    ScorerLike,
-    ScorerResult,
-    ScorersLike,
-    ScorerWarning,
+from dreadnode.core.scorer import (
     add,
     and_,
     avg,
@@ -26,7 +20,10 @@ from dreadnode.scorers.base import (
     threshold,
     weighted_avg,
 )
-from dreadnode.scorers.classification import detect_refusal_with_zero_shot, zero_shot_classification
+from dreadnode.scorers.classification import (
+    detect_refusal_with_zero_shot,
+    zero_shot_classification,
+)
 from dreadnode.scorers.consistency import character_consistency
 from dreadnode.scorers.contains import (
     contains,
@@ -49,7 +46,6 @@ if t.TYPE_CHECKING:
     from dreadnode.scorers.image import image_distance
     from dreadnode.scorers.json import json_path
     from dreadnode.scorers.judge import llm_judge
-    from dreadnode.scorers.rigging import adapt_messages, make_messages_adapter, wrap_chat
     from dreadnode.scorers.similarity import (
         bleu,
         similarity,
@@ -59,12 +55,6 @@ if t.TYPE_CHECKING:
     )
 
 __all__ = [
-    "Scorer",
-    "ScorerCallable",
-    "ScorerLike",
-    "ScorerResult",
-    "ScorerWarning",
-    "ScorersLike",
     "adapt_messages",
     "add",
     "and_",

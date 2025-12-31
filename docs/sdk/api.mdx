@@ -117,8 +117,8 @@ def __init__(
 
 ```python
 create_dataset(
-    request: DatasetUploadRequest,
-) -> DatasetUploadResponse
+    request: CreateDatasetRequest,
+) -> CreateDatasetResponse
 ```
 
 Creates a new dataset.
@@ -131,15 +131,15 @@ Creates a new dataset.
 
 **Returns:**
 
-* **`DatasetUploadResponse`** ( `DatasetUploadResponse`
+* **`DatasetUploadResponse`** ( `CreateDatasetResponse`
   ) –The dataset upload response object.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
 def create_dataset(
     self,
-    request: DatasetUploadRequest,
-) -> DatasetUploadResponse:
+    request: CreateDatasetRequest,
+) -> CreateDatasetResponse:
     """
     Creates a new dataset.
 
@@ -150,11 +150,9 @@ def create_dataset(
         DatasetUploadResponse: The dataset upload response object.
     """
 
-    payload: dict[str, t.Any] = request.model_dump()
+    response = self.request("POST", "/datasets", json_data=request.model_dump())
 
-    response = self.request("POST", "/datasets/upload", json_data=payload)
-
-    return DatasetUploadResponse.model_validate(response.json())
+    return CreateDatasetResponse(**response.json())
 ```
 
 
@@ -289,6 +287,36 @@ def create_workspace(
 
 </Accordion>
 
+### delete\_dataset
+
+```python
+delete_dataset(dataset_id_or_key: str | UUID) -> None
+```
+
+Deletes a specific dataset.
+
+**Parameters:**
+
+* **`dataset_id_or_key`**
+  (`str | UUID`)
+  –The dataset identifier.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def delete_dataset(self, dataset_id_or_key: str | UUID) -> None:
+    """
+    Deletes a specific dataset.
+
+    Args:
+        dataset_id_or_key (str | UUID): The dataset identifier.
+    """
+
+    self.request("DELETE", f"/datasets/{dataset_id_or_key}")
+```
+
+
+</Accordion>
+
 ### delete\_workspace
 
 ```python
@@ -324,7 +352,7 @@ def delete_workspace(self, workspace_id: str | UUID) -> None:
 ```python
 download_dataset(
     request: DatasetDownloadRequest,
-) -> DatasetDownloadResponse
+) -> UserDataCredentials
 ```
 
 Downloads the dataset content.
@@ -337,12 +365,12 @@ Downloads the dataset content.
 
 **Returns:**
 
-* **`bytes`** ( `DatasetDownloadResponse`
+* **`bytes`** ( `UserDataCredentials`
   ) –The dataset content as bytes.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def download_dataset(self, request: DatasetDownloadRequest) -> DatasetDownloadResponse:
+def download_dataset(self, request: DatasetDownloadRequest) -> UserDataCredentials:
     """
     Downloads the dataset content.
 
@@ -354,10 +382,13 @@ def download_dataset(self, request: DatasetDownloadRequest) -> DatasetDownloadRe
     """
     response = self.request(
         "GET",
-        f"/datasets/{request.dataset_uri}/download/?version={request.version}",
+        f"/datasets/{request.dataset_uri}/credentials",
+        params={
+            "version": request.version,
+        },
     )
 
-    return DatasetDownloadResponse.model_validate(response.json())
+    return UserDataCredentials(**response.json())
 ```
 
 
@@ -814,6 +845,48 @@ def get_dataset(
 
 </Accordion>
 
+### get\_dataset\_access\_credentials
+
+```python
+get_dataset_access_credentials(
+    dataset_id: UUID, version: str
+) -> UserDataCredentials
+```
+
+Retrieves dataset access credentials for a specific dataset.
+
+**Parameters:**
+
+* **`dataset_id`**
+  (`UUID`)
+  –The dataset identifier.
+
+Returns:
+The user data credentials object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_dataset_access_credentials(
+    self,
+    dataset_id: UUID,
+    version: str,
+) -> UserDataCredentials:
+    """
+    Retrieves dataset access credentials for a specific dataset.
+
+    Args:
+        dataset_id (UUID): The dataset identifier.
+    Returns:
+        The user data credentials object.
+    """
+    params: dict[str, str] = {"version": version}
+    response = self.request("GET", f"/datasets/{dataset_id!s}/credentials", params=params)
+    return UserDataCredentials(**response.json())
+```
+
+
+</Accordion>
+
 ### get\_device\_codes
 
 ```python
@@ -1214,35 +1287,6 @@ def get_user(self) -> UserResponse:
 
 </Accordion>
 
-### get\_user\_data\_credentials
-
-```python
-get_user_data_credentials() -> UserDataCredentials
-```
-
-Retrieves user data credentials for secondary storage access.
-
-**Returns:**
-
-* `UserDataCredentials`
-  –The user data credentials object.
-
-<Accordion title="Source code in dreadnode/api/client.py" icon="code">
-```python
-def get_user_data_credentials(self) -> UserDataCredentials:
-    """
-    Retrieves user data credentials for secondary storage access.
-
-    Returns:
-        The user data credentials object.
-    """
-    response = self._request("GET", "/user-data/credentials")
-    return UserDataCredentials(**response.json())
-```
-
-
-</Accordion>
-
 ### get\_workspace
 
 ```python
@@ -1284,6 +1328,43 @@ def get_workspace(
         params = {"org_id": str(org_id)}
     response = self.request("GET", f"/workspaces/{workspace_id_or_key!s}", params=params)
     return Workspace(**response.json())
+```
+
+
+</Accordion>
+
+### get\_workspace\_data\_credentials
+
+```python
+get_workspace_data_credentials(
+    workspace_id: UUID | None = None,
+) -> UserDataCredentials
+```
+
+Retrieves user data credentials for secondary storage access.
+
+**Returns:**
+
+* `UserDataCredentials`
+  –The user data credentials object.
+
+<Accordion title="Source code in dreadnode/api/client.py" icon="code">
+```python
+def get_workspace_data_credentials(
+    self,
+    workspace_id: UUID | None = None,
+) -> UserDataCredentials:
+    """
+    Retrieves user data credentials for secondary storage access.
+
+    Returns:
+        The user data credentials object.
+    """
+    params: dict[str, str] = {}
+    if workspace_id:
+        params["workspace_id"] = str(workspace_id)
+    response = self.request("GET", "/user-data/credentials", params=params)
+    return UserDataCredentials(**response.json())
 ```
 
 
@@ -1556,53 +1637,48 @@ def request(
 
 </Accordion>
 
-### update\_dataset
+### update\_dataset\_version
 
 ```python
-update_dataset(
-    dataset_id_or_key: str | UUID,
-    dataset: DatasetUploadRequest,
-) -> DatasetMetadata
+update_dataset_version(
+    dataset_id: UUID, new_version: str
+) -> UpdateDatasetVersionResponse
 ```
 
-Updates an existing dataset.
+Updates the version of a specific dataset.
 
 **Parameters:**
 
-* **`dataset_id_or_key`**
-  (`str | UUID`)
+* **`dataset_id`**
+  (`UUID`)
   –The dataset identifier.
-* **`dataset`**
-  (`DatasetCreateRequest`)
-  –The dataset update request object.
+* **`new_version`**
+  (`str`)
+  –The new version string.
 
 **Returns:**
 
-* **`DatasetMetadata`** ( `DatasetMetadata`
-  ) –The updated DatasetMetadata object.
+* **`UpdateDatasetVersionResponse`** ( `UpdateDatasetVersionResponse`
+  ) –The response containing updated dataset metadata and credentials.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def update_dataset(
-    self,
-    dataset_id_or_key: str | UUID,
-    dataset: DatasetUploadRequest,
-) -> DatasetMetadata:
+def update_dataset_version(
+    self, dataset_id: UUID, new_version: str
+) -> UpdateDatasetVersionResponse:
     """
-    Updates an existing dataset.
+    Updates the version of a specific dataset.
 
     Args:
-        dataset_id_or_key (str | UUID): The dataset identifier.
-        dataset (DatasetCreateRequest): The dataset update request object.
+        dataset_id (UUID): The dataset identifier.
+        new_version (str): The new version string.
 
     Returns:
-        DatasetMetadata: The updated DatasetMetadata object.
+        UpdateDatasetVersionResponse: The response containing updated dataset metadata and credentials.
     """
-
-    payload: dict[str, t.Any] = dataset.model_dump()
-
-    response = self.request("PUT", f"/datasets/{dataset_id_or_key}", json_data=payload)
-    return DatasetMetadata(**response.json())
+    payload = {"version": new_version}
+    response = self.request("PATCH", f"/datasets/{dataset_id}/version", json_data=payload)
+    return UpdateDatasetVersionResponse(**response.json())
 ```
 
 
@@ -1611,7 +1687,9 @@ def update_dataset(
 ### upload\_complete
 
 ```python
-upload_complete(request: DatasetUploadComplete) -> None
+upload_complete(
+    request: DatasetUploadCompleteRequest,
+) -> DatasetMetadata
 ```
 
 Marks a dataset upload as complete.
@@ -1624,7 +1702,7 @@ Marks a dataset upload as complete.
 
 <Accordion title="Source code in dreadnode/api/client.py" icon="code">
 ```python
-def upload_complete(self, request: DatasetUploadComplete) -> None:
+def upload_complete(self, request: DatasetUploadCompleteRequest) -> DatasetMetadata:
     """
     Marks a dataset upload as complete.
 
@@ -1632,9 +1710,10 @@ def upload_complete(self, request: DatasetUploadComplete) -> None:
         request (DatasetUploadComplete): The dataset upload completion request object.
     """
 
-    payload: dict[str, t.Any] = request
-
-    self.request("POST", "/datasets/upload/complete", json_data=payload)
+    response = self.request(
+        "POST", "/datasets/upload-complete", json_data=request.model_dump(mode="json")
+    )
+    return DatasetMetadata(**response.json())
 ```
 
 
@@ -1798,189 +1877,47 @@ uri: str
 
 URI where the file is stored (e.g. s3://...).
 
-DatasetDownloadRequest
-----------------------
-
-A data model representing the request body for downloading a dataset.
-
-### dataset\_uri
-
-```python
-dataset_uri: str
-```
-
-Name of the dataset to download.
-
-### version
-
-```python
-version: str | None = 'latest'
-```
-
-Version of the dataset to download. If None, the latest version is downloaded.
-
-DatasetDownloadResponse
------------------------
-
-A data model representing the response for downloading a dataset.
-
-### download\_uri
-
-```python
-download_uri: str
-```
-
-URL to download the dataset.
-
-DatasetMetadata
----------------
-
-A data model representing the metadata of a dataset.
-
-### description
-
-```python
-description: str | None = None
-```
-
-Description of the dataset.
-
-### ds\_schema
-
-```python
-ds_schema: dict[str, Any] | None = None
-```
-
-Schema of the dataset.
-
-### file\_pointers
-
-```python
-file_pointers: list[str] | None = None
-```
-
-List of file pointers for the dataset files.
-
-### id
-
-```python
-id: UUID
-```
-
-Unique identifier for the dataset.
-
-### license
-
-```python
-license: str | None = None
-```
-
-License of the dataset.
-
-### name
-
-```python
-name: str
-```
-
-Name of the dataset.
-
-### org\_id
-
-```python
-org_id: UUID
-```
-
-Unique identifier for the organization owning the dataset.
-
-### repo\_id
-
-```python
-repo_id: UUID
-```
-
-Unique identifier for the repository containing the dataset.
-
-### tags
-
-```python
-tags: list[str] | None = None
-```
-
-Tags associated with the dataset.
-
-### version
-
-```python
-version: str | None = None
-```
-
-Version of the dataset.
-
-DatasetUploadComplete
----------------------
-
-A data model representing the request body for completing a dataset upload.
-
-### id
-
-```python
-id: str
-```
-
-Unique identifier for the dataset.
-
-### success
-
-```python
-success: bool
-```
-
-Status code indicating the result of the upload.
-
-DatasetUploadCompleteResponse
------------------------------
-
-A data model representing the response after completing a dataset upload.
-
-### status\_code
-
-```python
-status_code: int
-```
-
-HTTP status code of the upload completion request.
-
-DatasetUploadRequest
+CreateDatasetRequest
 --------------------
 
 A data model representing the request body for creating a new dataset.
 
-### id
+### key
 
 ```python
-id: str | None
+key: Annotated[str, BeforeValidator(_validate_key)]
 ```
 
-Unique identifier for the dataset.
+Unique identifier of the dataset.
 
-### manifest
+### org\_key
 
 ```python
-manifest: dict[str, Any] | None = None
+org_key: Annotated[str, BeforeValidator(_validate_key)]
 ```
 
-Manifest of the dataset.
+Unique identifier for the organization owning the dataset.
 
-### name
+### tags
 
 ```python
-name: str | None
+tags: list[str] = Field(
+    default_factory=list,
+    description="Optional list of tags associated with the dataset.",
+)
 ```
 
-Name of the dataset.
+Optional list of tags associated with the dataset.
 
-DatasetUploadResponse
+### version
+
+```python
+version: Annotated[str, BeforeValidator(_validate_version)]
+```
+
+Version of the dataset following semantic versioning.
+
+CreateDatasetResponse
 ---------------------
 
 A data model representing the response after creating a new dataset.
@@ -1997,29 +1934,89 @@ A data model representing the response after creating a new dataset.
   (`int`)
   –HTTP status code of the upload request.
 
-### id
+### dataset\_id
 
 ```python
-id: str
+dataset_id: UUID
 ```
 
 Unique identifier for the dataset.
 
-### status\_code
+### user\_data\_access\_response
 
 ```python
-status_code: int
-```
-
-HTTP status code of the upload request.
-
-### upload\_uri
-
-```python
-upload_uri: str
+user_data_access_response: UserDataCredentials
 ```
 
 URI to upload the dataset files.
+
+DatasetDownloadRequest
+----------------------
+
+A data model representing the request body for downloading a dataset.
+
+### dataset\_uri
+
+```python
+dataset_uri: str
+```
+
+Name of the dataset to download.
+
+### version
+
+```python
+version: str
+```
+
+Version of the dataset to download. If None, the latest version is downloaded.
+
+DatasetMetadata
+---------------
+
+A data model representing the metadata of a dataset.
+
+### download\_count
+
+```python
+download_count: int | None = Field(
+    None,
+    description="Number of times dataset has been downloaded",
+)
+```
+
+Number of times dataset has been downloaded.
+
+### version
+
+```python
+version: Annotated[
+    str, BeforeValidator(_validate_version)
+] = Field(..., description="Dataset version")
+```
+
+Version of the dataset following semantic versioning.
+
+DatasetUploadCompleteRequest
+----------------------------
+
+A data model representing the request body for completing a dataset upload.
+
+### complete
+
+```python
+complete: bool
+```
+
+Status code indicating the result of the upload.
+
+### dataset\_id
+
+```python
+dataset_id: UUID
+```
+
+Unique identifier for the dataset.
 
 Metric
 ------
@@ -2728,6 +2725,19 @@ span: Task | TraceSpan
 ```
 
 Span at this node, can be a Task or a TraceSpan.
+
+UpdateDatasetVersionResponse
+----------------------------
+
+A data model representing the response after updating a dataset version.
+
+### dataset
+
+```python
+dataset: DatasetMetadata
+```
+
+Updated dataset metadata.
 
 Workspace
 ---------

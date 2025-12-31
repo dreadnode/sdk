@@ -1,15 +1,15 @@
 import re
 import typing as t
 
-from dreadnode.metric import Metric
-from dreadnode.scorers import Scorer
+from dreadnode.core.exceptions import catch_import_error
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 from dreadnode.scorers.contains import contains
-from dreadnode.util import catch_import_error
 
 if t.TYPE_CHECKING:
     from presidio_analyzer import AnalyzerEngine  # type: ignore[import-not-found]
 
-    from dreadnode.common_types import JsonDict
+    from dreadnode.core.types.common import JsonDict
 
 
 def detect_pii(

@@ -3,8 +3,8 @@ import typing as t
 
 import aiohttp
 
-from dreadnode.metric import Metric
-from dreadnode.scorers import Scorer
+from dreadnode.core.metric import Metric
+from dreadnode.core.scorer import Scorer
 
 
 async def _check_flag(
