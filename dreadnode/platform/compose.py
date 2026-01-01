@@ -11,9 +11,9 @@ from dreadnode.core.integrations.docker import (
     get_available_local_images,
 )
 from dreadnode.core.log import logger
-from dreadnode.core.settings import PlatformService
 from dreadnode.platform.env_mgmt import read_env_file
 from dreadnode.platform.version import LocalVersion
+from dreadnode.core.settings import PlatformService
 
 
 def build_compose_override_file(

@@ -206,14 +206,6 @@ ConditionLike = Condition[AgentEventT] | ConditionCallable[AgentEventT]
 ConditionsLike = t.Sequence[ConditionLike[AgentEventT]] | t.Mapping[str, ConditionLike[AgentEventT]]
 """A sequence of condition-like objects or mapping of name/condition pairs."""
 
-# Backwards compatibility
-EventCondition = ConditionLike
-
-
-# =============================================================================
-# Conversion Functions
-# =============================================================================
-
 
 def from_scorer(
     scorer: Scorer[AgentEventT],
@@ -252,11 +244,6 @@ def from_scorer(
         return metric.value > threshold
 
     return Condition(evaluate, name=name or f"scorer:{scorer.name}(>{threshold})")
-
-
-# =============================================================================
-# Logical Combinators
-# =============================================================================
 
 
 def and_(
@@ -333,11 +320,6 @@ def not_(
     return Condition(evaluate, name=name or f"~{condition.name}", wraps=condition)
 
 
-# =============================================================================
-# Core Condition Factories
-# =============================================================================
-
-
 def always(*, name: str = "always") -> Condition[AgentEventT]:
     """
     A condition that always returns True.
@@ -409,11 +391,6 @@ def attr_equals(attr: str, value: t.Any, *, name: str | None = None) -> Conditio
     return Condition(evaluate, name=name or f"{attr}_equals")
 
 
-# =============================================================================
-# Event-Specific Condition Factories
-# =============================================================================
-
-
 def is_file_not_found_error(*, name: str = "is_file_not_found") -> "Condition[AgentError]":
     """
     Returns a Condition that checks if the agent's error is a FileNotFoundError.
@@ -424,7 +401,7 @@ def is_file_not_found_error(*, name: str = "is_file_not_found") -> "Condition[Ag
     Returns:
         A Condition that is True if the error is a FileNotFoundError.
     """
-    from dreadnode.core.agents.trajectory import AgentError
+    from dreadnode.core.agents.events import AgentError
 
     def evaluate(event: AgentError) -> bool:
         return isinstance(event.error, FileNotFoundError)
@@ -467,7 +444,7 @@ def error_contains(
     Returns:
         A Condition that is True if the error message contains the text.
     """
-    from dreadnode.core.agents.trajectory import AgentError
+    from dreadnode.core.agents.events import AgentError
 
     def evaluate(event: AgentError) -> bool:
         error_str = str(event.error)
@@ -476,11 +453,6 @@ def error_contains(
         return text.lower() in error_str.lower()
 
     return Condition(evaluate, name=name or f"error_contains_{text.replace(' ', '_').lower()}")
-
-
-# =============================================================================
-# Fluent Builder Pattern for Model-Based Conditions
-# =============================================================================
 
 
 class FieldConditionBuilder(t.Generic[AgentEventT]):
@@ -865,11 +837,6 @@ class ListConditionBuilder(t.Generic[AgentEventT]):
         return Condition(evaluate, name=name or f"{model_type.__name__}_count_at_least_{count}")
 
 
-# =============================================================================
-# Entry Points for Fluent Builder Pattern
-# =============================================================================
-
-
 def when(
     model_type: "XMLModel", *, parser: "t.Any | None" = None
 ) -> ModelConditionBuilder["AgentStep"]:
@@ -896,7 +863,7 @@ def when(
         ```
     """
     if parser is None:
-        from rigging import parse
+        from dreadnode.core.generators.parsing import parse
 
         parser = parse
 
@@ -923,7 +890,7 @@ def when_any(
         ```
     """
     if parser is None:
-        from rigging import parse
+        from dreadnode.core.generators.parsing import parse
 
         parser = parse
 
@@ -950,7 +917,7 @@ def when_all(
         ```
     """
     if parser is None:
-        from rigging import parse
+        from dreadnode.core.generators.parsing import parse
 
         parser = parse
 

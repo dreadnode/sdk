@@ -19,8 +19,7 @@ from dreadnode.core.evaluations.evaluation import (
 from dreadnode.core.meta import Component, ConfigInfo, Context
 from dreadnode.core.scorer import Scorer, ScorerCallable, ScorersLike, scorer
 from dreadnode.core.serialization import seems_useful_to_serialize
-from dreadnode.core.tracing.span import TaskSpan, current_run_span
-from dreadnode.core.tracing.utils import get_default_tracer
+from dreadnode.core.tracing.span import TaskSpan, current_run_span, get_default_tracer
 from dreadnode.core.types.common import INHERITED, AnyDict, Arguments, Inherited
 from dreadnode.core.util import (
     clean_str,

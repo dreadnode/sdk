@@ -589,9 +589,9 @@ class DatasetGenerator(BaseModel):
 
         prompt = f"""
         {instructions or "Generate the following data:"}
-        
+
         {sampler_context}
-        
+
         Generate a JSON object with these fields:
         {chr(10).join(field_descriptions)}
         """

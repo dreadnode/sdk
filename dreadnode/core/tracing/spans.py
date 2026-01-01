@@ -6,6 +6,20 @@ import json
 import typing as t
 
 from dreadnode.core.tracing.constants import (
+    # Agent attributes
+    AGENT_ATTRIBUTE_GOAL,
+    AGENT_ATTRIBUTE_ID,
+    AGENT_ATTRIBUTE_MODEL,
+    AGENT_ATTRIBUTE_NAME,
+    AGENT_ATTRIBUTE_SESSION_ID,
+    AGENT_ATTRIBUTE_TOOLS,
+    # Evaluation attributes
+    EVALUATION_ATTRIBUTE_ASSERT_SCORES,
+    EVALUATION_ATTRIBUTE_DATASET_SIZE,
+    EVALUATION_ATTRIBUTE_ITERATIONS,
+    EVALUATION_ATTRIBUTE_SCORERS,
+    EVALUATION_ATTRIBUTE_TASK_NAME,
+    # Generation attributes
     GENERATION_ATTRIBUTE_CONTENT,
     GENERATION_ATTRIBUTE_EXTRA,
     GENERATION_ATTRIBUTE_FAILED,
@@ -16,17 +30,31 @@ from dreadnode.core.tracing.constants import (
     GENERATION_ATTRIBUTE_STOP_REASON,
     GENERATION_ATTRIBUTE_TOOL_CALLS,
     GENERATION_ATTRIBUTE_TOTAL_TOKENS,
+    # Sample attributes
+    SAMPLE_ATTRIBUTE_CONTEXT,
+    SAMPLE_ATTRIBUTE_INDEX,
+    SAMPLE_ATTRIBUTE_ITERATION,
+    SAMPLE_ATTRIBUTE_SCENARIO_PARAMS,
+    SAMPLE_ATTRIBUTE_TOTAL,
+    # Scorer attributes
     SCORER_ATTRIBUTE_NAME,
     SCORER_ATTRIBUTE_PASSED,
     SCORER_ATTRIBUTE_RATIONALE,
     SCORER_ATTRIBUTE_SCORE,
     SCORER_ATTRIBUTE_STEP,
+    # Study attributes
+    STUDY_ATTRIBUTE_DIRECTIONS,
+    STUDY_ATTRIBUTE_MAX_TRIALS,
+    STUDY_ATTRIBUTE_OBJECTIVES,
+    STUDY_ATTRIBUTE_SEARCH_STRATEGY,
+    # Tool attributes
     TOOL_ATTRIBUTE_ARGUMENTS,
     TOOL_ATTRIBUTE_CALL_ID,
     TOOL_ATTRIBUTE_ERROR,
     TOOL_ATTRIBUTE_NAME,
     TOOL_ATTRIBUTE_RESULT,
     TOOL_ATTRIBUTE_STOPPED,
+    # Trial attributes
     TRIAL_ATTRIBUTE_CANDIDATE,
     TRIAL_ATTRIBUTE_ID,
     TRIAL_ATTRIBUTE_IS_PROBE,
@@ -34,9 +62,9 @@ from dreadnode.core.tracing.constants import (
     TRIAL_ATTRIBUTE_STATUS,
     TRIAL_ATTRIBUTE_STEP,
 )
-from dreadnode.core.tracing.span import TaskSpan
 
 if t.TYPE_CHECKING:
+    from dreadnode.core.tracing.span import TaskSpan
     from dreadnode.core.types.common import AnyDict
 
 
@@ -258,5 +286,196 @@ def trial_span(
         span.set_attribute(TRIAL_ATTRIBUTE_STATUS, status)
     if scores:
         span.set_attribute(TRIAL_ATTRIBUTE_SCORES, scores)
+
+    return span
+
+
+def evaluation_span(
+    name: str,
+    *,
+    task_name: str,
+    dataset_size: int,
+    iterations: int = 1,
+    scorers: list[str] | None = None,
+    assert_scores: list[str] | None = None,
+    label: str | None = None,
+    tags: list[str] | None = None,
+) -> TaskSpan[t.Any]:
+    """
+    Create a span for evaluation execution.
+
+    Args:
+        name: The evaluation name.
+        task_name: Name of the task being evaluated.
+        dataset_size: Number of samples in the dataset.
+        iterations: Number of iterations per sample.
+        scorers: List of scorer names applied.
+        assert_scores: List of score assertions.
+        label: Human-readable label.
+        tags: Tags for filtering.
+
+    Returns:
+        A configured TaskSpan for evaluation.
+    """
+    from dreadnode import task_span
+
+    span = task_span(
+        name=f"evaluation:{name}",
+        type="evaluation",
+        label=label or name,
+        tags=["evaluation", *(tags or [])],
+    )
+
+    span.set_attribute(EVALUATION_ATTRIBUTE_TASK_NAME, task_name)
+    span.set_attribute(EVALUATION_ATTRIBUTE_DATASET_SIZE, dataset_size)
+    span.set_attribute(EVALUATION_ATTRIBUTE_ITERATIONS, iterations)
+
+    if scorers:
+        span.set_attribute(EVALUATION_ATTRIBUTE_SCORERS, scorers)
+    if assert_scores:
+        span.set_attribute(EVALUATION_ATTRIBUTE_ASSERT_SCORES, assert_scores)
+
+    return span
+
+
+def agent_span(
+    agent_id: str,
+    *,
+    session_id: str | None = None,
+    agent_name: str | None = None,
+    model: str | None = None,
+    tools: list[str] | None = None,
+    goal: str | None = None,
+    label: str | None = None,
+    tags: list[str] | None = None,
+) -> TaskSpan[t.Any]:
+    """
+    Create a span for agent execution.
+
+    Args:
+        agent_id: Unique agent identifier (ULID string).
+        session_id: Session identifier for multi-turn conversations.
+        agent_name: Human-readable agent name.
+        model: The model identifier used by the agent.
+        tools: List of tool names available to the agent.
+        goal: The goal/input provided to the agent.
+        label: Human-readable label for the span.
+        tags: Tags for filtering.
+
+    Returns:
+        A configured TaskSpan for agent execution.
+    """
+    from dreadnode import task_span
+
+    display_name = agent_name or agent_id[:8]
+    span = task_span(
+        name=f"agent:{display_name}",
+        type="agent",
+        label=label or display_name,
+        tags=["agent", *(tags or [])],
+    )
+
+    span.set_attribute(AGENT_ATTRIBUTE_ID, agent_id)
+
+    if session_id:
+        span.set_attribute(AGENT_ATTRIBUTE_SESSION_ID, session_id)
+    if agent_name:
+        span.set_attribute(AGENT_ATTRIBUTE_NAME, agent_name)
+    if model:
+        span.set_attribute(AGENT_ATTRIBUTE_MODEL, model)
+    if tools:
+        span.set_attribute(AGENT_ATTRIBUTE_TOOLS, tools)
+    if goal:
+        span.set_attribute(AGENT_ATTRIBUTE_GOAL, goal[:2000])
+
+    return span
+
+
+def study_span(
+    name: str,
+    *,
+    search_strategy: str,
+    objectives: list[str],
+    max_trials: int,
+    directions: list[str] | None = None,
+    label: str | None = None,
+    tags: list[str] | None = None,
+) -> TaskSpan[t.Any]:
+    """
+    Create a span for optimization study execution.
+
+    Args:
+        name: The study name.
+        search_strategy: The search strategy class name (e.g., "GridSearch").
+        objectives: List of objective scorer names.
+        max_trials: Maximum number of trials for the study.
+        directions: Optimization directions ("maximize"/"minimize") per objective.
+        label: Human-readable label.
+        tags: Tags for filtering.
+
+    Returns:
+        A configured TaskSpan for study execution.
+    """
+    from dreadnode import task_span
+
+    span = task_span(
+        name=f"study:{name}",
+        type="study",
+        label=label or name,
+        tags=["study", "optimization", *(tags or [])],
+    )
+
+    span.set_attribute(STUDY_ATTRIBUTE_SEARCH_STRATEGY, search_strategy)
+    span.set_attribute(STUDY_ATTRIBUTE_OBJECTIVES, objectives)
+    span.set_attribute(STUDY_ATTRIBUTE_MAX_TRIALS, max_trials)
+
+    if directions:
+        span.set_attribute(STUDY_ATTRIBUTE_DIRECTIONS, directions)
+
+    return span
+
+
+def sample_span(
+    *,
+    index: int,
+    total: int,
+    iteration: int = 1,
+    scenario_params: dict[str, t.Any] | None = None,
+    context: dict[str, t.Any] | None = None,
+    label: str | None = None,
+    tags: list[str] | None = None,
+) -> TaskSpan[t.Any]:
+    """
+    Create a span for a single evaluation sample.
+
+    Args:
+        index: The sample index in the dataset (0-based).
+        total: Total number of samples in the dataset.
+        iteration: The iteration number (1-based).
+        scenario_params: Parameters defining the scenario.
+        context: Extra dataset fields not used as task inputs.
+        label: Human-readable label.
+        tags: Tags for filtering.
+
+    Returns:
+        A configured TaskSpan for sample execution.
+    """
+    from dreadnode import task_span
+
+    span = task_span(
+        name=f"sample:{index + 1}/{total}",
+        type="sample",
+        label=label or f"sample_{index + 1}",
+        tags=["sample", *(tags or [])],
+    )
+
+    span.set_attribute(SAMPLE_ATTRIBUTE_INDEX, index)
+    span.set_attribute(SAMPLE_ATTRIBUTE_TOTAL, total)
+    span.set_attribute(SAMPLE_ATTRIBUTE_ITERATION, iteration)
+
+    if scenario_params:
+        span.set_attribute(SAMPLE_ATTRIBUTE_SCENARIO_PARAMS, scenario_params)
+    if context:
+        span.set_attribute(SAMPLE_ATTRIBUTE_CONTEXT, context)
 
     return span

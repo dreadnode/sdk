@@ -3,8 +3,8 @@ from pathlib import Path
 from pydantic import BaseModel, field_serializer
 
 from dreadnode.core.api.models import RegistryImageDetails
-from dreadnode.core.settings import API_SERVICE, UI_SERVICE, VERSION_CONFIG_PATH
 from dreadnode.platform.tag import tag_to_semver
+from dreadnode.core.settings import API_SERVICE, UI_SERVICE, VERSION_CONFIG_PATH
 
 
 class LocalVersion(RegistryImageDetails):

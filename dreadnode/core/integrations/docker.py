@@ -6,8 +6,8 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from dreadnode.core.api.session import ServerConfig
 from dreadnode.core.log import logger
-from dreadnode.core.settings import settings
 from dreadnode.core.types.common import UNSET, Unset
+from dreadnode.core.settings import settings
 
 DockerContainerState = t.Literal[
     "running", "exited", "paused", "restarting", "removing", "created", "dead"

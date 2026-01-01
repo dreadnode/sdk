@@ -7,6 +7,7 @@ from dreadnode.core.packaging.loader import BaseLoader
 from dreadnode.core.packaging.manifest import DatasetManifest
 
 if TYPE_CHECKING:
+    import datasets
     import pyarrow as pa
 
 
@@ -60,6 +61,30 @@ class Dataset(BaseLoader):
     def to_pandas(self, split: str | None = None) -> Any:
         """Load as pandas DataFrame."""
         return self.load(split).to_pandas()
+
+    def to_hf(self, split: str | None = None) -> datasets.Dataset:
+        """Load and convert to HuggingFace Dataset.
+
+        This enables using HuggingFace dataset features like .map(),
+        .filter(), .shuffle(), and DataLoader integration.
+
+        Args:
+            split: Optional split to load.
+
+        Returns:
+            HuggingFace Dataset with full functionality.
+
+        Example:
+            >>> ds = load_dataset("my-data")
+            >>> hf_ds = ds.to_hf()
+            >>> hf_ds = hf_ds.map(lambda x: {"lower": x["text"].lower()})
+            >>> hf_ds.set_format("torch")
+        """
+        from dreadnode.datasets.hf import arrow_to_hf, require_datasets
+
+        require_datasets()
+        table = self.load(split)
+        return arrow_to_hf(table)
 
 
 def load_dataset(component: str | Path) -> Dataset:

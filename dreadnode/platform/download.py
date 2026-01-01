@@ -4,7 +4,6 @@ import zipfile
 from dreadnode.core.api import create_api_client
 from dreadnode.core.integrations.docker import docker_run
 from dreadnode.core.log import confirm, logger
-from dreadnode.core.settings import PLATFORM_SERVICES, PLATFORM_STORAGE_DIR
 from dreadnode.platform.compose import compose_login, get_compose_args
 from dreadnode.platform.env_mgmt import (
     create_default_env_files,
@@ -14,6 +13,7 @@ from dreadnode.platform.version import (
     LocalVersion,
     VersionConfig,
 )
+from dreadnode.core.settings import PLATFORM_SERVICES, PLATFORM_STORAGE_DIR
 
 
 def download_platform(tag: str | None = None) -> LocalVersion:

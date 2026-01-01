@@ -15,13 +15,13 @@ if TYPE_CHECKING:
     from dreadnode.core.api.client import ApiClient
 
 from dreadnode.core.log import logger
+from dreadnode.core.util import create_key_from_name, valid_key
 from dreadnode.core.settings import (
     DEFAULT_PROFILE_NAME,
     DEFAULT_PROJECT_KEY,
     DEFAULT_PROJECT_NAME,
     USER_CONFIG_PATH,
 )
-from dreadnode.core.util import create_key_from_name, valid_key
 
 
 class ServerConfig(BaseModel):
@@ -53,7 +53,7 @@ class UserConfig(BaseModel):
         return self.active
 
     @classmethod
-    def read(cls) -> "UserConfig":
+    def read(cls) -> UserConfig:
         """Read the user configuration from the file system or return an empty instance."""
         if not USER_CONFIG_PATH.exists():
             return cls()
@@ -82,7 +82,7 @@ class UserConfig(BaseModel):
 
         return self.servers[profile]
 
-    def set_server_config(self, config: ServerConfig, profile: str | None = None) -> "UserConfig":
+    def set_server_config(self, config: ServerConfig, profile: str | None = None) -> UserConfig:
         """Set the server configuration for the given profile."""
         profile = profile or self.active or DEFAULT_PROFILE_NAME
         self.servers[profile] = config
@@ -159,7 +159,7 @@ class Session:
         """Get the project ID as a string (for use in traces/spans)."""
         return str(self.project.id)
 
-    def resolve(self) -> "Session":
+    def resolve(self) -> Session:
         """
         Resolve organization, workspace, and project.
 

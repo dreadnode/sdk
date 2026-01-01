@@ -1,8 +1,8 @@
 import typing as t
 from pathlib import Path
 
-from dreadnode.core.settings import PLATFORM_SERVICES
 from dreadnode.platform.version import LocalVersion
+from dreadnode.core.settings import PLATFORM_SERVICES
 
 LineTypes = t.Literal["variable", "comment", "empty"]
 

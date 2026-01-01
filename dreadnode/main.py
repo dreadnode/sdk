@@ -30,11 +30,14 @@ from dreadnode.core.metric import (
     MetricDict,
     MetricsLike,
 )
-from dreadnode.core.packaging.package import BuildResult, Package, PackageType, PullResult, PushResult
-from dreadnode.core.scorer import ScorersLike
-from dreadnode.core.settings import (
-    settings,
+from dreadnode.core.packaging.package import (
+    BuildResult,
+    Package,
+    PackageType,
+    PullResult,
+    PushResult,
 )
+from dreadnode.core.scorer import ScorersLike
 from dreadnode.core.storage import Storage
 from dreadnode.core.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.core.tracing.exporter import CustomOTLPSpanExporter
@@ -51,12 +54,6 @@ from dreadnode.core.tracing.span import (
     current_run_span,
     current_task_span,
 )
-from dreadnode.core.tracing.spans import (
-    generation_span,
-    scorer_span,
-    tool_span,
-    trial_span,
-)
 from dreadnode.core.types.common import (
     INHERITED,
     AnyDict,
@@ -65,6 +62,9 @@ from dreadnode.core.types.common import (
 )
 from dreadnode.core.util import (
     clean_str,
+)
+from dreadnode.core.settings import (
+    settings,
 )
 from dreadnode.version import VERSION
 
@@ -750,7 +750,9 @@ class Dreadnode:
                 self.log_inputs(**(inputs or {}), to="run")
 
             task_span = stack.enter_context(
-                self.task_span(task_name or name, type=task_type, label=label, tags=tags, _tracer=_tracer)
+                self.task_span(
+                    task_name or name, type=task_type, label=label, tags=tags, _tracer=_tracer
+                )
             )
             self.log_inputs(**(inputs or {}))
             if not create_run:

@@ -1,8 +1,9 @@
 import typing as t
 from pathlib import Path
 
+import yaml
 from pydantic import AliasChoices, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from dreadnode.version import VERSION
 
@@ -53,6 +54,9 @@ DEFAULT_MULTIPART_THRESHOLD = 100 * 1024 * 1024  # 100MB
 DEFAULT_MULTIPART_CHUNKSIZE = 64 * 1024 * 1024  # 64MB
 DEFAULT_FS_CREDENTIAL_REFRESH_BUFFER = 900  # 15 minutes
 
+# YAML config file name
+SETTINGS_FILE = "settings.yaml"
+
 
 def get_cache_object_dir(cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
     return cache_dir / "objects"
@@ -70,14 +74,70 @@ def get_version_config_path(cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
     return get_platform_storage_dir(cache_dir) / "versions.json"
 
 
-class DreadnodeEnvSettings(BaseSettings):
-    """
-    Settings loaded from environment variables.
+def get_settings_file_path(cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
+    return cache_dir / SETTINGS_FILE
 
-    Used as the second tier in the priority chain:
-    1. Explicit parameters
-    2. Environment variables (this class)
-    3. Profile config file
+
+def load_yaml_settings(settings_path: Path | None = None) -> dict[str, t.Any]:
+    """
+    Load settings from YAML configuration file.
+
+    Args:
+        settings_path: Optional path to settings file. If not provided,
+                      uses the default location (~/.dreadnode/settings.yaml).
+
+    Returns:
+        Dictionary of settings from the YAML file, or empty dict if file doesn't exist.
+    """
+    if settings_path is None:
+        settings_path = get_settings_file_path()
+
+    if not settings_path.exists():
+        return {}
+
+    with settings_path.open() as f:
+        data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
+
+
+class YamlSettingsSource(PydanticBaseSettingsSource):
+    """Custom settings source that loads from YAML file."""
+
+    def __init__(
+        self,
+        settings_cls: type[BaseSettings],
+        yaml_path: Path | None = None,
+    ):
+        super().__init__(settings_cls)
+        self._yaml_data = load_yaml_settings(yaml_path)
+
+    def get_field_value(
+        self,
+        field: t.Any,
+        field_name: str,
+    ) -> tuple[t.Any, str, bool]:
+        """Get value for a field from YAML data."""
+        value = self._yaml_data.get(field_name)
+        return value, field_name, value is not None
+
+    def __call__(self) -> dict[str, t.Any]:
+        """Return all YAML settings."""
+        return self._yaml_data
+
+
+# Global variable to store YAML path for settings source
+_yaml_settings_path: Path | None = None
+
+
+class DreadnodeSettings(BaseSettings):
+    """
+    Settings loaded from environment variables and YAML configuration.
+
+    Priority order (highest to lowest):
+    1. Explicit parameters passed to functions
+    2. Environment variables (DREADNODE_* prefix)
+    3. YAML configuration file (~/.dreadnode/settings.yaml)
+    4. Default values
     """
 
     model_config = SettingsConfigDict(
@@ -164,6 +224,11 @@ class DreadnodeEnvSettings(BaseSettings):
         return self.platform_storage_dir / "versions.json"
 
     @property
+    def settings_file_path(self) -> Path:
+        """Path to YAML settings file."""
+        return self.cache_dir / SETTINGS_FILE
+
+    @property
     def user_agent(self) -> str:
         """Default User-Agent string."""
         return f"dreadnode/{VERSION}"
@@ -173,10 +238,58 @@ class DreadnodeEnvSettings(BaseSettings):
         """Check if credentials are set via environment."""
         return bool(self.server or self.token)
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Customize settings sources priority.
 
-# Singleton instance for environment settings
-settings = DreadnodeEnvSettings()
+        Priority order (highest to lowest):
+        1. Init settings (constructor arguments)
+        2. Environment variables
+        3. YAML configuration file
+        4. Default values
+        """
+        global _yaml_settings_path
+        return (
+            init_settings,
+            env_settings,
+            YamlSettingsSource(settings_cls, _yaml_settings_path),
+        )
 
+
+def create_settings(yaml_path: Path | None = None) -> DreadnodeSettings:
+    """
+    Create settings instance with YAML config as defaults.
+
+    The priority order is:
+    1. Environment variables (handled by pydantic-settings)
+    2. YAML configuration file
+    3. Default values
+
+    Args:
+        yaml_path: Optional path to YAML settings file.
+
+    Returns:
+        Configured DreadnodeSettings instance.
+    """
+    global _yaml_settings_path
+    _yaml_settings_path = yaml_path
+    return DreadnodeSettings()
+
+
+# Singleton instance for settings
+settings = create_settings()
+
+
+# Backward compatibility aliases
+DreadnodeEnvSettings = DreadnodeSettings
 
 DEBUG = settings.debug
 PLATFORM_BASE_URL = settings.server_url
@@ -186,7 +299,7 @@ PLATFORM_STORAGE_DIR = settings.platform_storage_dir
 VERSION_CONFIG_PATH = settings.version_config_path
 DEFAULT_USER_AGENT = settings.user_agent
 
-# Storage constants (now configurable via env)
+# Storage constants (now configurable via env/yaml)
 CHUNK_SIZE = settings.chunk_size
 MAX_WORKERS = settings.max_workers
 MULTIPART_THRESHOLD = settings.multipart_threshold

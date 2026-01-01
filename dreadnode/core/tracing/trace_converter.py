@@ -216,17 +216,19 @@ def extract_runs(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
     runs = []
     for span in spans:
         if span.span_type == "run":
-            runs.append({
-                "run_id": span.run_id,
-                "trace_id": span.trace_id,
-                "span_id": span.span_id,
-                "name": span.name,
-                "status": span.status,
-                "start_time": span.start_time.isoformat(),
-                "end_time": span.end_time.isoformat() if span.end_time else None,
-                "duration_ms": span.duration_ms,
-                "tags": span.tags,
-            })
+            runs.append(
+                {
+                    "run_id": span.run_id,
+                    "trace_id": span.trace_id,
+                    "span_id": span.span_id,
+                    "name": span.name,
+                    "status": span.status,
+                    "start_time": span.start_time.isoformat(),
+                    "end_time": span.end_time.isoformat() if span.end_time else None,
+                    "duration_ms": span.duration_ms,
+                    "tags": span.tags,
+                }
+            )
     return runs
 
 
@@ -240,7 +242,6 @@ def _build_global_objects(spans: list[SpanRecord]) -> dict[str, t.Any]:
 
 def extract_agents(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
     """Extract agent-specific data."""
-    # Build global objects from all spans (objects may be on parent spans)
     all_objects = _build_global_objects(spans)
 
     agents = []
@@ -263,28 +264,30 @@ def extract_agents(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
             output_tokens = _resolve_object_value(span.outputs.get("output_tokens"), all_objects)
             total_tokens = _resolve_object_value(span.outputs.get("total_tokens"), all_objects)
 
-            agents.append({
-                "run_id": span.run_id,
-                "trace_id": span.trace_id,
-                "span_id": span.span_id,
-                "parent_span_id": span.parent_span_id,
-                "agent_id": agent_id,
-                "agent_name": agent_name or span.name,
-                "model": model,
-                "goal": goal,
-                "instructions": instructions,
-                "tools": tools or [],
-                "max_steps": span.params.get("max_steps"),
-                "actual_steps": actual_steps,
-                "status": status or span.status,
-                "stop_reason": stop_reason,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
-                "duration_ms": span.duration_ms,
-                "start_time": span.start_time.isoformat(),
-                "end_time": span.end_time.isoformat() if span.end_time else None,
-            })
+            agents.append(
+                {
+                    "run_id": span.run_id,
+                    "trace_id": span.trace_id,
+                    "span_id": span.span_id,
+                    "parent_span_id": span.parent_span_id,
+                    "agent_id": agent_id,
+                    "agent_name": agent_name or span.name,
+                    "model": model,
+                    "goal": goal,
+                    "instructions": instructions,
+                    "tools": tools or [],
+                    "max_steps": span.params.get("max_steps"),
+                    "actual_steps": actual_steps,
+                    "status": status or span.status,
+                    "stop_reason": stop_reason,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                    "duration_ms": span.duration_ms,
+                    "start_time": span.start_time.isoformat(),
+                    "end_time": span.end_time.isoformat() if span.end_time else None,
+                }
+            )
     return agents
 
 
@@ -310,29 +313,31 @@ def extract_evaluations(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
             mean_scores = _resolve_object_value(span.outputs.get("mean_scores"), all_objects)
             stop_reason = _resolve_object_value(span.outputs.get("stop_reason"), all_objects)
 
-            evaluations.append({
-                "run_id": span.run_id,
-                "trace_id": span.trace_id,
-                "span_id": span.span_id,
-                "parent_span_id": span.parent_span_id,
-                "name": span.name,
-                "task_name": task_name,
-                "scorers": scorers or [],
-                "iterations": span.params.get("iterations"),
-                "concurrency": span.params.get("concurrency"),
-                "dataset_size": dataset_size,
-                "total_samples": total_samples,
-                "passed_count": passed_count,
-                "failed_count": failed_count,
-                "error_count": error_count,
-                "pass_rate": pass_rate,
-                "mean_scores": mean_scores,
-                "status": span.status,
-                "stop_reason": stop_reason,
-                "duration_ms": span.duration_ms,
-                "start_time": span.start_time.isoformat(),
-                "end_time": span.end_time.isoformat() if span.end_time else None,
-            })
+            evaluations.append(
+                {
+                    "run_id": span.run_id,
+                    "trace_id": span.trace_id,
+                    "span_id": span.span_id,
+                    "parent_span_id": span.parent_span_id,
+                    "name": span.name,
+                    "task_name": task_name,
+                    "scorers": scorers or [],
+                    "iterations": span.params.get("iterations"),
+                    "concurrency": span.params.get("concurrency"),
+                    "dataset_size": dataset_size,
+                    "total_samples": total_samples,
+                    "passed_count": passed_count,
+                    "failed_count": failed_count,
+                    "error_count": error_count,
+                    "pass_rate": pass_rate,
+                    "mean_scores": mean_scores,
+                    "status": span.status,
+                    "stop_reason": stop_reason,
+                    "duration_ms": span.duration_ms,
+                    "start_time": span.start_time.isoformat(),
+                    "end_time": span.end_time.isoformat() if span.end_time else None,
+                }
+            )
     return evaluations
 
 
@@ -351,40 +356,48 @@ def extract_studies(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
 
             # Resolve output values
             stop_reason = _resolve_object_value(span.outputs.get("stop_reason"), all_objects)
-            completed_trials = _resolve_object_value(span.outputs.get("completed_trials"), all_objects)
-            finished_trials = _resolve_object_value(span.outputs.get("finished_trials"), all_objects)
+            completed_trials = _resolve_object_value(
+                span.outputs.get("completed_trials"), all_objects
+            )
+            finished_trials = _resolve_object_value(
+                span.outputs.get("finished_trials"), all_objects
+            )
             failed_trials = _resolve_object_value(span.outputs.get("failed_trials"), all_objects)
             pruned_trials = _resolve_object_value(span.outputs.get("pruned_trials"), all_objects)
-            best_trial_index = _resolve_object_value(span.outputs.get("best_trial_index"), all_objects)
+            best_trial_index = _resolve_object_value(
+                span.outputs.get("best_trial_index"), all_objects
+            )
             best_score = _resolve_object_value(span.outputs.get("best_score"), all_objects)
             best_candidate = _resolve_object_value(span.outputs.get("best_candidate"), all_objects)
             best_scores = _resolve_object_value(span.outputs.get("best_scores"), all_objects)
 
-            studies.append({
-                "run_id": span.run_id,
-                "trace_id": span.trace_id,
-                "span_id": span.span_id,
-                "parent_span_id": span.parent_span_id,
-                "name": span.name,
-                "search_strategy": search_strategy,
-                "objectives": objectives or [],
-                "directions": directions or [],
-                "max_trials": span.params.get("max_trials"),
-                "concurrency": span.params.get("concurrency"),
-                "completed_trials": completed_trials,
-                "finished_trials": finished_trials,
-                "failed_trials": failed_trials,
-                "pruned_trials": pruned_trials,
-                "best_trial_index": best_trial_index,
-                "best_score": best_score,
-                "best_candidate": best_candidate,
-                "best_scores": best_scores,
-                "status": span.status,
-                "stop_reason": stop_reason,
-                "duration_ms": span.duration_ms,
-                "start_time": span.start_time.isoformat(),
-                "end_time": span.end_time.isoformat() if span.end_time else None,
-            })
+            studies.append(
+                {
+                    "run_id": span.run_id,
+                    "trace_id": span.trace_id,
+                    "span_id": span.span_id,
+                    "parent_span_id": span.parent_span_id,
+                    "name": span.name,
+                    "search_strategy": search_strategy,
+                    "objectives": objectives or [],
+                    "directions": directions or [],
+                    "max_trials": span.params.get("max_trials"),
+                    "concurrency": span.params.get("concurrency"),
+                    "completed_trials": completed_trials,
+                    "finished_trials": finished_trials,
+                    "failed_trials": failed_trials,
+                    "pruned_trials": pruned_trials,
+                    "best_trial_index": best_trial_index,
+                    "best_score": best_score,
+                    "best_candidate": best_candidate,
+                    "best_scores": best_scores,
+                    "status": span.status,
+                    "stop_reason": stop_reason,
+                    "duration_ms": span.duration_ms,
+                    "start_time": span.start_time.isoformat(),
+                    "end_time": span.end_time.isoformat() if span.end_time else None,
+                }
+            )
     return studies
 
 
@@ -392,19 +405,21 @@ def extract_tasks(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
     """Extract task/span hierarchy data."""
     tasks = []
     for span in spans:
-        tasks.append({
-            "run_id": span.run_id,
-            "trace_id": span.trace_id,
-            "span_id": span.span_id,
-            "parent_span_id": span.parent_span_id,
-            "name": span.name,
-            "type": span.span_type,
-            "status": span.status,
-            "tags": span.tags,
-            "duration_ms": span.duration_ms,
-            "start_time": span.start_time.isoformat(),
-            "end_time": span.end_time.isoformat() if span.end_time else None,
-        })
+        tasks.append(
+            {
+                "run_id": span.run_id,
+                "trace_id": span.trace_id,
+                "span_id": span.span_id,
+                "parent_span_id": span.parent_span_id,
+                "name": span.name,
+                "type": span.span_type,
+                "status": span.status,
+                "tags": span.tags,
+                "duration_ms": span.duration_ms,
+                "start_time": span.start_time.isoformat(),
+                "end_time": span.end_time.isoformat() if span.end_time else None,
+            }
+        )
     return tasks
 
 
@@ -413,14 +428,16 @@ def extract_params(spans: list[SpanRecord]) -> list[dict[str, t.Any]]:
     params = []
     for span in spans:
         for name, value in span.params.items():
-            params.append({
-                "run_id": span.run_id,
-                "span_id": span.span_id,
-                "span_type": span.span_type,
-                "name": name,
-                "value": value,
-                "type": type(value).__name__,
-            })
+            params.append(
+                {
+                    "run_id": span.run_id,
+                    "span_id": span.span_id,
+                    "span_type": span.span_type,
+                    "name": name,
+                    "value": value,
+                    "type": type(value).__name__,
+                }
+            )
     return params
 
 
@@ -434,25 +451,29 @@ def extract_inputs_outputs(spans: list[SpanRecord]) -> tuple[list[dict], list[di
     for span in spans:
         for name, hash_ref in span.inputs.items():
             value = _resolve_object_value(hash_ref, all_objects)
-            inputs.append({
-                "run_id": span.run_id,
-                "span_id": span.span_id,
-                "span_type": span.span_type,
-                "name": name,
-                "hash": hash_ref,
-                "value": value,
-            })
+            inputs.append(
+                {
+                    "run_id": span.run_id,
+                    "span_id": span.span_id,
+                    "span_type": span.span_type,
+                    "name": name,
+                    "hash": hash_ref,
+                    "value": value,
+                }
+            )
 
         for name, hash_ref in span.outputs.items():
             value = _resolve_object_value(hash_ref, all_objects)
-            outputs.append({
-                "run_id": span.run_id,
-                "span_id": span.span_id,
-                "span_type": span.span_type,
-                "name": name,
-                "hash": hash_ref,
-                "value": value,
-            })
+            outputs.append(
+                {
+                    "run_id": span.run_id,
+                    "span_id": span.span_id,
+                    "span_type": span.span_type,
+                    "name": name,
+                    "hash": hash_ref,
+                    "value": value,
+                }
+            )
 
     return inputs, outputs
 
@@ -460,8 +481,7 @@ def extract_inputs_outputs(spans: list[SpanRecord]) -> tuple[list[dict], list[di
 def write_jsonl(data: list[dict[str, t.Any]], path: Path) -> None:
     """Write data to JSONL file."""
     with open(path, "w") as f:
-        for item in data:
-            f.write(json.dumps(item, default=str) + "\n")
+        f.writelines(json.dumps(item, default=str) + "\n" for item in data)
 
 
 def convert_traces(

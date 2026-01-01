@@ -7,7 +7,6 @@ from dreadnode.core.integrations.docker import (
     get_env_var_from_container,
 )
 from dreadnode.core.log import confirm, logger
-from dreadnode.core.settings import PLATFORM_SERVICES
 from dreadnode.platform.compose import (
     build_compose_override_file,
     compose_down,
@@ -25,6 +24,7 @@ from dreadnode.platform.env_mgmt import (
 )
 from dreadnode.platform.tag import tag_to_semver
 from dreadnode.platform.version import VersionConfig
+from dreadnode.core.settings import PLATFORM_SERVICES
 
 platform_cli = cyclopts.App("platform", help="Run and manage the platform.", help_flags=[])
 

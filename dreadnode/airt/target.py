@@ -76,7 +76,7 @@ class CustomTarget(Target[t.Any, Out]):
 
 class LLMTarget(Target[t.Any, str]):
     """
-    Target backed by a rigging generator for LLM inference.
+    Target backed by a generator for LLM inference.
 
     - Accepts as input any message, conversation, or content-like structure.
     - Returns just the generated text from the LLM.

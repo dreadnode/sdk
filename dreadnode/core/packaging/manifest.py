@@ -14,6 +14,7 @@ class DatasetManifest(BaseManifest):
     format: str = "parquet"
     data_schema: dict[str, str] = Field(default_factory=dict)
     row_count: int | None = None
+    splits: dict[str, str] | None = None  # split_name -> artifact_path
 
 
 class ModelManifest(BaseManifest):

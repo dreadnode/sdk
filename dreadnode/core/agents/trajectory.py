@@ -201,71 +201,281 @@ class Trajectory(BaseModel):
 
         return rows
 
-    def trajectory_to_turns(self) -> list[dict[str, t.Any]]:
+
+def trajectory_to_turns(trajectory: Trajectory) -> list[dict[str, t.Any]]:
+    rows = []
+
+    final_messages = trajectory.messages
+    system_prompt = next((m.content for m in final_messages if m.role == "system"), None)
+
+    for event in trajectory.steps:
+        if not isinstance(event, AgentStep) or not event.messages:
+            continue
+
+        if event.messages[-1].role != "assistant":
+            continue
+
+        history = event.messages
+        assistant_msg = history[-1]
+
+        user_content = None
+        if len(history) >= 2:
+            prev_msg = history[-2]
+            user_content = prev_msg.content
+
+            if prev_msg.role == "tool":
+                user_content = f"[Tool Result from {prev_msg.tool_call_id}]\n{user_content}"
+
+        rows.append(
+            {
+                "session_id": str(trajectory.session_id),
+                "step": event.step,
+                "system": system_prompt,
+                "user": user_content,
+                "assistant": assistant_msg.content,
+                "tool_calls": [t.model_dump() for t in assistant_msg.tool_calls]
+                if assistant_msg.tool_calls
+                else None,
+                "usage_tokens": event.usage.total_tokens if event.usage else 0,
+            }
+        )
+
+    return rows
+
+
+def trajectory_to_openai_format(trajectory: Trajectory) -> list[dict[str, t.Any]]:
+    """
+    Convert a DN Agent Trajectory to OpenAI-compatible message format.
+
+    This format is compatible with NeMo RL's OpenAIFormatDataset.
+
+    Args:
+        trajectory: DN Agent Trajectory object
+
+    Returns:
+        List of OpenAI-format messages with role, content, tool_calls, tool_call_id
+    """
+    messages = []
+
+    for msg in trajectory.messages:
+        message: dict[str, t.Any] = {
+            "role": msg.role,
+        }
+
+        # Handle content - could be string or structured
+        if msg.content is not None:
+            message["content"] = msg.content
+        else:
+            message["content"] = ""
+
+        # Handle tool calls (assistant messages that invoke tools)
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            message["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": tc.arguments
+                        if isinstance(tc.arguments, str)
+                        else str(tc.arguments),
+                    },
+                }
+                for tc in msg.tool_calls
+            ]
+
+        # Handle tool call ID (tool result messages)
+        if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+            message["tool_call_id"] = msg.tool_call_id
+
+        messages.append(message)
+
+    return messages
+
+
+def trajectory_from_openai_format(
+    messages: list[dict[str, t.Any]],
+    message_class: type | None = None,
+) -> "Trajectory":
+    """
+    Create a Trajectory from OpenAI-format messages.
+
+    Args:
+        messages: List of OpenAI-format message dicts
+        message_class: Optional Message class to use (defaults to importing from dreadnode)
+
+    Returns:
+        Trajectory instance
+
+    Example:
+        >>> trajectory = trajectory_from_openai_format([
+        ...     {"role": "user", "content": "Hello"},
+        ...     {"role": "assistant", "content": "Hi there!"}
+        ... ])
+    """
+    from dreadnode.core.agents.trajectory import Trajectory
+    from dreadnode.core.generators.message import Message
+
+    if message_class is None:
+        message_class = Message
+
+    trajectory = Trajectory()
+
+    for msg in messages:
+        message = message_class(
+            role=msg.get("role", "user"),
+            content=msg.get("content", ""),
+        )
+        # Note: tool_calls and tool_call_id would need Message class support
+        trajectory.messages.append(message)
+
+    return trajectory
+
+
+def trajectory_to_jsonl_record(
+    trajectory: "Trajectory",
+    system_prompt: str | None = None,
+    tools: list[dict] | None = None,
+    metadata: dict[str, t.Any] | None = None,
+) -> dict[str, t.Any]:
+    """
+    Convert trajectory to a JSONL record for training data export.
+
+    This produces a record compatible with NeMo RL, OpenAI fine-tuning,
+    and other frameworks that accept OpenAI-format training data.
+
+    Args:
+        trajectory: The trajectory to convert
+        system_prompt: Optional system prompt to prepend
+        tools: Optional tool definitions used by the agent
+        metadata: Optional metadata to include (agent_name, task_type, etc.)
+
+    Returns:
+        Dict ready for JSON serialization
+
+    Example:
+        >>> record = trajectory_to_jsonl_record(
+        ...     agent.trajectory,
+        ...     system_prompt="You are a helpful assistant.",
+        ...     metadata={"agent_name": "MyAgent", "success": True}
+        ... )
+        >>> with open("training.jsonl", "a") as f:
+        ...     f.write(json.dumps(record) + "\\n")
+    """
+    messages = trajectory_to_openai_format(trajectory)
+
+    # Prepend system prompt if provided and not already present
+    if system_prompt and (not messages or messages[0].get("role") != "system"):
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    record: dict[str, t.Any] = {"messages": messages}
+
+    if tools:
+        record["tools"] = tools
+
+    if metadata:
+        record["metadata"] = metadata
+
+    return record
+
+
+def trajectories_to_hf_dataset(
+    trajectories: list[dict[str, t.Any]],
+    format: str = "messages",
+) -> "Dataset":
+    """
+    Convert trajectories to a Hugging Face Dataset.
+
+    Args:
+        trajectories: List of trajectory dicts
+        format: Output format - "messages" (OpenAI), "chat" (TRL), or "turns"
+
+    Returns:
+        HF Dataset ready for training
+
+    Example:
+        >>> from services.training import load_trajectory_jsonl, trajectories_to_hf_dataset
+        >>> trajectories = load_trajectory_jsonl("./training.jsonl")
+        >>> dataset = trajectories_to_hf_dataset(trajectories, format="chat")
+        >>> dataset.push_to_hub("my-org/agent-trajectories")
+    """
+    from datasets import Dataset
+
+    if format == "messages":
+        # OpenAI format - list of messages per row
+        return Dataset.from_list(
+            [
+                {
+                    "messages": traj["messages"],
+                    "tools": traj.get("tools", []),
+                    **traj.get("metadata", {}),
+                }
+                for traj in trajectories
+            ]
+        )
+
+    if format == "chat":
+        # TRL chat format - conversation as structured field
         rows = []
+        for traj in trajectories:
+            messages = traj["messages"]
+            metadata = traj.get("metadata", {})
 
-        final_messages = self.messages
-        system_prompt = next((m.content for m in final_messages if m.role == "system"), None)
-
-        for event in self.steps:
-            if not isinstance(event, AgentStep) or not event.messages:
-                continue
-
-            if event.messages[-1].role != "assistant":
-                continue
-
-            history = event.messages
-            assistant_msg = history[-1]
-
-            user_content = None
-            if len(history) >= 2:
-                prev_msg = history[-2]
-                user_content = prev_msg.content
-
-                if prev_msg.role == "tool":
-                    user_content = f"[Tool Result from {prev_msg.tool_call_id}]\n{user_content}"
+            # Extract system, user, assistant for TRL SFTTrainer
+            conversation = []
+            for msg in messages:
+                conversation.append(
+                    {
+                        "role": msg["role"],
+                        "content": msg.get("content", ""),
+                    }
+                )
 
             rows.append(
                 {
-                    "session_id": str(self.session_id),
-                    "step": event.step,
-                    "system": system_prompt,
-                    "user": user_content,
-                    "assistant": assistant_msg.content,
-                    "tool_calls": [t.model_dump() for t in assistant_msg.tool_calls]
-                    if assistant_msg.tool_calls
-                    else None,
-                    "usage_tokens": event.usage.total_tokens if event.usage else 0,
+                    "conversation": conversation,
+                    "agent_name": metadata.get("agent_name", "unknown"),
+                    "task_type": metadata.get("task_type", "unknown"),
+                    "success": metadata.get("success"),
                 }
             )
 
-        return rows
+        return Dataset.from_list(rows)
 
-    def trajectory_to_nemo(self, tools: list[dict[str, t.Any]] | None = None) -> dict[str, t.Any]:
-        """
-        Converts the trajectory into a single SFT training example for NeMo-RL.
-        """
+    if format == "turns":
+        # Flattened turn format - one row per assistant turn
+        rows = []
+        for traj in trajectories:
+            messages = traj["messages"]
+            metadata = traj.get("metadata", {})
 
-        formatted_messages = []
+            system_prompt = None
+            history = []
 
-        for msg in self.messages:
-            entry = {
-                "role": msg.role,
-                "content": msg.content,
-            }
+            for msg in messages:
+                role = msg["role"]
+                content = msg.get("content", "")
 
-            if msg.tool_calls:
-                entry["tool_calls"] = [tc.model_dump() for tc in msg.tool_calls]
+                if role == "system":
+                    system_prompt = content
+                elif role == "user":
+                    history.append({"role": "user", "content": content})
+                elif role == "assistant":
+                    # Create a row for each assistant response
+                    rows.append(
+                        {
+                            "system": system_prompt,
+                            "history": list(history),  # Copy
+                            "response": content,
+                            "tool_calls": msg.get("tool_calls"),
+                            "agent_name": metadata.get("agent_name", "unknown"),
+                            "task_type": metadata.get("task_type", "unknown"),
+                        }
+                    )
+                    history.append({"role": "assistant", "content": content})
+                elif role == "tool":
+                    history.append({"role": "tool", "content": content})
 
-            if msg.role == "tool":
-                entry["tool_call_id"] = getattr(msg, "tool_call_id", None)
-                entry["name"] = getattr(msg, "name", None)
+        return Dataset.from_list(rows)
 
-            formatted_messages.append(entry)
-
-        return {
-            "session_id": str(self.session_id),
-            "agent_id": str(self.agent_id) if self.agent_id else None,
-            "messages": formatted_messages,
-            "tools": tools,  # Optional: Include schema so the model learns tool definitions
-        }
+    raise ValueError(f"Unknown format: {format}. Use 'messages', 'chat', or 'turns'")

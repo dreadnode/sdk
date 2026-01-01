@@ -939,7 +939,6 @@ class Agent(Executor[AgentEvent, Trajectory]):
         return agent_task
 
 
-
 def agent(
     func: t.Callable[..., t.Any] | None = None,
     /,

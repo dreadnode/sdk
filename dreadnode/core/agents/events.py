@@ -467,3 +467,95 @@ class ReactStep(AgentStep):
                 step=self.step,
                 mode="count",
             )
+
+
+class WorkflowEventBase(BaseModel):
+    """Base class that all workflow events must inherit from"""
+
+    topic: str = Field(..., description="The type of the event")
+    project: str = Field(default="", description="The name of the project (if applicable)")
+    task_id: str = Field(..., description="The analysis task identifier")
+    job_id: str | None = Field(None, description="Optional job identifier to group related tasks")
+
+    server: str = Field(default="", description="The Dreadnode server URL")
+    api_key: str = Field(default="", description="The API key for authentication")
+
+    @classmethod
+    def get_topic(cls) -> str:
+        return cls.model_fields["topic"].default
+
+    def context(self) -> dict:
+        """Returns context fields to propagate to child events."""
+        return {
+            "project": self.project,
+            "job_id": self.job_id,
+            "server": self.server,
+            "api_key": self.api_key,
+        }
+
+
+"""
+Training service events for trajectory collection.
+
+These events enable agents to publish their trajectories for training data collection.
+The TrajectoryEvent format is compatible with NeMo RL's OpenAI-format datasets.
+"""
+
+
+class TrajectoryEvent(WorkflowEventBase):
+    """
+    Event carrying an agent trajectory for training data collection.
+
+    The messages format follows OpenAI's chat completion format,
+    which is compatible with NeMo RL's data loading.
+
+    Format:
+        messages: [
+            {"role": "system", "content": "..."},
+            {"role": "user", "content": "..."},
+            {"role": "assistant", "content": "...", "tool_calls": [...]},
+            {"role": "tool", "content": "...", "tool_call_id": "..."},
+            ...
+        ]
+    """
+
+    topic: str = "training.trajectory"
+
+    # Source agent information
+    agent_name: str = Field(description="Name of the agent that produced this trajectory")
+    task_type: str = Field(
+        default="", description="Type of task (e.g., 'pentest', 'sast', 'reversing')"
+    )
+
+    # Trajectory data (OpenAI format)
+    messages: list[dict[str, t.Any]] = Field(
+        default_factory=list,
+        description="OpenAI-format message list with role, content, tool_calls, etc.",
+    )
+
+    # Optional tool definitions used
+    tools: list[dict[str, t.Any]] = Field(
+        default_factory=list, description="Tool definitions used by the agent (OpenAI format)"
+    )
+
+    # Outcome signals for RL training
+    success: bool | None = Field(
+        default=None, description="Whether the task was completed successfully"
+    )
+    reward: float | None = Field(default=None, description="Optional reward signal for RL training")
+
+    # Additional metadata
+    metadata: dict[str, t.Any] = Field(
+        default_factory=dict, description="Additional metadata about the trajectory"
+    )
+
+
+class TrainingDataExported(WorkflowEventBase):
+    """Event indicating training data has been exported."""
+
+    topic: str = "training.data.exported"
+
+    output_path: str = Field(description="Path where training data was written")
+    format: str = Field(default="jsonl", description="Output format (jsonl, parquet, etc.)")
+    num_trajectories: int = Field(default=0, description="Number of trajectories exported")
+    agent_name: str | None = Field(default=None, description="Agent name filter if applied")

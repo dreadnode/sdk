@@ -20,11 +20,11 @@ from dreadnode.core.api.client import ApiClient, create_api_client
 from dreadnode.core.api.models import Organization, Workspace, WorkspaceFilter
 from dreadnode.core.api.session import ServerConfig, UserConfig
 from dreadnode.core.log import console, logger
-from dreadnode.core.settings import DEBUG, PLATFORM_BASE_URL
 from dreadnode.core.util import create_key_from_name, time_to
 from dreadnode.datasets.cli import dataset_cli
 from dreadnode.evaluations.cli import evaluation_cli
 from dreadnode.platform.cli import platform_cli
+from dreadnode.core.settings import DEBUG, PLATFORM_BASE_URL
 from dreadnode.studies.cli import study_cli
 
 cli = cyclopts.App(

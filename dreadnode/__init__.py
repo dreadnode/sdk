@@ -5,6 +5,8 @@ from loguru import logger
 
 from dreadnode.core import log as logging
 from dreadnode.core import meta
+from dreadnode.core.agents.scorer_hook import ScorerHook, ScorerHookResult
+from dreadnode.core.load import load
 from dreadnode.core.log import configure_logging
 from dreadnode.core.meta import (
     Config,
@@ -25,13 +27,21 @@ from dreadnode.core.meta import (
 )
 from dreadnode.core.metric import Metric, MetricDict
 from dreadnode.core.object import Object
-from dreadnode.core.agents.scorer_hook import ScorerHook, ScorerHookResult
 from dreadnode.core.scorer import Scorer
 from dreadnode.core.task import Task
 from dreadnode.core.tools import tool, tool_method
 from dreadnode.core.tracing import convert
 from dreadnode.core.tracing.span import RunSpan, Span, TaskSpan
-from dreadnode.core.tracing.spans import generation_span, scorer_span, tool_span, trial_span
+from dreadnode.core.tracing.spans import (
+    agent_span,
+    evaluation_span,
+    generation_span,
+    sample_span,
+    scorer_span,
+    study_span,
+    tool_span,
+    trial_span,
+)
 from dreadnode.core.transforms import Transform
 from dreadnode.core.types import Code, Markdown, Object3D, Text
 from dreadnode.datasets.dataset import Dataset
@@ -126,6 +136,7 @@ __all__ = [
     "Video",
     "__version__",
     "agent",
+    "agent_span",
     "airt",
     "api",
     "configure",
@@ -133,9 +144,11 @@ __all__ = [
     "continue_run",
     "convert",
     "evaluation",
+    "evaluation_span",
     "generation_span",
     "get_run_context",
     "link_objects",
+    "load",
     "load_dataset",
     "log_artifact",
     "log_input",
@@ -149,12 +162,14 @@ __all__ = [
     "push_dataset",
     "push_update",
     "run",
+    "sample_span",
     "scorer",
     "scorer_span",
     "scorers",
     "shutdown",
     "span",
     "study",
+    "study_span",
     "tag",
     "task",
     "task_and_run",
@@ -162,11 +177,12 @@ __all__ = [
     "tool",
     "tool_method",
     "tool_span",
+    "training",
     "transforms",
     "trial_span",
 ]
 
-__lazy_submodules__: list[str] = ["scorers", "agents", "airt", "eval", "transforms"]
+__lazy_submodules__: list[str] = ["scorers", "agents", "airt", "eval", "transforms", "training"]
 __lazy_components__: dict[str, str] = {
     "Audio": "dreadnode.core.types",
     "Image": "dreadnode.core.types",

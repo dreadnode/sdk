@@ -47,8 +47,7 @@ async def _tool_span(tool_name: str, tool_call: "ToolCall") -> t.AsyncIterator[t
     span = None
     try:
         from contextvars import copy_context
-        from dreadnode.core.tracing.span import Span, current_run_span
-        from dreadnode.core.tracing.utils import get_default_tracer
+        from dreadnode.core.tracing.span import Span, current_run_span, get_default_tracer
 
         # Capture current context
         ctx = copy_context()

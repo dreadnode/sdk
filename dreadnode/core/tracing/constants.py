@@ -2,7 +2,6 @@ import typing as t
 
 SPAN_NAMESPACE = "dreadnode"
 
-# === Span Types ===
 SpanType = t.Literal[
     "run",
     "task",
@@ -13,9 +12,10 @@ SpanType = t.Literal[
     "span",
     "run_update",
     "run_fragment",
-    "generation",  # LLM generation step
-    "scorer",  # Scorer execution
-    "trial",  # Optimization trial
+    "generation",
+    "scorer",
+    "trial",
+    "sample",
 ]
 
 # === Generic Span Attributes (all spans) ===
@@ -81,18 +81,33 @@ AGENT_ATTRIBUTE_ID = f"{AGENT_NAMESPACE}.id"
 AGENT_ATTRIBUTE_SESSION_ID = f"{AGENT_NAMESPACE}.session_id"
 AGENT_ATTRIBUTE_TRAJECTORY = f"{AGENT_NAMESPACE}.trajectory"
 AGENT_ATTRIBUTE_SCORES = f"{AGENT_NAMESPACE}.scores"
+AGENT_ATTRIBUTE_NAME = f"{AGENT_NAMESPACE}.name"
+AGENT_ATTRIBUTE_MODEL = f"{AGENT_NAMESPACE}.model"
+AGENT_ATTRIBUTE_TOOLS = f"{AGENT_NAMESPACE}.tools"
+AGENT_ATTRIBUTE_GOAL = f"{AGENT_NAMESPACE}.goal"
 
 # === Evaluation Span Attributes ===
 EVALUATION_NAMESPACE = f"{SPAN_NAMESPACE}.evaluation"
 EVALUATION_ATTRIBUTE_TASK_NAME = f"{EVALUATION_NAMESPACE}.task_name"
 EVALUATION_ATTRIBUTE_DATASET_SIZE = f"{EVALUATION_NAMESPACE}.dataset_size"
 EVALUATION_ATTRIBUTE_ITERATIONS = f"{EVALUATION_NAMESPACE}.iterations"
+EVALUATION_ATTRIBUTE_SCORERS = f"{EVALUATION_NAMESPACE}.scorers"
+EVALUATION_ATTRIBUTE_ASSERT_SCORES = f"{EVALUATION_NAMESPACE}.assert_scores"
 
 # === Study Span Attributes ===
 STUDY_NAMESPACE = f"{SPAN_NAMESPACE}.study"
 STUDY_ATTRIBUTE_SEARCH_STRATEGY = f"{STUDY_NAMESPACE}.search_strategy"
 STUDY_ATTRIBUTE_OBJECTIVES = f"{STUDY_NAMESPACE}.objectives"
 STUDY_ATTRIBUTE_MAX_TRIALS = f"{STUDY_NAMESPACE}.max_trials"
+STUDY_ATTRIBUTE_DIRECTIONS = f"{STUDY_NAMESPACE}.directions"
+
+# === Sample Span Attributes ===
+SAMPLE_NAMESPACE = f"{SPAN_NAMESPACE}.sample"
+SAMPLE_ATTRIBUTE_INDEX = f"{SAMPLE_NAMESPACE}.index"
+SAMPLE_ATTRIBUTE_TOTAL = f"{SAMPLE_NAMESPACE}.total"
+SAMPLE_ATTRIBUTE_ITERATION = f"{SAMPLE_NAMESPACE}.iteration"
+SAMPLE_ATTRIBUTE_SCENARIO_PARAMS = f"{SAMPLE_NAMESPACE}.scenario_params"
+SAMPLE_ATTRIBUTE_CONTEXT = f"{SAMPLE_NAMESPACE}.context"
 
 # === Event Names ===
 EVENT_NAME_OBJECT = f"{SPAN_NAMESPACE}.object"
