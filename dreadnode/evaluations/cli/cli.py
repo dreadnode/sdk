@@ -2,10 +2,10 @@
 
 import typing as t
 
-from dreadnode.core.cli.discoverable import DiscoverableCLI
+from dreadnode.cli.discoverable import DiscoverableCLI
 
 if t.TYPE_CHECKING:
-    from dreadnode.core.evaluations import Evaluation
+    from dreadnode.evaluations import Evaluation
 
 
 async def _run_evaluation(evaluation: "Evaluation", input: str | None, raw: bool) -> None:
@@ -15,8 +15,8 @@ async def _run_evaluation(evaluation: "Evaluation", input: str | None, raw: bool
 
 def _create_evaluation_cli() -> DiscoverableCLI["Evaluation"]:
     """Create the evaluation CLI using the shared discoverable pattern."""
-    from dreadnode.core.evaluations import Evaluation
     from dreadnode.core.evaluations.format import format_eval, format_evals
+    from dreadnode.evaluations import Evaluation
 
     return DiscoverableCLI(
         name="eval",

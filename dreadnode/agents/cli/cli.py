@@ -4,10 +4,10 @@ import typing as t
 
 import rich
 
-from dreadnode.core.cli.discoverable import DiscoverableCLI
+from dreadnode.cli.discoverable import DiscoverableCLI
 
 if t.TYPE_CHECKING:
-    from dreadnode.core.agents import Agent
+    from dreadnode.agents import Agent
 
 
 async def _run_agent(agent: "Agent", input: str | None, raw: bool) -> None:
@@ -19,7 +19,7 @@ async def _run_agent(agent: "Agent", input: str | None, raw: bool) -> None:
 
 def _create_agent_cli() -> DiscoverableCLI["Agent"]:
     """Create the agent CLI using the shared discoverable pattern."""
-    from dreadnode.core.agents import Agent
+    from dreadnode.agents import Agent
     from dreadnode.core.agents.format import format_agent, format_agents
 
     return DiscoverableCLI(

@@ -17,7 +17,6 @@ from pydantic import (
     Field,
     FilePath,
     TypeAdapter,
-    computed_field,
     field_validator,
     model_validator,
 )
@@ -183,7 +182,9 @@ class Evaluation(ConcurrentExecutor[EvalEvent[In, Out], EvalResult[In, Out]], t.
                 "task_name": self.task_name,
                 # Scorers
                 "scorers": [s.name for s in scorers],
-                "assert_scores": list(self.assert_scores) if self.assert_scores is not True else ["*"],
+                "assert_scores": list(self.assert_scores)
+                if self.assert_scores is not True
+                else ["*"],
                 # Dataset mapping
                 "dataset_input_mapping": self.dataset_input_mapping,
             }
@@ -200,7 +201,7 @@ class Evaluation(ConcurrentExecutor[EvalEvent[In, Out], EvalResult[In, Out]], t.
 
     async def _stream(self) -> t.AsyncGenerator[EvalEvent[In, Out], None]:
         """Core evaluation execution loop."""
-        from dreadnode import get_current_run, log_metrics, log_output, task_and_run
+        from dreadnode import get_current_run, task_and_run
 
         base_task, dataset = await self._prepare_task_and_dataset()
         param_combinations = self._get_param_combinations()
@@ -242,7 +243,8 @@ class Evaluation(ConcurrentExecutor[EvalEvent[In, Out], EvalResult[In, Out]], t.
             trace_context = (
                 task_and_run(
                     name=self.name,
-                    task_name=base_task.name,
+                    # Use evaluation name for the span, not the task name
+                    # This makes the hierarchy clearer: Evaluation > Agent Task
                     task_type="evaluation",
                     tags=self.tags,
                     inputs=self._get_trace_context().inputs,
@@ -470,9 +472,12 @@ class Evaluation(ConcurrentExecutor[EvalEvent[In, Out], EvalResult[In, Out]], t.
         scenario_params: AnyDict,
         iteration: int,
     ) -> t.AsyncIterator[t.AsyncGenerator[Sample[In, Out], None]]:
+        dataset_size = len(dataset)
+
         async def _run_sample(index: int, row: AnyDict) -> Sample[In, Out]:
             token = current_dataset_row.set(row)
             try:
+                task_params = set(configured_task.signature.parameters)
                 if self.dataset_input_mapping:
                     if isinstance(self.dataset_input_mapping, list):
                         task_kwargs = {k: row[k] for k in self.dataset_input_mapping}
@@ -482,14 +487,17 @@ class Evaluation(ConcurrentExecutor[EvalEvent[In, Out], EvalResult[In, Out]], t.
                             for ds_key, task_arg in self.dataset_input_mapping.items()
                         }
                 else:
-                    task_params = set(configured_task.signature.parameters)
                     task_kwargs = {k: v for k, v in row.items() if k in task_params}
 
-                context = {f"dataset_{k}": v for k, v in row.items() if k not in task_params}
+                context = {f"dataset_{k}": v for k, v in row.items() if k not in task_kwargs}
                 first_kwarg = next(iter(task_kwargs.values()), None)
                 task_input = task_kwargs if len(task_kwargs) > 1 else first_kwarg
 
-                span = await configured_task.run_always(
+                # Create task with indexed name for better span identification
+                indexed_task = configured_task.with_(
+                    name=f"{configured_task.name} [{index + 1}/{dataset_size}]"
+                )
+                span = await indexed_task.run_always(
                     **{**task_kwargs, "__dn_ctx_inputs__": context}
                 )
 

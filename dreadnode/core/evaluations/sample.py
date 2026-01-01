@@ -7,7 +7,6 @@ from ulid import ULID
 
 from dreadnode.core.exceptions import AssertionFailedError
 from dreadnode.core.metric import MetricSeries
-from dreadnode.core.scorer import ScorerResult
 from dreadnode.core.tracing.span import TaskSpan
 from dreadnode.core.types.common import UNSET, ErrorField
 
@@ -27,7 +26,6 @@ InputDatasetProcessor = t.Callable[[InputDataset], InputDataset]
 class Sample(BaseModel, t.Generic[In, Out]):
     """
     Represents a single input-output sample processed by a task,
-
     along with associated metadata such as metrics, assertions, and context.
 
     Attributes:
@@ -37,8 +35,8 @@ class Sample(BaseModel, t.Generic[In, Out]):
         index: The index of the sample in the dataset.
         iteration: The iteration this sample belongs to.
         scenario_params: The parameters defining the scenario this sample belongs to.
-        metrics: Metrics collected during measurement.
-        assertions: Assertions made during measurement.
+        metrics: Metrics from scorers and execution (e.g. tool counts, token usage).
+        assertions: Pass/fail status for asserted scorers.
         context: Contextual information about the sample - like originating dataset fields.
         error: Any error that occurred.
         task: Associated task span.
@@ -52,8 +50,7 @@ class Sample(BaseModel, t.Generic[In, Out]):
     index: int = 0
     iteration: int = 0
     scenario_params: dict[str, t.Any] = Field(default_factory=dict)
-    metrics: dict[str, MetricSeries] = Field(default_factory=dict)  # observations
-    scores: dict[str, ScorerResult] = Field(default_factory=dict)  # evaluations (separate!)
+    metrics: dict[str, MetricSeries] = Field(default_factory=dict)
     assertions: dict[str, bool] = Field(default_factory=dict)
     context: dict[str, t.Any] | None = Field(default=None, repr=False)
     error: ErrorField | None = Field(default=None, repr=False)

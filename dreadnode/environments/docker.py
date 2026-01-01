@@ -28,17 +28,23 @@ class DockerEnvironment(Environment):
         network_name: str | None = None,
         network_isolation: bool = False,
         health_check: "HealthCheckConfig | None" = None,
+        keep_alive: bool = True,
     ):
-        # Import from wherever you put Document 6
-
         self.image = image
+        # Use a keep-alive command if none specified and keep_alive is True
+        # This ensures the container stays running for exec commands
+        # Terminal-Bench uses "sleep infinity" for this purpose
+        effective_command = command
+        if keep_alive and command is None:
+            effective_command = ["sh", "-c", "sleep infinity"]
+
         self.config = ContainerConfig(
             name=name,
             hostname=hostname,
             ports=ports or [],
             env=env or {},
             volumes=volumes or {},
-            command=command,
+            command=effective_command,
             memory_limit=memory_limit,
             network_name=network_name,
             network_isolation=network_isolation,

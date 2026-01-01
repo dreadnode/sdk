@@ -2,7 +2,7 @@
 
 import typing as t
 
-from dreadnode.core.cli.discoverable import DiscoverableCLI
+from dreadnode.cli.discoverable import DiscoverableCLI
 
 if t.TYPE_CHECKING:
     from dreadnode.core.optimization import Study
@@ -34,15 +34,13 @@ def _create_study_cli() -> DiscoverableCLI["Study"]:
     )
 
     # Override discovery to exclude Attack subclass
-    original_discover_and_find = cli._discover_and_find
-
     def discover_and_find_excluding_attacks(identifier: str) -> tuple["Study | None", str, str]:
-        from dreadnode.core.discovery import discover
+        from dreadnode.core.discovery import DEFAULT_SEARCH_PATHS, discover
+
+        import rich
 
         file_path, obj_name = cli._parse_identifier(identifier)
-        path_hint = str(file_path) if file_path else ", ".join(
-            ("main.py", "agent.py", "app.py", "eval.py", "attack.py", "study.py")
-        )
+        path_hint = str(file_path) if file_path else ", ".join(DEFAULT_SEARCH_PATHS)
 
         # Discover studies but exclude Attack
         discovered = discover(Study, file_path, exclude_types={Attack})
@@ -54,7 +52,6 @@ def _create_study_cli() -> DiscoverableCLI["Study"]:
 
         if obj_name is None:
             if len(discovered) > 1:
-                import rich
                 rich.print(
                     f"[yellow]Warning:[/yellow] Multiple studies found. "
                     f"Defaulting to the first one: '{next(iter(objs_by_name.keys()))}'."
@@ -62,7 +59,6 @@ def _create_study_cli() -> DiscoverableCLI["Study"]:
             obj_name = next(iter(objs_by_name.keys()))
 
         if obj_name.lower() not in objs_by_lower_name:
-            import rich
             rich.print(f":exclamation: Study '{obj_name}' not found in {path_hint}.")
             rich.print(f"Available studies are: {', '.join(objs_by_name.keys())}")
             return None, obj_name, path_hint

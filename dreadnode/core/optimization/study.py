@@ -385,8 +385,9 @@ class Study(
         self, trial: Trial[CandidateT]
     ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
         """Process a single trial."""
-        from dreadnode import log_inputs, log_metrics, log_outputs, task_span
+        from dreadnode import log_inputs, log_metrics, log_outputs
         from dreadnode import score as dn_score
+        from dreadnode.core.tracing.spans import trial_span
 
         task_factory = (
             self.probe_task_factory
@@ -412,7 +413,14 @@ class Study(
                 )
 
         with (
-            task_span(name=f"{probe_or_trial} - {task.name}", tags=[probe_or_trial]) as span,
+            trial_span(
+                trial_id=trial.id,
+                step=trial.step,
+                candidate=trial.candidate if isinstance(trial.candidate, dict) else {"value": trial.candidate},
+                task_name=task.name,
+                is_probe=trial.is_probe,
+                tags=[probe_or_trial],
+            ) as span,
             contextlib.ExitStack() as stack,
         ):
             stack.callback(log_trial, trial)
@@ -470,15 +478,19 @@ class Study(
                 )
 
                 trial.status = "finished"
+                span.set_attribute("dreadnode.trial.status", "finished")
+                span.set_attribute("dreadnode.trial.scores", trial.scores)
 
             except AssertionFailedError as e:
                 span.add_tags(["pruned"])
                 span.set_exception(e)
+                span.set_attribute("dreadnode.trial.status", "pruned")
                 trial.status = "pruned"
                 trial.pruning_reason = f"Constraint not satisfied: {e}"
 
             except Exception as e:
                 span.set_exception(e)
+                span.set_attribute("dreadnode.trial.status", "failed")
                 trial.status = "failed"
                 trial.error = str(e)
 

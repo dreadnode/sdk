@@ -362,22 +362,36 @@ class Task(Component[P, R], t.Generic[P, R]):
         )
         task.entrypoint = entrypoint
 
-        new_scorers = Scorer.fit_many(scorers or [])
-        new_tags = list(tags or [])
-        new_assert_scores = (
-            [s.name for s in new_scorers] if assert_scores is True else list(assert_scores or [])
-        )
+        # Only process scorers/tags/etc if explicitly provided
+        # None means "keep existing", not "replace with empty"
+        if scorers is not None:
+            new_scorers = Scorer.fit_many(scorers)
+            if append:
+                task.scorers.extend(new_scorers)
+            else:
+                task.scorers = new_scorers
 
-        if append:
-            task.scorers.extend(new_scorers)
-            task.tags.extend(new_tags)
-            task.assert_scores.extend(new_assert_scores)
-            task.attributes.update(attributes or {})
-        else:
-            task.scorers = new_scorers
-            task.tags = new_tags
-            task.assert_scores = new_assert_scores
-            task.attributes = attributes or {}
+        if tags is not None:
+            new_tags = list(tags)
+            if append:
+                task.tags.extend(new_tags)
+            else:
+                task.tags = new_tags
+
+        if assert_scores is not None:
+            new_assert_scores = (
+                [s.name for s in task.scorers] if assert_scores is True else list(assert_scores)
+            )
+            if append:
+                task.assert_scores.extend(new_assert_scores)
+            else:
+                task.assert_scores = new_assert_scores
+
+        if attributes is not None:
+            if append:
+                task.attributes.update(attributes)
+            else:
+                task.attributes = attributes
 
         return task
 

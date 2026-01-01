@@ -51,6 +51,12 @@ from dreadnode.core.tracing.span import (
     current_run_span,
     current_task_span,
 )
+from dreadnode.core.tracing.spans import (
+    generation_span,
+    scorer_span,
+    tool_span,
+    trial_span,
+)
 from dreadnode.core.types.common import (
     INHERITED,
     AnyDict,
@@ -200,10 +206,10 @@ class Dreadnode:
             workspace: The default workspace name or ID to use.
             project: The default project name to associate all runs with. This can also be in the format `org/workspace/project` using the keys.
             cache: The local cache directory to use.
-            storage: The storage backend to use.
+            storage_provider: The storage provider to use.
             service_name: The service name to use for OpenTelemetry.
             service_version: The service version to use for OpenTelemetry.
-            console: Log span information to the console (`DREADNODE_CONSOLE` or the default is True).
+            console: Log span information to the console.
             send_to_logfire: Send data to Logfire.
             otel_scope: The OpenTelemetry scope name.
         """

@@ -13,19 +13,19 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from dreadnode.agents.cli import agent_cli
 from dreadnode.airt.cli import airt_cli
-from dreadnode.core.agents.cli import agent_cli
 from dreadnode.core.api import Token
 from dreadnode.core.api.client import ApiClient, create_api_client
 from dreadnode.core.api.models import Organization, Workspace, WorkspaceFilter
 from dreadnode.core.api.session import ServerConfig, UserConfig
-from dreadnode.core.evaluations.cli import evaluation_cli
 from dreadnode.core.log import console, logger
-from dreadnode.core.optimization.cli import study_cli
 from dreadnode.core.settings import DEBUG, PLATFORM_BASE_URL
 from dreadnode.core.util import create_key_from_name, time_to
 from dreadnode.datasets.cli import dataset_cli
+from dreadnode.evaluations.cli import evaluation_cli
 from dreadnode.platform.cli import platform_cli
+from dreadnode.studies.cli import study_cli
 
 cli = cyclopts.App(
     help="Interact with Dreadnode platforms",
@@ -158,17 +158,16 @@ def refresh() -> None:
     )
 
 
-@cli.command()
 @cli.command(help="Show versions and exit.", group="Meta")
 def version() -> None:
-    version = importlib.metadata.version("dreadnode")
+    ver = importlib.metadata.version("dreadnode")
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
     os_name = platform.system()
     arch = platform.machine()
     logger.info(f"Platform:   {os_name} ({arch})")
     logger.info(f"Python:     {python_version}")
-    logger.info(f"Dreadnode:  {version}")
+    logger.info(f"Dreadnode:  {ver}")
 
 
 @cli.command()

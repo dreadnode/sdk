@@ -2,7 +2,6 @@ import inspect
 import typing as t
 from contextlib import AsyncExitStack, aclosing, asynccontextmanager
 from copy import deepcopy
-from pathlib import Path
 from textwrap import dedent
 
 import typing_extensions as te
@@ -41,14 +40,6 @@ from dreadnode.core.agents.reactions import (
 )
 from dreadnode.core.agents.trajectory import Trajectory
 from dreadnode.core.environment import Environment
-from dreadnode.core.evaluations import (
-    DatasetLike,
-    EvalResult,
-    Evaluation,
-    IterationResult,
-    Sample,
-    ScenarioResult,
-)
 from dreadnode.core.exceptions import warn_at_user_stacklevel
 from dreadnode.core.execution import Executor, TraceContext
 from dreadnode.core.generators import caching
@@ -56,12 +47,10 @@ from dreadnode.core.generators.chat import Chat
 from dreadnode.core.generators.generator import GenerateParams, Generator, get_generator
 from dreadnode.core.generators.message import Message, inject_system_content
 from dreadnode.core.generators.models import SystemErrorModel
+from dreadnode.core.agents.scorer_hook import ScorerHook
 from dreadnode.core.hook import Hook
 from dreadnode.core.judge import Judge, Rubric
 from dreadnode.core.meta import Component, Config, component
-from dreadnode.core.optimization import Direction, Study, StudyResult, StudyStopCondition
-from dreadnode.core.scorer import Scorer, ScorersLike
-from dreadnode.core.search import Categorical, Float, Int, Search, SearchLike
 from dreadnode.core.stopping import StopCondition
 from dreadnode.core.task import Task, task
 from dreadnode.core.tools import Tool, ToolCall, ToolMode, Toolset, discover_tools_on_obj
@@ -74,7 +63,6 @@ from dreadnode.core.tools.transforms import (
 )
 from dreadnode.core.transforms import PostTransform, Transform
 from dreadnode.core.util import flatten_list, join_generators, safe_repr
-from dreadnode.search import grid, optuna_, random
 
 
 class AgentWarning(UserWarning):
@@ -119,6 +107,8 @@ class Agent(Executor[AgentEvent, Trajectory]):
     tool_mode: ToolMode = Config(default="auto", repr=False)
     stop_conditions: list[StopCondition] = Config(default_factory=list)
     hooks: list[Hook] = Config(default_factory=list, repr=False)
+    scorers: list[ScorerHook] = Config(default_factory=list, repr=False)
+    """ScorerHooks to run during agent execution for per-step scoring."""
     judge: Judge[Rubric] | None = Config(default=None, repr=False)
     environment: Environment | None = Config(default=None, repr=False)
     trajectory: Trajectory = Field(default_factory=Trajectory, exclude=True, repr=False)
@@ -186,6 +176,14 @@ class Agent(Executor[AgentEvent, Trajectory]):
         if isinstance(event, AgentEnd):
             return self.trajectory
         return None
+
+    def _should_trace(self) -> bool:
+        """Skip tracing if already inside a TaskSpan (e.g., when used with Evaluation)."""
+        from dreadnode.core.tracing.span import current_task_span
+
+        # If we're already inside a TaskSpan, don't create another one
+        # This prevents nested span issues when agent is wrapped in a Task
+        return current_task_span.get() is None
 
     def _get_trace_context(self) -> TraceContext:
         """Build trace context with agent-specific information."""
@@ -319,6 +317,9 @@ class Agent(Executor[AgentEvent, Trajectory]):
                         messages=messages,
                         step=step_count,
                         usage=step_chat.usage,
+                        stop_reason=step_chat.stop_reason,
+                        extra=step_chat.extra,
+                        generation_failed=step_chat.failed,
                     )
                 ):
                     yield event
@@ -396,19 +397,159 @@ class Agent(Executor[AgentEvent, Trajectory]):
             yield event
 
     async def _stream_traced(self) -> t.AsyncGenerator[AgentEvent, None]:
-        """Override to add trajectory logging."""
+        """Override to add trajectory logging and child spans for generation/tool calls."""
+        import json
+
         from dreadnode import DEFAULT_INSTANCE, log_output, log_outputs
+        from dreadnode.core.tracing.span import TaskSpan
+        from dreadnode.core.tracing.spans import generation_span, tool_span
+        from dreadnode.core.tracing.constants import (
+            TOOL_ATTRIBUTE_ERROR,
+            TOOL_ATTRIBUTE_RESULT,
+            TOOL_ATTRIBUTE_STOPPED,
+        )
 
         last_event: AgentEvent | None = None
+        tool_spans: dict[str, TaskSpan[t.Any]] = {}  # Track open tool spans by tool_call.id
 
         try:
             async for event in super()._stream_traced():
                 if isinstance(event, AgentStep):
                     self.trajectory.log_step(event)
+                    # Log metrics for this step
+                    event.log_metrics(detailed=True)
+
+                # Execute scorer hooks for this event
+                for scorer_hook in self.scorers:
+                    try:
+                        result = await scorer_hook(event)
+                        if result is not None:
+                            # Log score to trajectory
+                            if result.metric is not None:
+                                self.trajectory.log_score(
+                                    scorer_name=result.scorer_name,
+                                    value=result.metric.value,
+                                    step=result.step,
+                                )
+                            # Check for reaction
+                            if result.reaction is not None:
+                                raise result.reaction
+                    except Reaction:
+                        raise
+                    except Exception as e:
+                        logger.warning(f"Scorer hook {scorer_hook.__name__} failed: {e}")
+
+                # Create child spans for generation and tool events
+                if isinstance(event, GenerationStep):
+                    # Parse tool_calls to structured format
+                    parsed_tool_calls = None
+                    content = None
+                    role = "assistant"
+
+                    if event.messages:
+                        last_msg = event.messages[-1]
+                        content = str(last_msg.content)[:4000] if last_msg.content else None
+                        role = last_msg.role
+
+                        if last_msg.tool_calls:
+                            parsed_tool_calls = []
+                            for tc in last_msg.tool_calls:
+                                try:
+                                    args = json.loads(tc.function.arguments)
+                                except json.JSONDecodeError:
+                                    args = tc.function.arguments
+                                parsed_tool_calls.append({
+                                    "name": tc.name,
+                                    "id": tc.id,
+                                    "arguments": args,
+                                })
+
+                    # Use the explicit generation_span factory
+                    with generation_span(
+                        step=event.step,
+                        model=event.generator.model if event.generator else self.model_name,
+                        input_tokens=event.usage.input_tokens if event.usage else 0,
+                        output_tokens=event.usage.output_tokens if event.usage else 0,
+                        content=content,
+                        role=role,
+                        tool_calls=parsed_tool_calls,
+                        stop_reason=event.stop_reason,
+                        failed=event.generation_failed,
+                        extra=event.extra if event.extra else None,
+                    ):
+                        pass  # Attributes set by factory
+
+                elif isinstance(event, ToolStart):
+                    # Parse arguments
+                    try:
+                        args = json.loads(event.tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        args = event.tool_call.function.arguments
+
+                    # Use the explicit tool_span factory
+                    span = tool_span(
+                        event.tool_call.name,
+                        call_id=event.tool_call.id,
+                        arguments=args,
+                    )
+                    span.__enter__()
+                    tool_spans[event.tool_call.id] = span
+
+                elif isinstance(event, (ToolEnd, ToolStep)):
+                    # Close the tool span if we have one open
+                    span = tool_spans.pop(event.tool_call.id, None)
+                    if span is not None:
+                        if isinstance(event, ToolEnd):
+                            result = event.result[:4000] if event.result else ""
+                            span.set_attribute(TOOL_ATTRIBUTE_RESULT, result)
+                        elif isinstance(event, ToolStep):
+                            span.set_attribute(TOOL_ATTRIBUTE_STOPPED, event.stop or False)
+                            if event.error:
+                                span.set_attribute(TOOL_ATTRIBUTE_ERROR, str(event.error)[:1000])
+                        span.__exit__(None, None, None)
+
+                elif isinstance(event, ToolError):
+                    # Close the tool span with error
+                    span = tool_spans.pop(event.tool_call.id, None)
+                    if span is not None:
+                        span.set_attribute(TOOL_ATTRIBUTE_ERROR, str(event.error)[:1000])
+                        span.__exit__(type(event.error), event.error, None)
+
                 last_event = event
                 yield event
+
         finally:
+            # Close any remaining tool spans
+            for span in tool_spans.values():
+                span.__exit__(None, None, None)
+
             if self.trajectory is not None:
+                # Build aggregated scores dict
+                aggregated_scores: dict[str, dict[str, float]] = {}
+                for name, series in self.trajectory.scores.items():
+                    aggregated_scores[name] = {
+                        "mean": series.mean() or 0.0,
+                        "min": series.min() or 0.0,
+                        "max": series.max() or 0.0,
+                        "count": float(series.count()),
+                    }
+
+                # Log trajectory as structured object
+                log_output("trajectory", {
+                    "session_id": str(self.trajectory.session_id),
+                    "agent_id": str(self.trajectory.agent_id) if self.trajectory.agent_id else None,
+                    "total_steps": len(self.trajectory.steps),
+                    "messages": [
+                        {
+                            "role": m.role,
+                            "content": m.content[:2000] if m.content else None,
+                            "has_tool_calls": bool(m.tool_calls),
+                        }
+                        for m in self.trajectory.messages
+                    ],
+                    "scores": aggregated_scores,
+                })
+
                 # Log token usage
                 log_outputs(
                     input_tokens=self.trajectory.usage.input_tokens,
@@ -756,303 +897,47 @@ class Agent(Executor[AgentEvent, Trajectory]):
                 yield event
             raise
 
-    async def evaluate(
-        self,
-        goal: str | None = None,
-        *,
-        dataset: DatasetLike | None = None,
-        dataset_file: Path | str | None = None,
-        scorers: ScorersLike[Trajectory] | None = None,
-        assert_scores: list[str] | t.Literal[True] | None = None,
-        max_attempts: int = 1,
-        stop_on_success: bool = False,
-        concurrency: int = 1,
-        iterations: int = 1,
-        max_errors: int | None = None,
-        max_consecutive_errors: int = 10,
-        name: str | None = None,
-    ) -> EvalResult[str, Trajectory]:
+    def as_task(self, *, name: str | None = None) -> Task[[str], Trajectory]:
         """
-        Evaluate the agent against one or more goals.
+        Convert this agent to a Task for use with Evaluation or Study.
 
-        For a single goal:
-            result = await agent.eval(
-                "Find the flag",
-                scorers=[flag_found],
-                max_attempts=5,
-                stop_on_success=True,
-            )
+        The resulting Task takes a goal string and returns a Trajectory.
+        This is the bridge between Agent and the evaluation/optimization systems.
 
-        For multiple goals:
-            result = await agent.eval(
-                dataset=[{"goal": "..."}, ...],
-                scorers=[flag_found],
-                concurrency=4,
+        Args:
+            name: Optional name for the task. Defaults to agent name.
+
+        Returns:
+            A Task that wraps agent.run().
+
+        Example:
+            ```python
+            agent = Agent(name="my_agent", ...)
+
+            # Use with Evaluation
+            evaluation = Evaluation(
+                task=agent.as_task(),
+                dataset=[{"goal": "..."}],
+                scorers=[my_scorer],
             )
+            result = await evaluation.run()
+
+            # Use with Study
+            study = Study(
+                task_factory=lambda params: agent.with_(**params).as_task(),
+                ...
+            )
+            ```
         """
-        if goal is not None:
-            if dataset is not None:
-                raise ValueError("Specify either 'goal' or 'dataset', not both")
+        agent = self
+        task_name = name or self.name
 
-            return await self._eval_single(
-                goal=goal,
-                scorers=scorers,
-                assert_scores=assert_scores,
-                max_attempts=max_attempts,
-                stop_on_success=stop_on_success,
-                name=name,
-            )
-
-        if dataset is None and dataset_file is None:
-            raise ValueError("Must specify 'goal', 'dataset', or 'dataset_file'")
-
-        return await self._eval_dataset(
-            dataset=dataset,
-            dataset_file=dataset_file,
-            scorers=scorers,
-            assert_scores=assert_scores,
-            concurrency=concurrency,
-            iterations=iterations,
-            max_errors=max_errors,
-            max_consecutive_errors=max_consecutive_errors,
-            name=name,
-        )
-
-    async def _eval_single(
-        self,
-        name: str | None,
-        goal: str,
-        scorers: ScorersLike[Trajectory] | None,
-        assert_scores: list[str] | t.Literal[True] | None,
-        max_attempts: int,
-        *,
-        stop_on_success: bool,
-    ) -> EvalResult[str, Trajectory]:
-        """Evaluate a single goal with retry semantics."""
-        from dreadnode import task_and_run
-
-        fitted_scorers = Scorer.fit_many(scorers)
-        assertion_names = (
-            [s.name for s in fitted_scorers] if assert_scores is True else list(assert_scores or [])
-        )
-
-        attempts: list[Sample[str, Trajectory]] = []
-        best_sample: Sample | None = None
-
-        eval_name = name or f"eval-{self.name}"
-
-        with task_and_run(eval_name, task_type="evaluation", tags=["evaluation"]):
-            for attempt in range(max_attempts):
-                # Reset environment for retry
-                if self.environment and attempt > 0:
-                    await self.environment.reset()
-
-                # Run agent
-                trajectory = await self.run(goal)
-
-                # Score the trajectory
-                scores = {}
-                for scorer in fitted_scorers:
-                    score_value = scorer(trajectory)
-                    if inspect.isawaitable(score_value):
-                        score_value = await score_value
-                    scores[scorer.name] = score_value
-
-                # Check assertions
-                passed = all(scores.get(name, 0) > 0 for name in assertion_names)
-
-                sample = Sample(
-                    input=goal,
-                    output=trajectory,
-                    scores=scores,
-                    passed=passed,
-                    index=attempt,
-                )
-                attempts.append(sample)
-
-                if best_sample is None or sample.score > best_sample.score:
-                    best_sample = sample
-
-                if passed and stop_on_success:
-                    break
-
-            return EvalResult(
-                scenarios=[
-                    ScenarioResult(
-                        params={},
-                        iterations=[
-                            IterationResult(
-                                iteration=1,
-                                samples=attempts,
-                            )
-                        ],
-                    )
-                ],
-                stop_reason="finished",
-            )
-
-    async def _eval_dataset(
-        self,
-        dataset: DatasetLike | None,
-        dataset_file: Path | str | None,
-        scorers: ScorersLike[Trajectory] | None,
-        assert_scores: list[str] | t.Literal[True] | None,
-        concurrency: int,
-        iterations: int,
-        max_errors: int | None,
-        max_consecutive_errors: int,
-        name: str | None,
-    ) -> EvalResult[str, Trajectory]:
-        """Evaluate against a dataset."""
-
-        # Wrap agent.run as a task
-        @task(name=self.name)
+        @task(name=task_name)
         async def agent_task(goal: str) -> Trajectory:
-            return await self.run(goal)
+            return await agent.run(goal)
 
-        # Delegate to Evaluation
-        evaluation = Evaluation(
-            task=agent_task,
-            dataset=dataset,
-            dataset_file=dataset_file,
-            dataset_input_mapping=["goal"],
-            scorers=scorers or [],
-            assert_scores=assert_scores or [],
-            concurrency=concurrency,
-            iterations=iterations,
-            max_errors=max_errors,
-            max_consecutive_errors=max_consecutive_errors,
-            name=name or f"eval-{self.name}",
-        )
+        return agent_task
 
-        return await evaluation.run()
-
-    async def optimize(
-        self,
-        goal: str | None = None,
-        *,
-        dataset: DatasetLike | None = None,
-        dataset_file: Path | str | None = None,
-        search: SearchLike,
-        search_strategy: t.Literal["grid", "random", "optuna", "auto"] = "auto",
-        scorers: ScorersLike[Trajectory],
-        directions: list[Direction] | None = None,
-        # Per-trial settings
-        max_attempts: int = 1,
-        # Study settings
-        max_trials: int = 100,
-        concurrency: int = 1,
-        constraints: ScorersLike | None = None,
-        stop_conditions: list[StudyStopCondition] | None = None,
-        name: str | None = None,
-    ) -> tuple[te.Self, StudyResult]:
-        """
-        Optimize agent configuration.
-
-        Single goal:
-            best, result = await agent.optimize(
-                "Find the flag",
-                scorers=[flag_found],
-                search={"model": [...], "max_steps": [...]},
-            )
-
-        Dataset:
-            best, result = await agent.optimize(
-                dataset=[...],
-                scorers=[accuracy],
-                search={"model": [...], "instructions": [...]},
-            )
-        """
-
-        # Resolve search strategy
-        search_instance = self._resolve_search(search, search_strategy, max_trials)
-
-        # Factory creates agent variants
-        def agent_factory(candidate: dict[str, t.Any]) -> Task:
-            modified = self.with_(**candidate)
-
-            @task(name=modified.name)
-            async def run_agent(goal: str) -> Trajectory:
-                # Handle retries for stochastic evaluation
-                best_trajectory = None
-                for attempt in range(max_attempts):
-                    if modified.environment and attempt > 0:
-                        await modified.environment.reset()
-
-                    trajectory = await modified.run(goal)
-                    if best_trajectory is None:
-                        best_trajectory = trajectory
-                    # Could add logic to keep best based on some criteria
-
-                return best_trajectory
-
-            return run_agent
-
-        # Normalize goal to dataset
-        eval_dataset = dataset
-        if goal is not None:
-            eval_dataset = [{"goal": goal}]
-
-        study = Study(
-            name=name or f"optimize-{self.name}",
-            search_strategy=search_instance,
-            task_factory=agent_factory,
-            dataset=eval_dataset,
-            dataset_file=dataset_file,
-            objectives=scorers,
-            directions=directions or ["maximize"] * len(Scorer.fit_many(scorers)),
-            constraints=constraints,
-            max_trials=max_trials,
-            concurrency=concurrency,
-            stop_conditions=stop_conditions or [],
-        )
-
-        result = await study.run()
-
-        if result.best_trial is None:
-            raise RuntimeError("Optimization failed - no successful trials")
-
-        best_agent = self.with_(**result.best_trial.candidate)
-        return best_agent, result
-
-    def _resolve_search(
-        self,
-        search: SearchLike,
-        strategy: str,
-        max_trials: int,
-    ) -> Search[dict[str, t.Any]]:
-        """Convert search specification to a Search instance."""
-
-        # Already a Search instance
-        if isinstance(search, Search):
-            return search
-
-        # Check if it's a simple grid (all values are lists, no distributions)
-        is_simple_grid = all(
-            isinstance(v, list) and not isinstance(v, (Float, Int, Categorical))
-            for v in search.values()
-        )
-
-        # Auto-select strategy
-        if strategy == "auto":
-            strategy = "grid" if is_simple_grid else "optuna"
-
-        # Build the search
-        if strategy == "grid":
-            if not is_simple_grid:
-                raise ValueError(
-                    "Grid search requires dict[str, list[Any]]. "
-                    "For distributions (Float, Int, Categorical), use 'random' or 'optuna'."
-                )
-            return grid(search)
-
-        if strategy == "random":
-            return random(search, max_iterations=max_trials)
-
-        if strategy == "optuna":
-            return optuna_(search)
-
-        raise ValueError(f"Unknown search strategy: {strategy}")
 
 
 def agent(

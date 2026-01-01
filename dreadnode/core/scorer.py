@@ -27,100 +27,29 @@ class ScorerWarning(UserWarning):
     """Warning related to scorer mechanics."""
 
 
-@dataclass
-class ScorerResult:
-    """
-    Result from a scorer with optional tree structure for composites.
-
-    For simple scorers, just name and value are used.
-    For composite scorers, children contains the sub-scorer results.
-
-    Attributes:
-        name: The name of the scorer.
-        value: The computed score value.
-        children: Child results for composite scorers.
-        attributes: Additional metadata.
-    """
-
-    name: str
-    value: float
-    children: dict[str, "ScorerResult"] = None  # type: ignore[assignment]
-    attributes: dict[str, t.Any] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.children is None:
-            self.children = {}
-        if self.attributes is None:
-            self.attributes = {}
-
-    def get(self, path: str) -> float | None:
-        """
-        Get a value by dotted path.
-
-        Example:
-            result.get("final.safety.honesty") -> 0.75
-        """
-        parts = path.split(".", 1)
-
-        # Check if this is us
-        if parts[0] == self.name:
-            if len(parts) == 1:
-                return self.value
-            # Recurse into children
-            rest = parts[1]
-            child_name = rest.split(".")[0]
-            if child_name in self.children:
-                return self.children[child_name].get(rest)
-
-        # Direct child access
-        if parts[0] in self.children:
-            if len(parts) == 1:
-                return self.children[parts[0]].value
-            return self.children[parts[0]].get(path)
-
-        return None
-
-    def flatten(self, prefix: str = "") -> dict[str, float]:
-        """Flatten the tree to a dict of dotted paths to values."""
-        path = f"{prefix}.{self.name}" if prefix else self.name
-        result = {path: self.value}
-        for child in self.children.values():
-            result.update(child.flatten(path))
-        return result
-
-    def find_failures(self, threshold: float = 0.5) -> list[str]:
-        """Find all leaf nodes below the threshold."""
-        if not self.children:
-            return [self.name] if self.value < threshold else []
-        failures = []
-        for child in self.children.values():
-            failures.extend(child.find_failures(threshold))
-        return failures
-
-    @classmethod
-    def from_value(cls, name: str, value: "float | int | bool | Metric") -> "ScorerResult":
-        """Create a ScorerResult from a raw value."""
-        if isinstance(value, Metric):
-            return cls(name=name, value=value.value, attributes=value.attributes)
-        return cls(name=name, value=float(value))
+# Scorer return types - what scorer functions can return
+ScorerResult = float | int | bool | Metric
 
 
 @t.runtime_checkable
 class ScorerCallable(t.Protocol, t.Generic[T_contra]):
     """
-    A callable that takes an object and returns a compatible score result.
-    - Can take just the object or additional args/kwargs
-    - Can return single result or sequence
-    - Can be sync or async
+    A callable that takes an object and returns a score.
+
+    Supported return types:
+    - float, int, bool: Converted to Metric
+    - Metric: Used directly
+    - Sequence of the above: Multiple metrics
+    - Async versions of all the above
     """
 
     def __call__(
         self, obj: T_contra, /, *args: t.Any, **kwargs: t.Any
     ) -> (
-        t.Awaitable[ScorerResult]
-        | ScorerResult
-        | t.Awaitable[t.Sequence[ScorerResult]]
+        ScorerResult
         | t.Sequence[ScorerResult]
+        | t.Awaitable[ScorerResult]
+        | t.Awaitable[t.Sequence[ScorerResult]]
     ): ...
 
 
@@ -605,6 +534,62 @@ class Scorer(Component[te.Concatenate[T, ...], t.Any], t.Generic[T]):
     def __floordiv__(self, name: str) -> "Scorer[T]":
         return self.with_(name=name, log_all=False)
 
+    def on(
+        self,
+        event_type: type["AgentEventT"],
+        *,
+        adapter: t.Callable[["AgentEventT"], t.Any] | None = None,
+        **kwargs: t.Any,
+    ) -> "ScorerHook[AgentEventT]":
+        """
+        Create a ScorerHook that runs this scorer on agent events.
+
+        This enables per-step scoring during agent execution, even outside
+        of an Evaluation context.
+
+        Args:
+            event_type: The event type to trigger on (e.g., GenerationStep, ToolStep).
+            adapter: Optional function to extract the object to score from the event.
+            **kwargs: Additional arguments passed to ScorerHook.
+
+        Returns:
+            A ScorerHook configured to run this scorer on matching events.
+
+        Examples:
+            ```
+            @dn.scorer
+            async def quality(text: str) -> float:
+                return await check_quality(text)
+
+            # Score generation outputs
+            hook = quality.on(
+                GenerationStep,
+                adapter=lambda e: e.messages[0].content if e.messages else "",
+            )
+
+            # Use with threshold reactions
+            hook = quality.on(GenerationStep, adapter=...).retry_if_below(0.5)
+
+            # Add to agent
+            agent = Agent(
+                ...,
+                scorers=[hook],
+            )
+            ```
+        """
+        from dreadnode.core.agents.scorer_hook import ScorerHook
+
+        return ScorerHook(
+            scorer=self,
+            event_type=event_type,
+            adapter=adapter,
+            **kwargs,
+        )
+
+
+if t.TYPE_CHECKING:
+    from dreadnode.core.agents.events import AgentEventT
+    from dreadnode.core.agents.scorer_hook import ScorerHook
 
 ScorerLike = Scorer[T] | ScorerCallable[T]
 """A Scorer instance or compatible callable."""
@@ -1137,7 +1122,7 @@ def forward(value: t.Any, *, name: str = "forward") -> Scorer[t.Any]:
             from the value.
     """
 
-    async def evaluate(data: t.Any, *, value: float = value) -> ScorerResult:  # noqa: ARG001
+    async def evaluate(data: t.Any, *, value: float = value) -> float:  # noqa: ARG001
         return value
 
     return Scorer[t.Any](evaluate, name=name or f"forward_{value}")

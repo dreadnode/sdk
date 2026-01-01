@@ -2,7 +2,8 @@ version = 1
 revision = 3
 requires-python = ">=3.10, <3.14"
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
     "python_full_version < '3.11'",
 ]
@@ -23,6 +24,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/52/48/cf3c88c5e3fecdeed824f97a8a98a9fc0d7ef33e603f8f22c2fd32b9ef09/aiobotocore-2.25.2.tar.gz", hash = "sha256:ae0a512b34127097910b7af60752956254099ae54402a84c2021830768f92cda", size = 120585, upload-time = "2025-11-11T18:51:28.056Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/ad/a2f3964aa37da5a4c94c1e5f3934d6ac1333f991f675fcf08a618397a413/aiobotocore-2.25.2-py3-none-any.whl", hash = "sha256:0cec45c6ba7627dd5e5460337291c86ac38c3b512ec4054ce76407d0f7f2a48f", size = 86048, upload-time = "2025-11-11T18:51:26.139Z" },
+]
+
+[[package]]
+name = "aiodocker"
+version = "0.25.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/29/38e414dd1672465e481877f6e314acb9527dd2427e60ae511646e5ed4462/aiodocker-0.25.0.tar.gz", hash = "sha256:e5145ba622a8eceee9263c277c6d4e7ff6be4632d11765c554c80756b2d58be8", size = 159414, upload-time = "2025-12-20T04:51:28.867Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e4/7c/0cf5e5008d1675183f346beffa030209ee0f640db086e39b484b53608c43/aiodocker-0.25.0-py3-none-any.whl", hash = "sha256:0e11f39360cc69dd0a27621f15ffbf42010fb146628920e9aa8de449a9fcb0c5", size = 46401, upload-time = "2025-12-20T04:51:27.177Z" },
 ]
 
 [[package]]
@@ -781,6 +794,7 @@ name = "dreadnode"
 version = "1.16.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiodocker" },
     { name = "aiofiles" },
     { name = "coolname" },
     { name = "cyclopts" },
@@ -791,6 +805,7 @@ dependencies = [
     { name = "loguru" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opentelemetry-semantic-conventions-ai" },
     { name = "optuna" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -867,6 +882,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiodocker", specifier = ">=0.25.0" },
     { name = "aiofiles", specifier = ">=24.1.0,<25.0.0" },
     { name = "art", marker = "extra == 'transforms'", specifier = ">=6.5,<7.0.0" },
     { name = "confusables", marker = "extra == 'scoring'", specifier = ">=1.2.0,<2.0.0" },
@@ -882,6 +898,7 @@ requires-dist = [
     { name = "moviepy", marker = "extra == 'multimodal'", specifier = ">=2.1.2,<3.0.0" },
     { name = "nltk", marker = "extra == 'scoring'", specifier = ">=3.9.1,<4.0.0" },
     { name = "numpy", specifier = "<=2.3.5" },
+    { name = "opentelemetry-semantic-conventions-ai", specifier = ">=0.4.13" },
     { name = "optuna", specifier = ">=4.5.0,<5.0.0" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },
     { name = "pillow", marker = "extra == 'multimodal'", specifier = ">=11.2.1,<12.0.0" },
@@ -1411,7 +1428,8 @@ name = "ipython"
 version = "9.7.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
 ]
 dependencies = [
@@ -2239,7 +2257,8 @@ name = "networkx"
 version = "3.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6c/4f/ccdb8ad3a38e583f214547fd2f7ff1fc160c43a75af88e6aec213404b96a/networkx-3.5.tar.gz", hash = "sha256:d4c6f9cf81f52d69230866796b82afbccdec3db7ae4fbd1b65ea750feed50037", size = 2471065, upload-time = "2025-05-29T11:35:07.804Z" }
@@ -2341,7 +2360,8 @@ name = "numpy"
 version = "2.3.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/65/21b3bc86aac7b8f2862db1e808f1ea22b028e30a225a34a5ede9bf8678f2/numpy-2.3.5.tar.gz", hash = "sha256:784db1dcdab56bf0517743e746dfb0f885fc68d948aba86eeec2cba234bdf1c0", size = 20584950, upload-time = "2025-11-16T22:52:42.067Z" }
@@ -2647,6 +2667,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5d/f0/f33458486da911f47c4aa6db9bda308bb80f3236c111bf848bd870c16b16/opentelemetry_semantic_conventions-0.55b1.tar.gz", hash = "sha256:ef95b1f009159c28d7a7849f5cbc71c4c34c845bb514d66adfdf1b3fff3598b3", size = 119829, upload-time = "2025-06-10T08:55:33.881Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/89/267b0af1b1d0ba828f0e60642b6a5116ac1fd917cde7fc02821627029bd1/opentelemetry_semantic_conventions-0.55b1-py3-none-any.whl", hash = "sha256:5da81dfdf7d52e3d37f8fe88d5e771e191de924cfff5f550ab0b8f7b2409baed", size = 196223, upload-time = "2025-06-10T08:55:17.638Z" },
+]
+
+[[package]]
+name = "opentelemetry-semantic-conventions-ai"
+version = "0.4.13"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/e6/40b59eda51ac47009fb47afcdf37c6938594a0bd7f3b9fadcbc6058248e3/opentelemetry_semantic_conventions_ai-0.4.13.tar.gz", hash = "sha256:94efa9fb4ffac18c45f54a3a338ffeb7eedb7e1bb4d147786e77202e159f0036", size = 5368, upload-time = "2025-08-22T10:14:17.387Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/b5/cf25da2218910f0d6cdf7f876a06bed118c4969eacaf60a887cbaef44f44/opentelemetry_semantic_conventions_ai-0.4.13-py3-none-any.whl", hash = "sha256:883a30a6bb5deaec0d646912b5f9f6dcbb9f6f72557b73d0f2560bf25d13e2d5", size = 6080, upload-time = "2025-08-22T10:14:16.477Z" },
 ]
 
 [[package]]
@@ -4148,7 +4177,8 @@ name = "scipy"
 version = "1.16.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
 ]
 dependencies = [

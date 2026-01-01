@@ -1,174 +1,135 @@
-import contextlib
-import inspect
-import itertools
+"""Datasets CLI for managing and viewing datasets."""
+
 import typing as t
-from inspect import isawaitable
-from pathlib import Path
 
 import cyclopts
 import rich
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
-from dreadnode.core.cli.shared import DreadnodeConfig
-from dreadnode.core.discovery import DEFAULT_SEARCH_PATHS, discover
-from dreadnode.core.log import console
-from dreadnode.core.meta import get_config_model, hydrate
-from dreadnode.core.meta.introspect import flatten_model
+from dreadnode.core.log import console, logger
 
-agent_cli = cyclopts.App("agent", help="Discover and run agents.")
+# Note: datasets don't use the discoverable pattern since they are package-based, not file-based
+
+dataset_cli = cyclopts.App("dataset", help="Manage and view datasets.")
 
 
-@agent_cli.command(name=["list", "ls", "show"])
-def show(
-    file: Path | None = None,
-    *,
-    verbose: t.Annotated[
-        bool,
-        cyclopts.Parameter(["--verbose", "-v"], help="Display detailed information."),
-    ] = False,
-) -> None:
+@dataset_cli.command(name=["list", "ls", "show"])
+def list_datasets() -> None:
     """
-    Discover and list available agents in a Python file.
-
-    If no file is specified, searches in standard paths.
+    List all installed datasets.
     """
-    from dreadnode.core.agents import Agent
-    from dreadnode.core.agents.format import format_agent, format_agents
+    from dreadnode.datasets.dataset import Dataset
 
-    discovered = discover(Agent, file)
-    if not discovered:
-        path_hint = file or ", ".join(DEFAULT_SEARCH_PATHS)
-        rich.print(f"No agents found in {path_hint}.")
+    names = Dataset.list()
+    if not names:
+        logger.info("No datasets installed.")
+        logger.info("Use `dreadnode pull <dataset>` to install a dataset.")
         return
 
-    grouped_by_path = itertools.groupby(discovered, key=lambda a: a.path)
-    for path, discovered_agents in grouped_by_path:
-        agents = [agent.obj for agent in discovered_agents]
-        rich.print(f"Agents in [bold]{path}[/bold]:\n")
-        if verbose:
-            for agent in agents:
-                rich.print(format_agent(agent))
-        else:
-            rich.print(format_agents(agents))
+    table = Table(box=box.ROUNDED)
+    table.add_column("Name", style="orange_red1", no_wrap=True)
+    table.add_column("Version", style="cyan")
+    table.add_column("Description", min_width=20)
+    table.add_column("Format", style="magenta")
+    table.add_column("Rows", style="green", justify="right")
 
-
-@agent_cli.command()
-async def run(  # noqa: PLR0912, PLR0915
-    agent: str,
-    *tokens: t.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
-    config: Path | None = None,
-    raw: t.Annotated[bool, cyclopts.Parameter(["-r", "--raw"], negative=False)] = False,
-    dn_config: DreadnodeConfig | None = None,
-) -> None:
-    """
-    Run an agent by name, file, or module.
-
-    - If just a file is passed, it will search for the first agent in that file ('my_agents.py').\n
-    - If just an agent name is passed, it will search for that agent in the default files ('web_enum').\n
-    - If the agent is specified with a file, it will run that specific agent in the given file ('my_agents.py:web_enum').\n
-    - If the file is not specified, it defaults to searching for main.py, agent.py, or app.py.
-
-    **To get detailed help for a specific agent, use `dreadnode agent run <agent> help`.**
-
-    Args:
-        agent: The agent to run, e.g., 'my_agents.py:basic' or 'basic'.
-        config: Optional path to a TOML/YAML/JSON configuration file for the agent.
-        raw: If set, only display raw logging output without additional formatting.
-    """
-    from dreadnode.agents import Agent
-
-    file_path: Path | None = None
-    agent_name: str | None = None
-
-    if agent is not None:
-        agent_name = agent
-        agent_as_path = Path(agent.split(":")[0]).with_suffix(".py")
-        if agent_as_path.exists():
-            file_path = agent_as_path
-            agent_name = agent.split(":", 1)[-1] if ":" in agent else None
-
-    path_hint = file_path or ", ".join(DEFAULT_SEARCH_PATHS)
-
-    discovered = discover(Agent, file_path)
-    if not discovered:
-        rich.print(f":exclamation: No agents found in {path_hint}.")
-        return
-
-    agents_by_name = {d.obj.name: d.obj for d in discovered}
-    agents_by_lower_name = {k.lower(): v for k, v in agents_by_name.items()}
-    if agent_name is None:
-        if len(discovered) > 1:
-            rich.print(
-                f"[yellow]Warning:[/yellow] Multiple agents found. Defaulting to the first one: '{next(iter(agents_by_name.keys()))}'."
+    for name in names:
+        try:
+            ds = Dataset(name)
+            table.add_row(
+                ds.name,
+                ds.version,
+                ds.description or "-",
+                ds.format or "-",
+                str(ds.row_count) if ds.row_count else "-",
             )
-        agent_name = next(iter(agents_by_name.keys()))
+        except Exception as e:
+            table.add_row(name, "-", f"[red]Error: {e}[/]", "-", "-")
 
-    if agent_name.lower() not in agents_by_lower_name:
-        rich.print(f":exclamation: Agent '{agent_name}' not found in {path_hint}.")
-        rich.print(f"Available agents are: {', '.join(agents_by_name.keys())}")
+    console.print(table)
+
+
+@dataset_cli.command()
+def info(
+    name: t.Annotated[str, cyclopts.Parameter(help="Dataset name to show info for")],
+) -> None:
+    """
+    Show detailed information about a dataset.
+    """
+    from dreadnode.datasets.dataset import Dataset
+
+    try:
+        ds = Dataset(name)
+    except KeyError:
+        logger.error(f"Dataset '{name}' not found.")
+        logger.info("Use `dreadnode dataset list` to see installed datasets.")
         return
 
-    agent_blueprint = agents_by_lower_name[agent_name.lower()]
-
-    config_model = get_config_model(agent_blueprint)
-    config_annotation = cyclopts.Parameter(name="*", group="Agent Config")(config_model)
-    config_default: t.Any = inspect.Parameter.empty
-    with contextlib.suppress(Exception):
-        config_default = config_model()
-
-    async def agent_cli(
-        input: t.Annotated[str, cyclopts.Parameter(help="Input to the agent")],
-        *,
-        config: t.Any = config_default,
-        dn_config: DreadnodeConfig | None = dn_config,
-    ) -> None:
-        dn_config = dn_config or DreadnodeConfig()
-        if raw and dn_config.log_level is None:
-            dn_config.log_level = "info"
-        dn_config.apply()
-        agent = hydrate(agent_blueprint, config)
-
-        rich.print(f"Running agent: [bold]{agent.name}[/bold] with config:")
-        for key, value in flatten_model(config).items():
-            rich.print(f" |- {key}: {value}")
-        rich.print()
-
-        async with agent.stream(input) as stream:
-            async for event in stream:
-                rich.print(event)
-
-    agent_cli.__annotations__["config"] = config_annotation
-
-    help_text = f"Run the '{agent_name}' agent."
-    if agent_blueprint.description:
-        help_text += "\n\n" + agent_blueprint.description
-
-    agent_app = cyclopts.App(
-        name=agent_name,
-        help=help_text,
-        help_on_error=True,
-        help_flags=("help"),
-        version_flags=(),
-        console=console,
+    details = Table(
+        box=box.MINIMAL,
+        show_header=False,
+        style="orange_red1",
     )
-    agent_app.default(agent_cli)
+    details.add_column("Property", style="bold dim", justify="right", no_wrap=True)
+    details.add_column("Value", style="white")
 
-    if config:
-        if not config.exists():
-            rich.print(f":exclamation: Configuration file '{config}' does not exist.")
-            return
+    details.add_row(Text("Name", justify="right"), ds.name)
+    details.add_row(Text("Version", justify="right"), ds.version)
+    details.add_row(Text("Description", justify="right"), ds.description or "-")
+    details.add_row(Text("Format", justify="right"), ds.format or "-")
 
-        if config.suffix in {".toml"}:
-            agent_app._config = cyclopts.config.Toml(config, use_commands_as_keys=False)  # type: ignore[assignment] # noqa: SLF001
-        elif config.suffix in {".yaml", ".yml"}:
-            agent_app._config = cyclopts.config.Yaml(config, use_commands_as_keys=False)  # type: ignore[assignment] # noqa: SLF001
-        elif config.suffix in {".json"}:
-            agent_app._config = cyclopts.config.Json(config, use_commands_as_keys=False)  # type: ignore[assignment] # noqa: SLF001
-        else:
-            rich.print(f":exclamation: Unsupported configuration file format: '{config.suffix}'.")
-            return
+    if ds.row_count:
+        details.add_row(Text("Rows", justify="right"), str(ds.row_count))
 
-    command, bound, _ = agent_app.parse_args(tokens)
+    if ds.schema:
+        schema_str = ", ".join(f"[cyan]{k}[/]: {v}" for k, v in ds.schema.items())
+        details.add_row(Text("Schema", justify="right"), schema_str)
 
-    result = command(*bound.args, **bound.kwargs)
-    if isawaitable(result):
-        await result
+    if ds.files:
+        files_str = ", ".join(f"[green]{f}[/]" for f in ds.files)
+        details.add_row(Text("Files", justify="right"), files_str)
+
+    # Verification status
+    try:
+        verified = ds.verify()
+        status = "[green]Verified[/]" if verified else "[red]Failed[/]"
+        details.add_row(Text("Integrity", justify="right"), status)
+    except Exception:
+        details.add_row(Text("Integrity", justify="right"), "[dim]Unknown[/]")
+
+    console.print(Panel(
+        details,
+        title=f"[bold]{ds.name}[/]",
+        title_align="left",
+        border_style="orange_red1",
+    ))
+
+
+@dataset_cli.command()
+def preview(
+    name: t.Annotated[str, cyclopts.Parameter(help="Dataset name to preview")],
+    *,
+    split: t.Annotated[str | None, cyclopts.Parameter(help="Split to load (if applicable)")] = None,
+    rows: t.Annotated[int, cyclopts.Parameter(help="Number of rows to show")] = 10,
+) -> None:
+    """
+    Preview the contents of a dataset.
+    """
+    from dreadnode.datasets.dataset import Dataset
+
+    try:
+        ds = Dataset(name)
+    except KeyError:
+        logger.error(f"Dataset '{name}' not found.")
+        return
+
+    try:
+        table = ds.load(split=split)
+        df = table.slice(0, rows).to_pandas()
+        rich.print(df.to_string())
+        rich.print(f"\n[dim]Showing {min(rows, len(table))} of {len(table)} rows[/]")
+    except Exception as e:
+        logger.error(f"Failed to load dataset: {e}")

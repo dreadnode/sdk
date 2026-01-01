@@ -1,3 +1,3 @@
-from dreadnode.core.optimization.cli.cli import agent_cli
+from dreadnode.core.optimization.cli.cli import study_cli
 
-__all__ = ["agent_cli"]
+__all__ = ["study_cli"]

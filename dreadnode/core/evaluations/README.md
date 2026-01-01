@@ -295,9 +295,10 @@ for iteration in scenario.iterations:
 for sample in iteration.samples:
     sample.input            # In: Task input
     sample.output           # Out | None: Task output
-    sample.scores           # dict[str, float]: Scorer results
+    sample.metrics          # dict[str, MetricSeries]: Scorer and execution metrics
+    sample.assertions       # dict[str, bool]: Pass/fail for asserted scorers
     sample.passed           # bool: All assertions passed
-    sample.failed           # bool: Any assertion failed or error
+    sample.failed           # bool: Task error (not assertion failure)
     sample.error            # Exception | None: Error if occurred
     sample.index            # int: Position in dataset
     sample.context          # dict: Extra dataset fields

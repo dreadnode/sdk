@@ -1172,7 +1172,7 @@ def forward(value: t.Any, *, name: str = "forward") -> Scorer[t.Any]:
             from the value.
     """
 
-    async def evaluate(data: t.Any, *, value: float = value) -> ScorerResult:  # noqa: ARG001
+    async def evaluate(data: t.Any, *, value: float = value) -> float:  # noqa: ARG001
         return value
 
     return Scorer[t.Any](evaluate, name=name or f"forward_{value}")

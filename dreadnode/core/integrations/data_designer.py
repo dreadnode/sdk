@@ -347,8 +347,13 @@ class DatasetGenerator(BaseModel):
             num_records=100,
         )
 
-        # Use directly with agent evaluation
-        result = await agent.evaluate(dataset=dataset, scorers=[accuracy])
+        # Use with Evaluation
+        evaluation = Evaluation(
+            task=agent.as_task(),
+            dataset=dataset,
+            scorers=[accuracy],
+        )
+        result = await evaluation.run()
         ```
 
     Example - From Pydantic Schema:
@@ -778,7 +783,7 @@ class GeneratedDataset(BaseModel):
     A generated dataset that can be used with Dreadnode's evaluation system.
 
     This class wraps a generated dataset and provides methods for
-    integration with Agent.evaluate(), Evaluation, and Study.
+    integration with Evaluation and Study via Agent.as_task().
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

@@ -6,6 +6,7 @@ from ulid import ULID
 from dreadnode.core.agents.events import AgentEnd, AgentEvent, AgentStep, GenerationStep, ToolStep
 from dreadnode.core.generators.generator import Usage
 from dreadnode.core.generators.message import Message
+from dreadnode.core.metric import MetricSeries
 
 AgentEventT = t.TypeVar("AgentEventT", bound=AgentEvent)
 
@@ -23,6 +24,8 @@ class Trajectory(BaseModel):
     """The unique identifier for the agent associated with this trajectory."""
     events: list[AgentEvent] = Field(default_factory=list)
     """The ordered list of events and steps in this trajectory."""
+    scores: dict[str, MetricSeries] = Field(default_factory=dict)
+    """Scores accumulated during agent execution via ScorerHooks, keyed by scorer name."""
 
     @property
     def steps(self) -> list[AgentStep]:
@@ -49,6 +52,24 @@ class Trajectory(BaseModel):
     def add_event(self, event: AgentEvent) -> None:
         """Adds a new event or step to the trajectory."""
         self.events.append(event)
+
+    def log_score(
+        self,
+        scorer_name: str,
+        value: float,
+        step: int | None = None,
+    ) -> None:
+        """
+        Log a score from a ScorerHook execution.
+
+        Args:
+            scorer_name: The name of the scorer.
+            value: The score value.
+            step: The step number (defaults to current step count).
+        """
+        if scorer_name not in self.scores:
+            self.scores[scorer_name] = MetricSeries()
+        self.scores[scorer_name].append(value, step=step or len(self.steps))
 
     # No changes needed for get_events_by_type, but it's more intuitive now
     def get_events_by_type(self, event_type: type[AgentEventT]) -> list[AgentEventT]:

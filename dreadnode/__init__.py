@@ -25,11 +25,13 @@ from dreadnode.core.meta import (
 )
 from dreadnode.core.metric import Metric, MetricDict
 from dreadnode.core.object import Object
+from dreadnode.core.agents.scorer_hook import ScorerHook, ScorerHookResult
 from dreadnode.core.scorer import Scorer
 from dreadnode.core.task import Task
 from dreadnode.core.tools import tool, tool_method
 from dreadnode.core.tracing import convert
 from dreadnode.core.tracing.span import RunSpan, Span, TaskSpan
+from dreadnode.core.tracing.spans import generation_span, scorer_span, tool_span, trial_span
 from dreadnode.core.transforms import Transform
 from dreadnode.core.types import Code, Markdown, Object3D, Text
 from dreadnode.datasets.dataset import Dataset
@@ -108,6 +110,8 @@ __all__ = [
     "RunParam",
     "RunSpan",
     "Scorer",
+    "ScorerHook",
+    "ScorerHookResult",
     "Span",
     "Table",
     "Task",
@@ -129,6 +133,7 @@ __all__ = [
     "continue_run",
     "convert",
     "evaluation",
+    "generation_span",
     "get_run_context",
     "link_objects",
     "load_dataset",
@@ -145,6 +150,7 @@ __all__ = [
     "push_update",
     "run",
     "scorer",
+    "scorer_span",
     "scorers",
     "shutdown",
     "span",
@@ -155,7 +161,9 @@ __all__ = [
     "task_span",
     "tool",
     "tool_method",
+    "tool_span",
     "transforms",
+    "trial_span",
 ]
 
 __lazy_submodules__: list[str] = ["scorers", "agents", "airt", "eval", "transforms"]

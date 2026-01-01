@@ -356,9 +356,15 @@ class GenerationStep(AgentStep):
 
     Attributes:
         generator: The model or generator used by the agent during this step.
+        stop_reason: Why the generation stopped (end_turn, tool_use, max_tokens, etc.).
+        extra: Additional metadata from the generator/chat.
+        generation_failed: Whether the generation failed.
     """
 
     generator: Generator | None = None
+    stop_reason: str | None = None
+    extra: dict[str, t.Any] = Field(default_factory=dict)
+    generation_failed: bool = False
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         yield Rule(f"Step {self.step}: Generation", style="dim cyan", characters="·")

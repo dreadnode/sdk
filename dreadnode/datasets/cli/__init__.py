@@ -1,3 +1,3 @@
-from dreadnode.datasets.cli.cli import agent_cli
+from dreadnode.datasets.cli.cli import dataset_cli
 
-__all__ = ["agent_cli"]
+__all__ = ["dataset_cli"]
