@@ -23,6 +23,7 @@ from dreadnode.core.exceptions import (
     handle_internal_errors,
     warn_at_user_stacklevel,
 )
+from dreadnode.core.load import load as load_package_util
 from dreadnode.core.log import configure_logging
 from dreadnode.core.metric import (
     Metric,
@@ -38,6 +39,9 @@ from dreadnode.core.packaging.package import (
     PushResult,
 )
 from dreadnode.core.scorer import ScorersLike
+from dreadnode.core.settings import (
+    settings,
+)
 from dreadnode.core.storage import Storage
 from dreadnode.core.task import P, R, ScoredTaskDecorator, Task, TaskDecorator
 from dreadnode.core.tracing.exporter import CustomOTLPSpanExporter
@@ -62,9 +66,6 @@ from dreadnode.core.types.common import (
 )
 from dreadnode.core.util import (
     clean_str,
-)
-from dreadnode.core.settings import (
-    settings,
 )
 from dreadnode.version import VERSION
 
@@ -833,6 +834,19 @@ class Dreadnode:
 
         for target in [target for target in targets if target]:
             target.add_tags(tag)
+
+    def load(
+        self,
+        uri: str | Path | None = None,
+        type: PackageType | None = None,
+    ) -> t.Any:
+        """
+        Load a package storage.
+
+        Returns:
+            The loaded package object.
+        """
+        return load_package_util(uri, type, storage=self.storage)
 
     def init_package(
         self,

@@ -39,7 +39,7 @@ from dreadnode.core.integrations.cloudflare.deployer import (
     CloudflareWorkersDeployer,
     DeploymentResult,
 )
-from dreadnode.core.integrations.cloudflare.generator import WorkerGenerator
+from dreadnode.core.integrations.cloudflare.worker import WorkerGenerator
 
 __all__ = [
     "CloudflareWorkersDeployer",

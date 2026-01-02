@@ -10,8 +10,8 @@ Key functions:
 - RewardShaper: Composable shaping pipeline
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import torch
 

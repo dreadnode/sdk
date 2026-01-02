@@ -4,16 +4,17 @@ Reward aggregation for combining multiple reward sources.
 Supports various aggregation strategies matching NeMo RL patterns.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Sequence
+from typing import Any
 
+from dreadnode.core.training.rewards.functions import RewardFunction
 from dreadnode.core.training.rewards.types import (
     RewardComponent,
-    RewardResult,
     RewardMetrics,
+    RewardResult,
 )
-from dreadnode.core.training.rewards.functions import RewardFunction
 from dreadnode.core.training.rollouts.types import RolloutResult
 
 
@@ -204,9 +205,7 @@ class RewardAggregator:
                 # Use first component as gate
                 if components[0].value <= 0:
                     return self.base_reward
-                return self.base_reward + sum(
-                    c.weighted_value() for c in components[1:]
-                )
+                return self.base_reward + sum(c.weighted_value() for c in components[1:])
 
             case _:
                 return self.base_reward + sum(c.weighted_value() for c in components)
@@ -226,9 +225,7 @@ class RewardAggregator:
 
         return metrics
 
-    def compute_batch(
-        self, rollouts: Sequence[RolloutResult]
-    ) -> list[RewardResult]:
+    def compute_batch(self, rollouts: Sequence[RolloutResult]) -> list[RewardResult]:
         """
         Compute rewards for a batch of rollouts.
 
@@ -240,9 +237,7 @@ class RewardAggregator:
         """
         return [self.compute(r) for r in rollouts]
 
-    async def compute_batch_async(
-        self, rollouts: Sequence[RolloutResult]
-    ) -> list[RewardResult]:
+    async def compute_batch_async(self, rollouts: Sequence[RolloutResult]) -> list[RewardResult]:
         """
         Compute rewards for a batch of rollouts asynchronously.
 
@@ -276,9 +271,9 @@ def create_standard_reward(
         Configured RewardAggregator.
     """
     from dreadnode.core.training.rewards.functions import (
+        LengthPenalty,
         SuccessReward,
         ToolPenalty,
-        LengthPenalty,
         TurnPenalty,
     )
 

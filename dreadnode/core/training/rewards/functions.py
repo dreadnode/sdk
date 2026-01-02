@@ -4,9 +4,9 @@ Reward functions for agent training.
 Provides RewardFunction protocol and built-in reward implementations.
 """
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-import re
 from typing import Any, Protocol, runtime_checkable
 
 from dreadnode.core.training.rewards.types import RewardComponent
@@ -154,10 +154,7 @@ class ToolPenalty(BaseRewardFunction):
                         filtered_calls += 1
             total_calls = filtered_calls
 
-        penalty = (
-            total_calls * self.per_call_penalty
-            + failed_calls * self.per_failure_penalty
-        )
+        penalty = total_calls * self.per_call_penalty + failed_calls * self.per_failure_penalty
         penalty = min(penalty, self.max_penalty)
 
         # Return negative value (penalty)

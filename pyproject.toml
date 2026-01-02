@@ -24,12 +24,16 @@ dependencies = [
     "cyclopts>=4.2.0",
     "aiofiles>=24.1.0,<25.0.0",
     "rigging>=3.3.4",
-    "pyarrow>=22.0.0",
+    "pyarrow>=4.0.0",
     "tomlkit>=0.13.3",
     "transformers>=4.57.1",
     "jsonref>=1.1.0",
     "aiodocker>=0.25.0",
     "opentelemetry-semantic-conventions-ai>=0.4.13",
+    # Ray and nemo-rl are needed as direct dependencies for Ray worker environments
+    "ray[default]>=2.10.0,<3.0.0",
+    "nemo-rl ; python_version >= '3.12'",
+    "vllm>=0.6.0,<1.0.0 ; python_version >= '3.12'",
 ]
 
 [project.optional-dependencies]
@@ -37,19 +41,19 @@ dependencies = [
 training = [
     "transformers>=4.41.0,<5.0.0",
     "datasets>=4.0.0,<5.0.0",
-    "pyarrow>=22.0.0,<22.1.0",
+    "pyarrow>=4.0.0",
 ]
 
 # Full RL training stack (GRPO, online training with Ray/NeMo RL/vLLM)
 # Note: torch is provided by nemo-rl with CUDA support
-# Note: Temporarily disabled due to pyarrow version conflict with nemo-rl's mlflow dependency
-# training-rl = [
-#     "dreadnode[training]",
-#     "ray[default]>=2.10.0,<3.0.0",
-#     "nemo-rl @ git+https://github.com/NVIDIA-NeMo/RL.git ; python_version >= '3.12'",
-#     "vllm>=0.6.0,<1.0.0",
-#     "httpx>=0.28.0,<1.0.0",
-# ]
+# Note: nemo-rl requires Python>=3.12 and pyarrow<22 via mlflow
+training-rl = [
+    "transformers>=4.41.0,<5.0.0",
+    "datasets>=4.0.0,<5.0.0",
+    "ray[default]>=2.10.0,<3.0.0",
+    "nemo-rl ; python_version >= '3.12'",
+    "vllm>=0.6.0,<1.0.0 ; python_version >= '3.12'",
+]
 
 multimodal = [
     "pillow>=11.2.1,<12.0.0",
@@ -122,6 +126,9 @@ include = ["/dreadnode", "/tests", "/examples", "/README.md", "/LICENSE"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "ray_integration: tests that require a properly configured Ray cluster",
+]
 
 [tool.mypy]
 strict = true
@@ -222,4 +229,7 @@ skip-magic-trailing-comma = false
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
-environments = ["sys_platform == 'darwin'"]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+
+[tool.uv.sources]
+nemo-rl = { path = "/home/moo/projects/nemo-rl", editable = true }

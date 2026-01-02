@@ -44,7 +44,7 @@ class DNAgentAdapter:
 
     def __init__(
         self,
-        agent: "Agent",
+        agent: Agent,
         single_step: bool = True,
     ):
         """
@@ -101,9 +101,7 @@ class DNAgentAdapter:
             # Convert messages to Message format
             gen_messages = []
             for m in messages:
-                gen_messages.append(
-                    Message(role=m["role"], content=m.get("content", ""))
-                )
+                gen_messages.append(Message(role=m["role"], content=m.get("content", "")))
 
             # Set up generation parameters
             params = GenerateParams(

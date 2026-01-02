@@ -9,8 +9,8 @@ import typing as t
 import httpx
 from pydantic import BaseModel, Field, PrivateAttr
 
+from dreadnode.core.integrations.cloudflare.worker import WorkerGenerator
 from dreadnode.core.integrations.serve.config import QueueConfig, Serve
-from dreadnode.core.integrations.cloudflare.generator import WorkerGenerator
 
 
 class DeploymentResult(BaseModel):
@@ -168,7 +168,9 @@ class CloudflareWorkersDeployer(BaseModel):
                 try:
                     await self.configure_queue(worker_name, queue_config)
                 except Exception as e:
-                    result.warnings.append(f"Failed to configure queue {queue_config.queue_name}: {e}")
+                    result.warnings.append(
+                        f"Failed to configure queue {queue_config.queue_name}: {e}"
+                    )
 
             # Construct worker URL
             result.worker_url = f"https://{worker_name}.{self.account_id}.workers.dev"
@@ -285,10 +287,10 @@ class CloudflareWorkersDeployer(BaseModel):
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "CloudflareWorkersDeployer":
+    async def __aenter__(self) -> CloudflareWorkersDeployer:
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, *args: t.Any) -> None:
+    async def __aexit__(self, *args: object) -> None:
         """Async context manager exit."""
         await self.close()

@@ -4,16 +4,14 @@ Agent loader for Ray deployments.
 
 from __future__ import annotations
 
-import importlib
 import typing as t
-
 from importlib.metadata import entry_points
 
 if t.TYPE_CHECKING:
     from dreadnode.core.agents.agent import Agent
 
 
-def discover_agents() -> dict[str, "Agent"]:
+def discover_agents() -> dict[str, Agent]:
     """
     Discover all installed agent packages.
 
@@ -41,7 +39,7 @@ def discover_agents() -> dict[str, "Agent"]:
     return agents
 
 
-def load_agent(name: str) -> "Agent":
+def load_agent(name: str) -> Agent:
     """
     Load a specific agent by name.
 
@@ -71,16 +69,14 @@ def load_agent(name: str) -> "Agent":
     raise KeyError(f"Agent not found: {name}")
 
 
-def _extract_agent_from_module(module: t.Any, name: str) -> "Agent | None":
+def _extract_agent_from_module(module: t.Any, name: str) -> Agent | None:
     """Extract an Agent instance from a loaded module."""
     from dreadnode.core.agents.agent import Agent
 
     # Check for common patterns:
-    # 1. Module-level 'agent' variable
     if hasattr(module, "agent") and isinstance(module.agent, Agent):
         return module.agent
 
-    # 2. Module-level 'Agent' variable
     if hasattr(module, "Agent") and isinstance(module.Agent, Agent):
         return module.Agent
 
@@ -90,14 +86,12 @@ def _extract_agent_from_module(module: t.Any, name: str) -> "Agent | None":
         if isinstance(result, Agent):
             return result
 
-    # 4. 'run' or 'main' function that is an Agent
     for attr_name in ("run", "main", "default"):
         if hasattr(module, attr_name):
             attr = getattr(module, attr_name)
             if isinstance(attr, Agent):
                 return attr
 
-    # 5. Search all module attributes for an Agent instance
     for attr_name in dir(module):
         if attr_name.startswith("_"):
             continue

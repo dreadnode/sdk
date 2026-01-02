@@ -53,14 +53,14 @@ class RayServeDeployer(BaseModel):
 
     def deploy(
         self,
-        serve: "Serve",
+        serve: Serve,
         *,
         name: str = "dreadnode",
         num_replicas: int = 1,
         max_concurrent_queries: int = 100,
         ray_actor_options: dict[str, t.Any] | None = None,
         autoscaling_config: dict[str, t.Any] | None = None,
-    ) -> "Application":
+    ) -> Application:
         """
         Deploy a Serve configuration to Ray Serve.
 
@@ -108,7 +108,7 @@ class RayServeDeployer(BaseModel):
         ray_actor_options: dict[str, t.Any] | None = None,
         autoscaling_config: dict[str, t.Any] | None = None,
         pull: bool = True,
-    ) -> "Application":
+    ) -> Application:
         """
         Deploy agents from installed packages to Ray Serve.
 
@@ -140,8 +140,8 @@ class RayServeDeployer(BaseModel):
             )
             ```
         """
-        from dreadnode.core.integrations.serve import Serve
         from dreadnode.core.integrations.ray.loader import discover_agents, load_agent
+        from dreadnode.core.integrations.serve import Serve
 
         # Pull packages if requested
         if pull and packages:
@@ -178,7 +178,7 @@ class RayServeDeployer(BaseModel):
 
     def run(
         self,
-        serve: "Serve",
+        serve: Serve,
         *,
         name: str = "dreadnode",
         num_replicas: int = 1,
@@ -276,7 +276,7 @@ class RayServeDeployer(BaseModel):
 
         self._block_forever(host, port)
 
-    def discover_agents(self) -> dict[str, "Agent"]:
+    def discover_agents(self) -> dict[str, Agent]:
         """
         Discover all installed agent packages.
 

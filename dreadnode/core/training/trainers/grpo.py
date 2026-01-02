@@ -20,7 +20,7 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 import torch
 
@@ -31,6 +31,9 @@ from dreadnode.core.training.trainers.base import (
     TrainingConfig,
     TrainingState,
 )
+
+if TYPE_CHECKING:
+    from dreadnode.core.agents import Agent
 
 
 class RewardScalingConfig(TypedDict, total=False):
@@ -187,18 +190,46 @@ def calculate_baseline_and_std_per_prompt(
     """
     n = rewards.numel()
 
-    if leave_one_out_baseline and n > 1:
+    if n == 0:
+        return torch.zeros_like(rewards), torch.ones_like(rewards)
+
+    if n == 1:
+        # Single sample: baseline is the reward itself, std is 1 to avoid division issues
+        return rewards.clone(), torch.ones_like(rewards)
+
+    if leave_one_out_baseline:
         # Leave-one-out: baseline for each sample is mean of all others
         total = rewards.sum()
         baseline = (total - rewards) / (n - 1)
-        # Compute std excluding each sample
-        mean_others = baseline
-        var_others = ((rewards.unsqueeze(0) - mean_others.unsqueeze(1)) ** 2).sum(dim=1) / (n - 1)
-        std = torch.sqrt(var_others.clamp(min=1e-8))
+
+        # Compute std excluding each sample using proper leave-one-out variance
+        # For sample i: var_i = sum_{j != i} (r_j - mean_i)^2 / (n - 2) if n > 2, else 0
+        std = torch.zeros_like(rewards)
+        if n > 2:
+            for i in range(n):
+                # Create mask for all samples except i
+                others_mask = torch.ones(n, dtype=torch.bool, device=rewards.device)
+                others_mask[i] = False
+                others = rewards[others_mask]
+                std_val = others.std(unbiased=True)
+                # Handle NaN case (all values same -> std is NaN with unbiased=True)
+                if torch.isnan(std_val):
+                    std_val = torch.tensor(0.0, device=rewards.device)
+                std[i] = std_val
+        else:
+            # With only 2 samples, std of 1 sample is undefined, use overall std
+            overall_std = rewards.std()
+            if torch.isnan(overall_std):
+                overall_std = torch.tensor(0.0, device=rewards.device)
+            std = overall_std.expand_as(rewards)
+
+        # Ensure std is never zero or NaN to avoid division issues
+        std = torch.where(torch.isnan(std), torch.zeros_like(std), std)
+        std = std.clamp(min=1e-8)
     else:
         # Simple mean baseline
         baseline = rewards.mean().expand_as(rewards)
-        std = rewards.std().expand_as(rewards)
+        std = rewards.std().clamp(min=1e-8).expand_as(rewards)
 
     return baseline, std
 
@@ -227,7 +258,9 @@ def scale_rewards(
 
     # Clamp and scale
     clamped = torch.clamp(rewards, min=source_min, max=source_max)
-    scaled = target_min + (clamped - source_min) / (source_max - source_min) * (target_max - target_min)
+    scaled = target_min + (clamped - source_min) / (source_max - source_min) * (
+        target_max - target_min
+    )
 
     return scaled
 
@@ -269,14 +302,25 @@ class GRPOTrainer(BaseTrainer):
         state = await trainer.train(prompts, environment, num_steps=1000)
     """
 
-    agent: Any = None  # dreadnode.Agent
-    config: GRPOConfig = field(default_factory=dict)  # type: ignore
+    agent: Agent | None = None
+    """DN SDK Agent to train."""
+
+    config: GRPOConfig = field(default_factory=dict)  # type: ignore[assignment]
+    """GRPO training configuration."""
+
     rewards: RewardAggregator | None = None
+    """Reward aggregator for computing training rewards."""
+
     callbacks: list[TrainingCallback] = field(default_factory=list)
+    """Training callbacks for logging, checkpointing, etc."""
 
     # NeMo RL components (initialized during setup)
+    # These are typed as Any because they come from NeMo RL which may not be installed
     _policy: Any = None
+    """NeMo RL Policy object."""
+
     _policy_generation: Any = None
+    """NeMo RL Generation object (vLLM or Megatron)."""
     _tokenizer: Any = None
     _loss_fn: Any = None
     _train_cluster: Any = None
@@ -316,7 +360,7 @@ class GRPOTrainer(BaseTrainer):
         import ray
         from nemo_rl.algorithms.loss_functions import ClippedPGLossConfig, ClippedPGLossFn
         from nemo_rl.algorithms.utils import get_tokenizer, set_seed
-        from nemo_rl.distributed.virtual_cluster import RayVirtualCluster, init_ray
+        from nemo_rl.distributed.virtual_cluster import RayVirtualCluster
         from nemo_rl.utils.checkpoint import CheckpointManager
         from nemo_rl.utils.logger import Logger
 
@@ -324,8 +368,19 @@ class GRPOTrainer(BaseTrainer):
             return
 
         # Initialize Ray if not already
+        # Use a simple runtime_env with only env_vars to avoid package uploads
         if not ray.is_initialized():
-            init_ray()
+            import os
+
+            env_vars = dict(os.environ)
+            env_vars.pop("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES", None)
+            runtime_env = {"env_vars": env_vars}
+
+            ray.init(
+                log_to_driver=True,
+                include_dashboard=True,
+                runtime_env=runtime_env,
+            )
 
         # Set seed
         seed = self.config.get("seed", 42)
@@ -334,7 +389,7 @@ class GRPOTrainer(BaseTrainer):
         # Get tokenizer
         tokenizer_name = self.config.get("tokenizer_name") or self.config.get("model_name")
         if tokenizer_name:
-            self._tokenizer = get_tokenizer({"name_or_path": tokenizer_name})
+            self._tokenizer = get_tokenizer({"name": tokenizer_name})
 
         # Store environment
         self._environment = environment
@@ -342,7 +397,9 @@ class GRPOTrainer(BaseTrainer):
         # Set up clusters
         cluster_cfg = cluster_config or {}
         num_nodes = cluster_cfg.get("num_nodes", 1)
-        gpus_per_node = cluster_cfg.get("gpus_per_node", torch.cuda.device_count() if torch.cuda.is_available() else 1)
+        gpus_per_node = cluster_cfg.get(
+            "gpus_per_node", torch.cuda.device_count() if torch.cuda.is_available() else 1
+        )
 
         self._colocated_inference = self.config.get("colocated_inference", True)
 
@@ -389,25 +446,31 @@ class GRPOTrainer(BaseTrainer):
             "kl_penalty_coeff": self.config.get("kl_penalty_coeff", 0.01),
             "entropy_bonus_coeff": self.config.get("entropy_bonus", 0.0),
             "clip_ratio": self.config.get("clip_ratio", 0.2),
-            "use_importance_sampling_correction": self.config.get("use_importance_sampling_correction", True),
+            "use_importance_sampling_correction": self.config.get(
+                "use_importance_sampling_correction", True
+            ),
         }
         self._loss_fn = ClippedPGLossFn(loss_config)
 
         # Initialize logger
         log_dir = self.config.get("log_dir", "./logs")
-        self._logger = Logger({
-            "log_dir": log_dir,
-            "wandb_enabled": self.config.get("wandb_enabled", False),
-            "tensorboard_enabled": self.config.get("tensorboard_enabled", True),
-        })
+        self._logger = Logger(
+            {
+                "log_dir": log_dir,
+                "wandb_enabled": self.config.get("wandb_enabled", False),
+                "tensorboard_enabled": self.config.get("tensorboard_enabled", True),
+            }
+        )
 
         # Initialize checkpointer
         checkpoint_dir = self.config.get("checkpoint_dir", "./checkpoints")
-        self._checkpointer = CheckpointManager({
-            "enabled": self.config.get("checkpoint_dir") is not None,
-            "checkpoint_dir": checkpoint_dir,
-            "save_period": self.config.get("checkpoint_interval", 500),
-        })
+        self._checkpointer = CheckpointManager(
+            {
+                "enabled": self.config.get("checkpoint_dir") is not None,
+                "checkpoint_dir": checkpoint_dir,
+                "save_period": self.config.get("checkpoint_interval", 500),
+            }
+        )
 
         self._initialized = True
         self._generation_stale = True
@@ -421,55 +484,119 @@ class GRPOTrainer(BaseTrainer):
         if not model_name:
             raise ValueError("model_name is required in config")
 
+        max_seq_length = self.config.get("max_seq_length", 4096)
+
+        # Build NeMo RL-compatible vLLM config
+        # Dreadnode wraps the complexity of NeMo RL config formats
+        vllm_cfg = {
+            "tensor_parallel_size": self.config.get("tensor_parallel_size", 1),
+            "pipeline_parallel_size": self.config.get("pipeline_parallel_size", 1),
+            "expert_parallel_size": self.config.get("expert_parallel_size", 1),
+            "gpu_memory_utilization": self.config.get("gpu_memory_utilization", 0.8),
+            "max_model_len": max_seq_length,
+            "skip_tokenizer_init": True,
+            "async_engine": False,
+            "precision": self.config.get("precision", "bfloat16"),
+            "kv_cache_dtype": "auto",
+            "enforce_eager": True,
+            "load_format": self.config.get("load_format", "auto"),
+        }
+
+        generation_config = {
+            "backend": "vllm",
+            "model_name": model_name,
+            "max_new_tokens": self.config.get("max_tokens_per_turn", 512),
+            "temperature": self.config.get("temperature", 0.7),
+            "top_p": self.config.get("top_p", 1.0),
+            "top_k": self.config.get("top_k", None),
+            "stop_strings": self.config.get("stop_strings"),
+            "stop_token_ids": self.config.get("stop_token_ids"),
+            "vllm_cfg": vllm_cfg,
+            "colocated": {"enabled": self._colocated_inference},
+        }
+
+        # Build policy config
         policy_config = {
             "model_name": model_name,
-            "tokenizer": {"name_or_path": model_name},
+            "tokenizer": {"name": model_name},
             "train_global_batch_size": self.config.get("batch_size", 8),
             "train_micro_batch_size": self.config.get("micro_batch_size", 1),
-            "max_seq_length": self.config.get("max_seq_length", 4096),
-            "learning_rate": self.config.get("learning_rate", 1e-5),
-            "generation": {
-                "backend": "vllm",
-                "temperature": self.config.get("temperature", 0.7),
-                "top_p": self.config.get("top_p", 0.95),
-                "max_new_tokens": self.config.get("max_tokens_per_turn", 4096),
-                "colocated": {"enabled": self._colocated_inference},
+            "max_total_sequence_length": max_seq_length,
+            "precision": self.config.get("precision", "bfloat16"),
+            "max_grad_norm": self.config.get("max_grad_norm", 1.0),
+            "optimizer": {
+                "name": "torch.optim.AdamW",
+                "kwargs": {
+                    "lr": self.config.get("learning_rate", 1e-5),
+                    "weight_decay": 0.01,
+                    "betas": [0.9, 0.999],
+                    "eps": 1e-8,
+                },
+            },
+            "generation": generation_config,
+            "dtensor_cfg": {
+                "_v2": False,
+                "enabled": True,
+                "cpu_offload": False,
+                "sequence_parallel": False,
+                "activation_checkpointing": False,
+                "tensor_parallel_size": 1,
+                "context_parallel_size": 1,
+            },
+            "dynamic_batching": {
+                "enabled": False,
+                "sequence_length_round": 128,
+            },
+            "sequence_packing": {
+                "enabled": False,
             },
         }
 
-        generation_config = policy_config["generation"].copy()
-        generation_config["model_name"] = model_name
-
         # Initialize vLLM generation first (prefers clean GPU memory)
+        print("Creating VllmGeneration...")
         self._policy_generation = VllmGeneration(
             cluster=self._inference_cluster,
             config=generation_config,
         )
+        print("Calling finish_generation...")
         self._policy_generation.finish_generation()
 
         # Initialize policy
+        print("Creating Policy...")
         self._policy = Policy(
             cluster=self._train_cluster,
             config=policy_config,
             tokenizer=self._tokenizer,
             init_optimizer=True,
         )
+        print("Policy created successfully!", flush=True)
 
         # Set up weight synchronization for non-colocated inference
         if not self._colocated_inference:
+            print("Setting up weight sync for non-colocated inference...")
             ip, port = self._train_cluster.get_master_address_and_port()
             train_world_size = self._train_cluster.world_size()
             inference_world_size = self._inference_cluster.world_size()
             world_size = train_world_size + inference_world_size
 
             import ray
-            futures_train = self._policy.init_collective(ip, port, world_size, train_world_size=train_world_size)
-            futures_inference = self._policy_generation.init_collective(ip, port, world_size, train_world_size=train_world_size)
+
+            futures_train = self._policy.init_collective(
+                ip, port, world_size, train_world_size=train_world_size
+            )
+            futures_inference = self._policy_generation.init_collective(
+                ip, port, world_size, train_world_size=train_world_size
+            )
             ray.get(futures_train + futures_inference)
+            print("Weight sync initialized!")
 
         # Prepare refit info
+        print("Preparing refit info from policy...")
         state_dict_info = self._policy.prepare_refit_info()
+        print(f"Got state_dict_info with {len(state_dict_info) if state_dict_info else 0} entries")
+        print("Preparing refit info in generation...")
         self._policy_generation.prepare_refit_info(state_dict_info)
+        print("Refit info prepared!")
 
     async def _setup_megatron_backend(self) -> None:
         """Set up Megatron-based generation backend."""
@@ -518,7 +645,9 @@ class GRPOTrainer(BaseTrainer):
 
             # Stream weights via IPC
             buffer_size_bytes = int(self._policy.get_free_memory_bytes() * 0.3)
-            futures_train = self._policy.stream_weights_via_ipc_zmq(buffer_size_bytes=buffer_size_bytes)
+            futures_train = self._policy.stream_weights_via_ipc_zmq(
+                buffer_size_bytes=buffer_size_bytes
+            )
             futures_inference = self._policy_generation.update_weights_via_ipc_zmq()
             ray.get(futures_train)
             ray.get(futures_inference)
@@ -616,7 +745,9 @@ class GRPOTrainer(BaseTrainer):
         if self.config.get("val_at_start") and current_step == 0:
             if self._generation_stale:
                 self._refit_policy_generation()
-            val_metrics = await self.evaluate(prompts[:self.config.get("max_val_samples", 100)], environment)
+            val_metrics = await self.evaluate(
+                prompts[: self.config.get("max_val_samples", 100)], environment
+            )
             self._logger.log_metrics(val_metrics, 0, prefix="validation")
             self._notify_evaluation(val_metrics)
 
@@ -633,7 +764,7 @@ class GRPOTrainer(BaseTrainer):
                 self._notify_step_start()
 
                 # Get batch of prompts
-                batch_prompts = list(prompts[batch_start:batch_start + num_prompts_per_step])
+                batch_prompts = list(prompts[batch_start : batch_start + num_prompts_per_step])
 
                 # Prepare batch for NeMo RL
                 batch_data = self._prepare_batch(batch_prompts, num_generations)
@@ -685,7 +816,9 @@ class GRPOTrainer(BaseTrainer):
                 # Normalize advantages if configured
                 if normalize_rewards:
                     non_zero_mask = std > 0
-                    advantages[non_zero_mask] = advantages[non_zero_mask] / (std.unsqueeze(-1)[non_zero_mask] + 1e-6)
+                    advantages[non_zero_mask] = advantages[non_zero_mask] / (
+                        std.unsqueeze(-1)[non_zero_mask] + 1e-6
+                    )
 
                 # Add advantages to message log for training
                 for i, message_log in enumerate(repeated_batch["message_log"]):
@@ -695,7 +828,9 @@ class GRPOTrainer(BaseTrainer):
                         else:
                             message["token_loss_mask"] = torch.zeros_like(message["token_ids"])
                         if "generation_logprobs" not in message:
-                            message["generation_logprobs"] = torch.zeros_like(message["token_ids"], dtype=torch.float32)
+                            message["generation_logprobs"] = torch.zeros_like(
+                                message["token_ids"], dtype=torch.float32
+                            )
                         message["advantages"] = advantages[i].expand(message["token_ids"].shape)
 
                 # Convert to flat format for training
@@ -705,20 +840,26 @@ class GRPOTrainer(BaseTrainer):
                 )
 
                 # Create training data
-                train_data = BatchedDataDict({
-                    "input_ids": flat_messages["token_ids"],
-                    "input_lengths": input_lengths,
-                    "advantages": flat_messages["advantages"],
-                    "generation_logprobs": flat_messages["generation_logprobs"],
-                    "token_mask": flat_messages["token_loss_mask"],
-                    "sample_mask": repeated_batch.get("loss_multiplier", torch.ones(len(rewards))),
-                })
+                train_data = BatchedDataDict(
+                    {
+                        "input_ids": flat_messages["token_ids"],
+                        "input_lengths": input_lengths,
+                        "advantages": flat_messages["advantages"],
+                        "generation_logprobs": flat_messages["generation_logprobs"],
+                        "token_mask": flat_messages["token_loss_mask"],
+                        "sample_mask": repeated_batch.get(
+                            "loss_multiplier", torch.ones(len(rewards))
+                        ),
+                    }
+                )
                 train_data.to("cpu")
 
                 # Get logprobs from policy
                 self._policy.prepare_for_lp_inference()
                 fprop_logprobs = self._policy.get_logprobs(train_data)["logprobs"]
-                reference_logprobs = self._policy.get_reference_policy_logprobs(train_data)["reference_logprobs"]
+                reference_logprobs = self._policy.get_reference_policy_logprobs(train_data)[
+                    "reference_logprobs"
+                ]
                 train_data["prev_logprobs"] = fprop_logprobs
                 train_data["reference_policy_logprobs"] = reference_logprobs
 
@@ -748,8 +889,7 @@ class GRPOTrainer(BaseTrainer):
                     if self._generation_stale:
                         self._refit_policy_generation()
                     val_metrics = await self.evaluate(
-                        prompts[:self.config.get("max_val_samples", 100)],
-                        environment
+                        prompts[: self.config.get("max_val_samples", 100)], environment
                     )
                     self._logger.log_metrics(val_metrics, total_steps + 1, prefix="validation")
                     self._notify_evaluation(val_metrics)
@@ -785,19 +925,23 @@ class GRPOTrainer(BaseTrainer):
         for prompt in prompts:
             # Create message log in NeMo RL format
             tokens = self._tokenizer.encode(prompt, add_special_tokens=True)
-            message_log = [{
-                "role": "user",
-                "content": prompt,
-                "token_ids": torch.tensor(tokens),
-            }]
+            message_log = [
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "token_ids": torch.tensor(tokens),
+                }
+            ]
             message_logs.append(message_log)
 
         # Create batch
-        batch = BatchedDataDict({
-            "message_log": message_logs,
-            "length": torch.tensor([len(self._tokenizer.encode(p)) for p in prompts]),
-            "task": ["default"] * len(prompts),
-        })
+        batch = BatchedDataDict(
+            {
+                "message_log": message_logs,
+                "length": torch.tensor([len(self._tokenizer.encode(p)) for p in prompts]),
+                "task": ["default"] * len(prompts),
+            }
+        )
 
         # Repeat for multiple generations per prompt
         if num_generations > 1:
@@ -987,7 +1131,9 @@ class GRPOTrainer(BaseTrainer):
                 "normalize_rewards": self.config.get("normalize_rewards", False),
                 "use_leave_one_out_baseline": self.config.get("use_leave_one_out_baseline", True),
                 "use_dynamic_sampling": self.config.get("use_dynamic_sampling", False),
-                "dynamic_sampling_max_gen_batches": self.config.get("dynamic_sampling_max_gen_batches", 10),
+                "dynamic_sampling_max_gen_batches": self.config.get(
+                    "dynamic_sampling_max_gen_batches", 10
+                ),
                 "batch_multiplier": self.config.get("batch_multiplier", 1.0),
                 "overlong_filtering": self.config.get("overlong_filtering", False),
                 "reward_scaling": reward_scaling,
@@ -1015,7 +1161,6 @@ class GRPOTrainer(BaseTrainer):
 
     def shutdown(self) -> None:
         """Shutdown trainer and release resources."""
-        import ray
 
         if self._policy is not None:
             self._policy.shutdown()
@@ -1029,7 +1174,10 @@ class GRPOTrainer(BaseTrainer):
             self._train_cluster.shutdown()
             self._train_cluster = None
 
-        if self._inference_cluster is not None and self._inference_cluster is not self._train_cluster:
+        if (
+            self._inference_cluster is not None
+            and self._inference_cluster is not self._train_cluster
+        ):
             self._inference_cluster.shutdown()
             self._inference_cluster = None
 

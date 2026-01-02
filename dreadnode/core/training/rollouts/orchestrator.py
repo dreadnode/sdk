@@ -9,9 +9,10 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, Sequence, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from dreadnode.core.training.rollouts.types import (
     Message,
@@ -178,9 +179,7 @@ class RolloutOrchestrator:
 
         # Initialize message log
         if system_prompt:
-            message_log.append(
-                Message(role=MessageRole.SYSTEM.value, content=system_prompt)
-            )
+            message_log.append(Message(role=MessageRole.SYSTEM.value, content=system_prompt))
 
         message_log.append(Message(role=MessageRole.USER.value, content=goal))
 
@@ -312,11 +311,10 @@ class RolloutOrchestrator:
                     errored = True
                     terminated = True
 
-            else:
-                # No environment - check for natural termination
-                # (e.g., no tool calls means agent is done)
-                if not tool_calls and generated_text:
-                    terminated = True
+            # No environment - check for natural termination
+            # (e.g., no tool calls means agent is done)
+            elif not tool_calls and generated_text:
+                terminated = True
 
             turns.append(turn_result)
 
@@ -334,9 +332,7 @@ class RolloutOrchestrator:
             completed_turns=sum(1 for t in turns if not t.error),
             total_input_tokens=total_input_tokens,
             total_generated_tokens=total_generated_tokens,
-            mean_tokens_per_turn=(
-                total_generated_tokens / num_turns if num_turns > 0 else 0
-            ),
+            mean_tokens_per_turn=(total_generated_tokens / num_turns if num_turns > 0 else 0),
             total_reward=total_reward,
             mean_reward_per_turn=total_reward / num_turns if num_turns > 0 else 0,
             final_reward=turns[-1].reward if turns else 0,
@@ -344,9 +340,7 @@ class RolloutOrchestrator:
             truncated=truncated,
             errored=errored,
             total_time=(datetime.now() - started_at).total_seconds(),
-            mean_generation_time=(
-                total_generation_time / num_turns if num_turns > 0 else 0
-            ),
+            mean_generation_time=(total_generation_time / num_turns if num_turns > 0 else 0),
             mean_env_time=total_env_time / num_turns if num_turns > 0 else 0,
             total_tool_calls=total_tool_calls,
             successful_tool_calls=successful_tool_calls,
@@ -392,9 +386,7 @@ class RolloutOrchestrator:
 
         async def run_with_semaphore(goal: str) -> RolloutResult:
             async with semaphore:
-                return await self.run_single(
-                    generator, goal, environment, system_prompt
-                )
+                return await self.run_single(generator, goal, environment, system_prompt)
 
         results = await asyncio.gather(
             *[run_with_semaphore(goal) for goal in goals],
@@ -453,9 +445,7 @@ class RolloutOrchestrator:
             message_log: MessageLog = []
 
             if system_prompt:
-                message_log.append(
-                    Message(role=MessageRole.SYSTEM.value, content=system_prompt)
-                )
+                message_log.append(Message(role=MessageRole.SYSTEM.value, content=system_prompt))
             message_log.append(Message(role=MessageRole.USER.value, content=goal))
 
             results.append(
@@ -540,7 +530,9 @@ class RolloutOrchestrator:
 
                     if env_return.terminated or env_return.truncated:
                         active_mask[idx] = False
-                        results[idx].success = env_return.info.get("success", False) if env_return.info else False
+                        results[idx].success = (
+                            env_return.info.get("success", False) if env_return.info else False
+                        )
 
         # Finalize results
         for result in results:

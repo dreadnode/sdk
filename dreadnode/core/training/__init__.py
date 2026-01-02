@@ -112,9 +112,6 @@ __all__ = [
     "TrainingCallback",
     # Utility functions
     "calculate_baseline_and_std_per_prompt",
-    # Environments
-    "AgentEnvironment",
-    "AgentEnvConfig",
     # Serving
     "VllmClient",
     "VllmTrainingContext",
@@ -246,9 +243,6 @@ _LAZY_IMPORTS: dict[str, tuple[str, str | None]] = {
     "TrainingCallback": (".trainers", None),
     # Utility functions
     "calculate_baseline_and_std_per_prompt": (".trainers.grpo", None),
-    # Environments
-    "AgentEnvironment": (".environments", None),
-    "AgentEnvConfig": (".environments", None),
     # Serving
     "VllmClient": (".serving", None),
     "VllmTrainingContext": (".serving", None),

@@ -4,13 +4,13 @@ Adapters to use DN SDK Scorers as reward functions.
 Bridges the gap between DN SDK's scoring infrastructure and training rewards.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-from dreadnode.core.training.rewards.types import RewardComponent
 from dreadnode.core.training.rewards.functions import BaseRewardFunction
+from dreadnode.core.training.rewards.types import RewardComponent
 from dreadnode.core.training.rollouts.types import RolloutResult
-
 
 # Type for extracting content from rollout for scoring
 RolloutAdapter = Callable[[RolloutResult], Any]
@@ -26,10 +26,7 @@ def default_rollout_adapter(rollout: RolloutResult) -> str:
 
 def full_conversation_adapter(rollout: RolloutResult) -> str:
     """Adapter: concatenate all messages."""
-    return "\n".join(
-        f"{msg['role']}: {msg['content']}"
-        for msg in rollout.message_log
-    )
+    return "\n".join(f"{msg['role']}: {msg['content']}" for msg in rollout.message_log)
 
 
 def tool_results_adapter(rollout: RolloutResult) -> list[dict[str, Any]]:
@@ -162,7 +159,7 @@ class ScorerReward(BaseRewardFunction):
 
             return self._make_component(
                 value=self.error_value,
-                rationale=f"Scorer error: {str(e)}",
+                rationale=f"Scorer error: {e!s}",
                 error=str(e),
             )
 
@@ -222,8 +219,9 @@ class ScorerHookReward(BaseRewardFunction):
 
         # Check turn metadata
         for turn in rollout.turns:
-            if "scores" in turn.__dict__.get("metadata", {}):
-                turn_scores = turn.metadata.get("scores", {})
+            turn_metadata = getattr(turn, "metadata", {}) or {}
+            if "scores" in turn_metadata:
+                turn_scores = turn_metadata.get("scores", {})
                 if self.hook_name in turn_scores:
                     scores.append(turn_scores[self.hook_name])
 
