@@ -91,6 +91,7 @@ link_objects = DEFAULT_INSTANCE.link_objects
 log_artifact = DEFAULT_INSTANCE.log_artifact
 get_current_run = DEFAULT_INSTANCE.get_current_run
 get_current_task = DEFAULT_INSTANCE.get_current_task
+train = DEFAULT_INSTANCE.train
 
 __version__ = VERSION
 
@@ -177,6 +178,7 @@ __all__ = [
     "tool",
     "tool_method",
     "tool_span",
+    "train",
     "training",
     "transforms",
     "trial_span",

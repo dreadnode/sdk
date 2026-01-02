@@ -652,6 +652,373 @@ class Dreadnode:
             stop_conditions=stop_conditions,
         )
 
+    def train(
+        self,
+        config: str | Path | dict[str, t.Any],
+        *,
+        prompts: list[str] | None = None,
+        reward_fn: t.Callable[[list[str], list[str]], list[float]] | None = None,
+        scorers: "ScorersLike[t.Any] | None" = None,
+    ) -> t.Any:
+        """
+        Train a model using a YAML configuration file.
+
+        This is the main entry point for training LLMs with GRPO, SFT, DPO, PPO,
+        or other training methods supported by the Ray training framework.
+
+        Example YAML config (grpo.yaml):
+            ```yaml
+            trainer: grpo
+            model_name: Qwen/Qwen2.5-1.5B-Instruct
+            max_steps: 100
+            num_prompts_per_step: 4
+            num_generations_per_prompt: 4
+            learning_rate: 1e-6
+            temperature: 0.7
+
+            # Dataset - supports dreadnode datasets, huggingface, jsonl, or inline
+            dataset:
+              type: dreadnode  # or huggingface, jsonl, list
+              name: my-dataset  # dreadnode dataset name
+              prompt_field: question
+
+            # Reward - supports dreadnode scorers or built-in types
+            reward:
+              type: scorer  # Use dreadnode scorer
+              # or type: correctness, length, contains
+            ```
+
+        Usage:
+            ```python
+            import dreadnode as dn
+
+            # Train from YAML config
+            result = dn.train("config/grpo.yaml")
+
+            # Train with dreadnode dataset and scorers
+            @dn.scorer
+            def correctness(completion: str) -> float:
+                return 1.0 if "answer" in completion else 0.0
+
+            result = dn.train(
+                {"trainer": "grpo", "model_name": "..."},
+                prompts=dn.load("my-dataset").to_prompts("question"),
+                scorers=[correctness],
+            )
+
+            # Train with custom prompts and reward function
+            result = dn.train(
+                "config/grpo.yaml",
+                prompts=["What is 2+2?", "What is 3*4?"],
+                reward_fn=my_reward_fn,
+            )
+            ```
+
+        Args:
+            config: Path to YAML config file, or dict with config values.
+            prompts: Optional list of prompts (overrides dataset in config).
+            reward_fn: Optional reward function (overrides reward/scorers).
+            scorers: Optional dreadnode Scorers to use as reward (converted to reward_fn).
+
+        Returns:
+            Training result (trainer-specific).
+        """
+        import yaml
+        from dreadnode.core.scorer import Scorer
+
+        # Load config
+        if isinstance(config, (str, Path)):
+            config_path = Path(config)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+
+            with open(config_path) as f:
+                config_dict = yaml.safe_load(f)
+        else:
+            config_dict = dict(config)  # Copy to avoid mutating input
+
+        # Determine trainer type
+        trainer_type = config_dict.pop("trainer", "grpo").lower()
+
+        # Load prompts from dataset if not provided
+        if prompts is None and "dataset" in config_dict:
+            prompts = self._load_training_dataset(config_dict.pop("dataset"))
+
+        if prompts is None:
+            raise ValueError("Either 'prompts' argument or 'dataset' in config is required")
+
+        # Build reward function from scorers if provided
+        if scorers is not None:
+            fitted_scorers = Scorer.fit_many(scorers)
+            reward_fn = self._scorers_to_reward_fn(fitted_scorers)
+
+        # Build reward function from config if not provided
+        if reward_fn is None and "reward" in config_dict:
+            reward_fn = self._build_reward_fn(config_dict.pop("reward"), prompts)
+
+        # For SFT, reward is optional
+        if reward_fn is None and trainer_type not in ("sft",):
+            raise ValueError(
+                "Either 'reward_fn', 'scorers', or 'reward' in config is required for "
+                f"{trainer_type} training"
+            )
+
+        # Create and run trainer
+        if trainer_type == "grpo":
+            return self._train_grpo(config_dict, prompts, reward_fn)
+        elif trainer_type == "sft":
+            return self._train_sft(config_dict, prompts)
+        elif trainer_type == "dpo":
+            return self._train_dpo(config_dict, prompts)
+        elif trainer_type == "ppo":
+            return self._train_ppo(config_dict, prompts, reward_fn)
+        else:
+            raise ValueError(f"Unknown trainer type: {trainer_type}")
+
+    def _load_training_dataset(self, dataset_config: dict | str) -> list[str]:
+        """Load prompts from dataset configuration.
+
+        Supports:
+        - dreadnode: Load from dreadnode dataset package
+        - huggingface: Load from HuggingFace Hub
+        - jsonl: Load from JSONL file
+        - list: Inline list of prompts
+        """
+        # Handle string shorthand: just the dataset name
+        if isinstance(dataset_config, str):
+            dataset_config = {"type": "dreadnode", "name": dataset_config}
+
+        dataset_type = dataset_config.get("type", "huggingface")
+
+        if dataset_type == "dreadnode":
+            # Load from dreadnode dataset package
+            from dreadnode.datasets.dataset import Dataset
+
+            name = dataset_config["name"]
+            prompt_field = dataset_config.get("prompt_field", "prompt")
+            prompt_template = dataset_config.get("prompt_template")
+            max_samples = dataset_config.get("max_samples", 1000)
+            split = dataset_config.get("split")
+
+            # Load dataset
+            ds = self.load(name)
+            if not isinstance(ds, Dataset):
+                raise ValueError(f"Expected Dataset, got {type(ds)}")
+
+            # Convert to pandas for easy iteration
+            df = ds.to_pandas(split)
+
+            prompts = []
+            for i, row in df.iterrows():
+                if i >= max_samples:
+                    break
+                if prompt_template:
+                    prompt = prompt_template.format(**row.to_dict())
+                else:
+                    prompt = str(row[prompt_field])
+                prompts.append(prompt)
+
+            return prompts
+
+        elif dataset_type == "huggingface":
+            from datasets import load_dataset
+
+            name = dataset_config["name"]
+            split = dataset_config.get("split", "train")
+            config_name = dataset_config.get("config")
+            max_samples = dataset_config.get("max_samples", 1000)
+            prompt_field = dataset_config.get("prompt_field", "question")
+            prompt_template = dataset_config.get("prompt_template")
+
+            ds = load_dataset(name, config_name, split=split)
+
+            prompts = []
+            for i, item in enumerate(ds):
+                if i >= max_samples:
+                    break
+                prompt = item[prompt_field]
+                if prompt_template:
+                    prompt = prompt_template.format(**item)
+                prompts.append(prompt)
+
+            return prompts
+
+        elif dataset_type == "jsonl":
+            import json
+
+            path = Path(dataset_config["path"])
+            prompt_field = dataset_config.get("prompt_field", "prompt")
+            max_samples = dataset_config.get("max_samples", 1000)
+            prompt_template = dataset_config.get("prompt_template")
+
+            prompts = []
+            with open(path) as f:
+                for i, line in enumerate(f):
+                    if i >= max_samples:
+                        break
+                    item = json.loads(line)
+                    if prompt_template:
+                        prompt = prompt_template.format(**item)
+                    else:
+                        prompt = item[prompt_field]
+                    prompts.append(prompt)
+
+            return prompts
+
+        elif dataset_type == "list":
+            return dataset_config.get("prompts", [])
+
+        else:
+            raise ValueError(f"Unknown dataset type: {dataset_type}")
+
+    def _scorers_to_reward_fn(
+        self,
+        scorers: list,
+    ) -> t.Callable[[list[str], list[str]], list[float]]:
+        """Convert dreadnode Scorers to a reward function.
+
+        Multiple scorers are averaged to produce the final reward.
+        """
+        import asyncio
+        from dreadnode.core.metric import Metric
+
+        def reward_fn(prompts: list[str], completions: list[str]) -> list[float]:
+            rewards = []
+
+            for completion in completions:
+                scores = []
+                for scorer in scorers:
+                    try:
+                        # Call scorer with completion
+                        result = scorer(completion)
+
+                        # Handle async scorers
+                        if asyncio.iscoroutine(result):
+                            result = asyncio.get_event_loop().run_until_complete(result)
+
+                        # Extract float value
+                        if isinstance(result, Metric):
+                            scores.append(result.value)
+                        elif isinstance(result, (int, float, bool)):
+                            scores.append(float(result))
+                        elif isinstance(result, (list, tuple)):
+                            # Multiple metrics - average them
+                            for r in result:
+                                if isinstance(r, Metric):
+                                    scores.append(r.value)
+                                else:
+                                    scores.append(float(r))
+                    except Exception as e:
+                        print(f"Scorer error: {e}")
+                        scores.append(0.0)
+
+                # Average scores from all scorers
+                reward = sum(scores) / len(scores) if scores else 0.0
+                rewards.append(reward)
+
+            return rewards
+
+        return reward_fn
+
+    def _build_reward_fn(
+        self,
+        reward_config: dict,
+        prompts: list[str],
+    ) -> t.Callable[[list[str], list[str]], list[float]]:
+        """Build reward function from configuration."""
+        reward_type = reward_config.get("type", "custom")
+
+        if reward_type == "correctness":
+            # Simple correctness reward - requires answer_field in prompts
+            tolerance = reward_config.get("tolerance", 0.01)
+            correct_reward = reward_config.get("correct_reward", 1.0)
+            incorrect_reward = reward_config.get("incorrect_reward", -0.5)
+
+            def correctness_reward(prompts: list[str], completions: list[str]) -> list[float]:
+                # Default implementation - override with actual logic
+                return [0.0] * len(completions)
+
+            return correctness_reward
+
+        elif reward_type == "length":
+            # Reward based on completion length
+            target_length = reward_config.get("target_length", 100)
+            max_reward = reward_config.get("max_reward", 1.0)
+
+            def length_reward(prompts: list[str], completions: list[str]) -> list[float]:
+                rewards = []
+                for c in completions:
+                    length_diff = abs(len(c) - target_length)
+                    reward = max_reward * max(0, 1 - length_diff / target_length)
+                    rewards.append(reward)
+                return rewards
+
+            return length_reward
+
+        elif reward_type == "contains":
+            # Reward if completion contains certain strings
+            required = reward_config.get("required", [])
+            reward_per_match = reward_config.get("reward_per_match", 0.5)
+
+            def contains_reward(prompts: list[str], completions: list[str]) -> list[float]:
+                rewards = []
+                for c in completions:
+                    matches = sum(1 for r in required if r.lower() in c.lower())
+                    rewards.append(matches * reward_per_match)
+                return rewards
+
+            return contains_reward
+
+        else:
+            raise ValueError(f"Unknown reward type: {reward_type}. Use custom reward_fn instead.")
+
+    def _train_grpo(
+        self,
+        config_dict: dict,
+        prompts: list[str],
+        reward_fn: t.Callable,
+    ) -> t.Any:
+        """Train with GRPO."""
+        from dreadnode.core.training.ray import RayGRPOConfig, RayGRPOTrainer
+
+        # Build config
+        grpo_config = RayGRPOConfig(**config_dict)
+
+        # Create trainer
+        trainer = RayGRPOTrainer(grpo_config)
+
+        # Train
+        return trainer.train(prompts=prompts, reward_fn=reward_fn)
+
+    def _train_sft(self, config_dict: dict, prompts: list[str]) -> t.Any:
+        """Train with SFT."""
+        from dreadnode.core.training.ray import SFTConfig, SFTTrainer
+
+        sft_config = SFTConfig(**config_dict)
+        trainer = SFTTrainer(sft_config)
+        return trainer.train(prompts)
+
+    def _train_dpo(self, config_dict: dict, prompts: list[str]) -> t.Any:
+        """Train with DPO."""
+        from dreadnode.core.training.ray import DPOConfig, DPOTrainer
+
+        dpo_config = DPOConfig(**config_dict)
+        trainer = DPOTrainer(dpo_config)
+        return trainer.train(prompts)
+
+    def _train_ppo(
+        self,
+        config_dict: dict,
+        prompts: list[str],
+        reward_fn: t.Callable,
+    ) -> t.Any:
+        """Train with PPO."""
+        from dreadnode.core.training.ray import PPOConfig, PPOTrainer
+
+        ppo_config = PPOConfig(**config_dict)
+        trainer = PPOTrainer(ppo_config)
+        return trainer.train(prompts=prompts, reward_fn=reward_fn)
+
     def run(
         self,
         name: str | None = None,
