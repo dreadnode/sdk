@@ -1,42 +1,103 @@
+# =============================================================================
 # GRPO Training Configuration for Math Problem Solving
-# Usage: dn.train("examples/configs/grpo_math.yaml")
+# =============================================================================
+#
+# This config demonstrates YAML-based training with dn.train().
+#
+# Usage:
+#   python -c "import dreadnode as dn; dn.train('examples/configs/grpo_math.yaml')"
+#
+# Or with scorers:
+#   import dreadnode as dn
+#
+#   @dn.scorer
+#   def my_scorer(completion: str) -> float:
+#       return 1.0 if "answer" in completion else 0.0
+#
+#   dn.train("examples/configs/grpo_math.yaml", scorers=[my_scorer])
+#
+# See also:
+#   - examples/train.py - Full training example with dn.train()
+#   - examples/quickstart.py - Basic SDK usage
+#
+# =============================================================================
 
+# Trainer type: grpo, sft, dpo, ppo
 trainer: grpo
 
+# =============================================================================
 # Model Configuration
+# =============================================================================
 model_name: Qwen/Qwen2.5-0.5B-Instruct
+# tokenizer_name: null  # Optional: defaults to model_name
 
-# Training Parameters
-max_steps: 100
-num_prompts_per_step: 4
-num_generations_per_prompt: 4
-learning_rate: 1.0e-6
-temperature: 0.7
-max_new_tokens: 256
+# =============================================================================
+# GRPO Training Parameters
+# =============================================================================
+max_steps: 100                    # Total training steps
+num_prompts_per_step: 4           # Prompts per batch
+num_generations_per_prompt: 4     # Generations per prompt (for reward comparison)
+learning_rate: 1.0e-6             # Learning rate
+temperature: 0.7                  # Generation temperature
+max_new_tokens: 256               # Max tokens per generation
+# warmup_ratio: 0.1               # LR warmup ratio
+# weight_decay: 0.01              # Weight decay
+# max_grad_norm: 1.0              # Gradient clipping
 
-# Logging
-log_interval: 10
-checkpoint_interval: 50
+# =============================================================================
+# Logging & Checkpointing
+# =============================================================================
+log_interval: 10                  # Log every N steps
+checkpoint_interval: 50           # Save checkpoint every N steps
+checkpoint_dir: ./checkpoints/grpo_math
+# eval_interval: 100              # Evaluate every N steps
 
+# =============================================================================
 # Dataset Configuration
+# =============================================================================
 # Supports: dreadnode, huggingface, jsonl, list
 dataset:
-  type: huggingface  # or "dreadnode" to use dn.load("my-dataset")
-  name: openai/gsm8k
-  config: main
-  split: train
-  max_samples: 500
-  prompt_field: question
-  prompt_template: |
+  type: huggingface               # Dataset source type
+  name: openai/gsm8k              # Dataset name/path
+  config: main                    # HuggingFace config name
+  split: train                    # Dataset split
+  max_samples: 500                # Max samples to use
+  prompt_field: question          # Field containing the prompt
+  prompt_template: |              # Template to format prompts
     Solve this math problem step by step.
 
     Problem: {question}
 
     Show your work and provide the final answer.
 
+# Alternative dataset configurations:
+#
+# --- Dreadnode dataset ---
+# dataset:
+#   type: dreadnode
+#   name: my-math-dataset         # Your dreadnode dataset name
+#   prompt_field: question
+#   max_samples: 1000
+#
+# --- JSONL file ---
+# dataset:
+#   type: jsonl
+#   path: ./data/prompts.jsonl
+#   prompt_field: prompt
+#   max_samples: 1000
+#
+# --- Inline list ---
+# dataset:
+#   type: list
+#   prompts:
+#     - "What is 2+2?"
+#     - "What is 3*4?"
+
+# =============================================================================
 # Reward Configuration
+# =============================================================================
 # Built-in types: correctness, length, contains
-# Or use scorers= argument with dn.scorer functions
+# For custom rewards, use scorers= argument in Python
 reward:
   type: contains
   required:
@@ -44,15 +105,28 @@ reward:
     - "="
   reward_per_match: 0.5
 
-# Alternative: Use dreadnode dataset
-# dataset:
-#   type: dreadnode
-#   name: my-math-dataset
-#   prompt_field: question
-#   max_samples: 1000
+# Alternative reward configurations:
+#
+# --- Length-based reward ---
+# reward:
+#   type: length
+#   target_length: 100            # Ideal response length
+#   max_reward: 1.0
+#
+# --- Correctness reward (requires ground truth) ---
+# reward:
+#   type: correctness
+#   tolerance: 0.01
+#   correct_reward: 1.0
+#   incorrect_reward: -0.5
 
-# Alternative: Use with scorers (in Python)
+# =============================================================================
+# Advanced: Use with Python scorers
+# =============================================================================
 # result = dn.train(
-#     "config.yaml",
+#     "examples/configs/grpo_math.yaml",
 #     scorers=[my_correctness_scorer, my_format_scorer]
 # )
+#
+# Scorers override the reward config in YAML.
+# Multiple scorers are averaged for the final reward.

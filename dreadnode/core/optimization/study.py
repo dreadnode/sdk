@@ -11,7 +11,7 @@ import typing as t
 
 import typing_extensions as te
 from loguru import logger
-from pydantic import ConfigDict, Field, FilePath, SkipValidation, computed_field
+from pydantic import ConfigDict, Field, FilePath, SkipValidation
 
 from dreadnode.core.evaluations import Evaluation, InputDataset
 from dreadnode.core.exceptions import AssertionFailedError
@@ -386,7 +386,6 @@ class Study(
     ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
         """Process a single trial."""
         from dreadnode import log_inputs, log_metrics, log_outputs
-        from dreadnode import score as dn_score
         from dreadnode.core.tracing.spans import trial_span
 
         task_factory = (
@@ -416,7 +415,9 @@ class Study(
             trial_span(
                 trial_id=trial.id,
                 step=trial.step,
-                candidate=trial.candidate if isinstance(trial.candidate, dict) else {"value": trial.candidate},
+                candidate=trial.candidate
+                if isinstance(trial.candidate, dict)
+                else {"value": trial.candidate},
                 task_name=task.name,
                 is_probe=trial.is_probe,
                 tags=[probe_or_trial],
@@ -434,7 +435,7 @@ class Study(
 
                 # Check constraints
                 if not trial.is_probe and self.constraints:
-                    await dn_score(
+                    await Scorer.evaluate(
                         trial.candidate,
                         Scorer.fit_many(self.constraints),
                         step=trial.step,
@@ -540,9 +541,10 @@ def study(
     stop_conditions: list[StudyStopCondition] | None = None,
     max_errors: int | None = None,
     max_consecutive_errors: int = 10,
-) -> Study[CandidateT, OutputT] | t.Callable[
-    [t.Callable[[CandidateT], Task[t.Any, OutputT]]], Study[CandidateT, OutputT]
-]:
+) -> (
+    Study[CandidateT, OutputT]
+    | t.Callable[[t.Callable[[CandidateT], Task[t.Any, OutputT]]], Study[CandidateT, OutputT]]
+):
     """
     Create a Study from a task factory function.
 

@@ -30,28 +30,21 @@ dependencies = [
     "jsonref>=1.1.0",
     "aiodocker>=0.25.0",
     "opentelemetry-semantic-conventions-ai>=0.4.13",
-    # Ray and nemo-rl are needed as direct dependencies for Ray worker environments
     "ray[default]>=2.10.0,<3.0.0",
-    "nemo-rl ; python_version >= '3.12'",
     "vllm>=0.6.0,<1.0.0 ; python_version >= '3.12'",
 ]
 
 [project.optional-dependencies]
-# Basic training (SFT with transformers/datasets)
 training = [
     "transformers>=4.41.0,<5.0.0",
     "datasets>=4.0.0,<5.0.0",
     "pyarrow>=4.0.0",
 ]
 
-# Full RL training stack (GRPO, online training with Ray/NeMo RL/vLLM)
-# Note: torch is provided by nemo-rl with CUDA support
-# Note: nemo-rl requires Python>=3.12 and pyarrow<22 via mlflow
 training-rl = [
     "transformers>=4.41.0,<5.0.0",
     "datasets>=4.0.0,<5.0.0",
     "ray[default]>=2.10.0,<3.0.0",
-    "nemo-rl ; python_version >= '3.12'",
     "vllm>=0.6.0,<1.0.0 ; python_version >= '3.12'",
 ]
 
@@ -231,5 +224,3 @@ skip-magic-trailing-comma = false
 index-strategy = "unsafe-best-match"
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 
-[tool.uv.sources]
-nemo-rl = { path = "/home/moo/projects/nemo-rl", editable = true }

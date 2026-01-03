@@ -270,8 +270,9 @@ def trial_span(
     from dreadnode import task_span
 
     probe_or_trial = "probe" if is_probe else "trial"
+    trial_id_str = str(trial_id)
     span = task_span(
-        name=f"trial:{trial_id[:8]}",
+        name=f"trial:{trial_id_str[:8]}",
         type="trial",
         label=label or (f"{task_name} [{step}]" if task_name else f"trial_{step}"),
         tags=[probe_or_trial, *(tags or [])],
