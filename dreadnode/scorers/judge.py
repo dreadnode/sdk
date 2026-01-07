@@ -46,6 +46,7 @@ def llm_judge(
     min_score: float | None = None,
     max_score: float | None = None,
     name: str = "llm_judge",
+    system_prompt: str | None = None,
 ) -> "Scorer[t.Any]":
     """
     Score the output of a task using an LLM to judge it against a rubric.
@@ -60,6 +61,7 @@ def llm_judge(
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
         max_score: Optional maximum score for the judgement - if provided, the score will be clamped to this value.
         name: The name of the scorer.
+        system_prompt: Optional custom system prompt for the judge. If None, uses default.
     """
 
     async def evaluate(
@@ -97,7 +99,16 @@ def llm_judge(
             rubric=rubric,
         )
 
-        judgement = await judge.bind(generator)(input_data)
+        if system_prompt:
+            completion = (
+                await generator.chat(system_prompt)
+                .add(input_data.model_dump_json())
+                .until_parsed_as(Judgement)
+                .run()
+            )
+            judgement = completion.last.parse(Judgement)
+        else:
+            judgement = await judge.bind(generator)(input_data)
 
         if min_score is not None:
             judgement.score = max(min_score, judgement.score)
