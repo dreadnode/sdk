@@ -45,6 +45,9 @@ from dreadnode.util import (
     stream_map_and_merge,
 )
 
+if t.TYPE_CHECKING:
+    from ulid import ULID
+
 OutputT = te.TypeVar("OutputT", default=t.Any)
 
 Direction = t.Literal["maximize", "minimize"]
@@ -559,7 +562,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     item._future.set_result(item)  # noqa: SLF001
 
         # Track in-flight trials to know when to stop after stop condition
-        in_flight_trials: set[str] = set()
+        in_flight_trials: set[ULID] = set()
 
         async with stream_map_and_merge(
             source=self.search_strategy(optimization_context),
@@ -611,7 +614,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     async for remaining_event in events:
                         # Skip new TrialAdded events - don't start new trials after stop
                         if isinstance(remaining_event, TrialAdded):
-                            logger.trace(f"Skipping new trial {remaining_event.trial.id} after stop")
+                            logger.trace(
+                                f"Skipping new trial {remaining_event.trial.id} after stop"
+                            )
                             continue
 
                         # Track trial completion
@@ -625,7 +630,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                             isinstance(remaining_event, (TrialComplete, TrialPruned))
                             and not remaining_event.trial.is_probe
                             and remaining_event.trial.status == "finished"
-                            and (best_trial is None or remaining_event.trial.score > best_trial.score)
+                            and (
+                                best_trial is None or remaining_event.trial.score > best_trial.score
+                            )
                         ):
                             best_trial = remaining_event.trial
                             logger.success(
