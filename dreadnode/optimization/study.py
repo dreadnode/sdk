@@ -489,6 +489,110 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             else 0.0
         )
 
+    def _should_update_best_trial(
+        self, event: StudyEvent[CandidateT], best_trial: Trial[CandidateT] | None
+    ) -> bool:
+        """Check if the event trial should become the new best trial."""
+        if not isinstance(event, (TrialComplete, TrialPruned)):
+            return False
+        return (
+            not event.trial.is_probe
+            and event.trial.status == "finished"
+            and (best_trial is None or event.trial.score > best_trial.score)
+        )
+
+    def _update_trial_tracking(
+        self, event: StudyEvent[CandidateT], in_flight_trials: set["ULID"]
+    ) -> None:
+        """Update in-flight trial tracking based on event type."""
+        if isinstance(event, TrialAdded):
+            in_flight_trials.add(event.trial.id)
+        elif isinstance(event, (TrialComplete, TrialPruned)):
+            in_flight_trials.discard(event.trial.id)
+
+    def _check_stop_conditions(
+        self, all_trials: list[Trial[CandidateT]]
+    ) -> tuple[bool, str | None]:
+        """Check if any stop condition is met. Returns (met, explanation)."""
+        for stop_condition in self.stop_conditions:
+            if stop_condition(all_trials):
+                logger.info(f"Stop condition '{stop_condition.name}' met. Terminating study.")
+                return True, stop_condition.name
+        return False, None
+
+    def _determine_stop_reason(
+        self, *, stop_condition_met: bool, trial_count: int
+    ) -> StudyStopReason:
+        """Determine the final stop reason for the study."""
+        if stop_condition_met:
+            return "stop_condition_met"
+        if trial_count >= self.max_evals:
+            return "max_trials_reached"
+        return "search_exhausted"
+
+    def _create_semaphores(self) -> tuple[asyncio.Semaphore, asyncio.Semaphore]:
+        """Create semaphores for trial and probe concurrency control."""
+        semaphore = asyncio.Semaphore(self.concurrency)
+        probe_semaphore = (
+            asyncio.Semaphore(self.probe_concurrency) if self.probe_concurrency else semaphore
+        )
+        return semaphore, probe_semaphore
+
+    async def _drain_inflight_trials(
+        self,
+        events: t.AsyncGenerator[StudyEvent[CandidateT], None],
+        in_flight_trials: set["ULID"],
+        all_trials: list[Trial[CandidateT]],
+        all_probes: list[Trial[CandidateT]],
+        best_trial: Trial[CandidateT] | None,
+    ) -> t.AsyncGenerator[StudyEvent[CandidateT] | Trial[CandidateT], None]:
+        """Drain in-flight trials after stop condition is met.
+
+        Yields StudyEvent objects for events, and yields the updated best_trial
+        at the end if it changed.
+        """
+        logger.debug(f"Draining {len(in_flight_trials)} in-flight trials before stopping...")
+
+        original_best = best_trial
+
+        async for remaining_event in events:
+            # Skip new TrialAdded events - don't start new trials after stop
+            if isinstance(remaining_event, TrialAdded):
+                logger.trace(f"Skipping new trial {remaining_event.trial.id} after stop")
+                continue
+
+            # Track trial completion
+            if isinstance(remaining_event, (TrialComplete, TrialPruned)):
+                in_flight_trials.discard(remaining_event.trial.id)
+
+            yield remaining_event
+
+            # Update best trial if a better one completes while draining
+            if self._should_update_best_trial(remaining_event, best_trial):
+                # Type narrowing: _should_update_best_trial guarantees this is TrialComplete|TrialPruned
+                event_with_trial = t.cast(
+                    "TrialComplete[CandidateT] | TrialPruned[CandidateT]", remaining_event
+                )
+                best_trial = event_with_trial.trial
+                logger.success(
+                    f"New best trial (while draining): "
+                    f"id={best_trial.id}, "
+                    f"step={best_trial.step}, "
+                    f"score={best_trial.score:.5f}"
+                )
+                yield NewBestTrialFound(
+                    study=self, trials=all_trials, probes=all_probes, trial=best_trial
+                )
+
+            # Stop draining once all in-flight trials are done
+            if not in_flight_trials:
+                logger.debug("All in-flight trials completed, stopping.")
+                break
+
+        # Yield the updated best trial if it changed
+        if best_trial is not original_best and best_trial is not None:
+            yield best_trial
+
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
         """
         Execute the complete optimization study and yield events for each phase.
@@ -516,10 +620,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         # and issue a TrialAdded event, but we will set in_queue_size to the concurrency
         # so we don't read too far ahead.
 
-        semaphore = asyncio.Semaphore(self.concurrency)  # we'll use this to
-        probe_semaphore = (
-            asyncio.Semaphore(self.probe_concurrency) if self.probe_concurrency else semaphore
-        )
+        semaphore, probe_semaphore = self._create_semaphores()
 
         logger.info(
             f"Starting study '{self.name}': "
@@ -572,91 +673,43 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         ) as events:
             async for event in events:
                 # Track trial lifecycle for proper draining
-                if isinstance(event, TrialAdded):
-                    in_flight_trials.add(event.trial.id)
-                elif isinstance(event, (TrialComplete, TrialPruned)):
-                    in_flight_trials.discard(event.trial.id)
+                self._update_trial_tracking(event, in_flight_trials)
 
                 yield event
 
-                if isinstance(event, (TrialComplete, TrialPruned)):
-                    if (
-                        not event.trial.is_probe
-                        and event.trial.status == "finished"
-                        and (best_trial is None or event.trial.score > best_trial.score)
-                    ):
-                        best_trial = event.trial
-                        logger.success(
-                            f"New best trial: "
-                            f"id={best_trial.id}, "
-                            f"step={best_trial.step}, "
-                            f"score={best_trial.score:.5f}, "
-                            f"scores={best_trial.scores}"
-                        )
-                        yield NewBestTrialFound(
-                            study=self, trials=all_trials, probes=all_probes, trial=best_trial
-                        )
-
-                    for stop_condition in self.stop_conditions:
-                        if stop_condition(all_trials):
-                            logger.info(
-                                f"Stop condition '{stop_condition.name}' met. Terminating study."
-                            )
-                            stop_explanation = stop_condition.name
-                            stop_condition_met = True
-                            break
-
-                if stop_condition_met:
-                    # Drain only in-flight trials (those started but not yet completed)
-                    logger.debug(
-                        f"Draining {len(in_flight_trials)} in-flight trials before stopping..."
+                if self._should_update_best_trial(event, best_trial):
+                    # Type narrowing: _should_update_best_trial guarantees this is TrialComplete|TrialPruned
+                    event_with_trial = t.cast(
+                        "TrialComplete[CandidateT] | TrialPruned[CandidateT]", event
                     )
-                    async for remaining_event in events:
-                        # Skip new TrialAdded events - don't start new trials after stop
-                        if isinstance(remaining_event, TrialAdded):
-                            logger.trace(
-                                f"Skipping new trial {remaining_event.trial.id} after stop"
-                            )
-                            continue
+                    best_trial = event_with_trial.trial
+                    logger.success(
+                        f"New best trial: "
+                        f"id={best_trial.id}, "
+                        f"step={best_trial.step}, "
+                        f"score={best_trial.score:.5f}, "
+                        f"scores={best_trial.scores}"
+                    )
+                    yield NewBestTrialFound(
+                        study=self, trials=all_trials, probes=all_probes, trial=best_trial
+                    )
 
-                        # Track trial completion
-                        if isinstance(remaining_event, (TrialComplete, TrialPruned)):
-                            in_flight_trials.discard(remaining_event.trial.id)
-
-                        yield remaining_event
-
-                        # Update best trial if a better one completes while draining
-                        if (
-                            isinstance(remaining_event, (TrialComplete, TrialPruned))
-                            and not remaining_event.trial.is_probe
-                            and remaining_event.trial.status == "finished"
-                            and (
-                                best_trial is None or remaining_event.trial.score > best_trial.score
-                            )
+                # Check stop conditions after trial completion
+                if isinstance(event, (TrialComplete, TrialPruned)):
+                    stop_condition_met, stop_explanation = self._check_stop_conditions(all_trials)
+                    if stop_condition_met:
+                        # Drain in-flight trials and update best if needed
+                        async for drain_event in self._drain_inflight_trials(
+                            events, in_flight_trials, all_trials, all_probes, best_trial
                         ):
-                            best_trial = remaining_event.trial
-                            logger.success(
-                                f"New best trial (while draining): "
-                                f"id={best_trial.id}, "
-                                f"step={best_trial.step}, "
-                                f"score={best_trial.score:.5f}"
-                            )
-                            yield NewBestTrialFound(
-                                study=self, trials=all_trials, probes=all_probes, trial=best_trial
-                            )
+                            if isinstance(drain_event, Trial):
+                                best_trial = drain_event
+                            else:
+                                yield drain_event
+                        break
 
-                        # Stop draining once all in-flight trials are done
-                        if not in_flight_trials:
-                            logger.debug("All in-flight trials completed, stopping.")
-                            break
-                    break
-
-        stop_reason = (
-            "stop_condition_met"
-            if stop_condition_met
-            else "max_trials_reached"
-            if len(all_trials) >= self.max_evals
-            else "search_exhausted"
+        stop_reason = self._determine_stop_reason(
+            stop_condition_met=stop_condition_met, trial_count=len(all_trials)
         )
 
         logger.info(
