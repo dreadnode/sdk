@@ -39,30 +39,14 @@ class LLMTarget(Target[DnMessage, DnMessage]):
     def name(self) -> str:
         return self.generator.to_identifier(short=True).split("/")[-1]
 
-    def task_factory(self, input: DnMessage) -> Task[[], DnMessage]:
+    @cached_property
+    def task(self) -> Task[[DnMessage], DnMessage]:
         """
-        create a task that:
-        1. Takes dn.Message as input (auto-logged via to_serializable())
-        2. Converts to rg.Message only for LLM API call
-        3. Returns dn.Message with full multimodal content (text/images/audio/video)
+        Task for LLM generation.
 
-        Args:
-            input: The dn.Message to send to the LLM
-
-        Returns:
-            Task that executes the LLM call and returns dn.Message
-
-        Raises:
-            TypeError: If input is not a dn.Message
-            ValueError: If the message has no content
+        Message input will come from dataset (injected by Study),
+        not from task defaults.
         """
-        if not isinstance(input, DnMessage):
-            raise TypeError(f"Expected dn.Message, got {type(input).__name__}")
-
-        if not input.content:
-            raise ValueError("Message must have at least one content part")
-
-        dn_message = input
         params = (
             self.params
             if isinstance(self.params, rg.GenerateParams)
@@ -73,7 +57,7 @@ class LLMTarget(Target[DnMessage, DnMessage]):
 
         @task(name=f"target - {self.name}", tags=["target"])
         async def generate(
-            message: DnMessage = dn_message,
+            message: DnMessage,
             params: rg.GenerateParams = params,
         ) -> DnMessage:
             """Execute LLM generation task."""

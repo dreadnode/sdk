@@ -1,15 +1,20 @@
 import asyncio
 import contextlib
 import contextvars
+import inspect
 import typing as t
+from pathlib import Path
 
 import typing_extensions as te
 from loguru import logger
 from pydantic import ConfigDict, Field, FilePath, SkipValidation, computed_field
 
+from dreadnode import log_inputs, log_metrics, log_outputs, task_span
 from dreadnode.common_types import AnyDict
+from dreadnode.data_types.message import Message
 from dreadnode.error import AssertionFailedError
 from dreadnode.eval import InputDataset
+from dreadnode.eval.dataset import load_dataset
 from dreadnode.eval.eval import Eval
 from dreadnode.eval.hooks.base import EvalHook
 from dreadnode.meta import Config, Model
@@ -40,6 +45,9 @@ from dreadnode.util import (
     stream_map_and_merge,
 )
 
+if t.TYPE_CHECKING:
+    from ulid import ULID
+
 OutputT = te.TypeVar("OutputT", default=t.Any)
 
 Direction = t.Literal["maximize", "minimize"]
@@ -65,13 +73,14 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
 
     search_strategy: SkipValidation[Search[CandidateT]]
     """The search strategy to use for suggesting new trials."""
-    task_factory: SkipValidation[t.Callable[[CandidateT], Task[..., OutputT]]]
-    """A function that accepts a trial candidate and returns a configured Task ready for evaluation."""
-    probe_task_factory: SkipValidation[t.Callable[[CandidateT], Task[..., OutputT]] | None] = None
-    """
-    An optional function that accepts a probe candidate and returns a Task.
 
-    Otherwise the main task_factory will be used for both full evaluation Trials and probe Trials.
+    task: SkipValidation[Task[..., OutputT]] | None = None
+    """The task to evaluate with optimized candidates."""
+
+    candidate_param: str | None = None
+    """
+    Task parameter name for candidate injection.
+    If None, inferred from task signature or candidate type.
     """
     objectives: t.Annotated[ObjectivesLike[OutputT], Config(expose_as=None)]
     """
@@ -165,7 +174,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         description: str | None = None,
         tags: list[str] | None = None,
         search_strategy: Search[CandidateT] | None = None,
-        task_factory: t.Callable[[CandidateT], Task[..., OutputT]] | None = None,
+        task: Task[..., OutputT] | None = None,
         objectives: ObjectivesLike[OutputT] | None = None,
         directions: list[Direction] | None = None,
         dataset: InputDataset[t.Any] | list[AnyDict] | FilePath | None = None,
@@ -186,7 +195,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         new.name_ = name or new.name
         new.description = description or new.description
         new.search_strategy = search_strategy or new.search_strategy
-        new.task_factory = task_factory or new.task_factory
+        new.task = task or new.task
         new.dataset = dataset if dataset is not None else new.dataset
         new.concurrency = concurrency or new.concurrency
         new.max_evals = max_trials or new.max_evals
@@ -240,23 +249,80 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         self.stop_conditions.append(condition)
         return self
 
+    async def _resolve_dataset(self, dataset: t.Any) -> list[AnyDict]:
+        """
+        Resolve dataset to a list in memory.
+        Handles list, file path, or callable datasets.
+        """
+        if dataset is None:
+            return [{}]
+
+        # Already a list
+        if isinstance(dataset, list):
+            return dataset
+
+        # File path
+        if isinstance(dataset, (Path, str, FilePath)):
+            return load_dataset(dataset)
+
+        # Callable
+        if callable(dataset):
+            result = dataset()
+            if inspect.isawaitable(result):
+                result = await result
+            return list(result) if not isinstance(result, list) else result
+
+        return [{}]
+
+    def _infer_candidate_param(self, task: Task[..., OutputT], candidate: CandidateT) -> str:
+        """
+        Infer task parameter name for candidate injection.
+
+        Priority:
+        1. Explicit self.candidate_param if set
+        2. "message" if candidate is Message type
+        3. First non-config param from task signature
+        4. Fallback to "input"
+        """
+
+        # Priority 1: Explicit override
+        if self.candidate_param:
+            return self.candidate_param
+
+        # Priority 2: Type-based convention
+        if isinstance(candidate, Message):
+            return "message"
+
+        # Priority 3: Signature inspection
+        try:
+            for param_name, param in task.signature.parameters.items():
+                # Skip config params (those with defaults)
+                if param.default == inspect.Parameter.empty:
+                    logger.debug(f"Inferred candidate parameter: {param_name}")
+                    return param_name
+        except Exception as e:  # noqa: BLE001
+            logger.trace(f"Could not infer parameter from signature: {e}")
+
+        # Priority 4: Universal fallback
+        logger.debug("Using fallback candidate parameter: input")
+        return "input"
+
     async def _process_trial(
         self, trial: Trial[CandidateT]
     ) -> t.AsyncIterator[StudyEvent[CandidateT]]:
         """
         Checks constraints and evaluates a single trial, returning a list of events.
         """
-        from dreadnode import log_inputs, log_metrics, log_outputs, task_span
 
-        logger.debug(
-            f"Processing trial: id={trial.id}, step={trial.step}, is_probe={trial.is_probe}"
-        )
+        task = self.task
 
-        task_factory = (
-            self.probe_task_factory
-            if trial.is_probe and self.probe_task_factory
-            else self.task_factory
-        )
+        if task is None:
+            raise ValueError(
+                "Study.task is required but was not set. "
+                "For Attack, this should be set automatically from target. "
+                "For Study, pass task explicitly."
+            )
+
         dataset = trial.dataset or self.dataset or [{}]
         probe_or_trial = "probe" if trial.is_probe else "trial"
 
@@ -302,9 +368,6 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 # Check constraints
                 await self._check_constraints(trial.candidate, trial)
 
-                # Create task
-                task = task_factory(trial.candidate)
-
                 # Get base scorers
                 scorers: list[Scorer[OutputT]] = [
                     scorer
@@ -312,7 +375,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                     if isinstance(scorer, Scorer)
                 ]
 
-                # Run evaluation (transforms are applied inside Eval now)
+                # Run evaluation (candidate injected via dataset augmentation)
                 trial.eval_result = await self._run_evaluation(task, dataset, scorers, trial)
 
                 # Extract final scores
@@ -370,26 +433,29 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         trial: Trial[CandidateT],
     ) -> t.Any:
         """Run the evaluation with the given task, dataset, and scorers."""
-        logger.debug(
-            f"Evaluating trial: "
-            f"trial_id={trial.id}, "
-            f"step={trial.step}, "
-            f"dataset_size={len(dataset) if isinstance(dataset, t.Sized) else '<unknown>'}, "
-            f"task={task.name}"
-        )
-        logger.trace(f"Candidate: {trial.candidate!r}")
+        resolved_dataset = await self._resolve_dataset(dataset)
+        param_name = self._infer_candidate_param(task, trial.candidate)
 
-        # if dataset == [{}] or (isinstance(dataset, list) and len(dataset) == 1 and not dataset[0]):
-        #     # Dataset is empty - this is a Study/Attack where the candidate IS the input
-        #     dataset = [{"message": trial.candidate}]
-        #     dataset_input_mapping = ["message"]
-        # else:
-        #     dataset_input_mapping = None
+        logger.debug(
+            f"Augmenting {len(resolved_dataset)} dataset rows with candidate "
+            f"as parameter: {param_name}"
+        )
+
+        # Check for collisions before augmentation (check all rows, not just first)
+        if resolved_dataset:
+            collision_count = sum(1 for row in resolved_dataset if param_name in row)
+            if collision_count > 0:
+                logger.warning(
+                    f"Parameter '{param_name}' exists in {collision_count}/{len(resolved_dataset)} "
+                    f"dataset rows - candidate will override existing values"
+                )
+
+        # Augment every row with the candidate
+        augmented_dataset = [{**row, param_name: trial.candidate} for row in resolved_dataset]
 
         evaluator = Eval(
             task=task,
-            dataset=dataset,
-            # dataset_input_mapping=dataset_input_mapping,
+            dataset=augmented_dataset,
             scorers=scorers,
             hooks=self.hooks,
             max_consecutive_errors=self.max_consecutive_errors,
@@ -423,6 +489,110 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             else 0.0
         )
 
+    def _should_update_best_trial(
+        self, event: StudyEvent[CandidateT], best_trial: Trial[CandidateT] | None
+    ) -> bool:
+        """Check if the event trial should become the new best trial."""
+        if not isinstance(event, (TrialComplete, TrialPruned)):
+            return False
+        return (
+            not event.trial.is_probe
+            and event.trial.status == "finished"
+            and (best_trial is None or event.trial.score > best_trial.score)
+        )
+
+    def _update_trial_tracking(
+        self, event: StudyEvent[CandidateT], in_flight_trials: set["ULID"]
+    ) -> None:
+        """Update in-flight trial tracking based on event type."""
+        if isinstance(event, TrialAdded):
+            in_flight_trials.add(event.trial.id)
+        elif isinstance(event, (TrialComplete, TrialPruned)):
+            in_flight_trials.discard(event.trial.id)
+
+    def _check_stop_conditions(
+        self, all_trials: list[Trial[CandidateT]]
+    ) -> tuple[bool, str | None]:
+        """Check if any stop condition is met. Returns (met, explanation)."""
+        for stop_condition in self.stop_conditions:
+            if stop_condition(all_trials):
+                logger.info(f"Stop condition '{stop_condition.name}' met. Terminating study.")
+                return True, stop_condition.name
+        return False, None
+
+    def _determine_stop_reason(
+        self, *, stop_condition_met: bool, trial_count: int
+    ) -> StudyStopReason:
+        """Determine the final stop reason for the study."""
+        if stop_condition_met:
+            return "stop_condition_met"
+        if trial_count >= self.max_evals:
+            return "max_trials_reached"
+        return "search_exhausted"
+
+    def _create_semaphores(self) -> tuple[asyncio.Semaphore, asyncio.Semaphore]:
+        """Create semaphores for trial and probe concurrency control."""
+        semaphore = asyncio.Semaphore(self.concurrency)
+        probe_semaphore = (
+            asyncio.Semaphore(self.probe_concurrency) if self.probe_concurrency else semaphore
+        )
+        return semaphore, probe_semaphore
+
+    async def _drain_inflight_trials(
+        self,
+        events: t.AsyncGenerator[StudyEvent[CandidateT], None],
+        in_flight_trials: set["ULID"],
+        all_trials: list[Trial[CandidateT]],
+        all_probes: list[Trial[CandidateT]],
+        best_trial: Trial[CandidateT] | None,
+    ) -> t.AsyncGenerator[StudyEvent[CandidateT] | Trial[CandidateT], None]:
+        """Drain in-flight trials after stop condition is met.
+
+        Yields StudyEvent objects for events, and yields the updated best_trial
+        at the end if it changed.
+        """
+        logger.debug(f"Draining {len(in_flight_trials)} in-flight trials before stopping...")
+
+        original_best = best_trial
+
+        async for remaining_event in events:
+            # Skip new TrialAdded events - don't start new trials after stop
+            if isinstance(remaining_event, TrialAdded):
+                logger.trace(f"Skipping new trial {remaining_event.trial.id} after stop")
+                continue
+
+            # Track trial completion
+            if isinstance(remaining_event, (TrialComplete, TrialPruned)):
+                in_flight_trials.discard(remaining_event.trial.id)
+
+            yield remaining_event
+
+            # Update best trial if a better one completes while draining
+            if self._should_update_best_trial(remaining_event, best_trial):
+                # Type narrowing: _should_update_best_trial guarantees this is TrialComplete|TrialPruned
+                event_with_trial = t.cast(
+                    "TrialComplete[CandidateT] | TrialPruned[CandidateT]", remaining_event
+                )
+                best_trial = event_with_trial.trial
+                logger.success(
+                    f"New best trial (while draining): "
+                    f"id={best_trial.id}, "
+                    f"step={best_trial.step}, "
+                    f"score={best_trial.score:.5f}"
+                )
+                yield NewBestTrialFound(
+                    study=self, trials=all_trials, probes=all_probes, trial=best_trial
+                )
+
+            # Stop draining once all in-flight trials are done
+            if not in_flight_trials:
+                logger.debug("All in-flight trials completed, stopping.")
+                break
+
+        # Yield the updated best trial if it changed
+        if best_trial is not original_best and best_trial is not None:
+            yield best_trial
+
     async def _stream(self) -> t.AsyncGenerator[StudyEvent[CandidateT], None]:
         """
         Execute the complete optimization study and yield events for each phase.
@@ -450,10 +620,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         # and issue a TrialAdded event, but we will set in_queue_size to the concurrency
         # so we don't read too far ahead.
 
-        semaphore = asyncio.Semaphore(self.concurrency)  # we'll use this to
-        probe_semaphore = (
-            asyncio.Semaphore(self.probe_concurrency) if self.probe_concurrency else semaphore
-        )
+        semaphore, probe_semaphore = self._create_semaphores()
 
         logger.info(
             f"Starting study '{self.name}': "
@@ -495,6 +662,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 with contextlib.suppress(asyncio.InvalidStateError):
                     item._future.set_result(item)  # noqa: SLF001
 
+        # Track in-flight trials to know when to stop after stop condition
+        in_flight_trials: set[ULID] = set()
+
         async with stream_map_and_merge(
             source=self.search_strategy(optimization_context),
             processor=process_search,
@@ -502,44 +672,44 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             concurrency=self.concurrency * 2,
         ) as events:
             async for event in events:
+                # Track trial lifecycle for proper draining
+                self._update_trial_tracking(event, in_flight_trials)
+
                 yield event
 
+                if self._should_update_best_trial(event, best_trial):
+                    # Type narrowing: _should_update_best_trial guarantees this is TrialComplete|TrialPruned
+                    event_with_trial = t.cast(
+                        "TrialComplete[CandidateT] | TrialPruned[CandidateT]", event
+                    )
+                    best_trial = event_with_trial.trial
+                    logger.success(
+                        f"New best trial: "
+                        f"id={best_trial.id}, "
+                        f"step={best_trial.step}, "
+                        f"score={best_trial.score:.5f}, "
+                        f"scores={best_trial.scores}"
+                    )
+                    yield NewBestTrialFound(
+                        study=self, trials=all_trials, probes=all_probes, trial=best_trial
+                    )
+
+                # Check stop conditions after trial completion
                 if isinstance(event, (TrialComplete, TrialPruned)):
-                    if (
-                        not event.trial.is_probe
-                        and event.trial.status == "finished"
-                        and (best_trial is None or event.trial.score > best_trial.score)
-                    ):
-                        best_trial = event.trial
-                        logger.success(
-                            f"New best trial: "
-                            f"id={best_trial.id}, "
-                            f"step={best_trial.step}, "
-                            f"score={best_trial.score:.5f}, "
-                            f"scores={best_trial.scores}"
-                        )
-                        yield NewBestTrialFound(
-                            study=self, trials=all_trials, probes=all_probes, trial=best_trial
-                        )
+                    stop_condition_met, stop_explanation = self._check_stop_conditions(all_trials)
+                    if stop_condition_met:
+                        # Drain in-flight trials and update best if needed
+                        async for drain_event in self._drain_inflight_trials(
+                            events, in_flight_trials, all_trials, all_probes, best_trial
+                        ):
+                            if isinstance(drain_event, Trial):
+                                best_trial = drain_event
+                            else:
+                                yield drain_event
+                        break
 
-                    for stop_condition in self.stop_conditions:
-                        if stop_condition(all_trials):
-                            logger.info(
-                                f"Stop condition '{stop_condition.name}' met. Terminating study."
-                            )
-                            stop_explanation = stop_condition.name
-                            stop_condition_met = True
-                            break
-
-                if stop_condition_met:
-                    break
-
-        stop_reason = (
-            "stop_condition_met"
-            if stop_condition_met
-            else "max_trials_reached"
-            if len(all_trials) >= self.max_evals
-            else "search_exhausted"
+        stop_reason = self._determine_stop_reason(
+            stop_condition_met=stop_condition_met, trial_count=len(all_trials)
         )
 
         logger.info(

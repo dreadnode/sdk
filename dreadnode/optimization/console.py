@@ -303,10 +303,23 @@ class StudyConsoleAdapter:
                 self._trials_completed += 1
             self._completed_evals += 1
             self._total_cost += event.trial.cost
+
+            # Check if this trial is the new best (inline check to avoid stale display)
+            # This handles the case where NewBestTrialFound event comes after rendering
+            if (
+                not event.trial.is_probe
+                and event.trial.status == "finished"
+                and (self._best_trial is None or event.trial.score > self._best_trial.score)
+            ):
+                self._best_trial = event.trial
         elif isinstance(event, NewBestTrialFound):
             self._best_trial = event.trial
         elif isinstance(event, StudyEnd):
             self._result = event.result
+            # Update best trial from final result in case some trials completed
+            # after stop condition but before we received their events
+            if event.result.best_trial:
+                self._best_trial = event.result.best_trial
 
         self._progress.update(self._progress_task_id, completed=self._completed_evals)
 

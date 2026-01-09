@@ -2,7 +2,7 @@ import typing as t
 
 from pydantic import ConfigDict
 
-from dreadnode.airt.target.base import In, Out, Target
+from dreadnode.airt.target.base import Out, Target
 from dreadnode.common_types import Unset
 from dreadnode.meta import Config
 from dreadnode.task import Task
@@ -39,9 +39,3 @@ class CustomTarget(Target[t.Any, Out]):
 
         if self.input_param_name is None:
             raise ValueError(f"Could not determine input parameter for {self.task!r}")
-
-    def task_factory(self, input: In) -> Task[..., Out]:
-        task = self.task
-        if self.input_param_name is not None:
-            task = self.task.configure(**{self.input_param_name: input})
-        return task.with_(tags=["target"], append=True)
