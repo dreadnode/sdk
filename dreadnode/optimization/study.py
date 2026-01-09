@@ -246,7 +246,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         self.stop_conditions.append(condition)
         return self
 
-    def _resolve_dataset(self, dataset: t.Any) -> list[AnyDict]:
+    async def _resolve_dataset(self, dataset: t.Any) -> list[AnyDict]:
         """
         Resolve dataset to a list in memory.
         Handles list, file path, or callable datasets.
@@ -266,10 +266,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         if callable(dataset):
             result = dataset()
             if inspect.isawaitable(result):
-                raise ValueError(
-                    "Async dataset callables not supported with COA 1 "
-                    "(requires eager materialization)"
-                )
+                result = await result
             return list(result) if not isinstance(result, list) else result
 
         return [{}]
@@ -433,7 +430,7 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
         trial: Trial[CandidateT],
     ) -> t.Any:
         """Run the evaluation with the given task, dataset, and scorers."""
-        resolved_dataset = self._resolve_dataset(dataset)
+        resolved_dataset = await self._resolve_dataset(dataset)
         param_name = self._infer_candidate_param(task, trial.candidate)
 
         logger.debug(
@@ -441,20 +438,21 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             f"as parameter: {param_name}"
         )
 
+        # Check for collisions before augmentation (check all rows, not just first)
+        if resolved_dataset:
+            collision_count = sum(1 for row in resolved_dataset if param_name in row)
+            if collision_count > 0:
+                logger.warning(
+                    f"Parameter '{param_name}' exists in {collision_count}/{len(resolved_dataset)} "
+                    f"dataset rows - candidate will override existing values"
+                )
+
         # Augment every row with the candidate
         augmented_dataset = [{**row, param_name: trial.candidate} for row in resolved_dataset]
-
-        # Warn on collisions
-        if resolved_dataset and param_name in resolved_dataset[0]:
-            logger.warning(
-                f"Parameter '{param_name}' already exists in dataset - "
-                f"candidate will override existing values"
-            )
 
         evaluator = Eval(
             task=task,
             dataset=augmented_dataset,
-            dataset_input_mapping=[param_name],
             scorers=scorers,
             hooks=self.hooks,
             max_consecutive_errors=self.max_consecutive_errors,
@@ -560,6 +558,9 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                 with contextlib.suppress(asyncio.InvalidStateError):
                     item._future.set_result(item)  # noqa: SLF001
 
+        # Track in-flight trials to know when to stop after stop condition
+        in_flight_trials: set[str] = set()
+
         async with stream_map_and_merge(
             source=self.search_strategy(optimization_context),
             processor=process_search,
@@ -567,6 +568,12 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
             concurrency=self.concurrency * 2,
         ) as events:
             async for event in events:
+                # Track trial lifecycle for proper draining
+                if isinstance(event, TrialAdded):
+                    in_flight_trials.add(event.trial.id)
+                elif isinstance(event, (TrialComplete, TrialPruned)):
+                    in_flight_trials.discard(event.trial.id)
+
                 yield event
 
                 if isinstance(event, (TrialComplete, TrialPruned)):
@@ -597,6 +604,44 @@ class Study(Model, t.Generic[CandidateT, OutputT]):
                             break
 
                 if stop_condition_met:
+                    # Drain only in-flight trials (those started but not yet completed)
+                    logger.debug(
+                        f"Draining {len(in_flight_trials)} in-flight trials before stopping..."
+                    )
+                    async for remaining_event in events:
+                        # Skip new TrialAdded events - don't start new trials after stop
+                        if isinstance(remaining_event, TrialAdded):
+                            logger.trace(f"Skipping new trial {remaining_event.trial.id} after stop")
+                            continue
+
+                        # Track trial completion
+                        if isinstance(remaining_event, (TrialComplete, TrialPruned)):
+                            in_flight_trials.discard(remaining_event.trial.id)
+
+                        yield remaining_event
+
+                        # Update best trial if a better one completes while draining
+                        if (
+                            isinstance(remaining_event, (TrialComplete, TrialPruned))
+                            and not remaining_event.trial.is_probe
+                            and remaining_event.trial.status == "finished"
+                            and (best_trial is None or remaining_event.trial.score > best_trial.score)
+                        ):
+                            best_trial = remaining_event.trial
+                            logger.success(
+                                f"New best trial (while draining): "
+                                f"id={best_trial.id}, "
+                                f"step={best_trial.step}, "
+                                f"score={best_trial.score:.5f}"
+                            )
+                            yield NewBestTrialFound(
+                                study=self, trials=all_trials, probes=all_probes, trial=best_trial
+                            )
+
+                        # Stop draining once all in-flight trials are done
+                        if not in_flight_trials:
+                            logger.debug("All in-flight trials completed, stopping.")
+                            break
                     break
 
         stop_reason = (
