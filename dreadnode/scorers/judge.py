@@ -76,6 +76,7 @@ def llm_judge(
         model_params: rg.GenerateParams | AnyDict | None = model_params,
         min_score: float | None = min_score,
         max_score: float | None = max_score,
+        system_prompt: str | None = system_prompt,
     ) -> list[Metric]:
         generator: rg.Generator
         if isinstance(model, str):
@@ -99,16 +100,11 @@ def llm_judge(
             rubric=rubric,
         )
 
-        if system_prompt:
-            completion = (
-                await generator.chat(system_prompt)
-                .add(input_data.model_dump_json())
-                .until_parsed_as(Judgement)
-                .run()
-            )
-            judgement = completion.last.parse(Judgement)
-        else:
-            judgement = await judge.bind(generator)(input_data)
+        judgement = await judge.bind(
+            generator.chat({"role": "system", "content": system_prompt})
+            if system_prompt
+            else generator
+        )(input_data)
 
         if min_score is not None:
             judgement.score = max(min_score, judgement.score)
