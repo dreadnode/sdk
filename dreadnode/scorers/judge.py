@@ -100,11 +100,10 @@ def llm_judge(
             rubric=rubric,
         )
 
-        judgement = await judge.bind(
-            generator.chat({"role": "system", "content": system_prompt})
-            if system_prompt
-            else generator
-        )(input_data)
+        pipeline = generator.chat([])
+        if system_prompt:
+            pipeline.chat.inject_system_content(system_prompt)
+        judgement = await judge.bind(pipeline)(input_data)
 
         if min_score is not None:
             judgement.score = max(min_score, judgement.score)
