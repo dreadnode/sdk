@@ -22,6 +22,13 @@ class DreadnodeAxolotlArgs(BaseModel):
         },
     )
 
+    dreadnode_workspace: str | None = Field(
+        default=None,
+        json_schema_extra={
+            "description": "Dreadnode workspace name. If not set, uses the default workspace or DREADNODE_WORKSPACE env var."
+        },
+    )
+
     dreadnode_run_name: str | None = Field(
         default=None,
         json_schema_extra={

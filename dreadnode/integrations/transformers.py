@@ -189,7 +189,7 @@ class DreadnodeCallback(TrainerCallback):  # type: ignore[misc,unused-ignore]
         if self._run is None or state.epoch is None:
             return
 
-        dn.log_metric("epoch", state.epoch, to="run")
+        dn.log_param("epoch", state.epoch)
 
         self._epoch_span = dn.task_span(f"Epoch {state.epoch}")
         self._epoch_span.__enter__()
