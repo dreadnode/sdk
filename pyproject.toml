@@ -33,6 +33,7 @@ dependencies = [
     "cyclopts>=4.2.0",
     "aiofiles>=24.1.0,<25.0.0",
     "rigging>=3.3.4",
+    "torch>=2.9.1",
 ]
 
 [project.optional-dependencies]
@@ -118,6 +119,7 @@ module = [
     "dreadnode.data_types.*",
     "dreadnode.scorers.*",
     "dreadnode.transforms.*",
+    "dreadnode.integrations.axolotl.*",
 ]
 disable_error_code = ["unused-ignore", "import-untyped", "import-not-found"]
 
