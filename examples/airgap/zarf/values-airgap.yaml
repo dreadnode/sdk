@@ -1,0 +1,182 @@
+---
+# Airgapped Deployment Configuration
+# This file contains minimal configuration needed for airgapped environments
+# where external internet access is not available.
+
+# Global configuration
+# Uncomment and configure for airgapped deployments:
+# global:
+#   imageRegistry: "my-local-registry.company.com"
+
+# Platform Base (PostgreSQL, ClickHouse, MinIO, DynamoDB)
+platform-base:
+  # PostgreSQL configuration
+  postgresql:
+    enabled: true
+    # If you have images in a local registry, configure them here:
+    # image:
+    #   registry: my-local-registry.company.com
+    #   repository: postgres
+    #   tag: "18-alpine"
+
+  # ClickHouse configuration
+  clickhouse:
+    enabled: true
+    # image:
+    #   registry: my-local-registry.company.com
+    #   repository: clickhouse/clickhouse-server
+    #   tag: "24.8-alpine"
+
+  # MinIO configuration
+  minio:
+    enabled: true
+    # Ensure crucible-challenges bucket is created
+    buckets:
+      - name: python-packages
+        policy: none
+        purge: false
+      - name: user-data
+        policy: none
+        purge: false
+      - name: bundle-data
+        policy: none
+        purge: false
+      - name: user-data-logs
+        policy: none
+        purge: false
+      - name: crucible-challenges
+        policy: none
+        purge: false
+
+  # DynamoDB Local (for Crucible)
+  dynamodb:
+    enabled: true
+    # image:
+    #   registry: my-local-registry.company.com
+    #   repository: amazon/dynamodb-local
+    #   tag: latest
+
+# Platform API
+platform-api:
+  # If you have your API image in a local registry:
+  # image:
+  #   repository: my-local-registry.company.com/platform-api
+  #   tag: "latest"
+
+  config:
+    # Enable Crucible features
+    features:
+      crucible:
+        enabled: true
+
+    # Challenge configuration for airgapped deployment
+    challenges:
+      enabled: true
+      source: "s3"  # Use MinIO as S3-compatible storage
+      mountPath: "/challenges"
+
+      # S3/MinIO configuration
+      s3:
+        bucket: "crucible-challenges"
+        region: "us-east-1"  # Required but arbitrary for MinIO
+        # Point to MinIO service (will be auto-configured if using platform-base)
+        endpoint: "http://platform-base-minio:9000"
+        downloadAtStartup: true
+        # Use the MinIO credentials from platform-base
+        # This references the secret created by the minio chart
+        # Leave empty to use the default platform-base-minio secret
+        existingSecret: ""
+
+      # Upload job configuration
+      # This automatically uploads challenges.json to MinIO
+      uploadJob:
+        enabled: true
+        # Use Secret for challenges.json (more secure, supports larger files)
+        useConfigMap: false
+        # The secret will be created from the challenges.json file
+        # See deployment instructions below
+
+  # Enable challenges volume
+  volumes:
+    challenges:
+      enabled: true
+      size: 1Gi
+
+# Platform UI
+platform-ui:
+  enabled: true
+  # If you have your UI image in a local registry:
+  # image:
+  #   repository: my-local-registry.company.com/platform-ui
+  #   tag: "latest"
+
+# Ingress configuration (if using)
+# ingress:
+#   enabled: true
+#   className: "nginx"
+#   hosts:
+#     - host: platform.company.local
+#       paths:
+#         - path: /
+#           pathType: Prefix
+
+# ============================================================================
+# DEPLOYMENT INSTRUCTIONS FOR AIRGAPPED ENVIRONMENTS
+# ============================================================================
+#
+# 1. Prepare your challenges.json file
+#    Place your challenges.json file in the same directory as this file
+#
+# 2. Create a Kubernetes secret from the challenges.json file:
+#    kubectl create secret generic platform-api-challenges-data \
+#      --from-file=challenges.json=./challenges.json \
+#      --namespace platform \
+#      --dry-run=client -o yaml | kubectl apply -f -
+#
+#    Or if you have .metadata and .template directories:
+#    kubectl create secret generic platform-api-challenges-data \
+#      --from-file=challenges.json=./challenges.json \
+#      --from-file=.metadata=./.metadata \
+#      --from-file=.template=./.template \
+#      --namespace platform \
+#      --dry-run=client -o yaml | kubectl apply -f -
+#
+# 3. Deploy the platform:
+#    helm install platform . \
+#      --namespace platform \
+#      --create-namespace \
+#      --values values.airgapped.yaml
+#
+# 4. Verify the upload job completed successfully:
+#    kubectl logs -n platform -l app.kubernetes.io/component=challenges-upload
+#
+# 5. Verify the API pod starts and downloads challenges:
+#    kubectl logs -n platform -l app.kubernetes.io/component=api -c download-challenges
+#
+# ============================================================================
+# ALTERNATIVE: Using --set-file (for ConfigMap)
+# ============================================================================
+#
+# If your challenges.json is small (< 1MB), you can use ConfigMap with --set-file:
+#
+# 1. Update this file to use ConfigMap:
+#    platform-api:
+#      config:
+#        challenges:
+#          uploadJob:
+#            enabled: true
+#            useConfigMap: true
+#
+# 2. Create a ConfigMap from file during helm install:
+#    kubectl create configmap platform-api-challenges \
+#      --from-file=challenges.json=./challenges.json \
+#      --namespace platform \
+#      --dry-run=client -o yaml | kubectl apply -f -
+#
+# 3. Deploy:
+#    helm install platform . \
+#      --namespace platform \
+#      --create-namespace \
+#      --values values.airgapped.yaml
+#
+# ============================================================================
