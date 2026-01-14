@@ -1,7 +1,10 @@
+import typing as t
+
 from loguru import logger
+from pydantic import PrivateAttr
 
 from dreadnode.agent.reactions import Fail, Finish
-from dreadnode.agent.tools.base import tool
+from dreadnode.agent.tools.base import Toolset, tool, tool_method
 
 
 @tool
@@ -42,9 +45,9 @@ async def give_up_on_task(reason: str) -> None:
     to complete your assigned process.
 
     ## Best Practices
-    - Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures. \
+    - **Do Not Use for a Failed Outcome**: If the `finish_task` tool is available, use it to report failures. \
     This tool is strictly for when you cannot *finish* your work.
-    - Provide a Clear Justification**: The `reason` must clearly explain why you are stuck. \
+    - **Provide a Clear Justification**: The `reason` must clearly explain why you are stuck. \
     Detail the final obstacle you could not overcome and the approaches you already tried.
 
     Args:
@@ -56,3 +59,46 @@ async def give_up_on_task(reason: str) -> None:
     log_metric("task_give_up", 1)
 
     raise Fail("Agent gave up on the task.")
+
+
+class TaskOutputBuffer(Toolset):
+    """
+    Provides a stateful output buffer for accumulating task results.
+
+    This toolset allows the agent to incrementally build up output across multiple
+    steps and tool calls, storing strings that can be retrieved later.
+    """
+
+    _outputs: list[str] = PrivateAttr(default_factory=list)
+    """Internal buffer storing accumulated output strings."""
+
+    @tool_method(catch=True, variants=["all"])
+    async def add_output(
+        self,
+        content: t.Annotated[str, "The content to add to the output buffer."],
+    ) -> str:
+        """
+        Appends new content to the task's stateful output buffer.
+
+        Use this method when you want to build up a longer or multi-part result
+        over several steps or tool calls, instead of returning everything at once.
+        Each call adds the provided `content` string to the existing buffer;
+        previously saved outputs are never overwritten or cleared by this method.
+
+        The return value is a short confirmation message that includes the current
+        number of saved output entries, which can help you track how much content
+        has been accumulated so far.
+        """
+        self._outputs.append(content)
+        return f"Output saved (total outputs: {len(self._outputs)})"
+
+    @tool_method(catch=True, variants=["all"])
+    async def get_output(self) -> list[str]:
+        """Lists all previously saved outputs in order."""
+        return self._outputs
+
+    @tool_method(catch=True, variants=["all"])
+    async def clear_output(self) -> str:
+        """Clears (deletes) all previously stored output. Warning, any cleared stored output is not recoverable once cleared."""
+        self._outputs = []
+        return "Output buffer cleared."

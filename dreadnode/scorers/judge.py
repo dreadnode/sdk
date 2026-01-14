@@ -47,6 +47,7 @@ def llm_judge(
     min_score: float | None = None,
     max_score: float | None = None,
     name: str = "llm_judge",
+    system_prompt: str | None = None,
 ) -> "Scorer[t.Any]":
     """
     Score the output of a task using an LLM to judge it against a rubric.
@@ -62,26 +63,10 @@ def llm_judge(
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
         max_score: Optional maximum score for the judgement - if provided, the score will be clamped to this value.
         name: The name of the scorer.
+        system_prompt: Optional custom system prompt for the judge. If None, uses default.
     """
 
-    def _get_generator(
-        model_input: str | rg.Generator, params: rg.GenerateParams | AnyDict | None
-    ) -> rg.Generator:
-        """Helper to create a generator from model string or return existing generator."""
-        if isinstance(model_input, str):
-            return rg.get_generator(
-                model_input,
-                params=params
-                if isinstance(params, rg.GenerateParams)
-                else rg.GenerateParams.model_validate(params)
-                if params
-                else None,
-            )
-        if isinstance(model_input, rg.Generator):
-            return model_input
-        raise TypeError("Model must be a string identifier or a Generator instance.")
-
-    async def evaluate(
+    async def evaluate(  # noqa: PLR0912
         data: t.Any,
         *,
         model: str | rg.Generator = Config(  # noqa: B008
@@ -94,7 +79,23 @@ def llm_judge(
         fallback_model: str | rg.Generator | None = fallback_model,
         min_score: float | None = min_score,
         max_score: float | None = max_score,
+        system_prompt: str | None = system_prompt,
     ) -> list[Metric]:
+        generator: rg.Generator
+        if isinstance(model, str):
+            generator = rg.get_generator(
+                model,
+                params=model_params
+                if isinstance(model_params, rg.GenerateParams)
+                else rg.GenerateParams.model_validate(model_params)
+                if model_params
+                else None,
+            )
+        elif isinstance(model, rg.Generator):
+            generator = model
+        else:
+            raise TypeError("Model must be a string identifier or a Generator instance.")
+
         input_data = JudgeInput(
             input=str(input) if input is not None else None,
             expected_output=str(expected_output) if expected_output is not None else None,
@@ -104,13 +105,33 @@ def llm_judge(
 
         # Try primary model, fallback if needed
         try:
-            generator = _get_generator(model, model_params)
-            judgement = await judge.bind(generator)(input_data)
+            pipeline = generator.chat([])
+            if system_prompt:
+                pipeline.chat.inject_system_content(system_prompt)
+            judgement = await judge.bind(pipeline)(input_data)
         except Exception:
             if fallback_model is None:
                 raise
-            generator = _get_generator(fallback_model, model_params)
-            judgement = await judge.bind(generator)(input_data)
+            # Use fallback model
+            if isinstance(fallback_model, str):
+                generator = rg.get_generator(
+                    fallback_model,
+                    params=model_params
+                    if isinstance(model_params, rg.GenerateParams)
+                    else rg.GenerateParams.model_validate(model_params)
+                    if model_params
+                    else None,
+                )
+            elif isinstance(fallback_model, rg.Generator):
+                generator = fallback_model
+            else:
+                raise TypeError(
+                    "Fallback model must be a string identifier or a Generator instance."
+                ) from None
+            pipeline = generator.chat([])
+            if system_prompt:
+                pipeline.chat.inject_system_content(system_prompt)
+            judgement = await judge.bind(pipeline)(input_data)
 
         if min_score is not None:
             judgement.score = max(min_score, judgement.score)

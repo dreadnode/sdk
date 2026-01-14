@@ -8,10 +8,22 @@ from dreadnode.data_types.text import Code, Markdown, Text
 if t.TYPE_CHECKING:
     from dreadnode.data_types.audio import Audio
     from dreadnode.data_types.image import Image
+    from dreadnode.data_types.message import Message
     from dreadnode.data_types.table import Table
     from dreadnode.data_types.video import Video
 
-__all__ = ["Audio", "Code", "Image", "Markdown", "Object3D", "Table", "Text", "Video", "WithMeta"]
+__all__ = [
+    "Audio",
+    "Code",
+    "Image",
+    "Markdown",
+    "Message",
+    "Object3D",
+    "Table",
+    "Text",
+    "Video",
+    "WithMeta",
+]
 
 __lazy_submodules__: list[str] = []
 __lazy_components__: dict[str, str] = {
@@ -19,6 +31,7 @@ __lazy_components__: dict[str, str] = {
     "Image": "dreadnode.data_types.image",
     "Table": "dreadnode.data_types.table",
     "Video": "dreadnode.data_types.video",
+    "Message": "dreadnode.data_types.message",
 }
 
 
