@@ -1,6 +1,7 @@
 import typing as t
 
 import rigging as rg
+from loguru import logger
 
 from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
@@ -66,7 +67,7 @@ def llm_judge(
         system_prompt: Optional custom system prompt for the judge. If None, uses default.
     """
 
-    async def evaluate(  # noqa: PLR0912
+    async def evaluate(
         data: t.Any,
         *,
         model: str | rg.Generator = Config(  # noqa: B008
@@ -81,20 +82,25 @@ def llm_judge(
         max_score: float | None = max_score,
         system_prompt: str | None = system_prompt,
     ) -> list[Metric]:
-        generator: rg.Generator
-        if isinstance(model, str):
-            generator = rg.get_generator(
-                model,
-                params=model_params
-                if isinstance(model_params, rg.GenerateParams)
-                else rg.GenerateParams.model_validate(model_params)
-                if model_params
-                else None,
-            )
-        elif isinstance(model, rg.Generator):
-            generator = model
-        else:
+        def _create_generator(
+            model: str | rg.Generator,
+            params: rg.GenerateParams | AnyDict | None,
+        ) -> rg.Generator:
+            """Create a Generator from a model identifier or return the Generator instance."""
+            if isinstance(model, str):
+                return rg.get_generator(
+                    model,
+                    params=params
+                    if isinstance(params, rg.GenerateParams)
+                    else rg.GenerateParams.model_validate(params)
+                    if params
+                    else None,
+                )
+            if isinstance(model, rg.Generator):
+                return model
             raise TypeError("Model must be a string identifier or a Generator instance.")
+
+        generator = _create_generator(model, model_params)
 
         input_data = JudgeInput(
             input=str(input) if input is not None else None,
@@ -103,31 +109,32 @@ def llm_judge(
             rubric=rubric,
         )
 
+        # Track fallback usage for observability
+        used_fallback = False
+        primary_error: str | None = None
+
         # Try primary model, fallback if needed
         try:
             pipeline = generator.chat([])
             if system_prompt:
                 pipeline.chat.inject_system_content(system_prompt)
             judgement = await judge.bind(pipeline)(input_data)
-        except Exception:
+        except Exception as e:
             if fallback_model is None:
                 raise
+            # Log primary model failure and fallback usage
+            used_fallback = True
+            primary_error = f"{type(e).__name__}: {e}"
+            primary_model_name = model if isinstance(model, str) else type(model).__name__
+            fallback_model_name = (
+                fallback_model if isinstance(fallback_model, str) else type(fallback_model).__name__
+            )
+            logger.warning(
+                f"Primary model '{primary_model_name}' failed with {primary_error}. "
+                f"Using fallback model '{fallback_model_name}'."
+            )
             # Use fallback model
-            if isinstance(fallback_model, str):
-                generator = rg.get_generator(
-                    fallback_model,
-                    params=model_params
-                    if isinstance(model_params, rg.GenerateParams)
-                    else rg.GenerateParams.model_validate(model_params)
-                    if model_params
-                    else None,
-                )
-            elif isinstance(fallback_model, rg.Generator):
-                generator = fallback_model
-            else:
-                raise TypeError(
-                    "Fallback model must be a string identifier or a Generator instance."
-                ) from None
+            generator = _create_generator(fallback_model, model_params)
             pipeline = generator.chat([])
             if system_prompt:
                 pipeline.chat.inject_system_content(system_prompt)
@@ -145,6 +152,15 @@ def llm_judge(
             value=judgement.score,
             attributes={
                 "reason": judgement.reason,
+                "used_fallback": used_fallback,
+                "fallback_model": (
+                    str(fallback_model)
+                    if isinstance(fallback_model, str)
+                    else type(fallback_model).__name__
+                )
+                if used_fallback
+                else None,
+                "primary_error": primary_error,
             },
         )
         pass_metric = Metric(value=float(judgement.passing))
