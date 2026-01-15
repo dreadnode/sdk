@@ -38,7 +38,15 @@ __all__ = [
     "tool_method",
 ]
 
-__lazy_submodules__: list[str] = ["fs", "planning", "reporting", "tasking", "execute", "memory"]
+__lazy_submodules__: list[str] = [
+    "fs",
+    "planning",
+    "reporting",
+    "tasking",
+    "execute",
+    "memory",
+    "skills",
+]
 __lazy_components__: dict[str, str] = {}
 
 

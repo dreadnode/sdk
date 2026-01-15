@@ -44,6 +44,7 @@ from dreadnode.agent.thread import Thread
 from dreadnode.agent.tools import AnyTool, Tool, Toolset, discover_tools_on_obj
 from dreadnode.agent.tools.base import ToolMode
 from dreadnode.agent.tools.planning import update_todo
+from dreadnode.agent.tools.skills import Skills
 from dreadnode.agent.tools.tasking import finish_task, give_up_on_task
 from dreadnode.meta import Component, Config, Model, component
 from dreadnode.meta.introspect import get_config_model, get_inputs_and_params_from_config_model
@@ -128,6 +129,15 @@ class Agent(Model):
                 )
 
         return tools
+
+    def model_post_init(self, _context: t.Any) -> None:
+        """Initialize the agent and inject default tools."""
+        if (
+            not any(isinstance(t, Skills) for t in self.tools)
+            and not any(t.name == "view_skill" for t in self.all_tools)
+            and Skills.load("skills")
+        ):
+            self.tools.append(Skills())
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)
@@ -287,7 +297,7 @@ class Agent(Model):
         params = rg.GenerateParams(
             tools=[tool.api_definition for tool in self.all_tools],
         )
-        messages = inject_system_content(messages, self.get_prompt())
+        messages = inject_system_content(messages, self._get_system_prompt())
 
         if self.tool_mode == "auto" and self.tools:
             self.tool_mode = (
@@ -844,7 +854,9 @@ class Agent(Model):
                 if last_event is not None:
                     # TODO(nick): Don't love having to inject here, but it's the most accurate in
                     # in terms of ensuring we don't miss the system component of messages
-                    final_messages = inject_system_content(last_event.messages, self.get_prompt())
+                    final_messages = inject_system_content(
+                        last_event.messages, self._get_system_prompt()
+                    )
                     log_outputs(messages=final_messages, token_usage=last_event.total_usage)
 
                 if isinstance(last_event, AgentEnd):
@@ -870,6 +882,35 @@ class Agent(Model):
         prompt = "You are an agent that can use tools to assist with tasks."
         if self.instructions:
             prompt += f"\n\n<instructions>\n{self.instructions}\n</instructions>"
+        return prompt
+
+    def get_skills_prompt(self) -> str:
+        """
+        Generates the skills portion of the prompt.
+        """
+        all_skills = []
+        for toolset in self.tools:
+            if isinstance(toolset, Skills):
+                all_skills.extend(Skills.load(toolset.skills_dir))
+
+        if all_skills:
+            skills_xml = ["<available_skills>"]
+            for skill in all_skills:
+                skills_xml.append("<skill>")
+                skills_xml.append(f"<name>{skill.name}</name>")
+                skills_xml.append(f"<description>{skill.description}</description>")
+                skills_xml.append("</skill>")
+            skills_xml.append("</available_skills>")
+            return "\n".join(skills_xml)
+        return ""
+
+    def _get_system_prompt(self) -> str:
+        """
+        Combines the agent's prompt and skills into a single system prompt.
+        """
+        prompt = self.get_prompt()
+        if skills_prompt := self.get_skills_prompt():
+            prompt += f"\n\n{skills_prompt}"
         return prompt
 
     def reset(self) -> Thread:
