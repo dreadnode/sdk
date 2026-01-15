@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from pydantic import BaseModel, Field
 from rigging.generator import Usage
 from rigging.message import Message
@@ -44,4 +42,12 @@ class Thread(BaseModel):
         return None
 
     def fork(self) -> "Thread":
-        return Thread(messages=deepcopy(self.messages), events=deepcopy(self.events))
+        # Create a new thread with the same messages but empty events
+        # Events are historical tracking and don't need to be forked
+        # We construct new Message objects to avoid shared references
+        forked_messages = []
+        for msg in self.messages:
+            # Reconstruct message from its dict representation
+            msg_dict = msg.model_dump()
+            forked_messages.append(Message.model_validate(msg_dict))
+        return Thread(messages=forked_messages, events=[])
