@@ -189,3 +189,6 @@ skip-magic-trailing-comma = false
     "S1",      # security issues in tests are not relevant
     "PERF",    # performance issues in tests are not relevant
 ]
+"dreadnode/transforms/language.py" = [
+    "RUF001",  # intentional use of ambiguous unicode characters for airt
+]

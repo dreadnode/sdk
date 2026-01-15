@@ -35,7 +35,7 @@ def apply_transforms(
             if create_task:
                 from dreadnode import task as dn_task
 
-                task_kwargs = event.task_kwargs
+                input_data = event.task_kwargs
 
                 @dn_task(
                     name=f"transform - input ({len(transforms)} transforms)",
@@ -44,11 +44,11 @@ def apply_transforms(
                     log_output=True,
                 )
                 async def apply_task(
-                    data: dict[str, t.Any] = task_kwargs,  # Use extracted variable
+                    data: dict[str, t.Any],
                 ) -> dict[str, t.Any]:
                     return await apply_transforms_to_kwargs(data, transforms)
 
-                transformed = await apply_task()
+                transformed = await apply_task(input_data)
                 return ModifyInput(task_kwargs=transformed)
 
             # Direct application
@@ -73,10 +73,12 @@ def apply_transforms(
                 log_inputs=True,
                 log_output=True,
             )
-            async def apply_task(data: t.Any = output_data) -> t.Any:  # Use extracted variable
+            async def apply_task(
+                data: t.Any,
+            ) -> t.Any:
                 return await apply_transforms_to_value(data, transforms)
 
-            transformed = await apply_task()
+            transformed = await apply_task(output_data)
             return ModifyOutput(output=transformed)
 
         # Direct application

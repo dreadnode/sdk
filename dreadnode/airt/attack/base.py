@@ -5,15 +5,17 @@ from pydantic import ConfigDict, Field, SkipValidation
 from dreadnode.airt.target.base import Target
 from dreadnode.eval.hooks.base import EvalHook
 from dreadnode.meta import Config
-from dreadnode.optimization.study import OutputT as Out
 from dreadnode.optimization.study import Study
-from dreadnode.optimization.trial import CandidateT as In
-from dreadnode.task import Task
+
+In = t.TypeVar("In")
+Out = t.TypeVar("Out")
 
 
 class Attack(Study[In, Out]):
     """
     A declarative configuration for executing an AIRT attack.
+
+    Attack automatically derives its task from the target.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, use_attribute_docstrings=True)
@@ -23,16 +25,12 @@ class Attack(Study[In, Out]):
 
     tags: list[str] = Config(default_factory=lambda: ["attack"])
     """A list of tags associated with the attack for logging."""
+
     hooks: list[EvalHook] = Field(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the attack lifecycle."""
 
-    # Override the task factory as the target will replace it.
-    task_factory: t.Callable[[In], Task[..., Out]] = Field(  # type: ignore[assignment]
-        default_factory=lambda: None,
-        repr=False,
-        init=False,
-    )
-
     def model_post_init(self, context: t.Any) -> None:
-        self.task_factory = self.target.task_factory
+        """Initialize attack by deriving task from target."""
+        if self.task is None:
+            self.task = self.target.task  # type: ignore[attr-defined]
         super().model_post_init(context)
