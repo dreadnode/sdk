@@ -391,7 +391,7 @@ def code_fragmentation(
 
             # Randomly intersperse noise functions
             for noise in noise_funcs[:num_noise_functions]:
-                insert_pos = random.randint(0, len(functions))  # nosec B311
+                insert_pos = random.randint(0, len(functions))  # noqa: S311  # nosec B311
                 functions.insert(insert_pos, noise)
 
         # Build code
@@ -881,7 +881,7 @@ def riddle_encoding(
         templates = _CHEMISTRY_RIDDLE_TEMPLATES.get(
             complexity, _CHEMISTRY_RIDDLE_TEMPLATES["moderate"]
         )
-        template = random.choice(templates)  # nosec B311
+        template = random.choice(templates)  # noqa: S311  # nosec B311
 
         # Simple pattern matching
         if "hydrogen" in text.lower() and "chlor" in text.lower():
