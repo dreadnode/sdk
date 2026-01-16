@@ -12,6 +12,7 @@ from dreadnode.transforms.base import (
 if t.TYPE_CHECKING:
     from dreadnode.transforms import (
         cipher,
+        constitutional,
         encoding,
         image,
         perturbation,
@@ -29,6 +30,7 @@ __all__ = [
     "TransformWarning",
     "TransformsLike",
     "cipher",
+    "constitutional",
     "encoding",
     "image",
     "perturbation",
@@ -41,6 +43,7 @@ __all__ = [
 
 __lazy_submodules__: list[str] = [
     "cipher",
+    "constitutional",
     "encoding",
     "image",
     "perturbation",
