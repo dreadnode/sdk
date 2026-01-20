@@ -30,6 +30,7 @@ from dreadnode.agent.events import (
     _total_usage_from_events,
 )
 from dreadnode.agent.hooks import Hook, retry_with_feedback
+from dreadnode.agent.hooks.notification import NotificationBackend, TerminalNotificationBackend
 from dreadnode.agent.reactions import (
     Continue,
     Fail,
@@ -60,6 +61,16 @@ from dreadnode.util import (
 litellm.suppress_debug_info = True
 
 CommitBehavior = t.Literal["always", "on-success"]
+
+
+async def _safe_send(
+    backend: NotificationBackend, event: AgentEvent, message: str
+) -> None:
+    """Send notification with error handling."""
+    try:
+        await backend.send(event, message)
+    except Exception:  # noqa: BLE001
+        logger.exception(f"Notification failed for {event.__class__.__name__}")
 
 
 class AgentWarning(UserWarning):
@@ -111,6 +122,24 @@ class Agent(Model):
     assert_scores: list[str] | t.Literal[True] = Field(default_factory=list)
     """Scores to ensure are truthy, otherwise the agent task is marked as failed."""
 
+    notifications: t.Annotated[
+        bool | NotificationBackend | None, SkipValidation
+    ] = Config(default=None, repr=False)
+    """
+    Enable notifications.
+    - True: Uses TerminalNotificationBackend (stderr output)
+    - NotificationBackend instance: Uses custom backend
+    - None/False: Disabled
+    """
+    notification_events: list[type[AgentEvent]] | t.Literal["all"] = Config(
+        default="all", repr=False
+    )
+    """Which event types to notify on. Defaults to all events."""
+    notification_formatter: t.Annotated[
+        t.Callable[[AgentEvent], str] | None, SkipValidation
+    ] = Config(default=None, repr=False)
+    """Custom formatter for notification messages. If None, uses event's default representation."""
+
     _generator: rg.Generator | None = PrivateAttr(None, init=False)
 
     @field_validator("tools", mode="before")
@@ -128,6 +157,49 @@ class Agent(Model):
                 )
 
         return tools
+
+    def model_post_init(self, context: t.Any) -> None:
+        super().model_post_init(context)
+
+        # Auto-inject notification hook if enabled
+        if self.notifications:
+            backend = (
+                self.notifications
+                if isinstance(self.notifications, NotificationBackend)
+                else TerminalNotificationBackend()
+            )
+
+            self.hooks.append(
+                self._create_notification_hook(
+                    backend,
+                    self.notification_events,
+                    self.notification_formatter,
+                )
+            )
+
+    def _create_notification_hook(
+        self,
+        backend: NotificationBackend,
+        events: list[type[AgentEvent]] | t.Literal["all"],
+        formatter: t.Callable[[AgentEvent], str] | None,
+    ) -> Hook:
+        """Create a notification hook that delegates formatting to events."""
+        import asyncio
+
+        async def notification_hook(event: AgentEvent) -> None:
+            # Filter events
+            if events != "all" and not any(isinstance(event, et) for et in events):
+                return
+
+            # Use custom formatter if provided, otherwise delegate to event
+            message = formatter(event) if formatter else event.format_notification()
+
+            # Fire and forget - don't block agent execution
+            _ = asyncio.create_task(_safe_send(backend, event, message))  # noqa: RUF006
+
+            return
+
+        return notification_hook
 
     def __repr__(self) -> str:
         description = shorten_string(self.description or "", 50)

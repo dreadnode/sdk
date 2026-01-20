@@ -64,15 +64,15 @@ async def test_terminal_notification_backend(mock_event: AgentEvent) -> None:
 
 
 async def test_webhook_notification_backend(mock_event: AgentEvent) -> None:
-    mock_client = AsyncMock()
-    mock_post = AsyncMock()
-    mock_client.__aenter__.return_value.post = mock_post
-
-    backend = WebhookNotificationBackend("https://example.com/webhook")
-
     from unittest.mock import patch
 
     import httpx
+
+    mock_client = AsyncMock()
+    mock_post = AsyncMock()
+    mock_client.post = mock_post
+
+    backend = WebhookNotificationBackend("https://example.com/webhook")
 
     with patch.object(httpx, "AsyncClient", return_value=mock_client):
         await backend.send(mock_event, "Test notification")
@@ -159,3 +159,55 @@ async def test_notify_hook_handles_backend_failure(mock_event: AgentEvent) -> No
 
     assert reaction is None
     mock_logger.assert_called_once_with("Notification hook failed")
+
+
+async def test_notify_hook_uses_default_formatter(mock_event: AgentEvent) -> None:
+    backend = MagicMock(spec=NotificationBackend)
+    backend.send = AsyncMock()
+
+    hook = notify(MockEvent, backend=backend)
+
+    reaction = await hook(mock_event)
+
+    assert reaction is None
+    backend.send.assert_called_once()
+    # Check that it used event.format_notification()
+    call_args = backend.send.call_args[0]
+    assert call_args[1] == "MockEvent"  # Default format_notification returns class name
+
+
+def test_agent_auto_inject_notifications_terminal() -> None:
+    from dreadnode.agent import Agent
+
+    agent = Agent(name="test", notifications=True)
+
+    # Should have auto-injected a notification hook
+    assert len(agent.hooks) == 1
+
+
+def test_agent_auto_inject_notifications_custom_backend() -> None:
+    from dreadnode.agent import Agent
+
+    backend = LogNotificationBackend()
+    agent = Agent(name="test", notifications=backend)
+
+    # Should have auto-injected a notification hook
+    assert len(agent.hooks) == 1
+
+
+def test_agent_no_notifications_by_default() -> None:
+    from dreadnode.agent import Agent
+
+    agent = Agent(name="test")
+
+    # Should not have any auto-injected hooks
+    assert len(agent.hooks) == 0
+
+
+def test_agent_notifications_disabled() -> None:
+    from dreadnode.agent import Agent
+
+    agent = Agent(name="test", notifications=False)
+
+    # Should not have any auto-injected hooks
+    assert len(agent.hooks) == 0
