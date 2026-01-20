@@ -63,9 +63,7 @@ litellm.suppress_debug_info = True
 CommitBehavior = t.Literal["always", "on-success"]
 
 
-async def _safe_send(
-    backend: NotificationBackend, event: AgentEvent, message: str
-) -> None:
+async def _safe_send(backend: NotificationBackend, event: AgentEvent, message: str) -> None:
     """Send notification with error handling."""
     try:
         await backend.send(event, message)
@@ -122,9 +120,9 @@ class Agent(Model):
     assert_scores: list[str] | t.Literal[True] = Field(default_factory=list)
     """Scores to ensure are truthy, otherwise the agent task is marked as failed."""
 
-    notifications: t.Annotated[
-        bool | NotificationBackend | None, SkipValidation
-    ] = Config(default=None, repr=False)
+    notifications: t.Annotated[bool | NotificationBackend | None, SkipValidation] = Config(
+        default=None, repr=False
+    )
     """
     Enable notifications.
     - True: Uses TerminalNotificationBackend (stderr output)
@@ -135,9 +133,9 @@ class Agent(Model):
         default="all", repr=False
     )
     """Which event types to notify on. Defaults to all events."""
-    notification_formatter: t.Annotated[
-        t.Callable[[AgentEvent], str] | None, SkipValidation
-    ] = Config(default=None, repr=False)
+    notification_formatter: t.Annotated[t.Callable[[AgentEvent], str] | None, SkipValidation] = (
+        Config(default=None, repr=False)
+    )
     """Custom formatter for notification messages. If None, uses event's default representation."""
 
     _generator: rg.Generator | None = PrivateAttr(None, init=False)

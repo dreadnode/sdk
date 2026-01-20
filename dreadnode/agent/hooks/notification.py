@@ -40,7 +40,7 @@ class WebhookNotificationBackend(NotificationBackend):
         self._client = httpx.AsyncClient(timeout=self.timeout)
         return self
 
-    async def __aexit__(self, *args: t.Any) -> None:
+    async def __aexit__(self, *args: object) -> None:
         if self._client:
             await self._client.aclose()
 
