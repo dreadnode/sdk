@@ -4,12 +4,24 @@ from dreadnode.agent.hooks.base import (
     retry_with_feedback,
 )
 from dreadnode.agent.hooks.metrics import tool_metrics
+from dreadnode.agent.hooks.notification import (
+    LogNotificationBackend,
+    NotificationBackend,
+    TerminalNotificationBackend,
+    WebhookNotificationBackend,
+    notify,
+)
 from dreadnode.agent.hooks.summarize import summarize_when_long
 
 __all__ = [
     "Hook",
+    "LogNotificationBackend",
+    "NotificationBackend",
+    "TerminalNotificationBackend",
+    "WebhookNotificationBackend",
     "backoff_on_error",
     "backoff_on_ratelimit",
+    "notify",
     "retry_with_feedback",
     "summarize_when_long",
     "tool_metrics",

@@ -115,12 +115,22 @@ class AgentEvent:
             border_style="dim",
         )
 
+    def format_notification(self) -> str:
+        """
+        Format this event as a human-readable notification message.
+        Override in subclasses for custom formatting.
+        """
+        return f"{self.__class__.__name__}"
+
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         yield self.format_as_panel()
 
 
 @dataclass
 class AgentStart(AgentEvent):
+    def format_notification(self) -> str:
+        return f"Starting agent: {self.agent.name}"
+
     def format_as_panel(self, *, truncate: bool = False) -> Panel:
         return Panel(
             format_message(self.messages[0], truncate=truncate),
@@ -158,6 +168,10 @@ class GenerationEnd(AgentEventInStep):
         message = f"Message(role={self.message.role}, content='{message_content}', tool_calls={tool_call_count})"
         return f"GenerationEnd(message={message})"
 
+    def format_notification(self) -> str:
+        tokens = self.usage.total_tokens if self.usage else "unknown"
+        return f"Generation complete ({tokens} tokens)"
+
     def format_as_panel(self, *, truncate: bool = False) -> Panel:
         cost = round(self.estimated_cost, 6) if self.estimated_cost else ""
         usage = str(self.usage) or ""
@@ -173,6 +187,9 @@ class GenerationEnd(AgentEventInStep):
 
 @dataclass
 class AgentStalled(AgentEventInStep):
+    def format_notification(self) -> str:
+        return "Agent stalled: no tool calls and no stop conditions met"
+
     def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002
         return Panel(
             Text(
@@ -189,6 +206,9 @@ class AgentStalled(AgentEventInStep):
 class AgentError(AgentEventInStep):
     error: BaseException
 
+    def format_notification(self) -> str:
+        return f"Error: {self.error.__class__.__name__}: {self.error!s}"
+
     def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002
         return Panel(
             repr(self),
@@ -204,6 +224,9 @@ class ToolStart(AgentEventInStep):
 
     def __repr__(self) -> str:
         return f"ToolStart(tool_call={self.tool_call})"
+
+    def format_notification(self) -> str:
+        return f"Starting tool: {self.tool_call.name}"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:
         content: RenderableType
@@ -244,6 +267,10 @@ class ToolEnd(AgentEventInStep):
         message_content = shorten_string(str(self.message.content), 50)
         message = f"Message(role={self.message.role}, content='{message_content}')"
         return f"ToolEnd(tool_call={self.tool_call}, message={message}, stop={self.stop})"
+
+    def format_notification(self) -> str:
+        status = " (requesting stop)" if self.stop else ""
+        return f"Finished tool: {self.tool_call.name}{status}"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:
         panel = format_message(self.message, truncate=truncate)
@@ -293,6 +320,10 @@ class Reacted(AgentEventInStep):
 class AgentEnd(AgentEvent):
     stop_reason: "AgentStopReason"
     result: "AgentResult"
+
+    def format_notification(self) -> str:
+        status = "Failed" if self.result.failed else "Finished"
+        return f"{status}: {self.stop_reason} (steps: {self.result.steps}, tokens: {self.result.usage.total_tokens})"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002
         res = self.result
