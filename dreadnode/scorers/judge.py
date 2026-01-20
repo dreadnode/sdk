@@ -1,3 +1,4 @@
+import base64
 import typing as t
 
 import rigging as rg
@@ -7,6 +8,99 @@ from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.metric import Metric
 from dreadnode.scorers import Scorer
+
+if t.TYPE_CHECKING:
+    from dreadnode.data_types.message import Message
+
+
+def _build_multimodal_content(
+    data: "Message", output_text: str, rubric: str
+) -> list[rg.ContentText | rg.ContentImageUrl | rg.ContentAudioInput]:
+    """Build rigging content parts from Message with images/audio."""
+    rg_content: list[rg.ContentText | rg.ContentImageUrl | rg.ContentAudioInput] = [
+        rg.ContentText(text=f"Output: {output_text}\n\nRubric: {rubric}")
+    ]
+
+    # Add images
+    for img in data.image_parts:
+        base64_str = img.to_base64()
+        _, meta = img.to_serializable()
+        img_format = meta.get("format", "png")
+        data_url = f"data:image/{img_format};base64,{base64_str}"
+        rg_content.append(rg.ContentImageUrl.from_url(data_url))
+
+    # Add audio
+    for audio in data.audio_parts:
+        audio_bytes, audio_meta = audio.to_serializable()
+        audio_base64 = base64.b64encode(audio_bytes).decode()
+        audio_format = audio_meta.get("extension", "wav")
+        rg_content.append(
+            rg.ContentAudioInput.from_bytes(
+                base64.b64decode(audio_base64),
+                format=audio_format,
+            )
+        )
+
+    return rg_content
+
+
+def _create_judge_pipeline(
+    generator: rg.Generator,
+    data: "Message",
+    output_text: str,
+    rubric: str,
+    system_prompt: str | None,
+    *,
+    has_multimodal: bool,
+) -> rg.ChatPipeline:
+    """Create judge pipeline with optional multimodal content."""
+    if has_multimodal:
+        rg_content = _build_multimodal_content(data, output_text, rubric)
+        user_message = rg.Message(role="user", content=rg_content)
+        pipeline = generator.chat([user_message])
+    else:
+        pipeline = generator.chat([])
+
+    if system_prompt:
+        pipeline.chat.inject_system_content(system_prompt)
+
+    return pipeline
+
+
+def _create_judge_metrics(
+    judgement: "Judgement",
+    *,
+    has_multimodal: bool,
+    num_images: int,
+    num_audio: int,
+    used_fallback: bool,
+    fallback_model: str | rg.Generator | None,
+    primary_error: str | None,
+    name: str,
+) -> list[Metric]:
+    """Create score and pass metrics from judgement."""
+    score_metric = Metric(
+        value=judgement.score,
+        attributes={
+            "reason": judgement.reason,
+            "has_multimodal": has_multimodal,
+            "num_images": num_images,
+            "num_audio": num_audio,
+            "used_fallback": used_fallback,
+            "fallback_model": (
+                str(fallback_model)
+                if isinstance(fallback_model, str)
+                else type(fallback_model).__name__
+            )
+            if used_fallback
+            else None,
+            "primary_error": primary_error,
+        },
+    )
+    pass_metric = Metric(value=float(judgement.passing))
+    pass_metric._scorer_name = f"{name}_pass"  # type: ignore[attr-defined] # noqa: SLF001
+
+    return [score_metric, pass_metric]
 
 
 class JudgeInput(rg.Model):
@@ -31,6 +125,7 @@ def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
     """
     You are grading output according to a user-specified rubric.
 
+    Evaluate all provided content (text, images, audio, etc.) when making your judgment.
     If the statement in the rubric is true for the provided input and output, then the output passes the test.
     Assign a score based on the rubric, where applicable, otherwise 1.0 for passing and 0.0 for failing.
     """
@@ -53,8 +148,12 @@ def llm_judge(
     """
     Score the output of a task using an LLM to judge it against a rubric.
 
+    Automatically handles multimodal outputs (text + images + audio). When the output is a Message
+    containing images or audio, they will be included in the evaluation. Use vision-capable models
+    (e.g., "gpt-4o") when scoring multimodal content.
+
     Args:
-        model: The model to use for judging.
+        model: The model to use for judging. Use vision-capable models for multimodal outputs.
         rubric: The rubric to use for judging.
         input: The input which produced the output for context, if applicable.
         expected_output: The expected output to compare against, if applicable.
@@ -102,22 +201,33 @@ def llm_judge(
 
         generator = _create_generator(model, model_params)
 
+        # Check if data is a multimodal Message
+        from dreadnode.data_types.message import Message
+
+        is_message = isinstance(data, Message)
+        has_multimodal = is_message and bool(data.image_parts or data.audio_parts)
+
+        # Extract text output
+        output_text = data.text if is_message else str(data)
+
         input_data = JudgeInput(
             input=str(input) if input is not None else None,
             expected_output=str(expected_output) if expected_output is not None else None,
-            output=str(data),
+            output=output_text,
             rubric=rubric,
         )
 
-        # Track fallback usage for observability
+        # Track fallback usage and multimodal content for observability
         used_fallback = False
         primary_error: str | None = None
+        num_images = len(data.image_parts) if has_multimodal else 0
+        num_audio = len(data.audio_parts) if has_multimodal else 0
 
         # Try primary model, fallback if needed
         try:
-            pipeline = generator.chat([])
-            if system_prompt:
-                pipeline.chat.inject_system_content(system_prompt)
+            pipeline = _create_judge_pipeline(
+                generator, data, output_text, rubric, system_prompt, has_multimodal=has_multimodal
+            )
             judgement = await judge.bind(pipeline)(input_data)
         except Exception as e:
             if fallback_model is None:
@@ -133,11 +243,11 @@ def llm_judge(
                 f"Primary model '{primary_model_name}' failed with {primary_error}. "
                 f"Using fallback model '{fallback_model_name}'."
             )
-            # Use fallback model
+            # Use fallback model with same multimodal content
             generator = _create_generator(fallback_model, model_params)
-            pipeline = generator.chat([])
-            if system_prompt:
-                pipeline.chat.inject_system_content(system_prompt)
+            pipeline = _create_judge_pipeline(
+                generator, data, output_text, rubric, system_prompt, has_multimodal=has_multimodal
+            )
             judgement = await judge.bind(pipeline)(input_data)
 
         if min_score is not None:
@@ -148,24 +258,15 @@ def llm_judge(
         if passing is not None:
             judgement.passing = passing(judgement.score)
 
-        score_metric = Metric(
-            value=judgement.score,
-            attributes={
-                "reason": judgement.reason,
-                "used_fallback": used_fallback,
-                "fallback_model": (
-                    str(fallback_model)
-                    if isinstance(fallback_model, str)
-                    else type(fallback_model).__name__
-                )
-                if used_fallback
-                else None,
-                "primary_error": primary_error,
-            },
+        return _create_judge_metrics(
+            judgement,
+            has_multimodal=has_multimodal,
+            num_images=num_images,
+            num_audio=num_audio,
+            used_fallback=used_fallback,
+            fallback_model=fallback_model,
+            primary_error=primary_error,
+            name=name,
         )
-        pass_metric = Metric(value=float(judgement.passing))
-        pass_metric._scorer_name = f"{name}_pass"  # type: ignore[attr-defined] # noqa: SLF001
-
-        return [score_metric, pass_metric]
 
     return Scorer(evaluate, name=name)
