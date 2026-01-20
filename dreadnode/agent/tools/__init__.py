@@ -16,7 +16,7 @@ from dreadnode.agent.tools.base import (
 )
 
 if t.TYPE_CHECKING:
-    from dreadnode.agent.tools import execute, fs, memory, planning, reporting, tasking
+    from dreadnode.agent.tools import execute, fs, interaction, memory, planning, reporting, tasking
 
 __all__ = [
     "AnyTool",
@@ -30,6 +30,7 @@ __all__ = [
     "discover_tools_on_obj",
     "execute",
     "fs",
+    "interaction",
     "memory",
     "planning",
     "reporting",
@@ -38,7 +39,7 @@ __all__ = [
     "tool_method",
 ]
 
-__lazy_submodules__: list[str] = ["fs", "planning", "reporting", "tasking", "execute", "memory"]
+__lazy_submodules__: list[str] = ["execute", "fs", "interaction", "memory", "planning", "reporting", "tasking"]
 __lazy_components__: dict[str, str] = {}
 
 

@@ -192,3 +192,6 @@ skip-magic-trailing-comma = false
 "dreadnode/transforms/language.py" = [
     "RUF001",  # intentional use of ambiguous unicode characters for airt
 ]
+"dreadnode/agent/tools/interaction.py" = [
+    "T201",  # print required for user interaction
+]
