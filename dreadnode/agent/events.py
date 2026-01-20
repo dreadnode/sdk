@@ -322,7 +322,7 @@ class AgentEnd(AgentEvent):
     result: "AgentResult"
 
     def format_notification(self) -> str:
-        status = "❌ Failed" if self.result.failed else "✅ Finished"
+        status = "Failed" if self.result.failed else "Finished"
         return f"{status}: {self.stop_reason} (steps: {self.result.steps}, tokens: {self.result.usage.total_tokens})"
 
     def format_as_panel(self, *, truncate: bool = False) -> Panel:  # noqa: ARG002
