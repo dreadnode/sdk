@@ -395,7 +395,7 @@ class Task(Component[P, R], t.Generic[P, R]):
         preprocessor: "InputDatasetProcessor | None" = None,
         scorers: "ScorersLike[R] | None" = None,
         assert_scores: list[str] | t.Literal[True] | None = None,
-        hooks: list["EvalHook"] = Field(default_factory=list, exclude=True, repr=False)
+        hooks: list["EvalHook"] | None = None
     ) -> "Eval[t.Any, R]":
         from dreadnode.eval.eval import Eval
 
