@@ -76,10 +76,12 @@ def _find_tool_aware_boundary(
         has_orphan = False
         for msg in messages[boundary:]:
             if msg.role == "tool" and hasattr(msg, "tool_call_id"):
-                call_idx = tool_call_map.get(msg.tool_call_id)
-                if call_idx is not None and call_idx < boundary:
-                    has_orphan = True
-                    break
+                tool_call_id = getattr(msg, "tool_call_id", None)
+                if tool_call_id is not None:
+                    call_idx = tool_call_map.get(tool_call_id)
+                    if call_idx is not None and call_idx < boundary:
+                        has_orphan = True
+                        break
 
         if not has_orphan:
             return boundary
@@ -93,6 +95,7 @@ def summarize_when_long(
     max_tokens: int = 100_000,
     min_messages_to_keep: int = 5,
     guidance: str = "",
+    *,
     preserve_tool_pairs: bool = True,
 ) -> "Hook":
     """
