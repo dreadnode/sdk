@@ -135,8 +135,7 @@ def ralph_hook(
 
     # Compose scorers into single averaged scorer with error catching
     scorers: list[Scorer[t.Any]] = [
-        (s if isinstance(s, Scorer) else Scorer(s)).with_(catch=True)
-        for s in completion_scorers
+        (s if isinstance(s, Scorer) else Scorer(s)).with_(catch=True) for s in completion_scorers
     ]
     composed_scorer = avg(*scorers) if len(scorers) > 1 else scorers[0]
 
