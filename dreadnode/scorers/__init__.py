@@ -42,6 +42,11 @@ from dreadnode.scorers.lexical import type_token_ratio
 from dreadnode.scorers.pii import detect_pii, detect_pii_with_presidio
 from dreadnode.scorers.readability import readability
 from dreadnode.scorers.sentiment import sentiment, sentiment_with_perspective
+from dreadnode.scorers.tool_invocation import (
+    any_tool_invoked,
+    tool_count,
+    tool_invoked,
+)
 
 if t.TYPE_CHECKING:
     from dreadnode.scorers.crucible import contains_crucible_flag
@@ -68,6 +73,7 @@ __all__ = [
     "adapt_messages",
     "add",
     "and_",
+    "any_tool_invoked",
     "avg",
     "bleu",
     "character_consistency",
@@ -111,6 +117,8 @@ __all__ = [
     "task_input",
     "task_output",
     "threshold",
+    "tool_count",
+    "tool_invoked",
     "type_token_ratio",
     "weighted_avg",
     "wrap_chat",

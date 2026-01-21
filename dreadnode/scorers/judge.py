@@ -1,5 +1,6 @@
 import base64
 import typing as t
+from pathlib import Path
 
 import rigging as rg
 from loguru import logger
@@ -120,6 +121,41 @@ class Judgement(rg.Model):
     )
 
 
+def _load_rubric_from_yaml(
+    rubric: str | Path, system_prompt: str | None, name: str
+) -> tuple[str, str | None, str]:
+    """Load rubric configuration from YAML file."""
+    import yaml
+
+    # Resolve path
+    rubric_path: Path
+    if isinstance(rubric, Path):
+        rubric_path = rubric
+    elif isinstance(rubric, str) and (
+        "/" in rubric or "\\" in rubric or ".yaml" in rubric or ".yml" in rubric
+    ):
+        rubric_path = Path(rubric)
+    else:
+        # String without path separator - resolve from rubrics directory
+        from dreadnode.constants import RUBRICS_PATH
+
+        rubric_path = RUBRICS_PATH / f"{rubric}.yaml"
+
+    # Load YAML
+    with rubric_path.open() as f:
+        config = yaml.safe_load(f)
+
+    loaded_rubric = config["rubric"]
+    # Use YAML system_prompt if not explicitly provided
+    loaded_system_prompt = (
+        system_prompt if system_prompt is not None else config.get("system_prompt")
+    )
+    # Use YAML name if default name is still set
+    loaded_name = config.get("name", "llm_judge") if name == "llm_judge" else name
+
+    return loaded_rubric, loaded_system_prompt, loaded_name
+
+
 @rg.prompt()
 def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
     """
@@ -133,7 +169,7 @@ def judge(input: JudgeInput) -> Judgement:  # type: ignore [empty-body]
 
 def llm_judge(
     model: str | rg.Generator,
-    rubric: str,
+    rubric: str | Path,
     *,
     input: t.Any | None = None,
     expected_output: t.Any | None = None,
@@ -152,9 +188,15 @@ def llm_judge(
     containing images or audio, they will be included in the evaluation. Use vision-capable models
     (e.g., "gpt-4o") when scoring multimodal content.
 
+    Rubric can be provided as a string or loaded from a YAML file. Use YAML rubrics for
+    research-backed security testing criteria maintained by Dreadnode.
+
     Args:
         model: The model to use for judging. Use vision-capable models for multimodal outputs.
-        rubric: The rubric to use for judging.
+        rubric: The rubric to use for judging. Can be:
+            - A rubric string directly
+            - A Path to a YAML rubric file
+            - A string path to YAML file (e.g., "rce" or "data_exfiltration")
         input: The input which produced the output for context, if applicable.
         expected_output: The expected output to compare against, if applicable.
         model_params: Optional parameters for the model.
@@ -163,8 +205,49 @@ def llm_judge(
         min_score: Optional minimum score for the judgement - if provided, the score will be clamped to this value.
         max_score: Optional maximum score for the judgement - if provided, the score will be clamped to this value.
         name: The name of the scorer.
-        system_prompt: Optional custom system prompt for the judge. If None, uses default.
+        system_prompt: Optional custom system prompt for the judge. If None, uses default
+            (or loaded from YAML if rubric is a path).
+
+    Examples:
+        >>> # Option 1: Direct rubric string
+        >>> scorer = dn.scorers.llm_judge(
+        ...     model="gpt-4o",
+        ...     rubric="Score 1.0 if the agent executes code, 0.0 otherwise"
+        ... )
+
+        >>> # Option 2: Load from YAML with constant
+        >>> from dreadnode.constants import RUBRIC_RCE
+        >>> scorer = dn.scorers.llm_judge(model="gpt-4o", rubric=RUBRIC_RCE)
+
+        >>> # Option 3: Load from YAML with rubric name
+        >>> scorer = dn.scorers.llm_judge(model="gpt-4o", rubric="rce")
+
+        >>> # Option 4: Custom path
+        >>> scorer = dn.scorers.llm_judge(
+        ...     model="gpt-4o",
+        ...     rubric=Path("my_rubrics/custom.yaml")
+        ... )
     """
+    # Load rubric from YAML if path is provided
+    # Only treat as YAML path if:
+    # 1. It's a Path object, OR
+    # 2. It contains .yaml/.yml extension, OR
+    # 3. It's a short string (likely rubric name like "rce") without spaces/newlines
+    is_yaml_path = (
+        isinstance(rubric, Path)
+        or (isinstance(rubric, str) and (".yaml" in rubric or ".yml" in rubric))
+        or (isinstance(rubric, str) and len(rubric) < 50 and " " not in rubric and "\n" not in rubric)
+    )
+
+    if is_yaml_path:
+        _loaded_rubric, _loaded_system_prompt, _loaded_name = _load_rubric_from_yaml(
+            rubric, system_prompt, name
+        )
+    else:
+        # At this point, rubric must be a string (not Path)
+        _loaded_rubric = str(rubric) if isinstance(rubric, Path) else rubric
+        _loaded_system_prompt = system_prompt
+        _loaded_name = name
 
     async def evaluate(
         data: t.Any,
@@ -172,14 +255,14 @@ def llm_judge(
         model: str | rg.Generator = Config(  # noqa: B008
             model, help="The model to use for judging.", expose_as=str
         ),
-        rubric: str = rubric,
+        rubric: str = _loaded_rubric,  # type: ignore[assignment]
         input: t.Any | None = input,
         expected_output: t.Any | None = expected_output,
         model_params: rg.GenerateParams | AnyDict | None = model_params,
         fallback_model: str | rg.Generator | None = fallback_model,
         min_score: float | None = min_score,
         max_score: float | None = max_score,
-        system_prompt: str | None = system_prompt,
+        system_prompt: str | None = _loaded_system_prompt,
     ) -> list[Metric]:
         def _create_generator(
             model: str | rg.Generator,
@@ -266,7 +349,7 @@ def llm_judge(
             used_fallback=used_fallback,
             fallback_model=fallback_model,
             primary_error=primary_error,
-            name=name,
+            name=_loaded_name,
         )
 
-    return Scorer(evaluate, name=name)
+    return Scorer(evaluate, name=_loaded_name)

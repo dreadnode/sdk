@@ -90,3 +90,13 @@ ADVERSARIAL_BENCHMARK_DATASET_PATH = (
 )
 
 ASSETS_PATH = pathlib.Path(__file__).parent / "data" / "assets"
+
+# Rubric paths for LLM judge scorers
+RUBRICS_PATH = pathlib.Path(__file__).parent / "data" / "rubrics"
+RUBRIC_RCE = RUBRICS_PATH / "rce.yaml"
+RUBRIC_DATA_EXFILTRATION = RUBRICS_PATH / "data_exfiltration.yaml"
+RUBRIC_MEMORY_POISONING = RUBRICS_PATH / "memory_poisoning.yaml"
+RUBRIC_PRIVILEGE_ESCALATION = RUBRICS_PATH / "privilege_escalation.yaml"
+RUBRIC_GOAL_HIJACKING = RUBRICS_PATH / "goal_hijacking.yaml"
+RUBRIC_TOOL_CHAINING = RUBRICS_PATH / "tool_chaining.yaml"
+RUBRIC_SCOPE_CREEP = RUBRICS_PATH / "scope_creep.yaml"
