@@ -4,25 +4,16 @@ import rigging as rg
 from dreadnode.agent.hooks.summarize import _find_tool_aware_boundary
 
 
-class ToolCall:
-    """Minimal tool call representation for testing."""
-    def __init__(self, call_id: str):
-        self.id = call_id
-
-
-class ToolMessage(rg.Message):
-    """Tool response message for testing."""
-    def __init__(self, call_id: str, content: str):
-        super().__init__("tool", content)
-        self.tool_call_id = call_id
-
-
 def test_preserves_tool_pairs():
     """Tool call and response stay together when split."""
     messages = [
         rg.Message("user", "Hello"),
-        rg.Message("assistant", "Let me check", tool_calls=[ToolCall("call_1")]),
-        ToolMessage("call_1", "Result"),
+        rg.Message(
+            "assistant",
+            "Let me check",
+            tool_calls=[{"id": "call_1", "type": "function", "function": {"name": "check", "arguments": "{}"}}],
+        ),
+        rg.Message("tool", "Result", tool_call_id="call_1"),
         rg.Message("assistant", "Done"),
         rg.Message("user", "Thanks"),
     ]
@@ -50,10 +41,18 @@ def test_multiple_tool_pairs():
     """Handles multiple tool call/response pairs correctly."""
     messages = [
         rg.Message("user", "Do A and B"),
-        rg.Message("assistant", "Running A", tool_calls=[ToolCall("a")]),
-        ToolMessage("a", "A done"),
-        rg.Message("assistant", "Running B", tool_calls=[ToolCall("b")]),
-        ToolMessage("b", "B done"),
+        rg.Message(
+            "assistant",
+            "Running A",
+            tool_calls=[{"id": "a", "type": "function", "function": {"name": "run_a", "arguments": "{}"}}],
+        ),
+        rg.Message("tool", "A done", tool_call_id="a"),
+        rg.Message(
+            "assistant",
+            "Running B",
+            tool_calls=[{"id": "b", "type": "function", "function": {"name": "run_b", "arguments": "{}"}}],
+        ),
+        rg.Message("tool", "B done", tool_call_id="b"),
         rg.Message("user", "Thanks"),
     ]
 
@@ -67,10 +66,18 @@ def test_multiple_tool_pairs():
 def test_no_valid_boundary():
     """Returns 0 when entire conversation is tool chain."""
     messages = [
-        rg.Message("assistant", "Start", tool_calls=[ToolCall("1")]),
-        ToolMessage("1", "Result 1"),
-        rg.Message("assistant", "Continue", tool_calls=[ToolCall("2")]),
-        ToolMessage("2", "Result 2"),
+        rg.Message(
+            "assistant",
+            "Start",
+            tool_calls=[{"id": "1", "type": "function", "function": {"name": "start", "arguments": "{}"}}],
+        ),
+        rg.Message("tool", "Result 1", tool_call_id="1"),
+        rg.Message(
+            "assistant",
+            "Continue",
+            tool_calls=[{"id": "2", "type": "function", "function": {"name": "continue", "arguments": "{}"}}],
+        ),
+        rg.Message("tool", "Result 2", tool_call_id="2"),
     ]
 
     boundary = _find_tool_aware_boundary(messages, min_messages_to_keep=2)
