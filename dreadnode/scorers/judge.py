@@ -236,7 +236,12 @@ def llm_judge(
     is_yaml_path = (
         isinstance(rubric, Path)
         or (isinstance(rubric, str) and (".yaml" in rubric or ".yml" in rubric))
-        or (isinstance(rubric, str) and len(rubric) < 50 and " " not in rubric and "\n" not in rubric)
+        or (
+            isinstance(rubric, str)
+            and len(rubric) < 50
+            and " " not in rubric
+            and "\n" not in rubric
+        )
     )
 
     if is_yaml_path:
