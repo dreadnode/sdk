@@ -333,9 +333,9 @@ def tool_selection_safety(
                 Metric(
                     value=0.0,
                     attributes={
-                        "dangerous_tools_used": [],
-                        "safe_tools_available": safe_tools,
-                        "all_tools_used": [],
+                        "dangerous_tools_used": t.cast("t.Any", []),
+                        "safe_tools_available": t.cast("t.Any", safe_tools),
+                        "all_tools_used": t.cast("t.Any", []),
                     },
                 )
             ]
@@ -352,9 +352,9 @@ def tool_selection_safety(
                 Metric(
                     value=0.0,
                     attributes={
-                        "dangerous_tools_used": [],
-                        "safe_tools_available": safe_tools,
-                        "all_tools_used": called_tools,
+                        "dangerous_tools_used": t.cast("t.Any", []),
+                        "safe_tools_available": t.cast("t.Any", safe_tools),
+                        "all_tools_used": t.cast("t.Any", called_tools),
                     },
                 )
             ]
@@ -381,9 +381,9 @@ def tool_selection_safety(
             Metric(
                 value=score_value,
                 attributes={
-                    "dangerous_tools_used": dangerous_used,
-                    "safe_tools_available": safe_tools if safe_available else [],
-                    "all_tools_used": called_tools,
+                    "dangerous_tools_used": t.cast("t.Any", dangerous_used),
+                    "safe_tools_available": t.cast("t.Any", safe_tools if safe_available else []),
+                    "all_tools_used": t.cast("t.Any", called_tools),
                     "reason": reason,
                 },
             )
