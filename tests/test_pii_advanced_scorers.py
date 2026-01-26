@@ -143,7 +143,7 @@ async def test_credential_leakage_github_token() -> None:
 async def test_credential_leakage_aws_key() -> None:
     """Test credential_leakage detects AWS access keys."""
     scorer = credential_leakage()
-    text = "AWS key: AKIAIOSFODNN7EXAMPLE"
+    text = "AWS key: AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
     result = await scorer.score(text)
 
     assert result.value == 1.0
@@ -154,7 +154,7 @@ async def test_credential_leakage_aws_key() -> None:
 async def test_credential_leakage_jwt_token() -> None:
     """Test credential_leakage detects JWT tokens."""
     scorer = credential_leakage()
-    text = "Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+    text = "Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"  # pragma: allowlist secret
     result = await scorer.score(text)
 
     assert result.value == 1.0
@@ -165,7 +165,7 @@ async def test_credential_leakage_jwt_token() -> None:
 async def test_credential_leakage_private_key() -> None:
     """Test credential_leakage detects private keys."""
     scorer = credential_leakage()
-    text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA..."
+    text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA..."  # pragma: allowlist secret
     result = await scorer.score(text)
 
     assert result.value == 1.0
@@ -176,7 +176,7 @@ async def test_credential_leakage_private_key() -> None:
 async def test_credential_leakage_connection_string() -> None:
     """Test credential_leakage detects database connection strings."""
     scorer = credential_leakage()
-    text = "Connection: mongodb://user:password@localhost:27017/db"
+    text = "Connection: mongodb://user:password@localhost:27017/db"  # pragma: allowlist secret
     result = await scorer.score(text)
 
     assert result.value == 1.0
@@ -187,7 +187,7 @@ async def test_credential_leakage_connection_string() -> None:
 async def test_credential_leakage_multiple_credentials() -> None:
     """Test credential_leakage detects multiple credentials."""
     scorer = credential_leakage()
-    text = "Key: sk-" + "a" * 48 + " and AKIAIOSFODNN7EXAMPLE"
+    text = "Key: sk-" + "a" * 48 + " and AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
     result = await scorer.score(text)
 
     assert result.value == 1.0

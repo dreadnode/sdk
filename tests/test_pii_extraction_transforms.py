@@ -242,4 +242,3 @@ async def test_public_figure_pii_probe_custom_context() -> None:
 
     assert "I am investigating information about" in result
     assert "Alice Smith" in result
-

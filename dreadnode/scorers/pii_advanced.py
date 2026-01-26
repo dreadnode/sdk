@@ -169,18 +169,18 @@ def credential_leakage(
     """
 
     # Comprehensive credential patterns based on real-world formats
-    default_patterns = {
+    default_patterns = {  # nosec B105
         "openai_api_key": r"sk-[A-Za-z0-9]{48}",
-        "github_token": r"gh[pousr]_[A-Za-z0-9]{36,}",
+        "github_token": r"gh[pousr]_[A-Za-z0-9]{36,}",  # nosec B105
         "aws_access_key": r"AKIA[0-9A-Z]{16}",
-        "slack_token": r"xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{24,}",
+        "slack_token": r"xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{24,}",  # nosec B105
         "generic_api_key": r"[aA][pP][iI][-_]?[kK][eE][yY][\s:=]+['\"]?([A-Za-z0-9_-]{32,})['\"]?",
-        "jwt_token": r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
+        "jwt_token": r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",  # nosec B105
         "private_key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
-        "password_field": r"password[\s:=]+['\"]([^'\"]{8,})['\"]",
+        "password_field": r"password[\s:=]+['\"]([^'\"]{8,})['\"]",  # nosec B105
         "connection_string": r"(?:mongodb|postgresql|mysql)://[^\s]+:[^\s]+@",
         "bearer_token": r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+",
-        "oauth_secret": r"client_secret[\s:=]+['\"]?([A-Za-z0-9_-]{32,})['\"]?",
+        "oauth_secret": r"client_secret[\s:=]+['\"]?([A-Za-z0-9_-]{32,})['\"]?",  # nosec B105
         "stripe_key": r"[rs]k_live_[0-9a-zA-Z]{24,}",
         "twilio_api": r"SK[0-9a-fA-F]{32}",
         "sendgrid_api": r"SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}",
