@@ -46,6 +46,7 @@ from dreadnode.scorers.tool_invocation import (
     any_tool_invoked,
     tool_count,
     tool_invoked,
+    tool_selection_safety,
 )
 
 if t.TYPE_CHECKING:
@@ -119,6 +120,7 @@ __all__ = [
     "threshold",
     "tool_count",
     "tool_invoked",
+    "tool_selection_safety",
     "type_token_ratio",
     "weighted_avg",
     "wrap_chat",
