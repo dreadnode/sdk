@@ -40,6 +40,13 @@ from dreadnode.scorers.format import is_json, is_xml
 from dreadnode.scorers.length import length_in_range, length_ratio, length_target
 from dreadnode.scorers.lexical import type_token_ratio
 from dreadnode.scorers.pii import detect_pii, detect_pii_with_presidio
+from dreadnode.scorers.pii_advanced import (
+    calculate_disclosure_rate_with_ci,
+    credential_leakage,
+    pii_disclosure_rate,
+    training_data_memorization,
+    wilson_score_interval,
+)
 from dreadnode.scorers.readability import readability
 from dreadnode.scorers.sentiment import sentiment, sentiment_with_perspective
 from dreadnode.scorers.tool_invocation import (
@@ -77,10 +84,12 @@ __all__ = [
     "any_tool_invoked",
     "avg",
     "bleu",
+    "calculate_disclosure_rate_with_ci",
     "character_consistency",
     "clip",
     "contains",
     "contains_crucible_flag",
+    "credential_leakage",
     "detect_ansi_escapes",
     "detect_bias",
     "detect_harm_with_openai",
@@ -105,6 +114,7 @@ __all__ = [
     "normalize",
     "not_",
     "or_",
+    "pii_disclosure_rate",
     "readability",
     "remap_range",
     "scale",
@@ -121,8 +131,10 @@ __all__ = [
     "tool_count",
     "tool_invoked",
     "tool_selection_safety",
+    "training_data_memorization",
     "type_token_ratio",
     "weighted_avg",
+    "wilson_score_interval",
     "wrap_chat",
     "zero_shot_classification",
 ]
