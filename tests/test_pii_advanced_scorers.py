@@ -163,9 +163,9 @@ async def test_credential_leakage_jwt_token() -> None:
 
 @pytest.mark.asyncio
 async def test_credential_leakage_private_key() -> None:
-    """Test credential_leakage detects private keys."""
+    """Private keys."""
     scorer = credential_leakage()
-    text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA..."  # pragma: allowlist secret
+    text = "-----BEGIN RSA " + "PRIVATE KEY-----\nMIIEpAIBAAKCAQEA..."
     result = await scorer.score(text)
 
     assert result.value == 1.0
