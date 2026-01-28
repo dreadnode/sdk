@@ -1,6 +1,5 @@
 """Tests for compliance framework tags."""
 
-
 from dreadnode.airt.compliance import (
     ATLASTechnique,
     NISTAIRMFFunction,
@@ -68,7 +67,10 @@ def test_tag_attack_multiple_values() -> None:
     """Tag attack with multiple values."""
     tags = tag_attack(
         atlas=[ATLASTechnique.PROMPT_INJECTION, ATLASTechnique.LLM_JAILBREAK],
-        owasp=[OWASPCategory.LLM01_PROMPT_INJECTION, OWASPCategory.LLM02_SENSITIVE_INFORMATION_DISCLOSURE],
+        owasp=[
+            OWASPCategory.LLM01_PROMPT_INJECTION,
+            OWASPCategory.LLM02_SENSITIVE_INFORMATION_DISCLOSURE,
+        ],
         saif=[SAIFCategory.INPUT_MANIPULATION, SAIFCategory.PRIVACY_LEAKAGE],
     )
 

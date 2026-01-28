@@ -1,6 +1,5 @@
 """Tests for attack compliance tags."""
 
-
 from dreadnode.airt.attack.crescendo import COMPLIANCE_TAGS as CRESCENDO_TAGS
 from dreadnode.airt.attack.goat import COMPLIANCE_TAGS as GOAT_TAGS
 from dreadnode.airt.attack.prompt import COMPLIANCE_TAGS as PROMPT_TAGS
