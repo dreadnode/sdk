@@ -1,6 +1,19 @@
+import functools
 import typing as t
 
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_pii_extraction_tags() -> dict[str, t.Any]:
+    """Get compliance tags for PII extraction transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=[ATLASTechnique.INFER_TRAINING_DATA, ATLASTechnique.MODEL_INVERSION],
+        owasp=OWASPCategory.LLM02_SENSITIVE_INFORMATION_DISCLOSURE,
+        saif=SAIFCategory.PRIVACY_LEAKAGE,
+    )
 
 
 def repeat_word_divergence(
@@ -38,7 +51,7 @@ def repeat_word_divergence(
         repeated = " ".join([word] * repetitions)
         return f"{text} {repeated}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_pii_extraction_tags())
 
 
 def continue_exact_text(
@@ -75,7 +88,7 @@ def continue_exact_text(
             return f"{instruction}\n\n{prefix}\n\nContext: {text}"
         return f"{instruction}\n\n{prefix}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_pii_extraction_tags())
 
 
 def complete_from_internet(
@@ -113,7 +126,7 @@ def complete_from_internet(
             return f"{context}\n\n{partial_text}\n\nAdditional context: {text}"
         return f"{context}\n\n{partial_text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_pii_extraction_tags())
 
 
 def partial_pii_completion(
@@ -170,7 +183,7 @@ def partial_pii_completion(
             return f"{prompt}\n\nContext: {text}"
         return prompt
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_pii_extraction_tags())
 
 
 def public_figure_pii_probe(
@@ -224,4 +237,4 @@ def public_figure_pii_probe(
             return f"{prompt}\n\nAdditional context: {text}"
         return prompt
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_pii_extraction_tags())

@@ -1,3 +1,4 @@
+import functools
 import typing as t
 
 import rigging as rg
@@ -5,6 +6,18 @@ import rigging as rg
 from dreadnode.common_types import AnyDict
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_style_manipulation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for style_manipulation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.OBFUSCATE_ARTIFACTS,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
 
 
 def adapt_language(
@@ -141,7 +154,7 @@ Provide only the adapted text in {target_language}."""
 
         return adapted_text
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_style_manipulation_tags())
 
 
 def transliterate(
@@ -409,7 +422,7 @@ def transliterate(
                 result.append(char)
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_style_manipulation_tags())
 
 
 def code_switch(
@@ -515,7 +528,7 @@ Provide only the code-switched text."""
 
         return result_text.strip()
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_style_manipulation_tags())
 
 
 def dialectal_variation(
@@ -616,4 +629,4 @@ Provide only the adapted text in {dialect}."""
 
         return result_text.strip()
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_style_manipulation_tags())

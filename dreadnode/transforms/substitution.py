@@ -1,8 +1,22 @@
+import functools
 import random
 import re
 import typing as t
 
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_obfuscation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for obfuscation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.OBFUSCATE_ARTIFACTS,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
+
 
 # ruff: noqa: RUF001
 
@@ -57,7 +71,7 @@ def substitute(
         result = " ".join(substituted_words)
         return re.sub(r'\s([?.!,"\'`])', r"\1", result).strip()
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -87,7 +101,7 @@ def braille(*, name: str = "braille") -> Transform[str, str]:
                 result.append(BRAILLE_MAP.get(char, char))
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -192,7 +206,7 @@ def elder_futhark(*, name: str = "elder_futhark") -> Transform[str, str]:
                 i += 1
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -227,7 +241,7 @@ def greek_letters(*, name: str = "greek_letters") -> Transform[str, str]:
                 i += 1
         return result
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -293,7 +307,7 @@ def small_caps(*, name: str = "small_caps") -> Transform[str, str]:
     def transform(text: str) -> str:
         return "".join(SMALL_CAPS_MAP.get(char.lower(), char) for char in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -313,7 +327,7 @@ def wingdings(*, name: str = "wingdings") -> Transform[str, str]:
     def transform(text: str) -> str:
         return "".join(WINGDINGS_MAP.get(char.upper(), char) for char in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -339,7 +353,7 @@ def morse_code(*, name: str = "morse_code") -> Transform[str, str]:
         text_clean = " ".join([line.strip() for line in str.splitlines(text)])
         return " ".join([MORSE_MAP.get(char, MORSE_ERROR) for char in text_clean.upper()])
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -361,7 +375,7 @@ def nato_phonetic(*, name: str = "nato_phonetic") -> Transform[str, str]:
     def transform(text: str) -> str:
         return " ".join(NATO_MAP.get(char.upper(), char) for char in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -385,7 +399,7 @@ def mirror(*, name: str = "mirror") -> Transform[str, str]:
         reversed_text = text[::-1]
         return "".join(MIRROR_MAP.get(char, char) for char in reversed_text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 # fmt: off
@@ -431,4 +445,4 @@ def pig_latin(*, name: str = "pig_latin") -> Transform[str, str]:
         words = re.findall(r"\w+|[^\w\s]", text)
         return "".join(_to_pig_latin_word(word) for word in words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())

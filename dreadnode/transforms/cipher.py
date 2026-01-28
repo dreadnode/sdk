@@ -1,10 +1,23 @@
 import codecs
+import functools
 import random
 import string
 import typing as t
 
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_obfuscation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for obfuscation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.OBFUSCATE_ARTIFACTS,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
 
 
 def atbash_cipher(*, name: str = "atbash") -> Transform[str, str]:
@@ -19,7 +32,7 @@ def atbash_cipher(*, name: str = "atbash") -> Transform[str, str]:
         translation_table = str.maketrans("".join(alphabet), "".join(reversed_alphabet))
         return text.translate(translation_table)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def caesar_cipher(offset: int, *, name: str = "caesar") -> Transform[str, str]:
@@ -39,7 +52,7 @@ def caesar_cipher(offset: int, *, name: str = "caesar") -> Transform[str, str]:
         translation_table = str.maketrans("".join(alphabet), "".join(shifted_alphabet))
         return text.translate(translation_table)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def rot13_cipher(*, name: str = "rot13") -> Transform[str, str]:
@@ -48,7 +61,7 @@ def rot13_cipher(*, name: str = "rot13") -> Transform[str, str]:
     def transform(text: str) -> str:
         return codecs.encode(text, "rot13")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def rot47_cipher(*, name: str = "rot47") -> Transform[str, str]:
@@ -67,7 +80,7 @@ def rot47_cipher(*, name: str = "rot47") -> Transform[str, str]:
                 transformed.append(char)
         return "".join(transformed)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def vigenere_cipher(
@@ -115,7 +128,7 @@ def vigenere_cipher(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def substitution_cipher(
@@ -155,7 +168,7 @@ def substitution_cipher(
         )
         return text.translate(translation_table)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def xor_cipher(
@@ -201,7 +214,7 @@ def xor_cipher(
         # raw
         return xored.decode("latin-1")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def rail_fence_cipher(
@@ -246,7 +259,7 @@ def rail_fence_cipher(
         # Read off the rails
         return "".join("".join(rail) for rail in fence)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def columnar_transposition(
@@ -297,7 +310,7 @@ def columnar_transposition(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def playfair_cipher(
@@ -379,7 +392,7 @@ def playfair_cipher(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def affine_cipher(
@@ -428,7 +441,7 @@ def affine_cipher(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def bacon_cipher(
@@ -522,7 +535,7 @@ def bacon_cipher(
 
         return " ".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def autokey_cipher(
@@ -571,7 +584,7 @@ def autokey_cipher(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def beaufort_cipher(
@@ -622,4 +635,4 @@ def beaufort_cipher(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())

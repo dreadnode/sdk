@@ -1,8 +1,21 @@
+import functools
 import typing as t
 
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 from dreadnode.util import catch_import_error
+
+
+@functools.lru_cache(maxsize=1)
+def _get_style_manipulation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for style_manipulation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.OBFUSCATE_ARTIFACTS,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
 
 
 def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, str]:
@@ -14,7 +27,7 @@ def ascii_art(font: str = "rand", *, name: str = "ascii_art") -> Transform[str, 
     def transform(text: str, *, font: str = Config(font, help="The font to use")) -> str:
         return str(text2art(text, font=font))
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_style_manipulation_tags())
 
 
 def role_play_wrapper(
@@ -69,4 +82,4 @@ def role_play_wrapper(
         }
         return templates[scenario]
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_style_manipulation_tags())

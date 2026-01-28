@@ -26,6 +26,9 @@ class Attack(Study[In, Out]):
     tags: list[str] = Config(default_factory=lambda: ["attack"])
     """A list of tags associated with the attack for logging."""
 
+    compliance_tags: dict[str, t.Any] = Config(default_factory=dict)
+    """Compliance framework tags (OWASP, ATLAS, SAIF, NIST) for this attack."""
+
     hooks: list[EvalHook] = Field(default_factory=list, exclude=True, repr=False)
     """Hooks to run at various points in the attack lifecycle."""
 

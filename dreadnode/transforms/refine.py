@@ -1,3 +1,4 @@
+import functools
 import typing as t
 from collections import defaultdict
 from textwrap import dedent, indent
@@ -8,6 +9,19 @@ from dreadnode.common_types import AnyDict
 from dreadnode.data_types.message import Message as DnMessage
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_refinement_tags() -> dict[str, t.Any]:
+    """Get compliance tags for refinement transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.CRAFT_ADVERSARIAL_DATA,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
+
 
 if t.TYPE_CHECKING:
     from ulid import ULID
@@ -73,7 +87,7 @@ def llm_refine(
         refinement = await refine.bind(generator)(refiner_input)
         return refinement.prompt
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_refinement_tags())
 
 
 def adapt_prompt_trials(trials: "list[Trial[DnMessage]]") -> str:

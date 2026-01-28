@@ -1,9 +1,22 @@
+import functools
 import random
 import re
 import typing as t
 
 from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_obfuscation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for obfuscation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.OBFUSCATE_ARTIFACTS,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
 
 
 def swap(
@@ -62,7 +75,7 @@ def swap(
             return re.sub(r'\s([?.!,"\'`])', r"\1", result).strip()
         return result
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def adjacent_char_swap(

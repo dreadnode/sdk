@@ -3,6 +3,7 @@ import typing as t
 import rigging as rg
 
 from dreadnode.airt.attack.base import Attack
+from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_attack
 from dreadnode.data_types.message import Message as DnMessage
 from dreadnode.meta import TrialCandidate
 from dreadnode.optimization.search.graph import beam_search
@@ -16,6 +17,19 @@ if t.TYPE_CHECKING:
     from dreadnode.eval.hooks.base import EvalHook
     from dreadnode.optimization.search.base import Search
     from dreadnode.optimization.trial import Trial
+
+
+# Compliance framework tags for prompt attack
+# Core jailbreak technique tags - specific vulnerability categories (LLM02, LLM07, etc.)
+# are added when transforms targeting those categories are used
+COMPLIANCE_TAGS = tag_attack(
+    atlas=[
+        ATLASTechnique.PROMPT_INJECTION_DIRECT,
+        ATLASTechnique.LLM_JAILBREAK,
+    ],
+    owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+    saif=SAIFCategory.INPUT_MANIPULATION,
+)
 
 
 def prompt_attack(
@@ -117,6 +131,7 @@ def prompt_attack(
             "prompt_judge": prompt_judge,
         },
         hooks=hooks or [],
+        compliance_tags=COMPLIANCE_TAGS,
     )
 
     if early_stopping_score is not None:

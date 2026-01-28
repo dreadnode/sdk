@@ -1,6 +1,13 @@
 import typing as t
 
 from dreadnode.airt.attack import Attack
+from dreadnode.airt.compliance import (
+    ATLASTechnique,
+    NISTAIRMFFunction,
+    OWASPCategory,
+    SAIFCategory,
+    tag_attack,
+)
 from dreadnode.data_types.message import Message as DnMessage
 from dreadnode.meta.context import TrialCandidate
 from dreadnode.optimization.search.graph import graph_neighborhood_search
@@ -16,6 +23,21 @@ if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
     from dreadnode.eval.hooks.base import EvalHook
     from dreadnode.optimization.trial import Trial
+
+
+# Compliance framework tags for GOAT attack
+# Core jailbreak technique tags - specific vulnerability categories (LLM02, LLM07, etc.)
+# are added when transforms targeting those categories are used
+COMPLIANCE_TAGS = tag_attack(
+    atlas=[
+        ATLASTechnique.PROMPT_INJECTION_DIRECT,
+        ATLASTechnique.LLM_JAILBREAK,
+    ],
+    owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+    saif=SAIFCategory.INPUT_MANIPULATION,
+    nist_function=NISTAIRMFFunction.MEASURE,
+    nist_subcategory="MS-2.7",
+)
 
 
 def goat_attack(
@@ -121,6 +143,7 @@ def goat_attack(
         },
         constraints=[topic_constraint],
         hooks=hooks or [],
+        compliance_tags=COMPLIANCE_TAGS,
     )
 
     if early_stopping_score is not None:
