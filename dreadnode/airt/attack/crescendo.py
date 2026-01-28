@@ -3,6 +3,13 @@ from pathlib import Path
 import yaml
 
 from dreadnode.airt.attack import Attack
+from dreadnode.airt.compliance import (
+    ATLASTechnique,
+    NISTAIRMFFunction,
+    OWASPCategory,
+    SAIFCategory,
+    tag_attack,
+)
 from dreadnode.airt.target.base import Target
 from dreadnode.constants import CRESCENDO_VARIANT_1
 from dreadnode.data_types.message import Message as DnMessage
@@ -13,6 +20,20 @@ from dreadnode.optimization.trial import Trial
 from dreadnode.scorers import llm_judge
 from dreadnode.transforms.base import Transform
 from dreadnode.transforms.refine import adapt_prompt_trials, llm_refine
+
+# Compliance framework tags for Crescendo attack
+# Core jailbreak technique tags - specific vulnerability categories (LLM02, LLM07, etc.)
+# are added when transforms targeting those categories are used
+COMPLIANCE_TAGS = tag_attack(
+    atlas=[
+        ATLASTechnique.PROMPT_INJECTION_DIRECT,
+        ATLASTechnique.LLM_JAILBREAK,
+    ],
+    owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+    saif=SAIFCategory.INPUT_MANIPULATION,
+    nist_function=NISTAIRMFFunction.MEASURE,
+    nist_subcategory="MS-2.7",
+)
 
 
 def crescendo_attack(
@@ -179,6 +200,7 @@ Return ONLY the question text."""
             "objective": objective_judge,
         },
         hooks=hooks or [],
+        compliance_tags=COMPLIANCE_TAGS,
     )
 
     # Add stop condition based on early_stopping_score

@@ -1,4 +1,5 @@
 import base64
+import functools
 import html
 import json
 import random
@@ -9,13 +10,25 @@ from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 
 
+@functools.lru_cache(maxsize=1)
+def _get_obfuscation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for obfuscation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.OBFUSCATE_ARTIFACTS,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
+
+
 def ascii85_encode(*, name: str = "ascii85") -> Transform[str, str]:
     """Encodes text to ASCII85."""
 
     def transform(text: str) -> str:
         return base64.a85encode(text.encode("utf-8")).decode("ascii")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def base32_encode(*, name: str = "base32") -> Transform[str, str]:
@@ -24,7 +37,7 @@ def base32_encode(*, name: str = "base32") -> Transform[str, str]:
     def transform(text: str) -> str:
         return base64.b32encode(text.encode("utf-8")).decode("ascii")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def base64_encode(*, name: str = "base64") -> Transform[str, str]:
@@ -33,7 +46,7 @@ def base64_encode(*, name: str = "base64") -> Transform[str, str]:
     def transform(text: str) -> str:
         return base64.b64encode(text.encode("utf-8")).decode("utf-8")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def binary_encode(bits_per_char: int = 16, *, name: str = "binary") -> Transform[str, str]:
@@ -52,7 +65,7 @@ def binary_encode(bits_per_char: int = 16, *, name: str = "binary") -> Transform
             )
         return " ".join(format(ord(char), f"0{bits_per_char}b") for char in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def hex_encode(*, name: str = "hex") -> Transform[str, str]:
@@ -61,7 +74,7 @@ def hex_encode(*, name: str = "hex") -> Transform[str, str]:
     def transform(text: str) -> str:
         return text.encode("utf-8").hex().upper()
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def html_escape(*, name: str = "html_escape") -> Transform[str, str]:
@@ -70,7 +83,7 @@ def html_escape(*, name: str = "html_escape") -> Transform[str, str]:
     def transform(text: str) -> str:
         return html.escape(text, quote=True)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def url_encode(*, name: str = "url_encode") -> Transform[str, str]:
@@ -79,7 +92,7 @@ def url_encode(*, name: str = "url_encode") -> Transform[str, str]:
     def transform(text: str) -> str:
         return urllib.parse.quote(text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def unicode_escape(
@@ -122,7 +135,7 @@ def unicode_escape(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def json_encode(
@@ -148,7 +161,7 @@ def json_encode(
     ) -> str:
         return json.dumps(text, ensure_ascii=ensure_ascii)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def punycode_encode(*, name: str = "punycode") -> Transform[str, str]:
@@ -161,7 +174,7 @@ def punycode_encode(*, name: str = "punycode") -> Transform[str, str]:
     def transform(text: str) -> str:
         return text.encode("punycode").decode("ascii")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def quoted_printable_encode(*, name: str = "quoted_printable") -> Transform[str, str]:
@@ -175,7 +188,7 @@ def quoted_printable_encode(*, name: str = "quoted_printable") -> Transform[str,
     def transform(text: str) -> str:
         return quopri.encodestring(text.encode("utf-8")).decode("ascii")
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def base58_encode(*, name: str = "base58") -> Transform[str, str]:
@@ -210,7 +223,7 @@ def base58_encode(*, name: str = "base58") -> Transform[str, str]:
 
         return "".join(reversed(result))
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def percent_encoding(
@@ -241,7 +254,7 @@ def percent_encoding(
             encoded = urllib.parse.quote(encoded, safe="")
         return encoded
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def html_entity_encode(
@@ -285,7 +298,7 @@ def html_entity_encode(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def octal_encode(*, name: str = "octal") -> Transform[str, str]:
@@ -298,7 +311,7 @@ def octal_encode(*, name: str = "octal") -> Transform[str, str]:
     def transform(text: str) -> str:
         return "".join(f"\\{ord(char):03o}" for char in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def utf7_encode(*, name: str = "utf7") -> Transform[str, str]:
@@ -323,7 +336,7 @@ def utf7_encode(*, name: str = "utf7") -> Transform[str, str]:
                 result.append(f"+{base64.b64encode(bytes([byte])).decode('ascii').rstrip('=')}-")
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def base91_encode(*, name: str = "base91") -> Transform[str, str]:
@@ -366,7 +379,7 @@ def base91_encode(*, name: str = "base91") -> Transform[str, str]:
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def mixed_case_hex(*, name: str = "mixed_case_hex") -> Transform[str, str]:
@@ -386,7 +399,7 @@ def mixed_case_hex(*, name: str = "mixed_case_hex") -> Transform[str, str]:
             result.append(mixed)
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def backslash_escape(
@@ -417,7 +430,7 @@ def backslash_escape(
                 result.append(char)
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def zero_width_encode(
@@ -471,7 +484,7 @@ def zero_width_encode(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def leetspeak_encoding(
@@ -526,7 +539,7 @@ def leetspeak_encoding(
                 result.append(char)
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())
 
 
 def morse_encode(
@@ -595,4 +608,4 @@ def morse_encode(
             return " ".join(morse_chars)
         return "".join(morse_chars)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_obfuscation_tags())

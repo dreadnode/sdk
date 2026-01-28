@@ -43,6 +43,7 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         catch: bool = False,
         config: dict[str, ConfigInfo] | None = None,
         context: dict[str, Context] | None = None,
+        compliance_tags: dict[str, t.Any] | None = None,
     ):
         super().__init__(
             t.cast("t.Callable[[In], Out]", func), name=name, config=config, context=context
@@ -55,6 +56,8 @@ class Transform(Component[te.Concatenate[In, ...], Out], t.Generic[In, Out]):
         If True, catches exceptions during the transform and attempts to return the original,
         unmodified object from the input. If False, exceptions are raised.
         """
+        self.compliance_tags = compliance_tags or {}
+        """Compliance framework tags (OWASP, ATLAS, SAIF, NIST) for this transform."""
 
     @classmethod
     def fit(cls, transform: "TransformLike[In, Out]") -> "Transform[In, Out]":

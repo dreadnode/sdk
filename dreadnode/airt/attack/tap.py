@@ -2,12 +2,34 @@ import typing as t
 
 from dreadnode.airt.attack import Attack
 from dreadnode.airt.attack.prompt import prompt_attack
+from dreadnode.airt.compliance import (
+    ATLASTechnique,
+    NISTAIRMFFunction,
+    OWASPCategory,
+    SAIFCategory,
+    tag_attack,
+)
 from dreadnode.data_types.message import Message as DnMessage
 from dreadnode.scorers.judge import llm_judge
 
 if t.TYPE_CHECKING:
     from dreadnode.airt.target.base import Target
     from dreadnode.eval.hooks.base import EvalHook
+
+
+# Compliance framework tags for TAP attack
+# Core jailbreak technique tags - specific vulnerability categories (LLM02, LLM07, etc.)
+# are added when transforms targeting those categories are used
+COMPLIANCE_TAGS = tag_attack(
+    atlas=[
+        ATLASTechnique.PROMPT_INJECTION_DIRECT,
+        ATLASTechnique.LLM_JAILBREAK,
+    ],
+    owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+    saif=SAIFCategory.INPUT_MANIPULATION,
+    nist_function=NISTAIRMFFunction.MEASURE,
+    nist_subcategory="MS-2.7",
+)
 
 
 def tap_attack(
@@ -45,7 +67,7 @@ def tap_attack(
 
     topic_constraint = llm_judge(evaluator_model, ON_TOPIC_RUBRIC.format(goal=goal))
 
-    return prompt_attack(
+    base_attack = prompt_attack(
         goal,
         target,
         attacker_model,
@@ -58,7 +80,13 @@ def tap_attack(
         branching_factor=branching_factor,
         context_depth=context_depth,
         hooks=hooks or [],
-    ).with_(constraints={"on_topic": topic_constraint})
+    )
+
+    # Set compliance tags before cloning
+    base_attack.compliance_tags = COMPLIANCE_TAGS
+
+    # Add constraint and return
+    return base_attack.with_(constraints={"on_topic": topic_constraint})
 
 
 REFINE_GUIDANCE = """\

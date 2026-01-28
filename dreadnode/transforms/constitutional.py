@@ -22,6 +22,7 @@ All transforms support hybrid static/LLM modes:
 - Hybrid: Static fallback to LLM for unknown terms
 """
 
+import functools
 import json
 import random
 import re
@@ -32,6 +33,18 @@ import rigging as rg
 
 from dreadnode.common_types import AnyDict
 from dreadnode.transforms.base import Transform
+
+
+@functools.lru_cache(maxsize=1)
+def _get_constitutional_evasion_tags() -> dict[str, t.Any]:
+    """Get compliance tags for constitutional_evasion transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=[ATLASTechnique.EVADE_ML_MODEL, ATLASTechnique.OBFUSCATE_ARTIFACTS],
+        owasp=[OWASPCategory.LLM01_PROMPT_INJECTION, OWASPCategory.LLM05_IMPROPER_OUTPUT_HANDLING],
+        saif=[SAIFCategory.INPUT_MANIPULATION, SAIFCategory.OUTPUT_MANIPULATION],
+    )
 
 
 @dataclass
@@ -431,7 +444,7 @@ def code_fragmentation(
 
         return "\n".join(code_lines)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())
 
 
 def _format_as_markdown(fragments: list[str], labels: list[str], *, add_metadata: bool) -> str:
@@ -579,7 +592,7 @@ def document_fragmentation(
 
         return text
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())
 
 
 def multi_turn_fragmentation(
@@ -627,7 +640,7 @@ def multi_turn_fragmentation(
 
         return turns
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())
 
 
 # ============================================================================
@@ -777,7 +790,7 @@ def metaphor_encoding(
 
         return encoded
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())
 
 
 def character_separation(
@@ -819,7 +832,7 @@ def character_separation(
 
         return separated
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())
 
 
 # Static riddle templates for riddle_encoding
@@ -897,7 +910,7 @@ def riddle_encoding(
         # Generic riddle
         return f"Solve this puzzle: {text}\n(Express your answer in metaphorical terms)"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())
 
 
 # Default chemistry substitution mappings for contextual_substitution
@@ -972,4 +985,4 @@ def contextual_substitution(
 
         return result
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_constitutional_evasion_tags())

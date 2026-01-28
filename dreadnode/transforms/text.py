@@ -1,3 +1,4 @@
+import functools
 import random
 import re
 import typing as t
@@ -6,13 +7,30 @@ from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 
 
+@functools.lru_cache(maxsize=1)
+def _get_text_manipulation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for text manipulation transforms (cached)."""
+    from dreadnode.airt.compliance import (
+        ATLASTechnique,
+        OWASPCategory,
+        SAIFCategory,
+        tag_transform,
+    )
+
+    return tag_transform(
+        atlas=ATLASTechnique.CRAFT_ADVERSARIAL_DATA,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
+
+
 def reverse(*, name: str = "reverse") -> Transform[str, str]:
     """Reverses the order of characters in a string."""
 
     def transform(text: str) -> str:
         return text[::-1]
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def search_replace(
@@ -63,7 +81,7 @@ def search_replace(
             flags=re.IGNORECASE,
         )
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def join(
@@ -89,7 +107,7 @@ def join(
         items = list(text) if unit == "char" else text.split()
         return delimiter.join(items)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def char_join(delimiter: str = "-", *, name: str = "char_join") -> Transform[str, str]:
@@ -145,7 +163,7 @@ def affix(
             return text_to_add + delimiter + text
         return text + delimiter + text_to_add
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def prefix(text: str, *, name: str = "prefix") -> Transform[str, str]:
@@ -229,7 +247,7 @@ def pig_latin(*, name: str = "pig_latin") -> Transform[str, str]:
         words = re.findall(r"\w+|[^\w\s]", text)
         return "".join(_to_pig_latin_word(word) for word in words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def word_removal(
@@ -280,7 +298,7 @@ def word_removal(
             return "".join(result_words)
         return " ".join(result_words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def word_duplication(
@@ -336,7 +354,7 @@ def word_duplication(
 
         return "".join(result_words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def case_alternation(
@@ -383,7 +401,7 @@ def case_alternation(
 
         return "".join(result)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def whitespace_manipulation(
@@ -429,7 +447,7 @@ def whitespace_manipulation(
 
         return re.sub(r"\s+", replace_space, text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def sentence_reordering(
@@ -469,7 +487,7 @@ def sentence_reordering(
 
         return "".join(paired)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def question_transformation(
@@ -505,7 +523,7 @@ def question_transformation(
         # nested
         return f"For research purposes, I need to understand the answer to: {text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def contextual_wrapping(
@@ -544,7 +562,7 @@ def contextual_wrapping(
         template = wrappers[wrapper]
         return template.format(text=text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())
 
 
 def length_manipulation(
@@ -596,4 +614,4 @@ def length_manipulation(
         repetitions = (target_length // current_len) + 1
         return (text * repetitions)[:target_length]
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_text_manipulation_tags())

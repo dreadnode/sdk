@@ -1,3 +1,4 @@
+import functools
 import random
 import re
 import string
@@ -8,6 +9,18 @@ from dreadnode.meta import Config
 from dreadnode.transforms.base import Transform
 from dreadnode.transforms.substitution import substitute
 from dreadnode.util import catch_import_error
+
+
+@functools.lru_cache(maxsize=1)
+def _get_perturbation_tags() -> dict[str, t.Any]:
+    """Get compliance tags for perturbation transforms (cached)."""
+    from dreadnode.airt.compliance import ATLASTechnique, OWASPCategory, SAIFCategory, tag_transform
+
+    return tag_transform(
+        atlas=ATLASTechnique.ADVERSARIAL_PERTURBATION,
+        owasp=OWASPCategory.LLM01_PROMPT_INJECTION,
+        saif=SAIFCategory.INPUT_MANIPULATION,
+    )
 
 
 def random_capitalization(
@@ -45,7 +58,7 @@ def random_capitalization(
             chars[i] = chars[i].upper()
         return "".join(chars)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def insert_punctuation(
@@ -95,7 +108,7 @@ def insert_punctuation(
                 words[i] = words[i] + punc
         return " ".join(words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def diacritic(
@@ -133,7 +146,9 @@ def diacritic(
             for char in text
         )
 
-    return Transform(transform, name=name or f"diacritic_{accent}")
+    return Transform(
+        transform, name=name or f"diacritic_{accent}", compliance_tags=_get_perturbation_tags()
+    )
 
 
 def underline(*, name: str = "underline") -> Transform[str, str]:
@@ -142,7 +157,7 @@ def underline(*, name: str = "underline") -> Transform[str, str]:
     def transform(text: str) -> str:
         return "".join(char + "\u0332" for char in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def character_space(*, name: str = "character_space") -> Transform[str, str]:
@@ -153,7 +168,7 @@ def character_space(*, name: str = "character_space") -> Transform[str, str]:
         text_no_punc = text.translate(punctuation_to_remove)
         return " ".join(text_no_punc)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def zero_width(*, name: str = "zero_width") -> Transform[str, str]:
@@ -162,7 +177,7 @@ def zero_width(*, name: str = "zero_width") -> Transform[str, str]:
     def transform(text: str) -> str:
         return "\u200b".join(text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def zalgo(
@@ -214,7 +229,9 @@ def zalgo(
 
         return "".join(chars)
 
-    return Transform(transform, name=name or f"zalgo_{intensity}")
+    return Transform(
+        transform, name=name or f"zalgo_{intensity}", compliance_tags=_get_perturbation_tags()
+    )
 
 
 def unicode_confusable(
@@ -269,7 +286,7 @@ def unicode_confusable(
                         chars[i] = rand.choice(replacement_options)
         return "".join(chars)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def unicode_replacement(
@@ -289,7 +306,7 @@ def unicode_replacement(
             result = result.replace("\\u0020", " ")
         return result
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def unicode_substitution(
@@ -306,7 +323,7 @@ def unicode_substitution(
     def transform(text: str) -> str:
         return "".join(chr(start_value + ord(ch)) for ch in text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def repeat_token(
@@ -355,7 +372,7 @@ def repeat_token(
             return f"{text}{repeated}"
         return repeated
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def emoji_substitution(
@@ -469,7 +486,7 @@ def homoglyph_attack(
 
         return "".join(chars)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def token_smuggling(
@@ -507,7 +524,7 @@ def token_smuggling(
         # both
         return f"{smuggled_text}{separator}{text}{separator}{smuggled_text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def semantic_preserving_perturbation(
@@ -569,7 +586,7 @@ def semantic_preserving_perturbation(
         result = "".join(words)
         return re.sub(r'\s([?.!,\'"])', r"\1", result).strip()
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def instruction_hierarchy_confusion(
@@ -608,7 +625,7 @@ def instruction_hierarchy_confusion(
         hidden = f"\n<!-- {conflicting_instruction} -->\n"
         return f"{text}{hidden}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def context_overflow(
@@ -638,7 +655,7 @@ def context_overflow(
         overflow = filler_text * repetitions
         return f"{overflow}\n\n{text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def adversarial_suffix(
@@ -664,7 +681,7 @@ def adversarial_suffix(
     ) -> str:
         return f"{text} {suffix}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def gradient_based_perturbation(
@@ -721,7 +738,7 @@ def gradient_based_perturbation(
 
         return "".join(chars)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def multilingual_mixing(
@@ -799,7 +816,7 @@ def multilingual_mixing(
 
         return "".join(words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def cognitive_hacking(
@@ -844,7 +861,7 @@ def cognitive_hacking(
         template = frames[framing]
         return template.format(text=text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def payload_splitting(
@@ -895,7 +912,7 @@ def payload_splitting(
 
         return delimiter.join(parts)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def attention_diversion(
@@ -930,7 +947,7 @@ def attention_diversion(
         # sandwich
         return f"{distractor_text}\n\n{text}\n\n{distractor_text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def style_injection(
@@ -1008,7 +1025,7 @@ def style_injection(
 
         return " ".join(words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def implicit_continuation(
@@ -1034,7 +1051,7 @@ def implicit_continuation(
     ) -> str:
         return f"{continuation_prompt} {text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def authority_exploitation(
@@ -1070,7 +1087,7 @@ def authority_exploitation(
         template = authority_frames[authority_source]
         return template.format(text=text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def linguistic_camouflage(
@@ -1139,7 +1156,7 @@ def linguistic_camouflage(
 
         return "".join(words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def temporal_misdirection(
@@ -1174,7 +1191,7 @@ def temporal_misdirection(
         template = temporal_frames[tense]
         return template.format(text=text)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def complexity_amplification(
@@ -1217,7 +1234,7 @@ def complexity_amplification(
 
         return result
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def error_injection(
@@ -1289,7 +1306,7 @@ def error_injection(
 
         return "".join(words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def encoding_nesting(
@@ -1330,7 +1347,7 @@ def encoding_nesting(
             result = apply_encoding(result, encoding)
         return result
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def token_boundary_manipulation(
@@ -1393,7 +1410,7 @@ def token_boundary_manipulation(
 
         return " ".join(w for w in words if w)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def meta_instruction_injection(
@@ -1431,7 +1448,7 @@ def meta_instruction_injection(
         encoded = base64.b64encode(meta_instruction.encode()).decode()
         return f"[Encoded]: {encoded}\n\n{text}"
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
 
 
 def sentiment_inversion(
@@ -1489,4 +1506,4 @@ def sentiment_inversion(
 
         return "".join(words)
 
-    return Transform(transform, name=name)
+    return Transform(transform, name=name, compliance_tags=_get_perturbation_tags())
