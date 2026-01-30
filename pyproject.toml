@@ -118,6 +118,7 @@ module = [
     "dreadnode.data_types.*",
     "dreadnode.scorers.*",
     "dreadnode.transforms.*",
+    "dreadnode.integrations.axolotl.*",
 ]
 disable_error_code = ["unused-ignore", "import-untyped", "import-not-found"]
 
