@@ -115,7 +115,9 @@ async def command(
 
 
 @tool(catch=True)
-async def python(code: str, *, timeout: int = 120, max_output_chars: int = 100_000, check: bool = True) -> str:
+async def python(
+    code: str, *, timeout: int = 120, max_output_chars: int = 100_000, check: bool = True
+) -> str:
     """
     Execute Python code.
 
