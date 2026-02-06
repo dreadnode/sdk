@@ -16,6 +16,8 @@ async def command(
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     input: str | None = None,
+    max_output_chars: int = 100_000,
+    check: bool = True,
 ) -> str:
     """
     Execute a shell command.
@@ -23,7 +25,7 @@ async def command(
     ## Best Practices
     - Argument Format: Command and arguments must be a list of strings.
     - No Shell Syntax: Does not use a shell (no pipes, redirection, var expansion, etc.).
-    - Error on Failure: Raises RuntimeError for non-zero exit codes.
+    - Error on Failure: Raises RuntimeError for non-zero exit codes (unless check=False).
     - Use input Parameter: Send data to the command's standard input to avoid hanging.
 
     Args:
@@ -32,13 +34,13 @@ async def command(
         cwd: The working directory for the command.
         env: Environment variables for the command.
         input: Optional string to send to the command's standard input.
+        max_output_chars: Maximum characters to return from output.
+        check: If True, raise RuntimeError on non-zero exit. If False, return output with exit code.
     """
     command_str = " ".join(cmd)
     logger.debug(f"Executing '{command_str}'")
 
-    process_env = os.environ.copy()
-    if env:
-        process_env.update(env)
+    process_env = os.environ.copy() | env if env else os.environ.copy()
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -50,9 +52,10 @@ async def command(
     )
 
     output = ""
+    truncated = False
 
     async def read_stdout() -> None:
-        nonlocal output
+        nonlocal output, truncated
 
         if not proc.stdout:
             return
@@ -61,7 +64,14 @@ async def command(
             chunk = await proc.stdout.read(1024)
             if not chunk:
                 break
-            output += chunk.decode(errors="replace")
+            decoded = chunk.decode(errors="replace")
+            if len(output) + len(decoded) > max_output_chars:
+                remaining = max_output_chars - len(output)
+                if remaining > 0:
+                    output += decoded[:remaining]
+                truncated = True
+                break
+            output += decoded
 
     async def write_and_close_stdin() -> None:
         if proc.stdin and input:
@@ -79,6 +89,8 @@ async def command(
         error_message = f"Command '{command_str}' timed out after {timeout} seconds."
         if output:
             error_message += f"\n\nPartial Output:\n{output}"
+            if truncated:
+                error_message += "\n... [output truncated]"
         logger.warning(error_message)
 
         with contextlib.suppress(OSError):
@@ -87,18 +99,23 @@ async def command(
 
         raise TimeoutError(error_message) from e
 
+    if truncated:
+        output += f"\n... [output truncated at {max_output_chars} chars]"
+
     if proc.returncode != 0:
-        logger.error(
-            f"Command '{command_str}' failed with return code {proc.returncode}:\n{output}"
-        )
-        raise RuntimeError(f"Command failed ({proc.returncode}):\n{output}")
+        if check:
+            logger.error(
+                f"Command '{command_str}' failed with return code {proc.returncode}:\n{output}"
+            )
+            raise RuntimeError(f"Command failed ({proc.returncode}):\n{output}")
+        output = f"(exit: {proc.returncode})\n{output}"
 
     logger.debug(f"Command '{command_str}' completed:\n{output}")
     return output
 
 
 @tool(catch=True)
-async def python(code: str, *, timeout: int = 120) -> str:
+async def python(code: str, *, timeout: int = 120, max_output_chars: int = 100_000, check: bool = True) -> str:
     """
     Execute Python code.
 
@@ -116,6 +133,8 @@ async def python(code: str, *, timeout: int = 120) -> str:
     Args:
         code: The Python code to execute as a string.
         timeout: Maximum time in seconds to allow for code execution.
+        max_output_chars: Maximum characters to return from output.
+        check: If True, raise RuntimeError on non-zero exit. If False, return output with exit code.
     """
     try:
         logger.debug(f"Executing python:\n{code}")
@@ -137,9 +156,16 @@ async def python(code: str, *, timeout: int = 120) -> str:
         logger.error(f"Error executing code in Python: {e}")
         raise
 
+    # Truncate output if needed
+    if len(output) > max_output_chars:
+        output = output[:max_output_chars] + f"\n... [output truncated at {max_output_chars} chars]"
+        logger.warning(f"Python execution output truncated at {max_output_chars} chars")
+
     if proc.returncode != 0:
-        logger.error(f"Execution failed with return code {proc.returncode}:\n{output}")
-        raise RuntimeError(f"Execution failed ({proc.returncode}):\n{output}")
+        if check:
+            logger.error(f"Execution failed with return code {proc.returncode}:\n{output}")
+            raise RuntimeError(f"Execution failed ({proc.returncode}):\n{output}")
+        output = f"(exit: {proc.returncode})\n{output}"
 
     logger.debug(f"Execution successful. Output:\n{output}")
     return output
