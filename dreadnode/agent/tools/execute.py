@@ -103,12 +103,11 @@ async def command(
         output += f"\n... [output truncated at {max_output_chars} chars]"
 
     if proc.returncode != 0:
+        error_output = f"(exit: {proc.returncode})\n{output}"
         if check:
-            logger.error(
-                f"Command '{command_str}' failed with return code {proc.returncode}:\n{output}"
-            )
-            raise RuntimeError(f"Command failed ({proc.returncode}):\n{output}")
-        output = f"(exit: {proc.returncode})\n{output}"
+            logger.error(f"Command '{command_str}' failed: {error_output}")
+            raise RuntimeError(error_output)
+        output = error_output
 
     logger.debug(f"Command '{command_str}' completed:\n{output}")
     return output
@@ -164,10 +163,11 @@ async def python(
         logger.warning(f"Python execution output truncated at {max_output_chars} chars")
 
     if proc.returncode != 0:
+        error_output = f"(exit: {proc.returncode})\n{output}"
         if check:
-            logger.error(f"Execution failed with return code {proc.returncode}:\n{output}")
-            raise RuntimeError(f"Execution failed ({proc.returncode}):\n{output}")
-        output = f"(exit: {proc.returncode})\n{output}"
+            logger.error(f"Execution failed: {error_output}")
+            raise RuntimeError(error_output)
+        output = error_output
 
     logger.debug(f"Execution successful. Output:\n{output}")
     return output
