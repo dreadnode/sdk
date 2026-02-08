@@ -73,7 +73,7 @@ dev = [
     "types-protobuf>=5.29.1.20250208",
     "pandas-stubs>=2.2.3.250308",
     "types-requests>=2.32.0.20250306",
-    "ipykernel>=7.1.0,<7.2.0",
+    "ipykernel>=7.2.0,<7.3.0",
     "ipywidgets>=8.1.7,<9.0.0",
     "types-pyyaml>=6.0.12.20250822",
 ]
