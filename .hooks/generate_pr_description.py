@@ -52,10 +52,6 @@ async def _run_git_command(args: list[str]) -> str:
     if not all(isinstance(arg, str) for arg in args):
         raise ValueError("All command arguments must be strings")
 
-    def check_return_code(return_code: int):
-        if return_code != 0:
-            raise RuntimeError(f"Git command failed: {stderr.decode()}")
-
     # Use os.execv for more secure command execution
     try:
         # nosec B603 - Input is validated
@@ -67,15 +63,15 @@ async def _run_git_command(args: list[str]) -> str:
         )
         stdout, stderr = await proc.communicate()
 
-        check_return_code(proc.returncode)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Git command failed: {stderr.decode()}")
 
-        return stdout.decode().strip()
-    except FileNotFoundError as e:
-        raise RuntimeError("Git executable not found or invalid command") from e
-    except asyncio.SubprocessError as e:
-        raise RuntimeError("Error occurred while running the subprocess") from e
-    except UnicodeDecodeError as e:
-        raise RuntimeError("Failed to decode the output of the git command") from e
+        try:
+            return stdout.decode().strip()
+        except UnicodeDecodeError as e:
+            raise RuntimeError("Failed to decode the output of the git command") from e
+    except Exception as e:
+        raise RuntimeError(f"Failed to execute git command: {e}") from e
 
 
 async def get_diff(base_ref: str, source_ref: str, *, exclude: list[str] | None = None) -> str:
