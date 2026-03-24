@@ -90,6 +90,13 @@ Homepage = "https://github.com/dreadnode/sdk"
 Repository = "https://github.com/dreadnode/sdk"
 Documentation = "https://docs.dreadnode.io"
 
+# Dependency constraints (transitive pinning)
+
+[tool.uv]
+constraint-dependencies = [
+    "litellm<=1.82.6",  # Pin to mitigate supply chain attack (BerriAI/litellm#21971)
+]
+
 # Build
 
 [build-system]
