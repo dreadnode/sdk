@@ -536,11 +536,11 @@ wheels = [
 
 [[package]]
 name = "coolname"
-version = "2.2.0"
+version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c5/c6/1eaa4495ff4640e80d9af64f540e427ba1596a20f735d4c4750fe0386d07/coolname-2.2.0.tar.gz", hash = "sha256:6c5d5731759104479e7ca195a9b64f7900ac5bead40183c09323c7d0be9e75c7", size = 59006, upload-time = "2023-01-09T14:50:41.724Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/97/c6d3911b2c9ba7c129820bbbd2ef1e9bae8402aa70f15820dc3a9d770e87/coolname-4.1.0.tar.gz", hash = "sha256:1db8b0857d0e40795cf555f449542cc3b8fe4a85b64ae3507fb475bafa2924fa", size = 38433, upload-time = "2026-03-16T18:52:31.875Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/b1/5745d7523d8ce53b87779f46ef6cf5c5c342997939c2fe967e607b944e43/coolname-2.2.0-py2.py3-none-any.whl", hash = "sha256:4d1563186cfaf71b394d5df4c744f8c41303b6846413645e31d31915cdeb13e8", size = 37849, upload-time = "2023-01-09T14:50:39.897Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/96/e0ea059650e0db3755d2e734cd65fb15aa5546e5cdf96e7e68ae018cc994/coolname-4.1.0-py3-none-any.whl", hash = "sha256:2721ab2112788ad3f92b398ed48533d58be30450c4e7b266f9407fcdf37c8d24", size = 39907, upload-time = "2026-03-16T18:52:30.303Z" },
 ]
 
 [[package]]
@@ -843,7 +843,7 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0,<25.0.0" },
     { name = "art", marker = "extra == 'transforms'", specifier = ">=6.5,<7.0.0" },
     { name = "confusables", marker = "extra == 'scoring'", specifier = ">=1.2.0,<2.0.0" },
-    { name = "coolname", specifier = ">=2.2.0,<3.0.0" },
+    { name = "coolname", specifier = ">=4.1.0,<4.2.0" },
     { name = "cyclopts", specifier = ">=4.2.0" },
     { name = "datasets", marker = "extra == 'training'", specifier = ">=4.0.0,<5.0.0" },
     { name = "dreadnode", extras = ["training", "multimodal", "scoring"], marker = "extra == 'all'" },
