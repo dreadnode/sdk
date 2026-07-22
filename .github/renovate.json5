@@ -29,6 +29,11 @@
   },
   packageRules: [
     {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["actions/setup-python"],
+      "allowedVersions": ">=3.10 <=3.12"
+    }, 
+    {
       matchManagers: ["poetry", "pip_requirements"],
       matchPackagePatterns: ["^pytest"],
       groupName: "pytest packages",
