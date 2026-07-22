@@ -870,7 +870,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'training'", specifier = ">=22.0.0,<22.1.0" },
     { name = "pydantic", specifier = ">=2.9.2,<3.0.0" },
     { name = "python-jsonpath", specifier = ">=2.0.1" },
-    { name = "python-ulid", specifier = ">=3.0.0,<4.0.0" },
+    { name = "python-ulid", specifier = ">=4.0.1,<4.1.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rapidfuzz", marker = "extra == 'scoring'", specifier = ">=3.14.1" },
     { name = "rigging", specifier = ">=3.3.4" },
@@ -3242,11 +3242,14 @@ wheels = [
 
 [[package]]
 name = "python-ulid"
-version = "3.1.0"
+version = "4.0.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/40/7e/0d6c82b5ccc71e7c833aed43d9e8468e1f2ff0be1b3f657a6fcafbb8433d/python_ulid-3.1.0.tar.gz", hash = "sha256:ff0410a598bc5f6b01b602851a3296ede6f91389f913a5d5f8c496003836f636", size = 93175, upload-time = "2025-08-18T16:09:26.305Z" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/41/65079023c81491a21799c0120bce5925366b6913596bf797806f19973290/python_ulid-4.0.1.tar.gz", hash = "sha256:bbeec02556190bb9dc3401faa7268696acbfbe7b6db9908c155dc3548629f20c", size = 101683, upload-time = "2026-07-20T15:21:41.256Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6c/a0/4ed6632b70a52de845df056654162acdebaf97c20e3212c559ac43e7216e/python_ulid-3.1.0-py3-none-any.whl", hash = "sha256:e2cdc979c8c877029b4b7a38a6fba3bc4578e4f109a308419ff4d3ccf0a46619", size = 11577, upload-time = "2025-08-18T16:09:25.047Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/15/8b39b36f55b6618ec4ca9b55134dcfd9c04cecbc72709f5d8e6bdebed9cd/python_ulid-4.0.1-py3-none-any.whl", hash = "sha256:6f1d69ceb97e99fe542df8476ebcd7a668284bf53ee14b3106bcc6a341a95ed9", size = 14609, upload-time = "2026-07-20T15:21:40.214Z" },
 ]
 
 [[package]]
