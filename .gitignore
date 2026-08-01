@@ -1,22 +1,8 @@
-# Poetry deprecated
-poetry.lock
-
 # Testing code
 notebooks/
-examples/.logfire
 
-# Logfire temp
-.logfire/
-
-# Mlflow
-mlruns/
-
-# Large disk files
+# Custom parquet storage
 *.parquet
-*.jsonl
-
-# Macos
-.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -93,6 +79,7 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
+target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -156,7 +143,6 @@ venv.bak/
 
 # mkdocs documentation
 /site
-debug.html
 
 # mypy
 .mypy_cache/
@@ -178,3 +164,12 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# MAC OS
+.DS_Store
+
+# Taskfile
+.task/
+
+# Renovate
+cache
