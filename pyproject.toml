@@ -39,7 +39,7 @@ dependencies = [
 training = [
     "transformers>=4.41.0,<5.0.0",
     "datasets>=4.0.0,<5.0.0",
-    "pyarrow>=22.0.0,<22.1.0",
+    "pyarrow>=23.0.1,<23.1.0",
 ]
 
 multimodal = [
