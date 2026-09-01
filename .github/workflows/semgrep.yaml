@@ -1,5 +1,5 @@
 ---
-name: Semgrep Analysis
+name: 🚨 Semgrep Analysis
 on:
   merge_group:
   pull_request:
@@ -16,8 +16,8 @@ on:
     - cron: "0 0 * * *" # Run daily at midnight UTC
 
 concurrency:
+  group: pre-commit-${{ github.run_id }}
   cancel-in-progress: true
-  group: semgrep-${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   actions: read
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   semgrep:
-    name: Semgrep Analysis
+    name: 🚨 Semgrep Analysis
     runs-on: ubuntu-latest
     container:
       image: returntocorp/semgrep
