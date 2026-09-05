@@ -44,12 +44,59 @@ def _get_last_input_tokens(event: AgentEvent) -> int:
     return last_generation_event.usage.input_tokens if last_generation_event.usage else 0
 
 
+def _find_tool_aware_boundary(
+    messages: list[rg.Message],
+    min_messages_to_keep: int,
+) -> int:
+    """
+    Find the best summarization boundary while preserving tool call/response pairs.
+
+    This prevents breaking tool messages that would cause API errors with strict models
+    (OpenAI, Anthropic) that require every tool_call_id to have a matching response.
+
+    Args:
+        messages: List of messages to analyze (excluding system message)
+        min_messages_to_keep: Minimum messages that must be kept after boundary
+
+    Returns:
+        Index where to split (messages[:idx] summarized, messages[idx:] kept)
+        Returns 0 if no valid boundary found
+    """
+    # Build tool_call_id -> assistant message index mapping
+    tool_call_map: dict[str, int] = {}
+    for i, msg in enumerate(messages):
+        if msg.role == "assistant" and hasattr(msg, "tool_calls"):
+            for tc in getattr(msg, "tool_calls", None) or []:
+                if hasattr(tc, "id"):
+                    tool_call_map[tc.id] = i
+
+    # Walk backward from desired split point to find first valid boundary
+    for boundary in range(len(messages) - min_messages_to_keep, -1, -1):
+        # Check if this boundary would orphan any tool responses
+        has_orphan = False
+        for msg in messages[boundary:]:
+            if msg.role == "tool" and hasattr(msg, "tool_call_id"):
+                tool_call_id = getattr(msg, "tool_call_id", None)
+                if tool_call_id is not None:
+                    call_idx = tool_call_map.get(tool_call_id)
+                    if call_idx is not None and call_idx < boundary:
+                        has_orphan = True
+                        break
+
+        if not has_orphan:
+            return boundary
+
+    return 0  # No valid boundary found
+
+
 @component
 def summarize_when_long(
     model: str | rg.Generator | None = None,
     max_tokens: int = 100_000,
     min_messages_to_keep: int = 5,
     guidance: str = "",
+    *,
+    preserve_tool_pairs: bool = True,
 ) -> "Hook":
     """
     Creates a hook to manage the agent's context window by summarizing the conversation history.
@@ -66,6 +113,9 @@ def summarize_when_long(
             (default is None, meaning no proactive summarization).
         min_messages_to_keep: The minimum number of messages to retain after summarization (default is 5).
         guidance: Additional guidance for the summarization process (default is "").
+        preserve_tool_pairs: If True, ensures tool call/response pairs stay together to avoid breaking
+            strict API requirements (OpenAI, Anthropic). Defaults to True. Set to False to use legacy
+            behavior that may break tool pairs but allows more aggressive summarization.
     """
 
     if min_messages_to_keep < 2:
@@ -90,6 +140,10 @@ def summarize_when_long(
         guidance: str = Config(
             guidance,
             help="Additional guidance for the summarization process",
+        ),
+        preserve_tool_pairs: bool = Config(
+            preserve_tool_pairs,
+            help="Preserve tool call/response pairs to avoid breaking strict API requirements",
         ),
     ) -> Reaction | None:
         should_summarize = False
@@ -123,26 +177,30 @@ def summarize_when_long(
             messages.pop(0) if messages and messages[0].role == "system" else None
         )
 
-        # Find the best point to summarize by walking the message list once.
-        # A boundary is valid after a simple assistant message or a finished tool block.
-        best_summarize_boundary = 0
-        for i, message in enumerate(messages):
-            # If the remaining messages are less than or equal to our minimum, we can't slice any further.
-            if len(messages) - i <= min_messages_to_keep:
-                break
+        # Find the best point to summarize
+        if preserve_tool_pairs:
+            # Use tool-aware boundary finding to prevent breaking tool call/response pairs
+            best_summarize_boundary = _find_tool_aware_boundary(messages, min_messages_to_keep)
+        else:
+            # Legacy behavior: walk the message list once looking for simple boundaries
+            best_summarize_boundary = 0
+            for i, message in enumerate(messages):
+                # If the remaining messages are less than or equal to our minimum, we can't slice any further.
+                if len(messages) - i <= min_messages_to_keep:
+                    break
 
-            # Condition 1: The message is an assistant response without tool calls.
-            is_simple_assistant = message.role == "assistant" and not getattr(
-                message, "tool_calls", None
-            )
+                # Condition 1: The message is an assistant response without tool calls.
+                is_simple_assistant = message.role == "assistant" and not getattr(
+                    message, "tool_calls", None
+                )
 
-            # Condition 2: The message is the last in a block of tool responses.
-            is_last_tool_in_block = message.role == "tool" and (
-                i + 1 == len(messages) or messages[i + 1].role != "tool"
-            )
+                # Condition 2: The message is the last in a block of tool responses.
+                is_last_tool_in_block = message.role == "tool" and (
+                    i + 1 == len(messages) or messages[i + 1].role != "tool"
+                )
 
-            if is_simple_assistant or is_last_tool_in_block:
-                best_summarize_boundary = i + 1
+                if is_simple_assistant or is_last_tool_in_block:
+                    best_summarize_boundary = i + 1
 
         if best_summarize_boundary == 0:
             return None  # No valid slice point was found.
