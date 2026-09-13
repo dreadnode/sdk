@@ -49,7 +49,7 @@ multimodal = [
 ]
 
 scoring = [
-    "sentence-transformers>=5.1.0,<6.0.0",
+    "sentence-transformers>=6.0.1,<6.1.0",
     "rapidfuzz>=3.14.1",
     "presidio-analyzer>=2.2.359,<3.0.0",
     "scikit-learn>=1.7.1,<2.0.0",
